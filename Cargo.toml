@@ -1,0 +1,22 @@
+[package]
+name = "goshenite"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# winit is a cross-platform window creation and management library
+# best to keep the version matching what's in the vulkano-win Cargo.toml
+winit = "0.25.0"
+# vulkano is a safe wrapper for the 3D graphics API vulkan
+# make sure the versions of the vulkano crates match!
+vulkano = "0.27.1"
+vulkano-win = "0.27.1"
+vulkano-shaders = "0.27.1"
+# glam is a vector and math library well suited for 3D graphics
+glam = "0.20.1"
+
+# egui = "0.15.0"
+# slotmap = "1.0.6"
+# ECS: specs = "0.17.0"
