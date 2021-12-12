@@ -1,10 +1,3 @@
-//! # About
-//!
-//! Some comments explaining Vulkan code are adapted from the (Vulkano)[https://github.com/vulkano-rs/vulkano]
-//! triangle.rs example and may be helpful for people unfamiliar with Vulkan. This application uses Vulkan
-//! 1.2 and if you are interested in finer details about Vulkan functionality or function arguments I
-//! recommend referencing and getting familiar with the (Vulkan specification)[https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/].
-//!
 //! Quick find comments:
 //! - LOG: log output
 //! - TESTING: temporary testing (to be deleted before commiting)
@@ -35,35 +28,23 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::{Window, WindowBuilder};
 
 fn main() {
-    // The first step of any Vulkan program is to create an instance.
-    // When we create an instance, we have to pass a list of extensions that we want to enable.
-    // All the window-drawing functionalities are part of non-core extensions that we need
-    // to enable manually. To do so, we ask the `vulkano_win` crate for the list of extensions
-    // required to draw to a window.
+    // Create instance
     let instance_extensions = vulkano_win::required_extensions();
     let instance = Instance::new(None, vulkano::Version::V1_2, &instance_extensions, None).unwrap();
 
-    // Create a window with `winit::EventLoop` and `winit::WindowBuilder`, then create a
-    // `vulkano::swapchain::Surface` object by calling the `VkSurfaceBuild::build_vk_surface` method
-    // provided by `VkSurfaceBuild` (Note the `VkSurfaceBuild` trait must be imported).
-    // The `vulkano::swapchain::Surface` object contains both a cross-platform winit window and a
-    // cross-platform Vulkan surface that represents the surface of the window.
+    // Create winit window
     let event_loop = EventLoop::new();
     let surface = WindowBuilder::new()
         .build_vk_surface(&event_loop, instance.clone())
         .unwrap();
 
-    // Device extensions:
-    // In order to present images to a surface, we need a `Swapchain`, which is provided by the
-    // `khr_swapchain` extension.
+    // Device extensions
     let device_extensions = DeviceExtensions {
         khr_swapchain: true,
         ..DeviceExtensions::none()
     };
 
-    // Choose a physical device and queue family:
-    // Enumerate the physical devices supporting Vulkan then narrow down the options based on the
-    // application requirements.
+    // Choose a physical device and queue family
     let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
         // Essential Requirements:
         // Filter by extension support.
@@ -99,7 +80,7 @@ fn main() {
         physical_device.properties().device_type,
     );
 
-    // Initialize the Vulkan (logical) device and create queues for submitting commands.
+    // Create device and queues.
     let (device, mut queues) = Device::new(
         physical_device,
         &Features::none(),
@@ -110,22 +91,19 @@ fn main() {
     )
     .unwrap();
 
-    // We'll use a single queue in this application.
+    // Single out the first queue for use
     let queue = queues.next().unwrap();
 
-    // Before we can draw on the surface, we have to create what is called a swapchain. Creating
-    // a swapchain allocates the buffers that will contain the image that will ultimately be
-    // presented to the screen.
+    // Create swapchain and swapchain images
     let (mut swapchain, swapchain_images) = {
-        // Querying the capabilities of the surface. When we create the swapchain we can only
-        // pass values that are allowed by the capabilities.
+        // Surface capabilities
         let caps = surface.capabilities(physical_device).unwrap();
 
         // The alpha mode indicates how the alpha value of the final image will behave. For example,
         // you can choose whether the window will be opaque or transparent.
         let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
 
-        // Choose the internal format that the images will have.
+        // Swapchain image format
         let format = caps.supported_formats[0].0;
 
         // The dimensions of the window, only used to initially setup the swapchain.
@@ -151,21 +129,13 @@ fn main() {
             .unwrap()
     };
 
-    // We now create a buffer that will store the shape of our triangle.
-    // We use #[repr(C)] here to force rustc to not do anything funky with our data, although for this
-    // particular example, it doesn't actually change the in-memory representation.
+    // Create vertex buffer
     #[repr(C)]
     #[derive(Default, Debug, Clone)]
     struct Vertex {
         position: [f32; 2],
     }
     vulkano::impl_vertex!(Vertex, position);
-
-    // TESTING
-    struct VertexTest {
-        position: glam::Vec3,
-    }
-    vulkano::impl_vertex!(VertexTest, position);
 
     let vertex_buffer = CpuAccessibleBuffer::from_iter(
         device.clone(),
@@ -187,9 +157,7 @@ fn main() {
     )
     .unwrap();
 
-    // Create vertex and fragment shaders using the `vulkano_shaders::shader!` macro.
-    // You can pass either `src` for GLSL source, `path` for a path to a SPIR-V file (relative to
-    // Cargo.toml). See the (docs)[https://docs.rs/vulkano-shaders/] for more info.
+    // Create vert and frag shaders
     mod vs {
         vulkano_shaders::shader! {
             ty: "vertex",
@@ -222,10 +190,7 @@ fn main() {
     let vs = vs::load(device.clone()).unwrap();
     let fs = fs::load(device.clone()).unwrap();
 
-    // The next step is to create a *render pass*, which is an object that describes where the
-    // output of the graphics pipeline will go. It describes the layout of the images
-    // where the colors, depth and/or stencil information will be written.
-    // For more info on the parameters defining a render pass see https://www.khronos.org/registry/vulkan/specs/1.2-extensions/html/chap8.html#VkRenderPassCreateInfo
+    // Create render pass
     let render_pass = vulkano::single_pass_renderpass!(
         device.clone(),
         attachments: {
@@ -246,8 +211,7 @@ fn main() {
     )
     .unwrap();
 
-    // A Vulkan pipeline describes the stages and settings of how data proceeds through the GPU.
-    // See the *Pipelines* section of the Vulkan spec for more info (it has a cool block diagram).
+    // Create graphics pipeline
     let pipeline = GraphicsPipeline::start()
         // Describe the vertex data layout
         .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
@@ -265,18 +229,140 @@ fn main() {
         .build(device.clone())
         .unwrap();
 
-    // We set the pipeline viewport settings to dynamic meaning we won't have to recreate the
-    // pipeline when the window is resized
+    // Viewport config
     let mut viewport = Viewport {
         origin: [0.0, 0.0],
         dimensions: [0.0, 0.0],
         depth_range: 0.0..1.0,
     };
 
-    // Framebuffers are the Vulkan objects that the graphics pipeline renders to, meaning the
-    // images need to match the layout described by the render pass and fragment shader code
+    // Create framebuffers
     let mut framebuffers =
         window_size_dependent_setup(&swapchain_images, render_pass.clone(), &mut viewport);
+
+    let mut recreate_swapchain = false;
+
+    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
+
+    // window loop
+    event_loop.run(move |event, _, control_flow| {
+        match event {
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => {
+                *control_flow = ControlFlow::Exit;
+            }
+            Event::WindowEvent {
+                event: WindowEvent::Resized(_),
+                ..
+            } => {
+                recreate_swapchain = true;
+            }
+            Event::RedrawEventsCleared => {
+                // It is important to call this function from time to time, otherwise resources will keep
+                // accumulating and you will eventually reach an out of memory error.
+                // Calling this function polls various fences in order to determine what the GPU has
+                // already processed, and frees the resources that are no longer needed.
+                previous_frame_end.as_mut().unwrap().cleanup_finished();
+
+                // Recreate swapchain (e.g. when window resized)
+                if recreate_swapchain {
+                    let dimensions: [u32; 2] = surface.window().inner_size().into();
+                    let (new_swapchain, new_images) =
+                        match swapchain.recreate().dimensions(dimensions).build() {
+                            Ok(r) => r,
+                            // This error tends to happen when the user is manually resizing the window.
+                            // Simply restarting the loop is the easiest way to fix this issue.
+                            Err(SwapchainCreationError::UnsupportedDimensions) => return,
+                            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+                        };
+                    
+                    swapchain = new_swapchain;
+                    framebuffers = window_size_dependent_setup(
+                        &new_images,
+                        render_pass.clone(),
+                        &mut viewport,
+                    );
+                    recreate_swapchain = false;
+                }
+
+                // Aquire swapchain image
+                let (image_num, suboptimal, acquire_future) =
+                    match swapchain::acquire_next_image(swapchain.clone(), None) {
+                        Ok(r) => r,
+                        Err(AcquireError::OutOfDate) => {
+                            recreate_swapchain = true;
+                            return;
+                        },
+                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                    };
+                
+                // acquire_next_image can be successful, but suboptimal. This means that the swapchain image
+                // will still work, but it may not display correctly. With some drivers this can be when
+                // the window resizes, but it may not cause the swapchain to become out of date.
+                if suboptimal {
+                    recreate_swapchain = true;
+                }
+
+                // Clear values
+                let clear_values = vec![[0.1, 0.2, 0.8, 1.0].into()];
+
+                // Command buffer builder
+                // Building a command buffer is an expensive operation (usually a few hundred
+                // microseconds), but it is known to be a hot path in the driver and is expected to be
+                // optimized.
+                let mut builder = AutoCommandBufferBuilder::primary(
+                    device.clone(),
+                    queue.family(),
+                    CommandBufferUsage::OneTimeSubmit,
+                )
+                .unwrap();
+                // Record commands
+                builder
+                    .begin_render_pass(
+                        framebuffers[image_num].clone(),
+                        SubpassContents::Inline,
+                        clear_values,
+                    )
+                    .unwrap()
+                    .set_viewport(0, [viewport.clone()])
+                    .bind_pipeline_graphics(pipeline.clone())
+                    .bind_vertex_buffers(0, vertex_buffer.clone())
+                    .draw(vertex_buffer.len() as u32, 1, 0, 0)
+                    .unwrap()
+                    .end_render_pass()
+                    .unwrap();
+
+                // Create command buffer
+                let command_buffer = builder.build().unwrap();
+
+                let future = previous_frame_end
+                    .take()
+                    .unwrap()
+                    .join(acquire_future)
+                    .then_execute(queue.clone(), command_buffer)
+                    .unwrap()
+                    .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
+                    .then_signal_fence_and_flush();
+
+                match future {
+                    Ok(future) => {
+                        previous_frame_end = Some(future.boxed());
+                    }
+                    Err(FlushError::OutOfDate) => {
+                        recreate_swapchain = true;
+                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                    }
+                    Err(e) => {
+                        println!("Failed to flush future: {:?}", e);
+                        previous_frame_end = Some(sync::now(device.clone()).boxed());
+                    }
+                }
+            }
+            _ => (),
+        }
+    });
 }
 
 /// This method is called once during initialization, then again whenever the window is resized

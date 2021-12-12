@@ -1,3 +1,0 @@
-
-
-ambient occlusion: use TAA
