@@ -1,36 +1,109 @@
-//! Quick find comments:
-//! - LOG: log output
-//! - TESTING: temporary testing (to be deleted before commiting)
-
 // TODO:
-// validation layers
-// unwrap error handling
+// unwrap error handling (replace with expect)
 
-use std::sync::Arc;
-use vulkano::buffer::{BufferUsage, CpuAccessibleBuffer, TypedBufferAccess};
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage, SubpassContents};
+use log::debug;
+use log::error;
+use log::info;
+use log::warn;
+
+use vulkano_win::VkSurfaceBuild;
+
+use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
+use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
 use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
 use vulkano::device::{Device, DeviceExtensions, Features};
+use vulkano::format::Format;
+use vulkano::image::attachment::AttachmentImage;
 use vulkano::image::view::ImageView;
-use vulkano::image::{ImageAccess, ImageUsage, SwapchainImage};
-use vulkano::instance::Instance;
-use vulkano::pipeline::graphics::input_assembly::InputAssemblyState;
-use vulkano::pipeline::graphics::vertex_input::BuffersDefinition;
-use vulkano::pipeline::graphics::viewport::{Viewport, ViewportState};
-use vulkano::pipeline::GraphicsPipeline;
-use vulkano::render_pass::{Framebuffer, RenderPass, Subpass};
+use vulkano::image::ImageUsage;
+use vulkano::instance;
+use vulkano::instance::debug::{DebugCallback, MessageSeverity, MessageType};
+use vulkano::instance::{Instance, InstanceExtensions};
+use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
 use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
 use vulkano::sync::{self, FlushError, GpuFuture};
-use vulkano::Version;
-use vulkano_win::VkSurfaceBuild;
+
 use winit::event::{Event, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::{Window, WindowBuilder};
+use winit::window::WindowBuilder;
 
 fn main() {
+    // Initialize logger
+    env_logger::init();
+
     // Create instance
-    let instance_extensions = vulkano_win::required_extensions();
-    let instance = Instance::new(None, vulkano::Version::V1_2, &instance_extensions, None).unwrap();
+
+    let instance_extensions = InstanceExtensions {
+        ext_debug_utils: true,
+        ..vulkano_win::required_extensions()
+    };
+
+    let layers = vec!["VK_LAYER_KHRONOS_validation"];
+    let mut available_layers = instance::layers_list().unwrap();
+    while let Some(l) = available_layers.next() {
+        println!("\t{}", l.name());
+    }
+    assert!(
+        layers
+            .iter()
+            .all(|&l| instance::layers_list().unwrap().any(|la| la.name() == l)),
+        "requested Vulkan layer(s) not available"
+    );
+
+    let instance = Instance::new(None, vulkano::Version::V1_2, &instance_extensions, layers)
+        .expect("failed to create Vulkan instance");
+
+    // Vulkan debug callback
+
+    let message_severity = MessageSeverity {
+        verbose: false,
+        ..MessageSeverity::all()
+    };
+    let message_type = MessageType::all();
+    let _debug_callback = DebugCallback::new(&instance, message_severity, message_type, |msg| {
+        let ty = if msg.ty.general {
+            "general"
+        } else if msg.ty.validation {
+            "validation"
+        } else if msg.ty.performance {
+            "performance"
+        } else {
+            panic!("no-impl");
+        };
+
+        if msg.severity.error {
+            error!(
+                "Vulkan - {} {}: {}",
+                msg.layer_prefix.unwrap_or("unknown"),
+                ty,
+                msg.description
+            );
+        } else if msg.severity.warning {
+            warn!(
+                "Vulkan - {} {}: {}",
+                msg.layer_prefix.unwrap_or("unknown"),
+                ty,
+                msg.description
+            );
+        } else if msg.severity.information {
+            info!(
+                "Vulkan - {} {}: {}",
+                msg.layer_prefix.unwrap_or("unknown"),
+                ty,
+                msg.description
+            );
+        } else if msg.severity.verbose {
+            debug!(
+                "Vulkan - {} {}: {}",
+                msg.layer_prefix.unwrap_or("unknown"),
+                ty,
+                msg.description
+            );
+        } else {
+            panic!("no-impl");
+        };
+    })
+    .ok();
 
     // Create winit window
     let event_loop = EventLoop::new();
@@ -71,10 +144,9 @@ fn main() {
                 PhysicalDeviceType::Other => 4,
             }
         })
-        .unwrap();
+        .expect("no device available");
 
-    // LOG
-    println!(
+    info!(
         "Using device: {} (type: {:?})",
         physical_device.properties().device_name,
         physical_device.properties().device_type,
@@ -89,12 +161,13 @@ fn main() {
             .union(&device_extensions),
         [(queue_family, 0.5)].iter().cloned(),
     )
-    .unwrap();
+    .expect("failed to create device");
 
     // Single out the first queue for use
     let queue = queues.next().unwrap();
 
     // Create swapchain and swapchain images
+    let mut dimensions: [u32; 2] = surface.window().inner_size().into();
     let (mut swapchain, swapchain_images) = {
         // Surface capabilities
         let caps = surface.capabilities(physical_device).unwrap();
@@ -106,139 +179,75 @@ fn main() {
         // Swapchain image format
         let format = caps.supported_formats[0].0;
 
-        // The dimensions of the window, only used to initially setup the swapchain.
-        // NOTE:
-        // On some drivers the swapchain dimensions are specified by `caps.current_extent` and the
-        // swapchain size must use these dimensions.
-        // These dimensions are always the same as the window dimensions.
-        //
-        // However, other drivers don't specify a value, i.e. `caps.current_extent` is `None`
-        // These drivers will allow anything, but the only sensible value is the window dimensions.
-        //
-        // Both of these cases need the swapchain to use the window dimensions, so we just use that.
-        let dimensions: [u32; 2] = surface.window().inner_size().into();
-
         Swapchain::start(device.clone(), surface.clone())
             .num_images(caps.min_image_count)
             .format(format)
             .dimensions(dimensions)
-            .usage(ImageUsage::color_attachment())
+            .usage(ImageUsage {
+                color_attachment: true,
+                transfer_destination: true,
+                ..ImageUsage::none()
+            })
             .sharing_mode(&queue)
             .composite_alpha(composite_alpha)
             .build()
             .unwrap()
     };
 
-    // Create vertex buffer
-    #[repr(C)]
-    #[derive(Default, Debug, Clone)]
-    struct Vertex {
-        position: [f32; 2],
-    }
-    vulkano::impl_vertex!(Vertex, position);
+    // Compute pipeline
 
-    let vertex_buffer = CpuAccessibleBuffer::from_iter(
+    mod cs {
+        vulkano_shaders::shader! {
+            ty: "compute",
+            path: "assets/shaders/render.comp"
+        }
+    }
+
+    let pipeline = ComputePipeline::new(
         device.clone(),
-        BufferUsage::all(),
-        false,
-        [
-            Vertex {
-                position: [-0.5, -0.25],
-            },
-            Vertex {
-                position: [0.0, 0.5],
-            },
-            Vertex {
-                position: [0.25, -0.1],
-            },
-        ]
-        .iter()
-        .cloned(),
+        cs::load(device.clone())
+            .expect("failed to create compute shader module")
+            .entry_point("main")
+            .expect("failed to specify compute shader entry point"),
+        &(),
+        None,
+        |_| {},
     )
-    .unwrap();
+    .expect("failed to create compute pipeline");
 
-    // Create vert and frag shaders
-    mod vs {
-        vulkano_shaders::shader! {
-            ty: "vertex",
-            src: "
-				#version 450
+    // Render images
 
-				layout(location = 0) in vec2 position;
-
-				void main() {
-					gl_Position = vec4(position, 0.0, 1.0);
-				}
-			"
-        }
-    }
-    mod fs {
-        vulkano_shaders::shader! {
-            ty: "fragment",
-            src: "
-				#version 450
-
-				layout(location = 0) out vec4 f_color;
-
-				void main() {
-					f_color = vec4(1.0, 0.0, 0.0, 1.0);
-				}
-			"
-        }
-    }
-
-    let vs = vs::load(device.clone()).unwrap();
-    let fs = fs::load(device.clone()).unwrap();
-
-    // Create render pass
-    let render_pass = vulkano::single_pass_renderpass!(
-        device.clone(),
-        attachments: {
-            // `color` is a custom name we give to the first and only attachment.
-            color: {
-                load: Clear,
-                store: Store,
-                format: swapchain.format(),
-                samples: 1,
+    let render_images = vec![
+        AttachmentImage::with_usage(
+            device.clone(),
+            dimensions,
+            Format::R8G8B8A8_UNORM,
+            ImageUsage {
+                storage: true,
+                transfer_source: true,
+                ..ImageUsage::none()
             }
-        },
-        pass: {
-            // We use the attachment named `color` as the one and only color attachment.
-            color: [color],
-            // No depth-stencil attachment is indicated with empty brackets.
-            depth_stencil: {}
-        }
-    )
-    .unwrap();
+        )
+        .expect("failed to create a render image");
+        swapchain_images.len()
+    ];
 
-    // Create graphics pipeline
-    let pipeline = GraphicsPipeline::start()
-        // Describe the vertex data layout
-        .vertex_input_state(BuffersDefinition::new().vertex::<Vertex>())
-        // Settings for the input assembly pipeline stage
-        .input_assembly_state(InputAssemblyState::new())
-        // Use a shader for the programmable vertex shading stage
-        .vertex_shader(vs.entry_point("main").unwrap(), ())
-        // Viewport settings for rasterization
-        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-        // Use a shader for the programmable fragment shading stage
-        .fragment_shader(fs.entry_point("main").unwrap(), ())
-        // Set the render pass and subpass that this pipeline will be used in
-        .render_pass(Subpass::from(render_pass.clone(), 0).unwrap())
-        // Call vkCreatePipeline
-        .build(device.clone())
-        .unwrap();
+    // Descriptor sets
 
-    // Viewport config
-    let mut viewport = Viewport {
-        origin: [0.0, 0.0],
-        dimensions: [0.0, 0.0],
-        depth_range: 0.0..1.0,
-    };
-
-    // Create framebuffers
-    let mut framebuffers =
-        window_size_dependent_setup(&swapchain_images, render_pass.clone(), &mut viewport);
+    let desc_layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
+    let desc_sets = render_images
+        .iter()
+        .map(|image| {
+            PersistentDescriptorSet::new(
+                desc_layout.clone(),
+                [WriteDescriptorSet::image_view(
+                    0,
+                    ImageView::new(image.clone()).unwrap(),
+                )],
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
 
     let mut recreate_swapchain = false;
 
@@ -268,8 +277,8 @@ fn main() {
 
                 // Recreate swapchain (e.g. when window resized)
                 if recreate_swapchain {
-                    let dimensions: [u32; 2] = surface.window().inner_size().into();
-                    let (new_swapchain, new_images) =
+                    dimensions = surface.window().inner_size().into();
+                    let (new_swapchain, _new_images) =
                         match swapchain.recreate().dimensions(dimensions).build() {
                             Ok(r) => r,
                             // This error tends to happen when the user is manually resizing the window.
@@ -277,13 +286,8 @@ fn main() {
                             Err(SwapchainCreationError::UnsupportedDimensions) => return,
                             Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
                         };
-                    
+
                     swapchain = new_swapchain;
-                    framebuffers = window_size_dependent_setup(
-                        &new_images,
-                        render_pass.clone(),
-                        &mut viewport,
-                    );
                     recreate_swapchain = false;
                 }
 
@@ -294,19 +298,16 @@ fn main() {
                         Err(AcquireError::OutOfDate) => {
                             recreate_swapchain = true;
                             return;
-                        },
+                        }
                         Err(e) => panic!("Failed to acquire next image: {:?}", e),
                     };
-                
+
                 // acquire_next_image can be successful, but suboptimal. This means that the swapchain image
                 // will still work, but it may not display correctly. With some drivers this can be when
                 // the window resizes, but it may not cause the swapchain to become out of date.
                 if suboptimal {
                     recreate_swapchain = true;
                 }
-
-                // Clear values
-                let clear_values = vec![[0.1, 0.2, 0.8, 1.0].into()];
 
                 // Command buffer builder
                 // Building a command buffer is an expensive operation (usually a few hundred
@@ -318,24 +319,42 @@ fn main() {
                     CommandBufferUsage::OneTimeSubmit,
                 )
                 .unwrap();
+
                 // Record commands
+                let push_constants = cs::ty::PushConstants {
+                    image_size: dimensions,
+                };
                 builder
-                    .begin_render_pass(
-                        framebuffers[image_num].clone(),
-                        SubpassContents::Inline,
-                        clear_values,
+                    .bind_pipeline_compute(pipeline.clone())
+                    .bind_descriptor_sets(
+                        PipelineBindPoint::Compute,
+                        pipeline.layout().clone(),
+                        0,
+                        desc_sets[image_num].clone(),
                     )
-                    .unwrap()
-                    .set_viewport(0, [viewport.clone()])
-                    .bind_pipeline_graphics(pipeline.clone())
-                    .bind_vertex_buffers(0, vertex_buffer.clone())
-                    .draw(vertex_buffer.len() as u32, 1, 0, 0)
-                    .unwrap()
-                    .end_render_pass()
-                    .unwrap();
+                    .push_constants(pipeline.layout().clone(), 0, push_constants)
+                    .dispatch([dimensions[0] / 8, dimensions[1] / 8, 1])
+                    .expect("failed to record compute dispatch")
+                    .blit_image(
+                        render_images[image_num].clone(),
+                        [0, 0, 0],
+                        [dimensions[0] as i32, dimensions[1] as i32, 0],
+                        0,
+                        0,
+                        swapchain_images[image_num].clone(),
+                        [0, 0, 0],
+                        [dimensions[0] as i32, dimensions[1] as i32, 0],
+                        0,
+                        0,
+                        1,
+                        vulkano::sampler::Filter::Nearest,
+                    )
+                    .expect("failed to record render image blit");
 
                 // Create command buffer
-                let command_buffer = builder.build().unwrap();
+                let command_buffer = builder
+                    .build()
+                    .expect("failed to build primary command buffer");
 
                 let future = previous_frame_end
                     .take()
@@ -363,26 +382,4 @@ fn main() {
             _ => (),
         }
     });
-}
-
-/// This method is called once during initialization, then again whenever the window is resized
-fn window_size_dependent_setup(
-    swapchain_images: &[Arc<SwapchainImage<Window>>],
-    render_pass: Arc<RenderPass>,
-    viewport: &mut Viewport,
-) -> Vec<Arc<Framebuffer>> {
-    let dimensions = swapchain_images[0].dimensions().width_height();
-    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
-
-    swapchain_images
-        .iter()
-        .map(|image| {
-            let view = ImageView::new(image.clone()).unwrap();
-            Framebuffer::start(render_pass.clone())
-                .add(view)
-                .unwrap()
-                .build()
-                .unwrap()
-        })
-        .collect::<Vec<_>>()
 }

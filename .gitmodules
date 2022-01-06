@@ -1,0 +1,3 @@
+[submodule "external/vulkano"]
+	path = external/vulkano
+	url = https://github.com/vulkano-rs/vulkano

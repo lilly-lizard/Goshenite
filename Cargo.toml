@@ -6,14 +6,17 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+# logging
+env_logger = "0.9.0"
+log = "0.4.8"
 # winit is a cross-platform window creation and management library
 # best to keep the version matching what's in the vulkano-win Cargo.toml
-winit = "0.25.0"
+winit = "0.26.0"
 # vulkano is a safe wrapper for the 3D graphics API vulkan
 # make sure the versions of the vulkano crates match!
-vulkano = "0.27.1"
-vulkano-win = "0.27.1"
-vulkano-shaders = "0.27.1"
+vulkano = { path = "external/vulkano/vulkano" }
+vulkano-win = { path = "external/vulkano/vulkano-win" }
+vulkano-shaders = { path = "external/vulkano/vulkano-shaders" }
 # glam is a vector and math library well suited for 3D graphics
 glam = "0.20.1"
 
