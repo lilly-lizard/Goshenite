@@ -1,385 +1,289 @@
-// TODO:
-// unwrap error handling (replace with expect)
+/*
+TODO:
+- handle unwrap()s and re-assess expect()s
+*/
 
-use log::debug;
-use log::error;
-use log::info;
-use log::warn;
+// traits
+use wgpu::util::DeviceExt;
 
-use vulkano_win::VkSurfaceBuild;
+// structs/enums
+use winit::{
+    event::*,
+    event_loop::{ControlFlow, EventLoop},
+    window::{Window, WindowBuilder},
+};
 
-use vulkano::command_buffer::{AutoCommandBufferBuilder, CommandBufferUsage};
-use vulkano::descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet};
-use vulkano::device::physical::{PhysicalDevice, PhysicalDeviceType};
-use vulkano::device::{Device, DeviceExtensions, Features};
-use vulkano::format::Format;
-use vulkano::image::attachment::AttachmentImage;
-use vulkano::image::view::ImageView;
-use vulkano::image::ImageUsage;
-use vulkano::instance;
-use vulkano::instance::debug::{DebugCallback, MessageSeverity, MessageType};
-use vulkano::instance::{Instance, InstanceExtensions};
-use vulkano::pipeline::{ComputePipeline, Pipeline, PipelineBindPoint};
-use vulkano::swapchain::{self, AcquireError, Swapchain, SwapchainCreationError};
-use vulkano::sync::{self, FlushError, GpuFuture};
+struct State {
+    surface: wgpu::Surface,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    surface_config: wgpu::SurfaceConfiguration,
+    size: winit::dpi::PhysicalSize<u32>,
+    render_pipeline: wgpu::RenderPipeline,
+    vertex_buffer: wgpu::Buffer,
+    num_vertices: u32,
+}
 
-use winit::event::{Event, WindowEvent};
-use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::WindowBuilder;
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct Vertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+
+impl Vertex {
+    const ATTRIBS: [wgpu::VertexAttribute; 2] =
+        wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+
+    fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<Vertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &Self::ATTRIBS,
+        }
+    }
+}
+
+const VERTICES: &[Vertex] = &[
+    Vertex {
+        position: [0.0, 0.5, 0.0],
+        color: [1.0, 0.0, 0.0],
+    },
+    Vertex {
+        position: [-0.5, -0.5, 0.0],
+        color: [0.0, 1.0, 0.0],
+    },
+    Vertex {
+        position: [0.5, -0.5, 0.0],
+        color: [0.0, 0.0, 1.0],
+    },
+];
+
+impl State {
+    async fn new(window: &Window) -> Self {
+        let size = window.inner_size();
+
+        // controller objects
+        let instance = wgpu::Instance::new(wgpu::Backends::all());
+        let surface = unsafe { instance.create_surface(window) };
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::default(),
+                compatible_surface: Some(&surface),
+                force_fallback_adapter: false,
+            })
+            .await
+            .expect("wgpu: failed to find an appropriate adapter");
+
+        // device and queue
+        let (device, queue) = adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    features: wgpu::Features::empty(),
+                    limits: wgpu::Limits::default(),
+                    label: None,
+                },
+                None,
+            )
+            .await
+            .expect("wgpu: failed to create device and queue");
+
+        // surface config
+        assert!(
+            size.width != 0 && size.height != 0,
+            "cannot create a SurfaceTexture with width/height == 0"
+        );
+        let surface_config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: surface.get_preferred_format(&adapter).unwrap(),
+            width: size.width,
+            height: size.height,
+            present_mode: wgpu::PresentMode::Fifo,
+        };
+        surface.configure(&device, &surface_config);
+
+        // pipeline
+
+        let shader = device.create_shader_module(&wgpu::ShaderModuleDescriptor {
+            label: Some("shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/triangle.wgsl").into()),
+        });
+
+        let render_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("render pipeline layout"),
+                bind_group_layouts: &[],
+                push_constant_ranges: &[],
+            });
+
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("render pipeline"),
+            layout: Some(&render_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: "vs_main",
+                buffers: &[Vertex::desc()],
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: "fs_main",
+                targets: &[wgpu::ColorTargetState {
+                    format: surface_config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                }],
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: Some(wgpu::Face::Back),
+                polygon_mode: wgpu::PolygonMode::Fill,
+                unclipped_depth: false,
+                conservative: false,
+            },
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState {
+                count: 1,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+        });
+
+        // vertex buffer
+        let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("vertex buffer"),
+            contents: bytemuck::cast_slice(VERTICES),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let num_vertices = VERTICES.len() as u32;
+
+        Self {
+            surface,
+            device,
+            queue,
+            surface_config,
+            size,
+            render_pipeline,
+            vertex_buffer,
+            num_vertices,
+        }
+    }
+
+    fn resize(&mut self, new_size: winit::dpi::PhysicalSize<u32>) {
+        if new_size.width > 0 && new_size.height > 0 {
+            self.size = new_size;
+            self.surface_config.width = new_size.width;
+            self.surface_config.height = new_size.height;
+            self.surface.configure(&self.device, &self.surface_config);
+        }
+    }
+
+    fn input(&mut self, _event: &WindowEvent) -> bool {
+        false
+    }
+
+    fn update(&mut self) {}
+
+    fn render(&mut self) -> Result<(), wgpu::SurfaceError> {
+        let output = self.surface.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("render encoder"),
+            });
+
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("render pass"),
+            color_attachments: &[wgpu::RenderPassColorAttachment {
+                view: &view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 0.1,
+                        g: 0.2,
+                        b: 0.3,
+                        a: 1.0,
+                    }),
+                    store: true,
+                },
+            }],
+            depth_stencil_attachment: None,
+        });
+        render_pass.set_pipeline(&self.render_pipeline);
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.draw(0..self.num_vertices, 0..1);
+
+        drop(render_pass);
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
+
+        Ok(())
+    }
+}
 
 fn main() {
-    // Initialize logger
+    // init logger
     env_logger::init();
 
-    // Create instance
-
-    let instance_extensions = InstanceExtensions {
-        ext_debug_utils: true,
-        ..vulkano_win::required_extensions()
-    };
-
-    let layers = vec!["VK_LAYER_KHRONOS_validation"];
-    let mut available_layers = instance::layers_list().unwrap();
-    while let Some(l) = available_layers.next() {
-        println!("\t{}", l.name());
-    }
-    assert!(
-        layers
-            .iter()
-            .all(|&l| instance::layers_list().unwrap().any(|la| la.name() == l)),
-        "requested Vulkan layer(s) not available"
-    );
-
-    let instance = Instance::new(None, vulkano::Version::V1_2, &instance_extensions, layers)
-        .expect("failed to create Vulkan instance");
-
-    // Vulkan debug callback
-
-    let message_severity = MessageSeverity {
-        verbose: false,
-        ..MessageSeverity::all()
-    };
-    let message_type = MessageType::all();
-    let _debug_callback = DebugCallback::new(&instance, message_severity, message_type, |msg| {
-        let ty = if msg.ty.general {
-            "general"
-        } else if msg.ty.validation {
-            "validation"
-        } else if msg.ty.performance {
-            "performance"
-        } else {
-            panic!("no-impl");
-        };
-
-        if msg.severity.error {
-            error!(
-                "Vulkan - {} {}: {}",
-                msg.layer_prefix.unwrap_or("unknown"),
-                ty,
-                msg.description
-            );
-        } else if msg.severity.warning {
-            warn!(
-                "Vulkan - {} {}: {}",
-                msg.layer_prefix.unwrap_or("unknown"),
-                ty,
-                msg.description
-            );
-        } else if msg.severity.information {
-            info!(
-                "Vulkan - {} {}: {}",
-                msg.layer_prefix.unwrap_or("unknown"),
-                ty,
-                msg.description
-            );
-        } else if msg.severity.verbose {
-            debug!(
-                "Vulkan - {} {}: {}",
-                msg.layer_prefix.unwrap_or("unknown"),
-                ty,
-                msg.description
-            );
-        } else {
-            panic!("no-impl");
-        };
-    })
-    .ok();
-
-    // Create winit window
+    // create window
     let event_loop = EventLoop::new();
-    let surface = WindowBuilder::new()
-        .build_vk_surface(&event_loop, instance.clone())
-        .unwrap();
+    let window = WindowBuilder::new()
+        .build(&event_loop)
+        .expect("failed to create window");
 
-    // Device extensions
-    let device_extensions = DeviceExtensions {
-        khr_swapchain: true,
-        ..DeviceExtensions::none()
-    };
+    // init wgpu
+    let mut state = pollster::block_on(State::new(&window));
 
-    // Choose a physical device and queue family
-    let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-        // Essential Requirements:
-        // Filter by extension support.
-        .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
-        // Filter by queue functionality and then map to tuple(s) with chosen queue family.
-        .filter_map(|p| {
-            p.queue_families()
-                // Check for a queue family that supports graphics and can present to our surface.
-                .find(|&q| q.supports_graphics() && surface.is_supported(q).unwrap_or(false))
-                // Return a tuple containing the physical device and queue family.
-                // If no queue was found then None is returned and this device is filtered out.
-                .map(|q| (p, q))
-        })
-        // OPTIMAL REQUIREMENTS:
-        // Chose from the filtered list based on the best score of desired properties.
-        .min_by_key(|(p, _)| {
-            // Return a better (lower) score depending on the device type (we ideally want a
-            // discrete GPU).
-            match p.properties().device_type {
-                PhysicalDeviceType::DiscreteGpu => 0,
-                PhysicalDeviceType::IntegratedGpu => 1,
-                PhysicalDeviceType::VirtualGpu => 2,
-                PhysicalDeviceType::Cpu => 3,
-                PhysicalDeviceType::Other => 4,
+    // application loop
+    event_loop.run(move |event, _, control_flow| match event {
+        Event::WindowEvent {
+            ref event,
+            window_id,
+        } if window_id == window.id() => {
+            if !state.input(event) {
+                match event {
+                    WindowEvent::CloseRequested
+                    | WindowEvent::KeyboardInput {
+                        input:
+                            KeyboardInput {
+                                state: ElementState::Pressed,
+                                virtual_keycode: Some(VirtualKeyCode::Escape),
+                                ..
+                            },
+                        ..
+                    } => *control_flow = ControlFlow::Exit,
+                    WindowEvent::Resized(physical_size) => {
+                        state.resize(*physical_size);
+                    }
+                    WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
+                        state.resize(**new_inner_size);
+                    }
+                    _ => {}
+                }
             }
-        })
-        .expect("no device available");
-
-    info!(
-        "Using device: {} (type: {:?})",
-        physical_device.properties().device_name,
-        physical_device.properties().device_type,
-    );
-
-    // Create device and queues.
-    let (device, mut queues) = Device::new(
-        physical_device,
-        &Features::none(),
-        &physical_device
-            .required_extensions()
-            .union(&device_extensions),
-        [(queue_family, 0.5)].iter().cloned(),
-    )
-    .expect("failed to create device");
-
-    // Single out the first queue for use
-    let queue = queues.next().unwrap();
-
-    // Create swapchain and swapchain images
-    let mut dimensions: [u32; 2] = surface.window().inner_size().into();
-    let (mut swapchain, swapchain_images) = {
-        // Surface capabilities
-        let caps = surface.capabilities(physical_device).unwrap();
-
-        // The alpha mode indicates how the alpha value of the final image will behave. For example,
-        // you can choose whether the window will be opaque or transparent.
-        let composite_alpha = caps.supported_composite_alpha.iter().next().unwrap();
-
-        // Swapchain image format
-        let format = caps.supported_formats[0].0;
-
-        Swapchain::start(device.clone(), surface.clone())
-            .num_images(caps.min_image_count)
-            .format(format)
-            .dimensions(dimensions)
-            .usage(ImageUsage {
-                color_attachment: true,
-                transfer_destination: true,
-                ..ImageUsage::none()
-            })
-            .sharing_mode(&queue)
-            .composite_alpha(composite_alpha)
-            .build()
-            .unwrap()
-    };
-
-    // Compute pipeline
-
-    mod cs {
-        vulkano_shaders::shader! {
-            ty: "compute",
-            path: "assets/shaders/render.comp"
         }
-    }
-
-    let pipeline = ComputePipeline::new(
-        device.clone(),
-        cs::load(device.clone())
-            .expect("failed to create compute shader module")
-            .entry_point("main")
-            .expect("failed to specify compute shader entry point"),
-        &(),
-        None,
-        |_| {},
-    )
-    .expect("failed to create compute pipeline");
-
-    // Render images
-
-    let render_images = vec![
-        AttachmentImage::with_usage(
-            device.clone(),
-            dimensions,
-            Format::R8G8B8A8_UNORM,
-            ImageUsage {
-                storage: true,
-                transfer_source: true,
-                ..ImageUsage::none()
+        Event::RedrawRequested(window_id) if window_id == window.id() => {
+            state.update();
+            match state.render() {
+                Ok(_) => {}
+                // reconfigure the surface if lost
+                Err(wgpu::SurfaceError::Lost) => state.resize(state.size),
+                // the system is out of memory, we should probably quit
+                Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+                // all other errors (Outdated, Timeout) should be resolved by the next frame
+                Err(e) => eprintln!("{:?}", e),
             }
-        )
-        .expect("failed to create a render image");
-        swapchain_images.len()
-    ];
-
-    // Descriptor sets
-
-    let desc_layout = pipeline.layout().descriptor_set_layouts().get(0).unwrap();
-    let desc_sets = render_images
-        .iter()
-        .map(|image| {
-            PersistentDescriptorSet::new(
-                desc_layout.clone(),
-                [WriteDescriptorSet::image_view(
-                    0,
-                    ImageView::new(image.clone()).unwrap(),
-                )],
-            )
-            .unwrap()
-        })
-        .collect::<Vec<_>>();
-
-    let mut recreate_swapchain = false;
-
-    let mut previous_frame_end = Some(sync::now(device.clone()).boxed());
-
-    // window loop
-    event_loop.run(move |event, _, control_flow| {
-        match event {
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                *control_flow = ControlFlow::Exit;
-            }
-            Event::WindowEvent {
-                event: WindowEvent::Resized(_),
-                ..
-            } => {
-                recreate_swapchain = true;
-            }
-            Event::RedrawEventsCleared => {
-                // It is important to call this function from time to time, otherwise resources will keep
-                // accumulating and you will eventually reach an out of memory error.
-                // Calling this function polls various fences in order to determine what the GPU has
-                // already processed, and frees the resources that are no longer needed.
-                previous_frame_end.as_mut().unwrap().cleanup_finished();
-
-                // Recreate swapchain (e.g. when window resized)
-                if recreate_swapchain {
-                    dimensions = surface.window().inner_size().into();
-                    let (new_swapchain, _new_images) =
-                        match swapchain.recreate().dimensions(dimensions).build() {
-                            Ok(r) => r,
-                            // This error tends to happen when the user is manually resizing the window.
-                            // Simply restarting the loop is the easiest way to fix this issue.
-                            Err(SwapchainCreationError::UnsupportedDimensions) => return,
-                            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-                        };
-
-                    swapchain = new_swapchain;
-                    recreate_swapchain = false;
-                }
-
-                // Aquire swapchain image
-                let (image_num, suboptimal, acquire_future) =
-                    match swapchain::acquire_next_image(swapchain.clone(), None) {
-                        Ok(r) => r,
-                        Err(AcquireError::OutOfDate) => {
-                            recreate_swapchain = true;
-                            return;
-                        }
-                        Err(e) => panic!("Failed to acquire next image: {:?}", e),
-                    };
-
-                // acquire_next_image can be successful, but suboptimal. This means that the swapchain image
-                // will still work, but it may not display correctly. With some drivers this can be when
-                // the window resizes, but it may not cause the swapchain to become out of date.
-                if suboptimal {
-                    recreate_swapchain = true;
-                }
-
-                // Command buffer builder
-                // Building a command buffer is an expensive operation (usually a few hundred
-                // microseconds), but it is known to be a hot path in the driver and is expected to be
-                // optimized.
-                let mut builder = AutoCommandBufferBuilder::primary(
-                    device.clone(),
-                    queue.family(),
-                    CommandBufferUsage::OneTimeSubmit,
-                )
-                .unwrap();
-
-                // Record commands
-                let push_constants = cs::ty::PushConstants {
-                    image_size: dimensions,
-                };
-                builder
-                    .bind_pipeline_compute(pipeline.clone())
-                    .bind_descriptor_sets(
-                        PipelineBindPoint::Compute,
-                        pipeline.layout().clone(),
-                        0,
-                        desc_sets[image_num].clone(),
-                    )
-                    .push_constants(pipeline.layout().clone(), 0, push_constants)
-                    .dispatch([dimensions[0] / 8, dimensions[1] / 8, 1])
-                    .expect("failed to record compute dispatch")
-                    .blit_image(
-                        render_images[image_num].clone(),
-                        [0, 0, 0],
-                        [dimensions[0] as i32, dimensions[1] as i32, 0],
-                        0,
-                        0,
-                        swapchain_images[image_num].clone(),
-                        [0, 0, 0],
-                        [dimensions[0] as i32, dimensions[1] as i32, 0],
-                        0,
-                        0,
-                        1,
-                        vulkano::sampler::Filter::Nearest,
-                    )
-                    .expect("failed to record render image blit");
-
-                // Create command buffer
-                let command_buffer = builder
-                    .build()
-                    .expect("failed to build primary command buffer");
-
-                let future = previous_frame_end
-                    .take()
-                    .unwrap()
-                    .join(acquire_future)
-                    .then_execute(queue.clone(), command_buffer)
-                    .unwrap()
-                    .then_swapchain_present(queue.clone(), swapchain.clone(), image_num)
-                    .then_signal_fence_and_flush();
-
-                match future {
-                    Ok(future) => {
-                        previous_frame_end = Some(future.boxed());
-                    }
-                    Err(FlushError::OutOfDate) => {
-                        recreate_swapchain = true;
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
-                    }
-                    Err(e) => {
-                        println!("Failed to flush future: {:?}", e);
-                        previous_frame_end = Some(sync::now(device.clone()).boxed());
-                    }
-                }
-            }
-            _ => (),
         }
+        Event::MainEventsCleared => {
+            // RedrawRequested will only trigger once, unless we manually request it
+            window.request_redraw();
+        }
+        _ => {}
     });
 }
