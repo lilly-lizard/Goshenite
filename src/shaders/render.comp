@@ -1,0 +1,12 @@
+#version 450
+
+layout (local_size_x = 16, local_size_y = 16) in;
+layout (set = 0, binding = 0, rgba8) uniform writeonly image2D renderImage;
+
+void main() {
+	ivec2 dim = imageSize(renderImage);
+	if (dim.x >= gl_GlobalInvocationID.x || dim.y >= gl_GlobalInvocationID.y) return; // don't need to render outside of image bounds
+
+	vec2 uv = vec2(gl_GlobalInvocationID.xy) / vec2(dim);
+	imageStore(renderImage, ivec2(gl_GlobalInvocationID.xy), vec4(uv, 1.0 - uv.x, 0.0));
+}

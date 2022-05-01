@@ -16,7 +16,7 @@ fn gen_shader_spirv() {
     // spirv directory
     let mut spirv_dir = std::env::current_dir().unwrap();
     spirv_dir.push("assets");
-    spirv_dir.push("shaders");
+    spirv_dir.push("shader_binaries");
     if !shader_src_dir.is_dir() {
         panic!("gen_shader_spirv: spirv destination path is not a directory");
     }
