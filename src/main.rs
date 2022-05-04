@@ -10,7 +10,5 @@ fn main() {
         let renderer = Renderer::new(100, 100);
 
         renderer.render_loop();
-
-        renderer.device.device_wait_idle().unwrap();
     }
 }

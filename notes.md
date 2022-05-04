@@ -11,3 +11,9 @@
 ## low priority
 
 - pipeline cache (and write)
+- curl noise field
+- Bang Wong color palette
+
+# References
+
+- UX: https://asktog.com/atc/principles-of-interaction-design/

@@ -119,6 +119,17 @@ unsafe extern "system" fn vulkan_debug_callback(
         message,
     );
 
+    if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
+        panic!(
+            "{:?}:\n{:?} [{} ({})] : {}\n",
+            message_severity,
+            message_type,
+            message_id_name,
+            &message_id_number.to_string(),
+            message,
+        );
+    }
+
     vk::FALSE
 }
 
@@ -209,12 +220,13 @@ impl Renderer {
                     _ => (),
                 }
             });
+        unsafe {
+            self.device.device_wait_idle().unwrap();
+        }
     }
 
     fn render_frame(&self) {
         unsafe {
-            // TODO semaphores
-
             // aquire next swapchain image
             let (present_index, _) = self
                 .swapchain_loader
@@ -231,7 +243,7 @@ impl Renderer {
                 self.command_buffer_render,
                 self.render_commands_reuse_fence,
                 self.present_queue,
-                &[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT],
+                &[vk::PipelineStageFlags::COMPUTE_SHADER],
                 &[self.present_complete_semaphore],
                 &[self.rendering_complete_semaphore],
                 |device, command_buffer_render| {
@@ -309,7 +321,7 @@ impl Renderer {
                             },
                             vk::ImageMemoryBarrier {
                                 image: self.swapchain_images[present_index as usize],
-                                old_layout: vk::ImageLayout::PRESENT_SRC_KHR,
+                                old_layout: vk::ImageLayout::UNDEFINED,
                                 new_layout: vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                                 src_access_mask: vk::AccessFlags::MEMORY_READ,
                                 dst_access_mask: vk::AccessFlags::TRANSFER_WRITE,
@@ -386,7 +398,7 @@ impl Renderer {
             let swapchains = [self.swapchain];
             let image_indices = [present_index];
             let present_info = vk::PresentInfoKHR::builder()
-                .wait_semaphores(&wait_semaphors) // &self.rendering_complete_semaphore)
+                .wait_semaphores(&wait_semaphors)
                 .swapchains(&swapchains)
                 .image_indices(&image_indices);
             self.swapchain_loader
@@ -547,7 +559,7 @@ impl Renderer {
                 panic!("Surface doesn't support transfer dst image usage flag")
             }
             let surface_format =
-                Renderer::choose_surface_format(instance, surface_loader, surface, pdevice)
+                Renderer::choose_surface_format(&instance, &surface_loader, surface, pdevice)
                     .expect("{:?}");
 
             // create swapchain
@@ -731,7 +743,7 @@ impl Renderer {
                     device.cmd_pipeline_barrier(
                         setup_command_buffer,
                         vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                        vk::PipelineStageFlags::LATE_FRAGMENT_TESTS,
+                        vk::PipelineStageFlags::TRANSFER,
                         vk::DependencyFlags::empty(),
                         &[],
                         &[],
@@ -815,6 +827,7 @@ impl Renderer {
                     sampler: vk::Sampler::default(), // unused
                 }])
                 .build();
+            device.update_descriptor_sets(&[descriptor_set_write], &[]);
 
             // load compute shader code
 
@@ -848,6 +861,7 @@ impl Renderer {
                         .name(CStr::from_bytes_with_nul_unchecked(b"main\0"))
                         .build(),
                 )
+                .layout(pipeline_layout)
                 .build();
             let pipeline = device
                 .create_compute_pipelines(vk::PipelineCache::null(), &[pipeline_create_info], None)
@@ -916,8 +930,8 @@ impl Renderer {
 
     // TODO do this during the physical device choosing loop
     fn choose_surface_format(
-        instance: Instance,
-        surface_loader: Surface,
+        instance: &Instance,
+        surface_loader: &Surface,
         surface: vk::SurfaceKHR,
         physical_device: vk::PhysicalDevice,
     ) -> Result<vk::SurfaceFormatKHR, String> {
@@ -941,11 +955,11 @@ impl Renderer {
     }
 
     fn calc_work_group_count(image_size: vk::Extent2D) -> [u32; 2] {
-        let group_count_x = image_size.width / 16;
+        let mut group_count_x = image_size.width / 16;
         if (image_size.width % 16) != 0 {
             group_count_x = group_count_x + 1;
         }
-        let group_count_y = image_size.height / 16;
+        let mut group_count_y = image_size.height / 16;
         if (image_size.height % 16) != 0 {
             group_count_y = group_count_y + 1;
         }
@@ -961,6 +975,8 @@ impl Drop for Renderer {
                 .destroy_descriptor_pool(self.descriptor_pool, None);
             self.device
                 .destroy_pipeline_layout(self.pipeline_layout, None);
+            self.device
+                .destroy_descriptor_set_layout(self.descriptor_set_layout, None);
             self.device.destroy_pipeline(self.pipeline, None);
             self.device
                 .destroy_semaphore(self.present_complete_semaphore, None);
