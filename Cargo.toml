@@ -17,6 +17,7 @@ ash-window = "0.10.0"
 # egui
 # slotmap
 # ECS: specs
+# terminal output: colored
 
 [build-dependencies]
 shaderc = "0.8.0"
