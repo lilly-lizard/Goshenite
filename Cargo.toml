@@ -13,11 +13,13 @@ glam = "0.20.5"
 # ash is a lightweight vulkan wrapper
 ash = { version = "0.37.0", default-features = false, features = ["linked", "debug"] }
 ash-window = "0.10.0"
+# terminal output
+colored = "2.0.0"
 
 # egui
 # slotmap
-# ECS: specs
-# terminal output: colored
+# specs: ECS
+# rayon: parallelize iterators etc
 
 [build-dependencies]
 shaderc = "0.8.0"
