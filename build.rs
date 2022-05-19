@@ -27,12 +27,13 @@ fn gen_shader_spirv() {
         let shader_path = shader.path();
 
         if let Some(file_ext) = shader_path.extension() {
-            let file_ext = file_ext.to_str().unwrap();
-            let file_name = shader.file_name();
-            let file_name = file_name.to_str().unwrap();
+            let file_name = shader
+                .file_name()
+                .into_string()
+                .expect("invalid unicode in shader filename");
 
             // determine shader type
-            let shader_type = match file_ext {
+            let shader_type = match file_ext.to_str().unwrap() {
                 "vert" => shaderc::ShaderKind::Vertex,
                 "frag" => shaderc::ShaderKind::Fragment,
                 "comp" => shaderc::ShaderKind::Compute,
@@ -48,13 +49,13 @@ fn gen_shader_spirv() {
             println!("Compiling {:?}...", file_name);
             let compiler = shaderc::Compiler::new().unwrap();
             let spirv_bin = compiler
-                .compile_into_spirv(&shader_text, shader_type, file_name, "main", None)
+                .compile_into_spirv(&shader_text, shader_type, &file_name, "main", None)
                 .unwrap();
             let spirv_bin = spirv_bin.as_binary_u8();
 
             // write spirv to file
             let mut file_out_path = spirv_dir.clone();
-            file_out_path.push(file_name.to_string() + ".spv");
+            file_out_path.push(file_name + ".spv");
             let mut file_out = File::create(file_out_path).unwrap();
             file_out.write_all(&spirv_bin).unwrap();
         }

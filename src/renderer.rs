@@ -841,7 +841,7 @@ impl Renderer {
                     .expect("failed to create vertex shader module");
 
                 let frag_code = read_spv(&mut Cursor::new(
-                    &include_bytes!("../assets/shader_binaries/post.frag.spv")[..],
+                    &include_bytes!("../assets/shader_binaries/post.frag.hlsl.spv")[..],
                 ))
                 .expect("failed to read fragment shader spv file");
                 let frag_shader_module = device
