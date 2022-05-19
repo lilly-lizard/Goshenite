@@ -8,13 +8,11 @@ edition = "2021"
 [dependencies]
 # winit is a cross-platform window creation and management library
 winit = "0.26.1"
-# glam is a vector and math library well suited for 3D graphics
-glam = "0.20.5"
 # ash is a lightweight vulkan wrapper
 ash = { version = "0.37.0", default-features = false, features = ["linked", "debug"] }
 ash-window = "0.10.0"
-# terminal output
-colored = "2.0.0"
+# glam is a vector and math library well suited for 3D graphics
+# glam = "0.20.5"
 
 # egui
 # slotmap
