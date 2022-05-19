@@ -64,5 +64,6 @@ fn gen_shader_spirv() {
 fn main() {
     gen_shader_spirv();
 
+    // rerun when shaders change
     println!("cargo:rerun-if-changed=src/shaders/*");
 }

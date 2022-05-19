@@ -3,18 +3,20 @@ name = "goshenite"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+x11 = ["winit/x11"]
+wayland = ["winit/wayland", "winit/wayland-dlopen"]
 
 [dependencies]
 # winit is a cross-platform window creation and management library
-winit = "0.26.1"
+winit = { version = "0.26", default-features = false }
 # glam is a vector and math library well suited for 3D graphics
-glam = "0.20.5"
+glam = "0.20"
 # ash is a lightweight vulkan wrapper
-ash = { version = "0.37.0", default-features = false, features = ["linked", "debug"] }
-ash-window = "0.10.0"
+ash = { version = "0.37", default-features = false, features = ["linked", "debug"] }
+ash-window = "0.10"
 # terminal output
-colored = "2.0.0"
+colored = "2.0"
 
 # egui
 # slotmap
@@ -22,4 +24,4 @@ colored = "2.0.0"
 # rayon: parallelize iterators etc
 
 [build-dependencies]
-shaderc = "0.8.0"
+shaderc = "0.8"

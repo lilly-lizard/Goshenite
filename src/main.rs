@@ -5,8 +5,8 @@ use renderer::Renderer;
 use winit::{event_loop::EventLoop, window::WindowBuilder};
 
 fn main() {
-    let requested_width = 100;
-    let requested_height = 100;
+    let requested_width = 500;
+    let requested_height = 500;
 
     // create winit window
     let mut event_loop = EventLoop::new();
