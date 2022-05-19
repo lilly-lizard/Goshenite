@@ -19,7 +19,7 @@ use winit::{
 // Config
 static ENGINE_NAME: &[u8] = b"Goshenite\0";
 static ENGINE_VER: u32 = 1;
-static VULKAN_VER_MAJ: u32 = 2;
+static VULKAN_VER_MAJ: u32 = 1;
 static VULKAN_VER_MIN: u32 = 0;
 
 unsafe extern "system" fn vulkan_debug_callback(
