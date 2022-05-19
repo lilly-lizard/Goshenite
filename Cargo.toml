@@ -18,6 +18,3 @@ ash-window = "0.10.0"
 # slotmap
 # specs: ECS
 # rayon: parallelize iterators etc
-
-[build-dependencies]
-shaderc = "0.8.0"
