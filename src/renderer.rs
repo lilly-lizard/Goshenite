@@ -264,15 +264,20 @@ impl Renderer {
         window: &Window,
         app_name: &str,
         app_version: u32,
-        window_width: u32,
-        window_height: u32,
+        requested_width: u32,
+        requested_height: u32,
     ) -> Self {
         let engine_name = CString::new(ENGINE_NAME).unwrap();
         let app_name = CString::new(app_name)
             .expect("CString creation failed: provided app name contains null character");
 
-        // vulkan layers to enable TODO validation in debug only...
-        let layer_names = [&CString::new("VK_LAYER_KHRONOS_validation").unwrap()];
+        // vulkan layers to enable
+        let mut layer_names: Vec<&CString> = Vec::new();
+        // debug builds require VK_LAYER_KHRONOS_validation to be installed on the system
+        let validation_layer_name = CString::new("VK_LAYER_KHRONOS_validation").unwrap();
+        if cfg!(debug_assertions) {
+            layer_names.push(&validation_layer_name);
+        }
 
         // vulkan entry point (to use non-instance functions)
         let entry = Entry::linked();
@@ -403,8 +408,8 @@ impl Renderer {
                 .unwrap()[0];
             let surface_resolution = match surface_capabilities.current_extent.width {
                 std::u32::MAX => vk::Extent2D {
-                    width: window_width,
-                    height: window_height,
+                    width: requested_width,
+                    height: requested_height,
                 },
                 _ => surface_capabilities.current_extent,
             };
