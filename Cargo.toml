@@ -3,13 +3,9 @@ name = "goshenite"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-x11 = ["winit/x11"]
-wayland = ["winit/wayland", "winit/wayland-dlopen"]
-
 [dependencies]
 # winit is a cross-platform window creation and management library
-winit = { version = "0.26", default-features = false }
+winit = "0.26"
 # glam is a vector and math library well suited for 3D graphics
 glam = "0.20"
 # ash is a lightweight vulkan wrapper
