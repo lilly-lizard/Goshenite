@@ -27,7 +27,7 @@ use winit::{
 static ENGINE_NAME: &str = "Goshenite";
 static ENGINE_VER: u32 = 1;
 static VULKAN_VER_MAJ: u32 = 1;
-static VULKAN_VER_MIN: u32 = 0;
+static VULKAN_VER_MIN: u32 = 2;
 
 pub struct Renderer {
     instance: Instance,
