@@ -8,74 +8,19 @@ use ash::{
 };
 pub use ash::{Device, Instance};
 use colored::Colorize;
-use std::{
-    borrow::Cow, cell::RefCell, default::Default, ffi::CStr, io::Cursor, ops::Drop, os::raw::c_char,
-};
+use std::{borrow::Cow, default::Default, ffi::CStr, io::Cursor, ops::Drop, os::raw::c_char};
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     platform::run_return::EventLoopExtRunReturn,
-    window::WindowBuilder,
+    window::Window,
 };
 
-/// Helper function for submitting command buffers. Immediately waits for the fence before the command buffer
-/// is executed. That way we can delay the waiting for the fences by 1 frame which is good for performance.
-/// Make sure to create the fence in a signaled state on the first use.
-#[allow(clippy::too_many_arguments)]
-pub fn record_submit_commandbuffer<F: FnOnce(&Device, vk::CommandBuffer)>(
-    device: &Device,
-    command_buffer: vk::CommandBuffer,
-    command_buffer_reuse_fence: vk::Fence,
-    submit_queue: vk::Queue,
-    wait_mask: &[vk::PipelineStageFlags],
-    wait_semaphores: &[vk::Semaphore],
-    signal_semaphores: &[vk::Semaphore],
-    f: F,
-) {
-    unsafe {
-        device
-            .wait_for_fences(&[command_buffer_reuse_fence], true, std::u64::MAX)
-            .expect("Wait for fence failed.");
-
-        device
-            .reset_fences(&[command_buffer_reuse_fence])
-            .expect("Reset fences failed.");
-
-        device
-            .reset_command_buffer(
-                command_buffer,
-                vk::CommandBufferResetFlags::RELEASE_RESOURCES,
-            )
-            .expect("Reset command buffer failed.");
-
-        let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-
-        device
-            .begin_command_buffer(command_buffer, &command_buffer_begin_info)
-            .expect("Begin commandbuffer");
-        f(device, command_buffer);
-        device
-            .end_command_buffer(command_buffer)
-            .expect("End commandbuffer");
-
-        let command_buffers = vec![command_buffer];
-
-        let submit_info = vk::SubmitInfo::builder()
-            .wait_semaphores(wait_semaphores)
-            .wait_dst_stage_mask(wait_mask)
-            .command_buffers(&command_buffers)
-            .signal_semaphores(signal_semaphores);
-
-        device
-            .queue_submit(
-                submit_queue,
-                &[submit_info.build()],
-                command_buffer_reuse_fence,
-            )
-            .expect("queue submit failed.");
-    }
-}
+// Config
+static ENGINE_NAME: &[u8] = b"Goshenite\0";
+static ENGINE_VER: u32 = 1;
+static VULKAN_VER_MAJ: u32 = 2;
+static VULKAN_VER_MIN: u32 = 0;
 
 unsafe extern "system" fn vulkan_debug_callback(
     message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
@@ -117,26 +62,8 @@ unsafe extern "system" fn vulkan_debug_callback(
     vk::FALSE
 }
 
-fn find_memorytype_index(
-    memory_req: &vk::MemoryRequirements,
-    memory_prop: &vk::PhysicalDeviceMemoryProperties,
-    flags: vk::MemoryPropertyFlags,
-) -> Option<u32> {
-    memory_prop.memory_types[..memory_prop.memory_type_count as _]
-        .iter()
-        .enumerate()
-        .find(|(index, memory_type)| {
-            (1 << index) & memory_req.memory_type_bits != 0
-                && memory_type.property_flags & flags == flags
-        })
-        .map(|(index, _memory_type)| index as _)
-}
-
 pub struct Renderer {
     entry: Entry,
-    window: winit::window::Window,
-    event_loop: RefCell<EventLoop<()>>,
-
     instance: Instance,
     device: Device,
     surface_loader: Surface,
@@ -184,30 +111,28 @@ pub struct Renderer {
 }
 
 impl Renderer {
-    pub fn render_loop(&self) {
-        self.event_loop
-            .borrow_mut()
-            .run_return(|event, _, control_flow| {
-                *control_flow = ControlFlow::Poll;
-                match event {
-                    Event::WindowEvent {
-                        event:
-                            WindowEvent::CloseRequested
-                            | WindowEvent::KeyboardInput {
-                                input:
-                                    KeyboardInput {
-                                        state: ElementState::Pressed,
-                                        virtual_keycode: Some(VirtualKeyCode::Escape),
-                                        ..
-                                    },
-                                ..
-                            },
-                        ..
-                    } => *control_flow = ControlFlow::Exit,
-                    Event::MainEventsCleared => self.render_frame(),
-                    _ => (),
-                }
-            });
+    pub fn render_loop(&self, event_loop: &mut EventLoop<()>) {
+        event_loop.run_return(|event, _, control_flow| {
+            *control_flow = ControlFlow::Poll;
+            match event {
+                Event::WindowEvent {
+                    event:
+                        WindowEvent::CloseRequested
+                        | WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state: ElementState::Pressed,
+                                    virtual_keycode: Some(VirtualKeyCode::Escape),
+                                    ..
+                                },
+                            ..
+                        },
+                    ..
+                } => *control_flow = ControlFlow::Exit,
+                Event::MainEventsCleared => self.render_frame(),
+                _ => (),
+            }
+        });
         unsafe {
             self.device.device_wait_idle().unwrap();
         }
@@ -369,58 +294,51 @@ impl Renderer {
         }
     }
 
-    pub fn new(window_width: u32, window_height: u32) -> Self {
+    pub fn new(window: &Window, window_width: u32, window_height: u32) -> Self {
+        // TODO pass as argument
+        let app_name = CStr::from_bytes_with_nul(b"Goshenite\0").unwrap();
+        let app_ver: u32 = 0;
+
+        // vulkan entry point (for non-instance functions)
+        let entry = Entry::linked();
+
         unsafe {
-            // winit window
+            // instance
+            let instance = {
+                // layers
+                let layer_names = [CStr::from_bytes_with_nul_unchecked(
+                    b"VK_LAYER_KHRONOS_validation\0",
+                )];
+                let layers_names_raw: Vec<*const c_char> = layer_names
+                    .iter()
+                    .map(|raw_name| raw_name.as_ptr())
+                    .collect();
 
-            let event_loop = EventLoop::new();
-            let window = WindowBuilder::new()
-                .with_title("Ash - Example")
-                .with_inner_size(winit::dpi::LogicalSize::new(
-                    f64::from(window_width),
-                    f64::from(window_height),
-                ))
-                .build(&event_loop)
-                .unwrap();
-            let entry = Entry::linked();
-            let app_name = CStr::from_bytes_with_nul_unchecked(b"VulkanTriangle\0");
+                // extensins
+                let mut extension_names = ash_window::enumerate_required_extensions(&window)
+                    .unwrap()
+                    .to_vec();
+                extension_names.push(DebugUtils::name().as_ptr());
 
-            // vulkan layers
+                let appinfo = vk::ApplicationInfo::builder()
+                    .application_name(app_name)
+                    .application_version(app_ver)
+                    .engine_name(CStr::from_bytes_with_nul_unchecked(ENGINE_NAME))
+                    .engine_version(ENGINE_VER)
+                    .api_version(vk::make_api_version(0, VULKAN_VER_MAJ, VULKAN_VER_MIN, 0));
+                let instance_ci = vk::InstanceCreateInfo::builder()
+                    .application_info(&appinfo)
+                    .enabled_layer_names(&layers_names_raw)
+                    .enabled_extension_names(&extension_names);
 
-            let layer_names = [CStr::from_bytes_with_nul_unchecked(
-                b"VK_LAYER_KHRONOS_validation\0",
-            )];
-            let layers_names_raw: Vec<*const c_char> = layer_names
-                .iter()
-                .map(|raw_name| raw_name.as_ptr())
-                .collect();
-
-            // surface extensins
-
-            let mut extension_names = ash_window::enumerate_required_extensions(&window)
-                .unwrap()
-                .to_vec();
-            extension_names.push(DebugUtils::name().as_ptr());
-
-            // create instance
-
-            let appinfo = vk::ApplicationInfo::builder()
-                .application_name(app_name)
-                .application_version(0)
-                .engine_name(app_name)
-                .engine_version(0)
-                .api_version(vk::make_api_version(0, 1, 0, 0));
-            let instance_ci = vk::InstanceCreateInfo::builder()
-                .application_info(&appinfo)
-                .enabled_layer_names(&layers_names_raw)
-                .enabled_extension_names(&extension_names);
-
-            let instance: Instance = entry
-                .create_instance(&instance_ci, None)
-                .expect("Instance creation error");
+                // create
+                entry
+                    .create_instance(&instance_ci, None)
+                    .expect("Instance creation error")
+            };
 
             // debug callback
-
+            let debug_utils_loader = DebugUtils::new(&entry, &instance);
             let debug_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
                 .message_severity(
                     vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
@@ -433,22 +351,18 @@ impl Renderer {
                         | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
                 )
                 .pfn_user_callback(Some(vulkan_debug_callback));
-
-            let debug_utils_loader = DebugUtils::new(&entry, &instance);
             let debug_call_back = debug_utils_loader
                 .create_debug_utils_messenger(&debug_info, None)
                 .unwrap();
 
-            // create surface
-
+            // surface
             let surface = ash_window::create_surface(&entry, &instance, &window, None).unwrap();
+            let surface_loader = Surface::new(&entry, &instance);
 
             // choose physical device and queue family
-
             let physical_devices = instance
                 .enumerate_physical_devices()
                 .expect("Physical device error");
-            let surface_loader = Surface::new(&entry, &instance);
             let (physical_device, queue_family_index) = physical_devices
                 .iter()
                 .map(|physical_device| {
@@ -467,7 +381,7 @@ impl Renderer {
                                         )
                                         .unwrap();
                             if supports_graphic_and_surface {
-                                Some((*physical_device, index))
+                                Some((*physical_device, index as u32))
                             } else {
                                 None
                             }
@@ -478,40 +392,37 @@ impl Renderer {
                 .next()
                 .expect("Couldn't find suitable device.");
 
-            let queue_family_index = queue_family_index as u32;
-            let priorities = [1.0];
-            let queue_info = vk::DeviceQueueCreateInfo::builder()
-                .queue_family_index(queue_family_index)
-                .queue_priorities(&priorities);
-
             // get physical device memory properties
-
             let device_memory_properties =
                 instance.get_physical_device_memory_properties(physical_device);
 
-            // create device
+            // device
+            let device = {
+                let priorities = [1.0];
+                let queue_info = vk::DeviceQueueCreateInfo::builder()
+                    .queue_family_index(queue_family_index)
+                    .queue_priorities(&priorities);
 
-            let device_extension_names_raw = [Swapchain::name().as_ptr()];
-            let features = vk::PhysicalDeviceFeatures {
-                shader_clip_distance: 1,
-                ..Default::default()
+                let device_extension_names_raw = [Swapchain::name().as_ptr()];
+                let features = vk::PhysicalDeviceFeatures {
+                    shader_clip_distance: 1,
+                    ..Default::default()
+                };
+
+                let device_ci = vk::DeviceCreateInfo::builder()
+                    .queue_create_infos(std::slice::from_ref(&queue_info))
+                    .enabled_extension_names(&device_extension_names_raw)
+                    .enabled_features(&features);
+
+                instance
+                    .create_device(physical_device, &device_ci, None)
+                    .unwrap()
             };
 
-            let device_ci = vk::DeviceCreateInfo::builder()
-                .queue_create_infos(std::slice::from_ref(&queue_info))
-                .enabled_extension_names(&device_extension_names_raw)
-                .enabled_features(&features);
-
-            let device: Device = instance
-                .create_device(physical_device, &device_ci, None)
-                .unwrap();
-
             // rendering queue
-
             let queue = device.get_device_queue(queue_family_index as u32, 0);
 
             // surface capabilities
-
             let surface_capabilities = surface_loader
                 .get_physical_device_surface_capabilities(physical_device, surface)
                 .unwrap();
@@ -527,51 +438,51 @@ impl Renderer {
             };
 
             // swapchain
-
-            let mut desired_image_count = surface_capabilities.min_image_count + 1;
-            if surface_capabilities.max_image_count > 0
-                && desired_image_count > surface_capabilities.max_image_count
-            {
-                desired_image_count = surface_capabilities.max_image_count;
-            }
-            let pre_transform = if surface_capabilities
-                .supported_transforms
-                .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
-            {
-                vk::SurfaceTransformFlagsKHR::IDENTITY
-            } else {
-                surface_capabilities.current_transform
-            };
-            let present_modes = surface_loader
-                .get_physical_device_surface_present_modes(physical_device, surface)
-                .unwrap();
-            let present_mode = present_modes
-                .iter()
-                .cloned()
-                .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
-                .unwrap_or(vk::PresentModeKHR::FIFO);
             let swapchain_loader = Swapchain::new(&instance, &device);
+            let swapchain = {
+                let mut desired_image_count = surface_capabilities.min_image_count + 1;
+                if surface_capabilities.max_image_count > 0
+                    && desired_image_count > surface_capabilities.max_image_count
+                {
+                    desired_image_count = surface_capabilities.max_image_count;
+                }
+                let pre_transform = if surface_capabilities
+                    .supported_transforms
+                    .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
+                {
+                    vk::SurfaceTransformFlagsKHR::IDENTITY
+                } else {
+                    surface_capabilities.current_transform
+                };
+                let present_modes = surface_loader
+                    .get_physical_device_surface_present_modes(physical_device, surface)
+                    .unwrap();
+                let present_mode = present_modes
+                    .iter()
+                    .cloned()
+                    .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
+                    .unwrap_or(vk::PresentModeKHR::FIFO);
 
-            let swapchain_ci = vk::SwapchainCreateInfoKHR::builder()
-                .surface(surface)
-                .min_image_count(desired_image_count)
-                .image_color_space(surface_format.color_space)
-                .image_format(surface_format.format)
-                .image_extent(surface_resolution)
-                .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
-                .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-                .pre_transform(pre_transform)
-                .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-                .present_mode(present_mode)
-                .clipped(true)
-                .image_array_layers(1);
+                let swapchain_ci = vk::SwapchainCreateInfoKHR::builder()
+                    .surface(surface)
+                    .min_image_count(desired_image_count)
+                    .image_color_space(surface_format.color_space)
+                    .image_format(surface_format.format)
+                    .image_extent(surface_resolution)
+                    .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+                    .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+                    .pre_transform(pre_transform)
+                    .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+                    .present_mode(present_mode)
+                    .clipped(true)
+                    .image_array_layers(1);
 
-            let swapchain = swapchain_loader
-                .create_swapchain(&swapchain_ci, None)
-                .unwrap();
+                swapchain_loader
+                    .create_swapchain(&swapchain_ci, None)
+                    .unwrap()
+            };
 
             // swapchain image views
-
             let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
             let swapchain_image_views: Vec<vk::ImageView> = swapchain_images
                 .iter()
@@ -598,27 +509,38 @@ impl Renderer {
                 .collect();
 
             // create command command_pool
-
             let command_pool_ci = vk::CommandPoolCreateInfo::builder()
                 .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
                 .queue_family_index(queue_family_index);
-
             let command_pool = device.create_command_pool(&command_pool_ci, None).unwrap();
 
             // create command buffers
-
             let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
                 .command_buffer_count(2)
                 .command_pool(command_pool)
                 .level(vk::CommandBufferLevel::PRIMARY);
-
             let command_buffers = device
                 .allocate_command_buffers(&command_buffer_allocate_info)
                 .unwrap();
             let setup_command_buffer = command_buffers[0];
             let command_buffer_render = command_buffers[1];
-            // create render image
 
+            // create setup and render fences
+            let fence_ci = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
+            let fence_setup_commands_reuse = device
+                .create_fence(&fence_ci, None)
+                .expect("Create fence failed.");
+            let fence_render_commands_reuse = device
+                .create_fence(&fence_ci, None)
+                .expect("Create fence failed.");
+
+            // create semaphores for completion of presenting and rendering
+            let semaphore_ci = vk::SemaphoreCreateInfo::default();
+            let semaphore_present_complete = device.create_semaphore(&semaphore_ci, None).unwrap();
+            let semaphore_rendering_complete =
+                device.create_semaphore(&semaphore_ci, None).unwrap();
+
+            // create render image
             let render_image_ci = vk::ImageCreateInfo::builder()
                 .image_type(vk::ImageType::TYPE_2D)
                 .format(vk::Format::R8G8B8A8_UNORM)
@@ -633,7 +555,6 @@ impl Renderer {
             let render_image = device.create_image(&render_image_ci, None).unwrap();
 
             // allocate memory for render image
-
             let render_image_memory_req = device.get_image_memory_requirements(render_image);
             let render_image_memory_index = find_memorytype_index(
                 &render_image_memory_req,
@@ -641,32 +562,17 @@ impl Renderer {
                 vk::MemoryPropertyFlags::DEVICE_LOCAL,
             )
             .expect("Unable to find suitable memory index for render image.");
-
             let render_image_allocate_info = vk::MemoryAllocateInfo::builder()
                 .allocation_size(render_image_memory_req.size)
                 .memory_type_index(render_image_memory_index);
-
             let render_image_memory = device
                 .allocate_memory(&render_image_allocate_info, None)
                 .unwrap();
-
             device
                 .bind_image_memory(render_image, render_image_memory, 0)
                 .expect("Unable to bind render image memory");
 
-            // create setup and render fences
-
-            let fence_ci = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
-
-            let fence_setup_commands_reuse = device
-                .create_fence(&fence_ci, None)
-                .expect("Create fence failed.");
-            let fence_render_commands_reuse = device
-                .create_fence(&fence_ci, None)
-                .expect("Create fence failed.");
-
             // transition image layout for render image
-
             record_submit_commandbuffer(
                 &device,
                 setup_command_buffer,
@@ -704,7 +610,6 @@ impl Renderer {
             );
 
             // render image view
-
             let render_image_view = {
                 let render_image_view_info = vk::ImageViewCreateInfo::builder()
                     .subresource_range(vk::ImageSubresourceRange {
@@ -723,7 +628,6 @@ impl Renderer {
             };
 
             // render sampler
-
             let render_sampler = device
                 .create_sampler(
                     &vk::SamplerCreateInfo {
@@ -743,7 +647,6 @@ impl Renderer {
                 .expect("failed to create sampler");
 
             // descriptor pool
-
             let descriptor_pool = {
                 let pool_sizes = [
                     vk::DescriptorPoolSize {
@@ -769,7 +672,6 @@ impl Renderer {
             };
 
             // compute descriptor set
-
             let (descriptor_set_layout_compute, descriptor_set_compute) = {
                 let descriptor_bindings = [vk::DescriptorSetLayoutBinding::builder()
                     .binding(0)
@@ -809,7 +711,6 @@ impl Renderer {
             };
 
             // compute pipeline
-
             let (pipeline_compute, pipeline_layout_compute) = {
                 let render_code = read_spv(&mut Cursor::new(
                     &include_bytes!("../assets/shader_binaries/render.comp.spv")[..],
@@ -847,26 +748,15 @@ impl Renderer {
                     .expect("failed to create compute pipeline")[0];
 
                 // cleanup shader module
-
                 device.destroy_shader_module(render_shader_module, None);
 
                 (pipeline_compute, pipeline_layout_compute)
             };
 
             // calculate compute dispatch work group count
-
-            let work_group_count = Renderer::calc_work_group_count(surface_resolution.into());
-
-            // create semaphores for completion of presenting and rendering
-
-            let semaphore_ci = vk::SemaphoreCreateInfo::default();
-
-            let semaphore_present_complete = device.create_semaphore(&semaphore_ci, None).unwrap();
-            let semaphore_rendering_complete =
-                device.create_semaphore(&semaphore_ci, None).unwrap();
+            let work_group_count = calc_work_group_count(surface_resolution.into());
 
             // render pass
-
             let renderpass = {
                 let color_attachment_ref = [vk::AttachmentReference {
                     attachment: 0,
@@ -883,8 +773,6 @@ impl Renderer {
                 let subpass_desc = vk::SubpassDescription::builder()
                     .color_attachments(&color_attachment_ref)
                     .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS);
-
-                // render pass
 
                 let renderpass_attachments = [vk::AttachmentDescription {
                     format: surface_format.format,
@@ -904,7 +792,6 @@ impl Renderer {
             };
 
             // framebuffers
-
             let framebuffers: Vec<vk::Framebuffer> = swapchain_image_views
                 .iter()
                 .map(|&present_image_view| {
@@ -922,7 +809,6 @@ impl Renderer {
                 .collect();
 
             // post processing descriptor set
-
             let (descriptor_set_layout_post, descriptor_set_post) = {
                 let descriptor_bindings = [vk::DescriptorSetLayoutBinding::builder()
                     .binding(0)
@@ -964,10 +850,8 @@ impl Renderer {
             };
 
             // post processing graphics pipeline
-
             let (pipeline_post, pipeline_layout_post) = {
                 // shaders
-
                 let vert_code = read_spv(&mut Cursor::new(
                     &include_bytes!("../assets/shader_binaries/post.vert.spv")[..],
                 ))
@@ -1008,7 +892,6 @@ impl Renderer {
                 ];
 
                 // pipeline layout
-
                 let pipeline_layout_post = device
                     .create_pipeline_layout(
                         &vk::PipelineLayoutCreateInfo::builder()
@@ -1018,7 +901,6 @@ impl Renderer {
                     .expect("failed to create post processing pipeline layout");
 
                 // graphics pipeline create info
-
                 let viewports = [vk::Viewport {
                     x: 0.0,
                     y: 0.0,
@@ -1100,7 +982,6 @@ impl Renderer {
                     .expect("failed to create post processing graphics pipeline")[0];
 
                 // cleanup shader modules
-
                 device.destroy_shader_module(vert_shader_module, None);
                 device.destroy_shader_module(frag_shader_module, None);
 
@@ -1108,11 +989,8 @@ impl Renderer {
             };
 
             // return self
-
             Renderer {
                 entry,
-                window,
-                event_loop: RefCell::new(event_loop),
                 instance,
                 device,
                 surface_loader,
@@ -1148,18 +1026,6 @@ impl Renderer {
                 framebuffers,
             }
         }
-    }
-
-    fn calc_work_group_count(image_size: vk::Extent2D) -> [u32; 2] {
-        let mut group_count_x = image_size.width / 16;
-        if (image_size.width % 16) != 0 {
-            group_count_x = group_count_x + 1;
-        }
-        let mut group_count_y = image_size.height / 16;
-        if (image_size.height % 16) != 0 {
-            group_count_y = group_count_y + 1;
-        }
-        [group_count_x, group_count_y]
     }
 }
 
@@ -1209,11 +1075,97 @@ impl Drop for Renderer {
                 .destroy_swapchain(self.swapchain, None);
             self.surface_loader.destroy_surface(self.surface, None);
 
+            self.device.destroy_device(None);
+
             self.debug_utils_loader
                 .destroy_debug_utils_messenger(self.debug_call_back, None);
-
-            self.device.destroy_device(None);
             self.instance.destroy_instance(None);
         }
     }
+}
+
+/// Helper function for submitting command buffers. Immediately waits for the fence before the command buffer
+/// is executed. That way we can delay the waiting for the fences by 1 frame which is good for performance.
+/// Make sure to create the fence in a signaled state on the first use.
+#[allow(clippy::too_many_arguments)]
+pub fn record_submit_commandbuffer<F: FnOnce(&Device, vk::CommandBuffer)>(
+    device: &Device,
+    command_buffer: vk::CommandBuffer,
+    command_buffer_reuse_fence: vk::Fence,
+    submit_queue: vk::Queue,
+    wait_mask: &[vk::PipelineStageFlags],
+    wait_semaphores: &[vk::Semaphore],
+    signal_semaphores: &[vk::Semaphore],
+    f: F,
+) {
+    unsafe {
+        device
+            .wait_for_fences(&[command_buffer_reuse_fence], true, std::u64::MAX)
+            .expect("Wait for fence failed.");
+
+        device
+            .reset_fences(&[command_buffer_reuse_fence])
+            .expect("Reset fences failed.");
+
+        device
+            .reset_command_buffer(
+                command_buffer,
+                vk::CommandBufferResetFlags::RELEASE_RESOURCES,
+            )
+            .expect("Reset command buffer failed.");
+
+        let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+        device
+            .begin_command_buffer(command_buffer, &command_buffer_begin_info)
+            .expect("Begin commandbuffer");
+        f(device, command_buffer);
+        device
+            .end_command_buffer(command_buffer)
+            .expect("End commandbuffer");
+
+        let command_buffers = vec![command_buffer];
+
+        let submit_info = vk::SubmitInfo::builder()
+            .wait_semaphores(wait_semaphores)
+            .wait_dst_stage_mask(wait_mask)
+            .command_buffers(&command_buffers)
+            .signal_semaphores(signal_semaphores);
+
+        device
+            .queue_submit(
+                submit_queue,
+                &[submit_info.build()],
+                command_buffer_reuse_fence,
+            )
+            .expect("queue submit failed.");
+    }
+}
+
+fn find_memorytype_index(
+    memory_req: &vk::MemoryRequirements,
+    memory_prop: &vk::PhysicalDeviceMemoryProperties,
+    flags: vk::MemoryPropertyFlags,
+) -> Option<u32> {
+    memory_prop.memory_types[..memory_prop.memory_type_count as _]
+        .iter()
+        .enumerate()
+        .find(|(index, memory_type)| {
+            (1 << index) & memory_req.memory_type_bits != 0
+                && memory_type.property_flags & flags == flags
+        })
+        .map(|(index, _memory_type)| index as _)
+}
+
+fn calc_work_group_count(image_size: vk::Extent2D) -> [u32; 2] {
+    let mut group_count_x = image_size.width / 16;
+    if (image_size.width % 16) != 0 {
+        group_count_x = group_count_x + 1;
+    }
+    let mut group_count_y = image_size.height / 16;
+    if (image_size.height % 16) != 0 {
+        group_count_y = group_count_y + 1;
+    }
+    [group_count_x, group_count_y]
 }
