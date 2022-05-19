@@ -5,23 +5,29 @@ use renderer::Renderer;
 use winit::{event_loop::EventLoop, window::WindowBuilder};
 
 fn main() {
-    let window_width = 100;
-    let window_height = 100;
+    let requested_width = 100;
+    let requested_height = 100;
 
     // create winit window
     let mut event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title("Ash - Example")
         .with_inner_size(winit::dpi::LogicalSize::new(
-            f64::from(window_width),
-            f64::from(window_height),
+            f64::from(requested_width),
+            f64::from(requested_height),
         ))
         .build(&event_loop)
         .unwrap();
 
     {
         // init renderer
-        let renderer = Renderer::new(&window, window_width, window_height);
+        let renderer = Renderer::new(
+            &window,
+            "Goshenite Editor",
+            1,
+            requested_width,
+            requested_height,
+        );
 
         // start render loop
         renderer.render_loop(&mut event_loop);

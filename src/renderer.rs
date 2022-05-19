@@ -8,7 +8,14 @@ use ash::{
 };
 pub use ash::{Device, Instance};
 use colored::Colorize;
-use std::{borrow::Cow, default::Default, ffi::CStr, io::Cursor, ops::Drop, os::raw::c_char};
+use std::{
+    borrow::Cow,
+    default::Default,
+    ffi::{CStr, CString},
+    io::Cursor,
+    ops::Drop,
+    os::raw::c_char,
+};
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -17,53 +24,12 @@ use winit::{
 };
 
 // Config
-static ENGINE_NAME: &[u8] = b"Goshenite\0";
+static ENGINE_NAME: &str = "Goshenite";
 static ENGINE_VER: u32 = 1;
 static VULKAN_VER_MAJ: u32 = 1;
 static VULKAN_VER_MIN: u32 = 0;
 
-unsafe extern "system" fn vulkan_debug_callback(
-    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
-    message_type: vk::DebugUtilsMessageTypeFlagsEXT,
-    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
-    _user_data: *mut std::os::raw::c_void,
-) -> vk::Bool32 {
-    let callback_data = *p_callback_data;
-
-    let message = if callback_data.p_message.is_null() {
-        Cow::from("")
-    } else {
-        CStr::from_ptr(callback_data.p_message).to_string_lossy()
-    };
-    let message_severity_str = match message_severity {
-        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => "ERROR:".red(),
-        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => "WARNING:".yellow(),
-        vk::DebugUtilsMessageSeverityFlagsEXT::INFO => "INFO:".blue(),
-        vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => "VERBOSE:".magenta(),
-        _ => "...".normal(),
-    };
-
-    println!(
-        "{} {} {}",
-        message_severity_str,
-        format!("(Vulkan {:?})", message_type).dimmed(),
-        if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
-            message.bright_red()
-        } else {
-            message.normal()
-        }
-    );
-    // break in debug builds
-    debug_assert!(
-        message_severity != vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
-        "vulkan validation error (see log)",
-    );
-
-    vk::FALSE
-}
-
 pub struct Renderer {
-    entry: Entry,
     instance: Instance,
     device: Device,
     surface_loader: Surface,
@@ -294,36 +260,42 @@ impl Renderer {
         }
     }
 
-    pub fn new(window: &Window, window_width: u32, window_height: u32) -> Self {
-        // TODO pass as argument
-        let app_name = CStr::from_bytes_with_nul(b"Goshenite\0").unwrap();
-        let app_ver: u32 = 0;
+    pub fn new(
+        window: &Window,
+        app_name: &str,
+        app_version: u32,
+        window_width: u32,
+        window_height: u32,
+    ) -> Self {
+        let engine_name = CString::new(ENGINE_NAME).unwrap();
+        let app_name = CString::new(app_name)
+            .expect("CString creation failed: provided app name contains null character");
 
-        // vulkan entry point (for non-instance functions)
+        // vulkan layers to enable TODO validation in debug only...
+        let layer_names = [&CString::new("VK_LAYER_KHRONOS_validation").unwrap()];
+
+        // vulkan entry point (to use non-instance functions)
         let entry = Entry::linked();
 
         unsafe {
             // instance
             let instance = {
                 // layers
-                let layer_names = [CStr::from_bytes_with_nul_unchecked(
-                    b"VK_LAYER_KHRONOS_validation\0",
-                )];
                 let layers_names_raw: Vec<*const c_char> = layer_names
                     .iter()
                     .map(|raw_name| raw_name.as_ptr())
                     .collect();
 
-                // extensins
+                // extensions
                 let mut extension_names = ash_window::enumerate_required_extensions(&window)
                     .unwrap()
                     .to_vec();
                 extension_names.push(DebugUtils::name().as_ptr());
 
                 let appinfo = vk::ApplicationInfo::builder()
-                    .application_name(app_name)
-                    .application_version(app_ver)
-                    .engine_name(CStr::from_bytes_with_nul_unchecked(ENGINE_NAME))
+                    .application_name(&app_name)
+                    .application_version(app_version)
+                    .engine_name(&engine_name)
                     .engine_version(ENGINE_VER)
                     .api_version(vk::make_api_version(0, VULKAN_VER_MAJ, VULKAN_VER_MIN, 0));
                 let instance_ci = vk::InstanceCreateInfo::builder()
@@ -990,7 +962,6 @@ impl Renderer {
 
             // return self
             Renderer {
-                entry,
                 instance,
                 device,
                 surface_loader,
@@ -1082,6 +1053,47 @@ impl Drop for Renderer {
             self.instance.destroy_instance(None);
         }
     }
+}
+
+// vulkan debug layer callback (e.g. validation)
+unsafe extern "system" fn vulkan_debug_callback(
+    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    message_type: vk::DebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+    _user_data: *mut std::os::raw::c_void,
+) -> vk::Bool32 {
+    let callback_data = *p_callback_data;
+
+    let message = if callback_data.p_message.is_null() {
+        Cow::from("")
+    } else {
+        CStr::from_ptr(callback_data.p_message).to_string_lossy()
+    };
+    let message_severity_str = match message_severity {
+        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => "ERROR:".red(),
+        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => "WARNING:".yellow(),
+        vk::DebugUtilsMessageSeverityFlagsEXT::INFO => "INFO:".blue(),
+        vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => "VERBOSE:".magenta(),
+        _ => "...".normal(),
+    };
+
+    println!(
+        "{} {} {}",
+        message_severity_str,
+        format!("(Vulkan {:?})", message_type).dimmed(),
+        if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
+            message.bright_red()
+        } else {
+            message.normal()
+        }
+    );
+    // break in debug builds
+    debug_assert!(
+        message_severity != vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
+        "vulkan validation error (see log)",
+    );
+
+    vk::FALSE
 }
 
 /// Helper function for submitting command buffers. Immediately waits for the fence before the command buffer
