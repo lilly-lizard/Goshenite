@@ -830,7 +830,7 @@ impl Renderer {
             let (pipeline_post, pipeline_layout_post) = {
                 // shaders
                 let vert_code = read_spv(&mut Cursor::new(
-                    &include_bytes!("../assets/shader_binaries/post.vert.spv")[..],
+                    &include_bytes!("../assets/shader_binaries/post.vert.hlsl.spv")[..],
                 ))
                 .expect("failed to read vertex shader spv file");
                 let vert_shader_module = device
