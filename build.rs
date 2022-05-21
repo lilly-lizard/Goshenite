@@ -6,63 +6,73 @@ fn gen_shader_spirv() {
     println!("Generating spirv shaders...");
 
     // shader source directory
-    let mut shader_src_dir = std::env::current_dir().unwrap();
-    shader_src_dir.push("src");
-    shader_src_dir.push("shaders");
-    if !shader_src_dir.is_dir() {
-        panic!("gen_shader_spirv: shader source path is not a directory");
-    }
+    let mut shader_dir = std::env::current_dir().expect("shouldn't panic: pwd must exist");
+    shader_dir.push("src");
+    shader_dir.push("shaders");
 
     // spirv directory
-    let mut spirv_dir = std::env::current_dir().unwrap();
+    let mut spirv_dir = std::env::current_dir().expect("shouldn't panic: pwd must exist");
     spirv_dir.push("assets");
     spirv_dir.push("shader_binaries");
-    if !shader_src_dir.is_dir() {
-        panic!("gen_shader_spirv: spirv destination path is not a directory");
-    }
+    assert!(spirv_dir.is_dir(), "invalid spirv destination path");
+
+    // spirv compiler
+    let compiler = shaderc::Compiler::new().expect("failed to initialize shaderc compiler");
 
     // iterate over files in shaders directory
-    for dir_entry in std::fs::read_dir(shader_src_dir).unwrap() {
-        let dir_entry = dir_entry.unwrap();
+    for dir_entry in std::fs::read_dir(shader_dir).expect("invalid shader source path") {
+        let dir_entry = dir_entry.expect("fs::ReadDir io error during iteration");
+        let shader_path = dir_entry.path();
 
-        // file name
+        // file name (skips if it contains invalid utf-8)
         let file_name = match dir_entry.file_name().into_string() {
             Ok(s) => s,
             Err(_) => continue,
         };
 
-        let shader_path = dir_entry.path();
-
         // determine shader type
         let file_ext = match shader_path.extension() {
             Some(e) => e,
             None => continue,
+        }
+        .to_str()
+        .expect("shouldn't panic: already done the utf check on file_name");
+        // (can't use match because hlsl shaders will be in the format shader_name.vert.hlsl)
+        let shader_type = if file_ext.contains("vert") {
+            shaderc::ShaderKind::Vertex
+        } else if file_ext.contains("frag") {
+            shaderc::ShaderKind::Fragment
+        } else if file_ext.contains("comp") {
+            shaderc::ShaderKind::Compute
+        } else {
+            continue;
         };
-        let shader_type = match file_ext.to_str().unwrap() {
-            "vert" => shaderc::ShaderKind::Vertex,
-            "frag" => shaderc::ShaderKind::Fragment,
-            "comp" => shaderc::ShaderKind::Compute,
-            _ => continue,
-        };
+
+        // no more 'continue's
+        println!("Compiling {:?}...", file_name);
 
         // read shader source
         let mut shader_text = String::new();
-        let mut shader_file = File::open(&shader_path).unwrap();
-        shader_file.read_to_string(&mut shader_text).unwrap();
+        let mut shader_file =
+            File::open(&shader_path).expect("failed to open shader source file for reading");
+        shader_file
+            .read_to_string(&mut shader_text)
+            .expect("invalid utf-8 in shader source code");
 
         // compile spirv
-        println!("Compiling {:?}...", file_name);
-        let compiler = shaderc::Compiler::new().unwrap();
-        let spirv_bin = compiler
+        let spirv_comp = compiler
             .compile_into_spirv(&shader_text, shader_type, &file_name, "main", None)
-            .unwrap();
-        let spirv_bin = spirv_bin.as_binary_u8();
+            .unwrap_or_else(|_| panic!("failed to compile shader to spirv {:?}", shader_path));
+        let spirv_bin = spirv_comp.as_binary_u8();
 
         // write spirv to file
-        let mut file_out_path = spirv_dir.clone();
-        file_out_path.push(file_name + ".spv");
-        let mut file_out = File::create(file_out_path).unwrap();
-        file_out.write_all(&spirv_bin).unwrap();
+        let mut spirv_path = spirv_dir.clone();
+        spirv_path.push(file_name + ".spv");
+        let mut spirv_file =
+            File::create(spirv_path).expect("failed to open spirv file for writing");
+        spirv_file
+            .write_all(&spirv_bin)
+            .expect("failed to write spirv data to output file");
     }
 }
 
