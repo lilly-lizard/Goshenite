@@ -1,7 +1,15 @@
+use shaderc::{CompileOptions, Compiler, ShaderKind, SourceLanguage};
 use std::fs::File;
 use std::io::{Read, Write};
 
-// thanks to https://github.com/JakubKoralewski/mandelbrot-wgpu-rs/blob/master/src/build.rs
+/// Compile glsl and hlsl shaders in src/shaders and output spirv binaries to assets/shader_binares.
+/// Requirements:
+/// - Entry point must be "main".
+/// - File extensions must be in the format FILE_NAME.SHADER_STAGE(.hlsl) where the absense of a hlsl
+/// extension results in glsl compilation and SHADER_STAGE is one of:
+///   - frag = fragment shader
+///   - vert = vertex shader
+///   - comp = compute shader
 fn gen_shader_spirv() {
     println!("Generating spirv shaders...");
 
@@ -17,7 +25,7 @@ fn gen_shader_spirv() {
     assert!(spirv_dir.is_dir(), "invalid spirv destination path");
 
     // spirv compiler
-    let compiler = shaderc::Compiler::new().expect("failed to initialize shaderc compiler");
+    let compiler = Compiler::new().expect("failed to initialize shaderc compiler");
 
     // iterate over files in shaders directory
     for dir_entry in std::fs::read_dir(shader_dir).expect("invalid shader source path") {
@@ -37,15 +45,22 @@ fn gen_shader_spirv() {
         }
         .to_str()
         .expect("shouldn't panic: already done the utf check on file_name");
-        // (can't use match because hlsl shaders will be in the format shader_name.vert.hlsl)
-        let shader_type = if file_ext.contains("vert") {
-            shaderc::ShaderKind::Vertex
-        } else if file_ext.contains("frag") {
-            shaderc::ShaderKind::Fragment
-        } else if file_ext.contains("comp") {
-            shaderc::ShaderKind::Compute
-        } else {
-            continue;
+        let (shader_stage, shader_lang) = match file_ext {
+            "vert" => (ShaderKind::Vertex, SourceLanguage::GLSL),
+            "frag" => (ShaderKind::Fragment, SourceLanguage::GLSL),
+            "comp" => (ShaderKind::Compute, SourceLanguage::GLSL),
+            "hlsl" => {
+                if file_name.contains("vert") {
+                    (ShaderKind::Vertex, SourceLanguage::HLSL)
+                } else if file_name.contains("frag") {
+                    (ShaderKind::Fragment, SourceLanguage::HLSL)
+                } else if file_name.contains("comp") {
+                    (ShaderKind::Compute, SourceLanguage::HLSL)
+                } else {
+                    continue;
+                }
+            }
+            _ => continue,
         };
 
         // no more 'continue's
@@ -60,9 +75,19 @@ fn gen_shader_spirv() {
             .expect("invalid utf-8 in shader source code");
 
         // compile spirv
-        let spirv_comp = compiler
-            .compile_into_spirv(&shader_text, shader_type, &file_name, "main", None)
-            .unwrap_or_else(|_| panic!("failed to compile shader to spirv {:?}", shader_path));
+        let mut compile_options =
+            CompileOptions::new().expect("shaderc failed to initialize compile options");
+        compile_options.set_source_language(shader_lang);
+        let spirv_comp = match compiler.compile_into_spirv(
+            &shader_text,
+            shader_stage,
+            &file_name,
+            "main",
+            Some(&compile_options),
+        ) {
+            Ok(comp) => comp,
+            Err(e) => panic!("failed to compile {} to spirv:\n{}", file_name, e),
+        };
         let spirv_bin = spirv_comp.as_binary_u8();
 
         // write spirv to file
