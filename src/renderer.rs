@@ -830,7 +830,7 @@ impl Renderer {
             let (pipeline_post, pipeline_layout_post) = {
                 // shaders
                 let vert_code = read_spv(&mut Cursor::new(
-                    &include_bytes!("../assets/shader_binaries/post.vert.hlsl.spv")[..],
+                    &include_bytes!("../assets/shader_binaries/post.vert.spv")[..],
                 ))
                 .expect("failed to read vertex shader spv file");
                 let vert_shader_module = device
@@ -841,7 +841,7 @@ impl Renderer {
                     .expect("failed to create vertex shader module");
 
                 let frag_code = read_spv(&mut Cursor::new(
-                    &include_bytes!("../assets/shader_binaries/post.frag.hlsl.spv")[..],
+                    &include_bytes!("../assets/shader_binaries/post.frag.spv")[..],
                 ))
                 .expect("failed to read fragment shader spv file");
                 let frag_shader_module = device
