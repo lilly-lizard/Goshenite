@@ -1,4 +1,4 @@
-use shaderc::{Compiler, ShaderKind};
+use shaderc::{CompileOptions, Compiler, ShaderKind, SourceLanguage};
 use std::fs::File;
 use std::io::{Read, Write};
 
@@ -43,6 +43,7 @@ fn gen_shader_spirv() {
         }
         .to_str()
         .expect("shouldn't panic: already done the utf check on file_name");
+        /*
         let shader_stage = match file_ext {
             "vert" => ShaderKind::Vertex,
             "frag" => ShaderKind::Fragment,
@@ -59,6 +60,23 @@ fn gen_shader_spirv() {
             "rmiss" => ShaderKind::Miss,
             "rcall" => ShaderKind::Callable,
             _ => continue,
+        };*/
+        let (shader_stage, shader_lang) = match file_ext {
+            "vert" => (ShaderKind::Vertex, SourceLanguage::GLSL),
+            "frag" => (ShaderKind::Fragment, SourceLanguage::GLSL),
+            "comp" => (ShaderKind::Compute, SourceLanguage::GLSL),
+            "hlsl" => {
+                if file_name.contains("vert") {
+                    (ShaderKind::Vertex, SourceLanguage::HLSL)
+                } else if file_name.contains("frag") {
+                    (ShaderKind::Fragment, SourceLanguage::HLSL)
+                } else if file_name.contains("comp") {
+                    (ShaderKind::Compute, SourceLanguage::HLSL)
+                } else {
+                    continue;
+                }
+            }
+            _ => continue,
         };
 
         // no more 'continue's
@@ -73,12 +91,19 @@ fn gen_shader_spirv() {
             .expect("invalid utf-8 in shader source code");
 
         // compile spirv
-        let spirv_comp =
-            match compiler.compile_into_spirv(&shader_text, shader_stage, &file_name, "main", None)
-            {
-                Ok(comp) => comp,
-                Err(e) => panic!("failed to compile {} to spirv:\n{}", file_name, e),
-            };
+        let mut compile_options =
+            CompileOptions::new().expect("shaderc failed to initialize compile options");
+        compile_options.set_source_language(shader_lang);
+        let spirv_comp = match compiler.compile_into_spirv(
+            &shader_text,
+            shader_stage,
+            &file_name,
+            "main",
+            Some(&compile_options),
+        ) {
+            Ok(comp) => comp,
+            Err(e) => panic!("failed to compile {} to spirv:\n{}", file_name, e),
+        };
         let spirv_bin = spirv_comp.as_binary_u8();
 
         // write spirv to file
