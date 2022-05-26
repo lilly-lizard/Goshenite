@@ -6,6 +6,8 @@ use std::io::{Read, Write};
 /// Requirements:
 /// - Entry point must be "main".
 /// - File extensions must be in the format FILE_NAME.SHADER_STAGE
+/// If you install the shaderc libraries on your system you can avoid compiling them in
+/// your rust builds. See https://github.com/google/shaderc-rs#setup for more info.
 fn gen_shader_spirv() {
     println!("Generating spirv shaders...");
 
