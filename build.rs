@@ -3,24 +3,13 @@ use std::fs::File;
 use std::io::{Read, Write};
 
 macro_rules! get_shader_info {
-    ($file_ext:ident, $file_name:ident) => {
-        match $file_ext {
-            "vert" => (ShaderKind::Vertex, SourceLanguage::GLSL),
-            "frag" => (ShaderKind::Fragment, SourceLanguage::GLSL),
-            "comp" => (ShaderKind::Compute, SourceLanguage::GLSL),
-            "hlsl" => {
-                if $file_name.contains("vert") {
-                    (ShaderKind::Vertex, SourceLanguage::HLSL)
-                } else if $file_name.contains("frag") {
-                    (ShaderKind::Fragment, SourceLanguage::HLSL)
-                } else if $file_name.contains("comp") {
-                    (ShaderKind::Compute, SourceLanguage::HLSL)
-                } else {
-                    continue;
-                }
-            }
-            _ => continue,
-        }
+    ($file_ext:ident, $file_name:ident, $($type_tuple:expr),+) => {
+        $(
+            if $file_ext == $type_tuple.0 {
+                ($type_tuple.1, SourceLanguage::GLSL)
+            } else
+        )+
+        { continue }
     };
 }
 
@@ -65,7 +54,31 @@ fn gen_shader_spirv() {
         }
         .to_str()
         .expect("shouldn't panic: already done the utf check on file_name");
+        let (shader_stage, shader_lang) = get_shader_info!(
+            file_ext,
+            file_name,
+            ("vert", ShaderKind::Vertex),
+            ("frag", ShaderKind::Fragment),
+            ("comp", ShaderKind::Compute)
+        );
         /*
+        let (shader_stage, shader_lang) = match $file_ext {
+            "vert" => (ShaderKind::Vertex, SourceLanguage::GLSL),
+            "frag" => (ShaderKind::Fragment, SourceLanguage::GLSL),
+            "comp" => (ShaderKind::Compute, SourceLanguage::GLSL),
+            "hlsl" => {
+                if $file_name.contains("vert") {
+                    (ShaderKind::Vertex, SourceLanguage::HLSL)
+                } else if $file_name.contains("frag") {
+                    (ShaderKind::Fragment, SourceLanguage::HLSL)
+                } else if $file_name.contains("comp") {
+                    (ShaderKind::Compute, SourceLanguage::HLSL)
+                } else {
+                    continue;
+                }
+            }
+            _ => continue,
+        };
         let shader_stage = match file_ext {
             "vert" => ShaderKind::Vertex,
             "frag" => ShaderKind::Fragment,
@@ -82,8 +95,8 @@ fn gen_shader_spirv() {
             "rmiss" => ShaderKind::Miss,
             "rcall" => ShaderKind::Callable,
             _ => continue,
-        };*/
-        let (shader_stage, shader_lang) = get_shader_info!(file_ext, file_name);
+        };
+        */
 
         // no more 'continue's
         println!("Compiling {:?}...", file_name);
