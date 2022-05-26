@@ -2,6 +2,28 @@ use shaderc::{CompileOptions, Compiler, ShaderKind, SourceLanguage};
 use std::fs::File;
 use std::io::{Read, Write};
 
+macro_rules! get_shader_info {
+    ($file_ext:ident, $file_name:ident) => {
+        match $file_ext {
+            "vert" => (ShaderKind::Vertex, SourceLanguage::GLSL),
+            "frag" => (ShaderKind::Fragment, SourceLanguage::GLSL),
+            "comp" => (ShaderKind::Compute, SourceLanguage::GLSL),
+            "hlsl" => {
+                if $file_name.contains("vert") {
+                    (ShaderKind::Vertex, SourceLanguage::HLSL)
+                } else if $file_name.contains("frag") {
+                    (ShaderKind::Fragment, SourceLanguage::HLSL)
+                } else if $file_name.contains("comp") {
+                    (ShaderKind::Compute, SourceLanguage::HLSL)
+                } else {
+                    continue;
+                }
+            }
+            _ => continue,
+        }
+    };
+}
+
 /// Compile glsl shaders in src/shaders and output spirv binaries to assets/shader_binares.
 /// Requirements:
 /// - Entry point must be "main".
@@ -61,23 +83,7 @@ fn gen_shader_spirv() {
             "rcall" => ShaderKind::Callable,
             _ => continue,
         };*/
-        let (shader_stage, shader_lang) = match file_ext {
-            "vert" => (ShaderKind::Vertex, SourceLanguage::GLSL),
-            "frag" => (ShaderKind::Fragment, SourceLanguage::GLSL),
-            "comp" => (ShaderKind::Compute, SourceLanguage::GLSL),
-            "hlsl" => {
-                if file_name.contains("vert") {
-                    (ShaderKind::Vertex, SourceLanguage::HLSL)
-                } else if file_name.contains("frag") {
-                    (ShaderKind::Fragment, SourceLanguage::HLSL)
-                } else if file_name.contains("comp") {
-                    (ShaderKind::Compute, SourceLanguage::HLSL)
-                } else {
-                    continue;
-                }
-            }
-            _ => continue,
-        };
+        let (shader_stage, shader_lang) = get_shader_info!(file_ext, file_name);
 
         // no more 'continue's
         println!("Compiling {:?}...", file_name);
