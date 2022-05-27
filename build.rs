@@ -2,14 +2,27 @@ use shaderc::{CompileOptions, Compiler, ShaderKind, SourceLanguage};
 use std::fs::File;
 use std::io::{Read, Write};
 
-macro_rules! get_shader_info {
-    ($file_ext:ident, $file_name:ident, $($type_tuple:expr),+) => {
-        $(
-            if $file_ext == $type_tuple.0 {
-                ($type_tuple.1, SourceLanguage::GLSL)
-            } else
-        )+
-        { continue }
+/// Returns the shader source language (glsl or hlsl) and shader stage for spirv compilation
+/// Arguments:
+/// - file_ext: &str = shader file extension
+/// - file_name: String = shader file name
+/// - (type_ext, type_enum): (&str, ShaderKind) = comma separated tuple(s) with extension str
+///                                               and corresponding shader stage
+/// Notes:
+macro_rules! get_shader_file_type {
+    ($file_ext:ident, $file_name:ident, $( ($type_ext:literal, $type_enum:expr) ),+) => {
+        match $file_ext {
+            $( $type_ext => (SourceLanguage::GLSL, $type_enum), )+
+            "hlsl" => {
+                $( if $file_name.contains($type_ext) {
+                    (SourceLanguage::HLSL, $type_enum)
+                } else )+
+                {
+                    continue;
+                }
+            },
+            _ => continue,
+        }
     };
 }
 
@@ -54,49 +67,24 @@ fn gen_shader_spirv() {
         }
         .to_str()
         .expect("shouldn't panic: already done the utf check on file_name");
-        let (shader_stage, shader_lang) = get_shader_info!(
+        let (shader_lang, shader_stage) = get_shader_file_type!(
             file_ext,
             file_name,
             ("vert", ShaderKind::Vertex),
             ("frag", ShaderKind::Fragment),
-            ("comp", ShaderKind::Compute)
+            ("comp", ShaderKind::Compute),
+            ("geom", ShaderKind::Geometry),
+            ("tesc", ShaderKind::TessControl),
+            ("tese", ShaderKind::TessEvaluation),
+            ("mesh", ShaderKind::Mesh),
+            ("task", ShaderKind::Task),
+            ("rgen", ShaderKind::RayGeneration),
+            ("rint", ShaderKind::Intersection),
+            ("rahit", ShaderKind::AnyHit),
+            ("rchit", ShaderKind::ClosestHit),
+            ("rmiss", ShaderKind::Miss),
+            ("rcall", ShaderKind::Callable)
         );
-        /*
-        let (shader_stage, shader_lang) = match $file_ext {
-            "vert" => (ShaderKind::Vertex, SourceLanguage::GLSL),
-            "frag" => (ShaderKind::Fragment, SourceLanguage::GLSL),
-            "comp" => (ShaderKind::Compute, SourceLanguage::GLSL),
-            "hlsl" => {
-                if $file_name.contains("vert") {
-                    (ShaderKind::Vertex, SourceLanguage::HLSL)
-                } else if $file_name.contains("frag") {
-                    (ShaderKind::Fragment, SourceLanguage::HLSL)
-                } else if $file_name.contains("comp") {
-                    (ShaderKind::Compute, SourceLanguage::HLSL)
-                } else {
-                    continue;
-                }
-            }
-            _ => continue,
-        };
-        let shader_stage = match file_ext {
-            "vert" => ShaderKind::Vertex,
-            "frag" => ShaderKind::Fragment,
-            "comp" => ShaderKind::Compute,
-            "geom" => ShaderKind::Geometry,
-            "tesc" => ShaderKind::TessControl,
-            "tese" => ShaderKind::TessEvaluation,
-            "mesh" => ShaderKind::Mesh,
-            "task" => ShaderKind::Task,
-            "rgen" => ShaderKind::RayGeneration,
-            "rint" => ShaderKind::Intersection,
-            "rahit" => ShaderKind::AnyHit,
-            "rchit" => ShaderKind::ClosestHit,
-            "rmiss" => ShaderKind::Miss,
-            "rcall" => ShaderKind::Callable,
-            _ => continue,
-        };
-        */
 
         // no more 'continue's
         println!("Compiling {:?}...", file_name);
