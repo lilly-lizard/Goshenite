@@ -3,7 +3,7 @@ use std::fs::File;
 use std::io::{Read, Write};
 
 macro_rules! create_fn_shader_file_type {
-    ($func_name:ident, $( ($type_ext:literal, $type_enum:expr) ),+) => {
+    ($func_name:ident, $( ($stage_ext:literal, $stage_enum:expr) ),+) => {
         /// Returns the shader source language (glsl or hlsl) and shader stage for spirv compilation
         /// Operation:
         /// - GLSL if file extension is one of the standard glslangValidator shader stage file
@@ -15,10 +15,10 @@ macro_rules! create_fn_shader_file_type {
         /// Note: I mainly did this to get familiar with macros...
         fn $func_name(file_ext: &str, file_name: &String) -> Option<(SourceLanguage, ShaderKind)> {
             match file_ext {
-                $( $type_ext => Some((SourceLanguage::GLSL, $type_enum)), )+
+                $( $stage_ext => Some((SourceLanguage::GLSL, $stage_enum)), )+
                 "hlsl" => {
-                    $( if file_name.contains($type_ext) {
-                        Some((SourceLanguage::HLSL, $type_enum))
+                    $( if file_name.contains($stage_ext) {
+                        Some((SourceLanguage::HLSL, $stage_enum))
                     } else )+
                     { None }
                 },
