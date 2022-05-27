@@ -2,29 +2,48 @@ use shaderc::{CompileOptions, Compiler, ShaderKind, SourceLanguage};
 use std::fs::File;
 use std::io::{Read, Write};
 
-/// Returns the shader source language (glsl or hlsl) and shader stage for spirv compilation
-/// Arguments:
-/// - file_ext: &str = shader file extension
-/// - file_name: String = shader file name
-/// - (type_ext, type_enum): (&str, ShaderKind) = comma separated tuple(s) with extension str
-///                                               and corresponding shader stage
-/// Notes:
-macro_rules! get_shader_file_type {
-    ($file_ext:ident, $file_name:ident, $( ($type_ext:literal, $type_enum:expr) ),+) => {
-        match $file_ext {
-            $( $type_ext => (SourceLanguage::GLSL, $type_enum), )+
-            "hlsl" => {
-                $( if $file_name.contains($type_ext) {
-                    (SourceLanguage::HLSL, $type_enum)
-                } else )+
-                {
-                    continue;
-                }
-            },
-            _ => continue,
+macro_rules! create_fn_shader_file_type {
+    ($func_name:ident, $( ($type_ext:literal, $type_enum:expr) ),+) => {
+        /// Returns the shader source language (glsl or hlsl) and shader stage for spirv compilation
+        /// Operation:
+        /// - GLSL if file extension is one of the standard glslangValidator shader stage file
+        ///   extensions (see below for the list)
+        /// - HLSL if file extension is "hlsl", in which case the shader stage is determined by
+        ///   wherever the file name contains one of the aformentioned shader stage file extensions
+        /// - otherwise returns None
+        ///
+        /// Note: I mainly did this to get familiar with macros...
+        fn $func_name(file_ext: &str, file_name: &String) -> Option<(SourceLanguage, ShaderKind)> {
+            match file_ext {
+                $( $type_ext => Some((SourceLanguage::GLSL, $type_enum)), )+
+                "hlsl" => {
+                    $( if file_name.contains($type_ext) {
+                        Some((SourceLanguage::HLSL, $type_enum))
+                    } else )+
+                    { None }
+                },
+                _ => None
+            }
         }
-    };
+    }
 }
+create_fn_shader_file_type!(
+    get_shader_file_type,
+    ("vert", ShaderKind::Vertex),
+    ("frag", ShaderKind::Fragment),
+    ("comp", ShaderKind::Compute),
+    ("geom", ShaderKind::Geometry),
+    ("tesc", ShaderKind::TessControl),
+    ("tese", ShaderKind::TessEvaluation),
+    ("mesh", ShaderKind::Mesh),
+    ("task", ShaderKind::Task),
+    ("rgen", ShaderKind::RayGeneration),
+    ("rint", ShaderKind::Intersection),
+    ("rahit", ShaderKind::AnyHit),
+    ("rchit", ShaderKind::ClosestHit),
+    ("rmiss", ShaderKind::Miss),
+    ("rcall", ShaderKind::Callable)
+);
 
 /// Compile glsl shaders in src/shaders and output spirv binaries to assets/shader_binares.
 /// Requirements:
@@ -67,24 +86,10 @@ fn gen_shader_spirv() {
         }
         .to_str()
         .expect("shouldn't panic: already done the utf check on file_name");
-        let (shader_lang, shader_stage) = get_shader_file_type!(
-            file_ext,
-            file_name,
-            ("vert", ShaderKind::Vertex),
-            ("frag", ShaderKind::Fragment),
-            ("comp", ShaderKind::Compute),
-            ("geom", ShaderKind::Geometry),
-            ("tesc", ShaderKind::TessControl),
-            ("tese", ShaderKind::TessEvaluation),
-            ("mesh", ShaderKind::Mesh),
-            ("task", ShaderKind::Task),
-            ("rgen", ShaderKind::RayGeneration),
-            ("rint", ShaderKind::Intersection),
-            ("rahit", ShaderKind::AnyHit),
-            ("rchit", ShaderKind::ClosestHit),
-            ("rmiss", ShaderKind::Miss),
-            ("rcall", ShaderKind::Callable)
-        );
+        let (shader_lang, shader_stage) = match get_shader_file_type(file_ext, &file_name) {
+            Some(x) => x,
+            None => continue,
+        };
 
         // no more 'continue's
         println!("Compiling {:?}...", file_name);
