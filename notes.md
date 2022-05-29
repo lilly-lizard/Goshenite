@@ -1,7 +1,12 @@
 # TODO
 
 - window resize handling
+	- graphics pipeline dynamic state viewport
 - draw sdf sphere with AABB
+- have multiple spheres
+- make renderer crate
+
+focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## cleanup
 
