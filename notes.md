@@ -17,9 +17,21 @@
 # Code Guidelines
 
 - Consider commenting with structure of 'action' followed by 'object' e.g. 'transition
- image layout (action) for depth buffer (object)'. This makes it easier to search for
+	image layout (action) for depth buffer (object)'. This makes it easier to search for
 comments by action or object e.g. a search for 'transition image layout' wouldn't find
- the comment 'transition depth buffer image layout'
+	the comment 'transition depth buffer image layout'
+
+# design decisions
+
+create objects and coloring from editor, set to vary against variables etc
+possibilities:
+- sequence of primitives, transformations and combinations in storage buffer
+	e.g. buffer: Vec<u32> = { num primitives, SPHERE, center, radius, UNION, SPHERE, center, radius... }
+- color?
+- define uv functions and associate textures
+- editor generates shaders. real time feedback?
+- live feedback modes e.g. sculpting mode just has primitives and normals
+- ignore color and render normals to start off with
 
 # Resources
 
@@ -34,3 +46,129 @@ comments by action or object e.g. a search for 'transition image layout' wouldn'
 
 - https://en.wikipedia.org/wiki/T-spline
 - https://en.wikipedia.org/wiki/Freeform_surface_modelling
+
+# splash
+```
+	     ___     
+	    /\  \    
+	   /  \  \   
+	  / /\ \  \  
+	 / /  \ \  \ 
+	/ /__/ \ \__\
+	\ \  /\ \/__/
+	 \ \ \ \__\  
+	  \ \/ /  /  
+	   \  /  /   
+	    \/__/    
+	     ___     
+	    /\  \    
+	   /  \  \   
+	  / /\ \  \  
+	 / /  \ \  \ 
+	/ /__/ \ \__\
+	\ \  \ / /  /
+	 \ \  / /  / 
+	  \ \/ /  /  
+	   \  /  /   
+	    \/__/    
+	     ___     
+	    /\  \    
+	   /  \  \   
+	  / /\ \  \  
+	  \ \ \ \  \ 
+	/\ \ \ \ \__\
+	\ \ \ \ \/__/
+	 \ \ \ \__\  
+	  \ \/ /  /  
+	   \  /  /   
+	    \/__/    
+	     ___     
+	    /\__\    
+	   / /  /    
+	  / /__/     
+	 /  \  \ ___ 
+	/ /\ \  /\__\
+	\/__\ \/ /  /
+	     \  /  / 
+	     / /  /  
+	    / /  /   
+	    \/__/    
+	     ___     
+	    /\  \    
+	   /  \  \   
+	  / /\ \  \  
+	 /  \ \ \  \ 
+	/ /\ \ \ \__\
+	\ \ \ \ \/__/
+	 \ \ \ \__\  
+	  \ \ \/__/  
+	   \ \__\    
+	    \/__/    
+	     ___     
+	    /\__\    
+	   / /  /    
+	  / /  /     
+	 / /__/_____ 
+	/  _____ \__\
+	\/__/  / /  /
+	      / /  / 
+	     / /  /  
+	    / /  /   
+	    \/__/    
+	            
+	      ___    
+	     /\  \   
+	     \ \  \  
+	     /  \  \ 
+	  __/ /\/__/ 
+	 /\/ /  /    
+	 \  /__/     
+	  \ \__\     
+	   \/__/     
+	             
+	     ___     
+	    /\  \    
+	    \ \  \   
+	     \ \  \  
+	 ___ /  \  \ 
+	/\  / /\ \__\
+	\ \/ /  \/__/
+	 \  /__/     
+	  \ \  \     
+	   \ \__\    
+	    \/__/    
+	     ___     
+        /\  \    
+	    \ \  \   
+	     \ \  \  
+	     /  \  \ 
+	    / /\ \  \
+	   / /  \/__/
+	  / /  /     
+	  \/__/      
+	             
+	             
+     ___         ___         ___         ___         ___         ___         ___        ___         ___     
+    /\  \       /\  \       /\  \       /\__\       /\  \       /\__\       /\  \      /\  \       /\  \    
+   /  \  \     /  \  \     /  \  \     / /  /      /  \  \     / /  /       \ \  \     \ \  \     /  \  \   
+  / /\ \  \   / /\ \  \   / /\ \  \   / /__/      / /\ \  \   / /  /         \ \  \     \ \  \   / /\ \  \  
+ / /  \ \  \ / /  \ \  \  \ \ \ \  \ /  \  \ ___ /  \ \ \  \ / /__/_____ ___ /  \  \    /  \  \ /  \ \ \  \ 
+/ /__/ \ \__\ /__/ \ \__\\ \ \ \ \__\ /\ \  /\__\ /\ \ \ \__\  _____ \__\\  / /\ \__\  / /\ \  \ /\ \ \ \__\
+\ \  /\ \/__/ \  \ / /  / \ \ \ \/__//__\ \/ /  / \ \ \ \/__//__/  / /  / \/ /  \/__/ / /  \/__/ \ \ \ \/__/
+ \ \ \ \__\  \ \  / /  / \ \ \ \__\      \  /  / \ \ \ \__\       / /  / \  /__/     / /  /     \ \ \ \__\  
+  \ \/ /  /   \ \/ /  /   \ \/ /  /      / /  /   \ \ \/__/      / /  /   \ \  \     \/__/       \ \ \/__/  
+   \  /  /     \  /  /     \  /  /      / /  /     \ \__\       / /  /     \ \__\                 \ \__\    
+    \/__/       \/__/       \/__/       \/__/       \/__/       \/__/       \/__/                  \/__/    
+	
+     ___        ___        ___        ___        ___        ___        ___       ___        ___     
+    /\  \      /\  \      /\  \      /\__\      /\  \      /\__\      /\  \     /\  \      /\  \    
+   /  \  \    /  \  \    /  \  \    / /  /     /  \  \    / /  /      \ \  \    \ \  \    /  \  \   
+  / /\ \  \  / /\ \  \  / /\ \  \  / /__/     / /\ \  \  / /  /        \ \  \    \ \  \  / /\ \  \  
+ / /  \ \  \/ /  \ \  \ \ \ \ \  \/  \  \ ___/  \ \ \  \/ /__/_____ __ /  \  \   /  \  \/  \ \ \  \ 
+/ /__/ \ \__\/__/ \ \__\ \ \ \ \__\/\ \  /\__\/\ \ \ \__\ _____ \__\  / /\ \__\ / /\ \  \/\ \ \ \__\
+\ \  /\ \/__/\  \ / /  /\ \ \ \/__/__\ \/ /  /\ \ \ \/__/__/  / /  /\/ /  \/__// /  \/__/\ \ \ \/__/
+ \ \ \ \__\ \ \  / /  /\ \ \ \__\     \  /  /\ \ \ \__\      / /  /\  /__/    / /  /    \ \ \ \__\  
+  \ \/ /  /  \ \/ /  /  \ \/ /  /     / /  /  \ \ \/__/     / /  /  \ \  \    \/__/      \ \ \/__/  
+   \  /  /    \  /  /    \  /  /     / /  /    \ \__\      / /  /    \ \__\               \ \__\    
+    \/__/      \/__/      \/__/      \/__/      \/__/      \/__/      \/__/                \/__/    
+```
