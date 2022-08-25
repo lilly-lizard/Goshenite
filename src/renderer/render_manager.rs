@@ -1,4 +1,7 @@
-use super::present_target::{self, PresentTarget};
+// todo expect unwraps and handle (e.g. clean exit) expects
+// todo log (with vulkan tag)
+
+use super::present_target::PresentTarget;
 use crate::config;
 use ash::{
     extensions::{
@@ -104,12 +107,12 @@ impl RenderManager {
         let viewports = [vk::Viewport {
             x: 0.0,
             y: 0.0,
-            width: self.surface_resolution.width as f32,
-            height: self.surface_resolution.height as f32,
+            width: self.present_target.resolution.width as f32,
+            height: self.present_target.resolution.height as f32,
             min_depth: 0.0,
             max_depth: 1.0,
         }];
-        let scissors = [self.surface_resolution.into()];
+        let scissors = [self.present_target.resolution.into()];
 
         unsafe {
             // aquire next swapchain image
@@ -126,7 +129,7 @@ impl RenderManager {
             let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
                 .render_pass(self.renderpass)
                 .framebuffer(self.framebuffers[present_index as usize])
-                .render_area(self.surface_resolution.into())
+                .render_area(self.present_target.resolution.into())
                 .clear_values(&clear_value);
 
             record_submit_commandbuffer(
@@ -255,8 +258,8 @@ impl RenderManager {
         window: &Window,
         app_name: &str,
         app_version: u32,
-        requested_width: u32,
-        requested_height: u32,
+        window_width: u32,
+        window_height: u32,
     ) -> Self {
         let engine_name = CString::new(config::ENGINE_NAME).unwrap();
         let app_name = CString::new(app_name)
@@ -396,13 +399,12 @@ impl RenderManager {
             let queue = device.get_device_queue(queue_family_index as u32, 0);
 
             let present_target = PresentTarget::new(
+                window,
                 instance,
                 device,
                 physical_device,
                 surface_loader,
                 surface,
-                requested_width,
-                requested_height,
             );
 
             // create command command_pool
@@ -889,13 +891,10 @@ impl RenderManager {
             RenderManager {
                 instance,
                 device,
-                surface_loader,
                 queue,
-                surface_resolution,
-                work_group_count,
-                swapchain_loader,
-                swapchain,
-                swapchain_image_views,
+                surface_loader,
+                surface,
+                present_target,
                 command_pool,
                 command_buffer_render,
                 render_image,
@@ -905,7 +904,6 @@ impl RenderManager {
                 semaphore_rendering_complete,
                 fence_render_commands_reuse,
                 fence_setup_commands_reuse,
-                surface,
                 debug_call_back,
                 debug_utils_loader,
                 render_image_memory,
@@ -964,11 +962,6 @@ impl Drop for RenderManager {
             self.device.destroy_image(self.render_image, None);
             self.device.destroy_sampler(self.render_sampler, None);
 
-            for &image_view in self.swapchain_image_views.iter() {
-                self.device.destroy_image_view(image_view, None);
-            }
-            self.swapchain_loader
-                .destroy_swapchain(self.swapchain, None);
             self.surface_loader.destroy_surface(self.surface, None);
 
             self.device.destroy_device(None);

@@ -22,16 +22,15 @@ const SPLASH: &str = "
 fn main() {
     println!("{}", SPLASH);
 
-    let requested_width = 500;
-    let requested_height = 500;
+    let init_resolution = [500, 500];
 
     // create winit window
     let mut event_loop = EventLoop::new();
     let window = WindowBuilder::new()
         .with_title(config::ENGINE_NAME)
         .with_inner_size(winit::dpi::LogicalSize::new(
-            f64::from(requested_width),
-            f64::from(requested_height),
+            f64::from(init_resolution[0]),
+            f64::from(init_resolution[1]),
         ))
         .build(&event_loop)
         .unwrap();
