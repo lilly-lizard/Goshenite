@@ -395,7 +395,15 @@ impl RenderManager {
             // rendering queue
             let queue = device.get_device_queue(queue_family_index as u32, 0);
 
-            let present_target = PresentTarget::new();
+            let present_target = PresentTarget::new(
+                instance,
+                device,
+                physical_device,
+                surface_loader,
+                surface,
+                requested_width,
+                requested_height,
+            );
 
             // create command command_pool
             let command_pool_ci = vk::CommandPoolCreateInfo::builder()
@@ -878,7 +886,7 @@ impl RenderManager {
             };
 
             // return self
-            Renderer {
+            RenderManager {
                 instance,
                 device,
                 surface_loader,
@@ -1085,16 +1093,4 @@ fn find_memorytype_index(
                 && memory_type.property_flags & flags == flags
         })
         .map(|(index, _memory_type)| index as _)
-}
-
-fn calc_work_group_count(image_size: vk::Extent2D) -> [u32; 2] {
-    let mut group_count_x = image_size.width / 16;
-    if (image_size.width % 16) != 0 {
-        group_count_x = group_count_x + 1;
-    }
-    let mut group_count_y = image_size.height / 16;
-    if (image_size.height % 16) != 0 {
-        group_count_y = group_count_y + 1;
-    }
-    [group_count_x, group_count_y]
 }
