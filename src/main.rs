@@ -1,7 +1,8 @@
+mod config;
 mod renderer;
 
 pub use ash::{Device, Instance};
-use renderer::Renderer;
+use renderer::render_manager::RenderManager;
 use winit::{event_loop::EventLoop, window::WindowBuilder};
 
 const SPLASH: &str = "
@@ -27,7 +28,7 @@ fn main() {
     // create winit window
     let mut event_loop = EventLoop::new();
     let window = WindowBuilder::new()
-        .with_title(renderer::ENGINE_NAME)
+        .with_title(config::ENGINE_NAME)
         .with_inner_size(winit::dpi::LogicalSize::new(
             f64::from(requested_width),
             f64::from(requested_height),
@@ -37,7 +38,7 @@ fn main() {
 
     {
         // init renderer
-        let renderer = Renderer::new(
+        let renderer = RenderManager::new(
             &window,
             "Goshenite Editor",
             1,

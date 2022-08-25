@@ -1,3 +1,5 @@
+use super::present_target::{self, PresentTarget};
+use crate::config;
 use ash::{
     extensions::{
         ext::DebugUtils,
@@ -23,37 +25,21 @@ use winit::{
     window::Window,
 };
 
-// Config
-pub const ENGINE_NAME: &str = "Goshenite";
-pub const ENGINE_VER: u32 = 1;
-pub const VULKAN_VER_MAJ: u32 = 1;
-pub const VULKAN_VER_MIN: u32 = 2;
-
-pub struct Renderer {
+pub struct RenderManager {
     instance: Instance,
     device: Device,
-    surface_loader: Surface,
-    swapchain_loader: Swapchain,
 
     debug_utils_loader: DebugUtils,
     debug_call_back: vk::DebugUtilsMessengerEXT,
 
+    surface_loader: Surface,
     surface: vk::SurfaceKHR,
-    surface_resolution: vk::Extent2D,
-    work_group_count: [u32; 2],
-
-    swapchain: vk::SwapchainKHR,
-    swapchain_image_views: Vec<vk::ImageView>,
+    present_target: PresentTarget,
 
     queue: vk::Queue,
 
     command_pool: vk::CommandPool,
     command_buffer_render: vk::CommandBuffer,
-
-    render_image: vk::Image,
-    render_image_view: vk::ImageView,
-    render_image_memory: vk::DeviceMemory,
-    render_sampler: vk::Sampler,
 
     semaphore_present_complete: vk::Semaphore,
     semaphore_rendering_complete: vk::Semaphore,
@@ -72,11 +58,16 @@ pub struct Renderer {
     pipeline_compute: vk::Pipeline,
     pipeline_post: vk::Pipeline,
 
+    render_image: vk::Image,
+    render_image_view: vk::ImageView,
+    render_image_memory: vk::DeviceMemory,
+    render_sampler: vk::Sampler,
+
     renderpass: vk::RenderPass,
     framebuffers: Vec<vk::Framebuffer>,
 }
 
-impl Renderer {
+impl RenderManager {
     pub fn render_loop(&self, event_loop: &mut EventLoop<()>) {
         event_loop.run_return(|event, _, control_flow| {
             *control_flow = ControlFlow::Poll;
@@ -267,7 +258,7 @@ impl Renderer {
         requested_width: u32,
         requested_height: u32,
     ) -> Self {
-        let engine_name = CString::new(ENGINE_NAME).unwrap();
+        let engine_name = CString::new(config::ENGINE_NAME).unwrap();
         let app_name = CString::new(app_name)
             .expect("CString creation failed: provided app name contains null character");
 
@@ -301,8 +292,13 @@ impl Renderer {
                     .application_name(&app_name)
                     .application_version(app_version)
                     .engine_name(&engine_name)
-                    .engine_version(ENGINE_VER)
-                    .api_version(vk::make_api_version(0, VULKAN_VER_MAJ, VULKAN_VER_MIN, 0));
+                    .engine_version(config::ENGINE_VER)
+                    .api_version(vk::make_api_version(
+                        0,
+                        config::VULKAN_VER_MAJ,
+                        config::VULKAN_VER_MIN,
+                        0,
+                    ));
                 let instance_ci = vk::InstanceCreateInfo::builder()
                     .application_info(&appinfo)
                     .enabled_layer_names(&layers_names_raw)
@@ -399,91 +395,7 @@ impl Renderer {
             // rendering queue
             let queue = device.get_device_queue(queue_family_index as u32, 0);
 
-            // surface capabilities
-            let surface_capabilities = surface_loader
-                .get_physical_device_surface_capabilities(physical_device, surface)
-                .unwrap();
-            let surface_format = surface_loader
-                .get_physical_device_surface_formats(physical_device, surface)
-                .unwrap()[0];
-            let surface_resolution = match surface_capabilities.current_extent.width {
-                std::u32::MAX => vk::Extent2D {
-                    width: requested_width,
-                    height: requested_height,
-                },
-                _ => surface_capabilities.current_extent,
-            };
-
-            // swapchain
-            let swapchain_loader = Swapchain::new(&instance, &device);
-            let swapchain = {
-                let mut desired_image_count = surface_capabilities.min_image_count + 1;
-                if surface_capabilities.max_image_count > 0
-                    && desired_image_count > surface_capabilities.max_image_count
-                {
-                    desired_image_count = surface_capabilities.max_image_count;
-                }
-                let pre_transform = if surface_capabilities
-                    .supported_transforms
-                    .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
-                {
-                    vk::SurfaceTransformFlagsKHR::IDENTITY
-                } else {
-                    surface_capabilities.current_transform
-                };
-                let present_modes = surface_loader
-                    .get_physical_device_surface_present_modes(physical_device, surface)
-                    .unwrap();
-                let present_mode = present_modes
-                    .iter()
-                    .cloned()
-                    .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
-                    .unwrap_or(vk::PresentModeKHR::FIFO);
-
-                let swapchain_ci = vk::SwapchainCreateInfoKHR::builder()
-                    .surface(surface)
-                    .min_image_count(desired_image_count)
-                    .image_color_space(surface_format.color_space)
-                    .image_format(surface_format.format)
-                    .image_extent(surface_resolution)
-                    .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
-                    .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
-                    .pre_transform(pre_transform)
-                    .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
-                    .present_mode(present_mode)
-                    .clipped(true)
-                    .image_array_layers(1);
-
-                swapchain_loader
-                    .create_swapchain(&swapchain_ci, None)
-                    .unwrap()
-            };
-
-            // swapchain image views
-            let swapchain_images = swapchain_loader.get_swapchain_images(swapchain).unwrap();
-            let swapchain_image_views: Vec<vk::ImageView> = swapchain_images
-                .iter()
-                .map(|&image| {
-                    let create_view_info = vk::ImageViewCreateInfo::builder()
-                        .view_type(vk::ImageViewType::TYPE_2D)
-                        .format(surface_format.format)
-                        .components(vk::ComponentMapping {
-                            r: vk::ComponentSwizzle::R,
-                            g: vk::ComponentSwizzle::G,
-                            b: vk::ComponentSwizzle::B,
-                            a: vk::ComponentSwizzle::A,
-                        })
-                        .subresource_range(vk::ImageSubresourceRange {
-                            aspect_mask: vk::ImageAspectFlags::COLOR,
-                            base_mip_level: 0,
-                            level_count: 1,
-                            base_array_layer: 0,
-                            layer_count: 1,
-                        })
-                        .image(image);
-                    device.create_image_view(&create_view_info, None).unwrap()
-                })
-                .collect();
+            let present_target = PresentTarget::new();
 
             // create command command_pool
             let command_pool_ci = vk::CommandPoolCreateInfo::builder()
@@ -690,7 +602,7 @@ impl Renderer {
             // compute pipeline
             let (pipeline_compute, pipeline_layout_compute) = {
                 let render_code = read_spv(&mut Cursor::new(
-                    &include_bytes!("../assets/shader_binaries/render.comp.spv")[..],
+                    &include_bytes!("../../assets/shader_binaries/render.comp.spv")[..],
                 ))
                 .expect("Failed to read render compute shader spirv file");
                 let render_shader_module = device
@@ -830,7 +742,7 @@ impl Renderer {
             let (pipeline_post, pipeline_layout_post) = {
                 // shaders
                 let vert_code = read_spv(&mut Cursor::new(
-                    &include_bytes!("../assets/shader_binaries/post.vert.spv")[..],
+                    &include_bytes!("../../assets/shader_binaries/post.vert.spv")[..],
                 ))
                 .expect("failed to read vertex shader spv file");
                 let vert_shader_module = device
@@ -841,7 +753,7 @@ impl Renderer {
                     .expect("failed to create vertex shader module");
 
                 let frag_code = read_spv(&mut Cursor::new(
-                    &include_bytes!("../assets/shader_binaries/post.frag.spv")[..],
+                    &include_bytes!("../../assets/shader_binaries/post.frag.spv")[..],
                 ))
                 .expect("failed to read fragment shader spv file");
                 let frag_shader_module = device
@@ -1005,7 +917,7 @@ impl Renderer {
     }
 }
 
-impl Drop for Renderer {
+impl Drop for RenderManager {
     fn drop(&mut self) {
         unsafe {
             self.device.device_wait_idle().unwrap();
