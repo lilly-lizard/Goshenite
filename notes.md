@@ -1,7 +1,12 @@
 # TODO
 
 - window resize handling
+	- graphics pipeline dynamic state viewport
 - draw sdf sphere with AABB
+- have multiple spheres
+- make renderer crate
+
+focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## cleanup
 
@@ -46,6 +51,14 @@ possibilities:
 
 - https://en.wikipedia.org/wiki/T-spline
 - https://en.wikipedia.org/wiki/Freeform_surface_modelling
+
+# build times
+
+stable 27.35s
+nightly 27.99s
+ramdisk 26.05s
+lld 25.34s
+mold 26.29s
 
 # splash
 ```
