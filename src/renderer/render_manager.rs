@@ -28,6 +28,24 @@ use winit::{
     window::Window,
 };
 
+pub fn calc_work_group_count(
+    image_size: vk::Extent2D,
+    work_group_size: vk::Extent2D,
+) -> vk::Extent2D {
+    let mut group_count_x = image_size.width / work_group_size.width;
+    if (image_size.width % work_group_size.width) != 0 {
+        group_count_x = group_count_x + 1;
+    }
+    let mut group_count_y = image_size.height / work_group_size.height;
+    if (image_size.height % work_group_size.height) != 0 {
+        group_count_y = group_count_y + 1;
+    }
+    vk::Extent2D {
+        width: group_count_x,
+        height: group_count_y,
+    }
+}
+
 pub struct RenderManager {
     instance: Instance,
     device: Device,
@@ -40,13 +58,11 @@ pub struct RenderManager {
     present_target: PresentTarget,
 
     queue: vk::Queue,
-
     command_pool: vk::CommandPool,
     command_buffer_render: vk::CommandBuffer,
 
     semaphore_present_complete: vk::Semaphore,
     semaphore_rendering_complete: vk::Semaphore,
-
     fence_render_commands_reuse: vk::Fence,
     fence_setup_commands_reuse: vk::Fence,
 
@@ -56,6 +72,8 @@ pub struct RenderManager {
     descriptor_set_compute: vk::DescriptorSet,
     descriptor_set_post: vk::DescriptorSet,
 
+    work_group_size: vk::Extent2D,
+    work_group_count: vk::Extent2D,
     pipeline_layout_compute: vk::PipelineLayout,
     pipeline_layout_post: vk::PipelineLayout,
     pipeline_compute: vk::Pipeline,
@@ -107,19 +125,20 @@ impl RenderManager {
         let viewports = [vk::Viewport {
             x: 0.0,
             y: 0.0,
-            width: self.present_target.resolution.width as f32,
-            height: self.present_target.resolution.height as f32,
+            width: self.present_target.resolution().width as f32,
+            height: self.present_target.resolution().height as f32,
             min_depth: 0.0,
             max_depth: 1.0,
         }];
-        let scissors = [self.present_target.resolution.into()];
+        let scissors = [self.present_target.resolution().into()];
 
         unsafe {
             // aquire next swapchain image
             let (present_index, _) = self
-                .swapchain_loader
+                .present_target
+                .swapchain_loader()
                 .acquire_next_image(
-                    self.swapchain,
+                    *self.present_target.swapchain(),
                     std::u64::MAX,
                     self.semaphore_present_complete,
                     vk::Fence::null(),
@@ -129,7 +148,7 @@ impl RenderManager {
             let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
                 .render_pass(self.renderpass)
                 .framebuffer(self.framebuffers[present_index as usize])
-                .render_area(self.present_target.resolution.into())
+                .render_area(self.present_target.resolution().into())
                 .clear_values(&clear_value);
 
             record_submit_commandbuffer(
@@ -183,8 +202,8 @@ impl RenderManager {
                     );
                     device.cmd_dispatch(
                         command_buffer_render,
-                        self.work_group_count[0],
-                        self.work_group_count[1],
+                        self.work_group_count.width,
+                        self.work_group_count.height,
                         1,
                     );
 
@@ -245,24 +264,19 @@ impl RenderManager {
             // present swapchain image
             let present_info = vk::PresentInfoKHR::builder()
                 .wait_semaphores(&[self.semaphore_rendering_complete])
-                .swapchains(&[self.swapchain])
+                .swapchains(&[*self.present_target.swapchain()])
                 .image_indices(&[present_index])
                 .build();
-            self.swapchain_loader
+            self.present_target
+                .swapchain_loader()
                 .queue_present(self.queue, &present_info)
                 .unwrap();
         }
     }
 
-    pub fn new(
-        window: &Window,
-        app_name: &str,
-        app_version: u32,
-        window_width: u32,
-        window_height: u32,
-    ) -> Self {
+    pub fn new(window: &Window) -> Self {
         let engine_name = CString::new(config::ENGINE_NAME).unwrap();
-        let app_name = CString::new(app_name)
+        let app_name = CString::new(config::ENGINE_NAME)
             .expect("CString creation failed: provided app name contains null character");
 
         // vulkan layers to enable
@@ -293,7 +307,7 @@ impl RenderManager {
 
                 let appinfo = vk::ApplicationInfo::builder()
                     .application_name(&app_name)
-                    .application_version(app_version)
+                    .application_version(config::ENGINE_VER)
                     .engine_name(&engine_name)
                     .engine_version(config::ENGINE_VER)
                     .api_version(vk::make_api_version(
@@ -398,13 +412,27 @@ impl RenderManager {
             // rendering queue
             let queue = device.get_device_queue(queue_family_index as u32, 0);
 
+            // bruh
             let present_target = PresentTarget::new(
                 window,
-                instance,
-                device,
+                &instance,
+                device.clone(),
+                surface_loader.clone(),
                 physical_device,
-                surface_loader,
                 surface,
+            );
+
+            // work group size/count
+            let work_group_size = vk::Extent2D {
+                width: config::DEFAULT_WORK_GROUP_SIZE[0],
+                height: config::DEFAULT_WORK_GROUP_SIZE[1],
+            };
+            let work_group_count = calc_work_group_count(
+                present_target.resolution(),
+                vk::Extent2D {
+                    width: work_group_size.width,
+                    height: work_group_size.height,
+                },
             );
 
             // create command command_pool
@@ -443,7 +471,7 @@ impl RenderManager {
             let render_image_ci = vk::ImageCreateInfo::builder()
                 .image_type(vk::ImageType::TYPE_2D)
                 .format(vk::Format::R8G8B8A8_UNORM)
-                .extent(surface_resolution.into())
+                .extent(present_target.resolution().into())
                 .mip_levels(1)
                 .array_layers(1)
                 .samples(vk::SampleCountFlags::TYPE_1)
@@ -652,9 +680,6 @@ impl RenderManager {
                 (pipeline_compute, pipeline_layout_compute)
             };
 
-            // calculate compute dispatch work group count
-            let work_group_count = calc_work_group_count(surface_resolution.into());
-
             // render pass
             let renderpass = {
                 let color_attachment_ref = [vk::AttachmentReference {
@@ -674,7 +699,7 @@ impl RenderManager {
                     .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS);
 
                 let renderpass_attachments = [vk::AttachmentDescription {
-                    format: surface_format.format,
+                    format: present_target.format().format,
                     samples: vk::SampleCountFlags::TYPE_1,
                     load_op: vk::AttachmentLoadOp::CLEAR,
                     store_op: vk::AttachmentStoreOp::STORE,
@@ -691,15 +716,16 @@ impl RenderManager {
             };
 
             // framebuffers
-            let framebuffers: Vec<vk::Framebuffer> = swapchain_image_views
+            let framebuffers: Vec<vk::Framebuffer> = present_target
+                .swapchain_image_views()
                 .iter()
                 .map(|&present_image_view| {
                     let framebuffer_attachments = [present_image_view];
                     let framebuffer_ci = vk::FramebufferCreateInfo::builder()
                         .render_pass(renderpass)
                         .attachments(&framebuffer_attachments)
-                        .width(surface_resolution.width)
-                        .height(surface_resolution.height)
+                        .width(present_target.resolution().width)
+                        .height(present_target.resolution().height)
                         .layers(1);
                     device
                         .create_framebuffer(&framebuffer_ci, None)
@@ -803,12 +829,12 @@ impl RenderManager {
                 let viewports = [vk::Viewport {
                     x: 0.0,
                     y: 0.0,
-                    width: surface_resolution.width as f32,
-                    height: surface_resolution.height as f32,
+                    width: present_target.resolution().width as f32,
+                    height: present_target.resolution().height as f32,
                     min_depth: 0.0,
                     max_depth: 1.0,
                 }];
-                let scissors = [surface_resolution.into()];
+                let scissors = [present_target.resolution().into()];
                 let viewport_state_info = vk::PipelineViewportStateCreateInfo::builder()
                     .scissors(&scissors)
                     .viewports(&viewports);
@@ -891,10 +917,12 @@ impl RenderManager {
             RenderManager {
                 instance,
                 device,
-                queue,
+                debug_utils_loader,
+                debug_call_back,
                 surface_loader,
                 surface,
                 present_target,
+                queue,
                 command_pool,
                 command_buffer_render,
                 render_image,
@@ -904,14 +932,14 @@ impl RenderManager {
                 semaphore_rendering_complete,
                 fence_render_commands_reuse,
                 fence_setup_commands_reuse,
-                debug_call_back,
-                debug_utils_loader,
                 render_image_memory,
                 descriptor_pool,
                 descriptor_set_layout_compute,
                 descriptor_set_layout_post,
                 descriptor_set_compute,
                 descriptor_set_post,
+                work_group_size,
+                work_group_count,
                 pipeline_layout_compute,
                 pipeline_compute,
                 pipeline_layout_post,

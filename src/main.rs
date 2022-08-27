@@ -1,4 +1,5 @@
 mod config;
+mod immutable;
 mod renderer;
 
 pub use ash::{Device, Instance};
@@ -37,13 +38,7 @@ fn main() {
 
     {
         // init renderer
-        let renderer = RenderManager::new(
-            &window,
-            "Goshenite Editor",
-            1,
-            requested_width,
-            requested_height,
-        );
+        let renderer = RenderManager::new(&window);
 
         // start render loop
         renderer.render_loop(&mut event_loop);
