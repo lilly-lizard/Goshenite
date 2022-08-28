@@ -2,11 +2,13 @@
 
 layout (local_size_x = 16, local_size_y = 16) in; // workgroup size todo spec constant
 layout (set = 0, binding = 0, rgba8) uniform writeonly image2D renderImage; // output image
+/*
 layout(set = 0, binding = 1) uniform Camera {
 	mat4 viewInverse; // todo mat3?
 	mat4 projInverse;
 	vec4 position;
 } cam;
+*/
 
 /// Signed distance function for a sphere
 /// * `point` - point in space to test for
@@ -33,6 +35,7 @@ vec3 scene(const vec3 ray_d)
 
 void main()
 {
+	/*
 	uvec2 dim = uvec2(imageSize(renderImage)); // render image dimensions
 	if (dim.x <= gl_GlobalInvocationID.x || dim.y <= gl_GlobalInvocationID.y)
 		return; // don't bother rendering outside of image bounds
@@ -44,6 +47,8 @@ void main()
 
 	// render scene
 	vec3 color = scene(ray_d);
+	*/
+	vec3 color = scene(vec3(1., 0., 0.));
 
 	imageStore(renderImage, ivec2(gl_GlobalInvocationID.xy), vec4(color, 1.));
 }

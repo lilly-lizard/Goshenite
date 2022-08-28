@@ -4,16 +4,19 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+# log
+log = "0.4"
+env_logger = "0.9"
 # winit is a cross-platform window creation and management library
 winit = "0.26"
 # glam is a vector and math library well suited for 3D graphics
-glam = "0.21.3"
-# ash is a lightweight vulkan wrapper
-ash = { version = "0.37", default-features = false, features = ["linked", "debug"] }
-ash-window = "0.11.0"
-# terminal output
-colored = "2.0"
+glam = "0.21"
+# vulkano is a safe and convenient vulkan (ash) wrapper
+vulkano = "0.30"
+vulkano-win = "0.30" # winit interop
+vulkano-util = "0.30" # convenience functions
 
+# colored: terminal output formatting
 # egui
 # slotmap
 # specs: ECS

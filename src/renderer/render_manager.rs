@@ -1,1117 +1,319 @@
-// todo expect unwraps and handle (e.g. clean exit) expects
-// todo log (with vulkan tag)
+// todo handle unwraps/panics/expects (e.g. clean exit) and error propagation
+// todo moooore debug logs
 
-use super::present_target::PresentTarget;
 use crate::config;
-use ash::{
-    extensions::{
-        ext::DebugUtils,
-        khr::{Surface, Swapchain},
+#[allow(unused_imports)]
+use log::{debug, error, info, warn}; // todo "Renderer" message prefix
+use std::sync::Arc;
+use vulkano::{
+    command_buffer::{
+        AutoCommandBufferBuilder, CommandBufferUsage, RenderingAttachmentInfo, RenderingInfo,
     },
-    util::*,
-    vk, Entry,
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType},
+        Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
+    },
+    image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
+    instance::{Instance, InstanceCreateInfo},
+    pipeline::{
+        graphics::{
+            render_pass::PipelineRenderingCreateInfo,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline,
+    },
+    render_pass::{LoadOp, StoreOp},
+    shader::ShaderModule,
+    swapchain::{
+        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
+        SwapchainCreationError,
+    },
+    sync::{self, FlushError, GpuFuture},
+    Version,
 };
-pub use ash::{Device, Instance};
-use colored::Colorize;
-use std::{
-    borrow::Cow,
-    default::Default,
-    ffi::{CStr, CString},
-    io::Cursor,
-    ops::Drop,
-    os::raw::c_char,
-};
-use winit::{
-    event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
-    platform::run_return::EventLoopExtRunReturn,
-    window::Window,
-};
+use vulkano_win::create_surface_from_winit;
+use winit::window::Window;
 
-pub fn calc_work_group_count(
-    image_size: vk::Extent2D,
-    work_group_size: vk::Extent2D,
-) -> vk::Extent2D {
-    let mut group_count_x = image_size.width / work_group_size.width;
-    if (image_size.width % work_group_size.width) != 0 {
-        group_count_x = group_count_x + 1;
-    }
-    let mut group_count_y = image_size.height / work_group_size.height;
-    if (image_size.height % work_group_size.height) != 0 {
-        group_count_y = group_count_y + 1;
-    }
-    vk::Extent2D {
-        width: group_count_x,
-        height: group_count_y,
-    }
+pub struct RenderManager<'a> {
+    device: Arc<Device>,
+    queue: Arc<Queue>,
+    surface: Arc<Surface<&'a Window>>,
+    swapchain: Arc<Swapchain<&'a Window>>,
+    swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<&'a Window>>>>,
+    viewport: Viewport,
+    pipeline_graphics: Arc<GraphicsPipeline>,
+    future_previous_frame: Option<Box<dyn GpuFuture>>, // todo description
+    recreate_swapchain: bool, // indicates that the swapchain needs to be recreated next frame
 }
 
-pub struct RenderManager {
-    instance: Instance,
-    device: Device,
-
-    debug_utils_loader: DebugUtils,
-    debug_call_back: vk::DebugUtilsMessengerEXT,
-
-    surface_loader: Surface,
-    surface: vk::SurfaceKHR,
-    present_target: PresentTarget,
-
-    queue: vk::Queue,
-    command_pool: vk::CommandPool,
-    command_buffer_render: vk::CommandBuffer,
-
-    semaphore_present_complete: vk::Semaphore,
-    semaphore_rendering_complete: vk::Semaphore,
-    fence_render_commands_reuse: vk::Fence,
-    fence_setup_commands_reuse: vk::Fence,
-
-    descriptor_pool: vk::DescriptorPool,
-    descriptor_set_layout_compute: vk::DescriptorSetLayout,
-    descriptor_set_layout_post: vk::DescriptorSetLayout,
-    descriptor_set_compute: vk::DescriptorSet,
-    descriptor_set_post: vk::DescriptorSet,
-
-    work_group_size: vk::Extent2D,
-    work_group_count: vk::Extent2D,
-    pipeline_layout_compute: vk::PipelineLayout,
-    pipeline_layout_post: vk::PipelineLayout,
-    pipeline_compute: vk::Pipeline,
-    pipeline_post: vk::Pipeline,
-
-    render_image: vk::Image,
-    render_image_view: vk::ImageView,
-    render_image_memory: vk::DeviceMemory,
-    render_sampler: vk::Sampler,
-
-    renderpass: vk::RenderPass,
-    framebuffers: Vec<vk::Framebuffer>,
-}
-
-impl RenderManager {
-    pub fn render_loop(&self, event_loop: &mut EventLoop<()>) {
-        event_loop.run_return(|event, _, control_flow| {
-            *control_flow = ControlFlow::Poll;
-            match event {
-                Event::WindowEvent {
-                    event:
-                        WindowEvent::CloseRequested
-                        | WindowEvent::KeyboardInput {
-                            input:
-                                KeyboardInput {
-                                    state: ElementState::Pressed,
-                                    virtual_keycode: Some(VirtualKeyCode::Escape),
-                                    ..
-                                },
-                            ..
-                        },
-                    ..
-                } => *control_flow = ControlFlow::Exit,
-                Event::MainEventsCleared => self.render_frame(),
-                _ => (),
-            }
-        });
-        unsafe {
-            self.device.device_wait_idle().unwrap();
-        }
-    }
-
-    fn render_frame(&self) {
-        let clear_value = [vk::ClearValue {
-            color: vk::ClearColorValue {
-                float32: [0.0, 0.0, 0.0, 0.0],
-            },
-        }];
-        let viewports = [vk::Viewport {
-            x: 0.0,
-            y: 0.0,
-            width: self.present_target.resolution().width as f32,
-            height: self.present_target.resolution().height as f32,
-            min_depth: 0.0,
-            max_depth: 1.0,
-        }];
-        let scissors = [self.present_target.resolution().into()];
-
-        unsafe {
-            // aquire next swapchain image
-            let (present_index, _) = self
-                .present_target
-                .swapchain_loader()
-                .acquire_next_image(
-                    *self.present_target.swapchain(),
-                    std::u64::MAX,
-                    self.semaphore_present_complete,
-                    vk::Fence::null(),
-                )
-                .unwrap();
-
-            let render_pass_begin_info = vk::RenderPassBeginInfo::builder()
-                .render_pass(self.renderpass)
-                .framebuffer(self.framebuffers[present_index as usize])
-                .render_area(self.present_target.resolution().into())
-                .clear_values(&clear_value);
-
-            record_submit_commandbuffer(
-                &self.device,
-                self.command_buffer_render,
-                self.fence_render_commands_reuse,
-                self.queue,
-                &[vk::PipelineStageFlags::COMPUTE_SHADER],
-                &[self.semaphore_present_complete],
-                &[self.semaphore_rendering_complete],
-                |device, command_buffer_render| {
-                    // transition render image layout from shader read to general
-
-                    device.cmd_pipeline_barrier(
-                        command_buffer_render,
-                        vk::PipelineStageFlags::FRAGMENT_SHADER,
-                        vk::PipelineStageFlags::COMPUTE_SHADER,
-                        vk::DependencyFlags::empty(),
-                        &[],
-                        &[],
-                        &[vk::ImageMemoryBarrier {
-                            image: self.render_image,
-                            old_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                            new_layout: vk::ImageLayout::GENERAL,
-                            src_access_mask: vk::AccessFlags::SHADER_READ,
-                            dst_access_mask: vk::AccessFlags::SHADER_WRITE,
-                            subresource_range: vk::ImageSubresourceRange {
-                                aspect_mask: vk::ImageAspectFlags::COLOR,
-                                layer_count: 1,
-                                level_count: 1,
-                                ..Default::default()
-                            },
-                            ..Default::default()
-                        }],
-                    );
-
-                    // dispatch render
-
-                    device.cmd_bind_pipeline(
-                        command_buffer_render,
-                        vk::PipelineBindPoint::COMPUTE,
-                        self.pipeline_compute,
-                    );
-                    device.cmd_bind_descriptor_sets(
-                        command_buffer_render,
-                        vk::PipelineBindPoint::COMPUTE,
-                        self.pipeline_layout_compute,
-                        0,
-                        &[self.descriptor_set_compute],
-                        &[],
-                    );
-                    device.cmd_dispatch(
-                        command_buffer_render,
-                        self.work_group_count.width,
-                        self.work_group_count.height,
-                        1,
-                    );
-
-                    // transition render image layout from general to shader read
-
-                    device.cmd_pipeline_barrier(
-                        command_buffer_render,
-                        vk::PipelineStageFlags::COMPUTE_SHADER,
-                        vk::PipelineStageFlags::FRAGMENT_SHADER,
-                        vk::DependencyFlags::empty(),
-                        &[],
-                        &[],
-                        &[vk::ImageMemoryBarrier {
-                            image: self.render_image,
-                            old_layout: vk::ImageLayout::GENERAL,
-                            new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                            src_access_mask: vk::AccessFlags::SHADER_WRITE,
-                            dst_access_mask: vk::AccessFlags::SHADER_READ,
-                            subresource_range: vk::ImageSubresourceRange {
-                                aspect_mask: vk::ImageAspectFlags::COLOR,
-                                layer_count: 1,
-                                level_count: 1,
-                                ..Default::default()
-                            },
-                            ..Default::default()
-                        }],
-                    );
-
-                    // post processing
-
-                    device.cmd_begin_render_pass(
-                        command_buffer_render,
-                        &render_pass_begin_info,
-                        vk::SubpassContents::INLINE,
-                    );
-
-                    device.cmd_bind_pipeline(
-                        command_buffer_render,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        self.pipeline_post,
-                    );
-                    device.cmd_bind_descriptor_sets(
-                        command_buffer_render,
-                        vk::PipelineBindPoint::GRAPHICS,
-                        self.pipeline_layout_post,
-                        0,
-                        &[self.descriptor_set_post],
-                        &[],
-                    );
-                    device.cmd_set_viewport(command_buffer_render, 0, &viewports);
-                    device.cmd_set_scissor(command_buffer_render, 0, &scissors);
-                    device.cmd_draw(command_buffer_render, 3, 1, 0, 0);
-
-                    device.cmd_end_render_pass(command_buffer_render);
-                },
-            );
-
-            // present swapchain image
-            let present_info = vk::PresentInfoKHR::builder()
-                .wait_semaphores(&[self.semaphore_rendering_complete])
-                .swapchains(&[*self.present_target.swapchain()])
-                .image_indices(&[present_index])
-                .build();
-            self.present_target
-                .swapchain_loader()
-                .queue_present(self.queue, &present_info)
-                .unwrap();
-        }
-    }
-
-    pub fn new(window: &Window) -> Self {
-        let engine_name = CString::new(config::ENGINE_NAME).unwrap();
-        let app_name = CString::new(config::ENGINE_NAME)
-            .expect("CString creation failed: provided app name contains null character");
-
-        // vulkan layers to enable
-        let mut layer_names: Vec<&CString> = Vec::new();
-        // debug builds require VK_LAYER_KHRONOS_validation to be installed on the system
-        let validation_layer_name = CString::new("VK_LAYER_KHRONOS_validation").unwrap();
-        if cfg!(debug_assertions) {
-            layer_names.push(&validation_layer_name);
-        }
-
-        // vulkan entry point (to use non-instance functions)
-        let entry = Entry::linked();
-
-        unsafe {
-            // instance
-            let instance = {
-                // layers
-                let layers_names_raw: Vec<*const c_char> = layer_names
-                    .iter()
-                    .map(|raw_name| raw_name.as_ptr())
-                    .collect();
-
-                // extensions
-                let mut extension_names = ash_window::enumerate_required_extensions(&window)
-                    .unwrap()
-                    .to_vec();
-                extension_names.push(DebugUtils::name().as_ptr());
-
-                let appinfo = vk::ApplicationInfo::builder()
-                    .application_name(&app_name)
-                    .application_version(config::ENGINE_VER)
-                    .engine_name(&engine_name)
-                    .engine_version(config::ENGINE_VER)
-                    .api_version(vk::make_api_version(
-                        0,
-                        config::VULKAN_VER_MAJ,
-                        config::VULKAN_VER_MIN,
-                        0,
-                    ));
-                let instance_ci = vk::InstanceCreateInfo::builder()
-                    .application_info(&appinfo)
-                    .enabled_layer_names(&layers_names_raw)
-                    .enabled_extension_names(&extension_names);
-
-                // create
-                entry
-                    .create_instance(&instance_ci, None)
-                    .expect("Instance creation error")
-            };
-
-            // debug callback
-            let debug_utils_loader = DebugUtils::new(&entry, &instance);
-            let debug_info = vk::DebugUtilsMessengerCreateInfoEXT::builder()
-                .message_severity(
-                    vk::DebugUtilsMessageSeverityFlagsEXT::ERROR
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
-                        | vk::DebugUtilsMessageSeverityFlagsEXT::INFO,
-                )
-                .message_type(
-                    vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
-                        | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
-                        | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE,
-                )
-                .pfn_user_callback(Some(vulkan_debug_callback));
-            let debug_call_back = debug_utils_loader
-                .create_debug_utils_messenger(&debug_info, None)
-                .unwrap();
-
-            // surface
-            let surface = ash_window::create_surface(&entry, &instance, &window, None).unwrap();
-            let surface_loader = Surface::new(&entry, &instance);
-
-            // choose physical device and queue family
-            let physical_devices = instance
-                .enumerate_physical_devices()
-                .expect("Physical device error");
-            let (physical_device, queue_family_index) = physical_devices
-                .iter()
-                .map(|physical_device| {
-                    instance
-                        .get_physical_device_queue_family_properties(*physical_device)
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(index, info)| {
-                            let supports_graphic_and_surface =
-                                info.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                                    && surface_loader
-                                        .get_physical_device_surface_support(
-                                            *physical_device,
-                                            index as u32,
-                                            surface,
-                                        )
-                                        .unwrap();
-                            if supports_graphic_and_surface {
-                                Some((*physical_device, index as u32))
-                            } else {
-                                None
-                            }
-                        })
-                        .next()
-                })
-                .flatten()
-                .next()
-                .expect("Couldn't find suitable device.");
-
-            // get physical device memory properties
-            let device_memory_properties =
-                instance.get_physical_device_memory_properties(physical_device);
-
-            // device
-            let device = {
-                let priorities = [1.0];
-                let queue_info = vk::DeviceQueueCreateInfo::builder()
-                    .queue_family_index(queue_family_index)
-                    .queue_priorities(&priorities);
-
-                let device_extension_names_raw = [Swapchain::name().as_ptr()];
-                let features = vk::PhysicalDeviceFeatures {
-                    shader_clip_distance: 1,
-                    ..Default::default()
-                };
-
-                let device_ci = vk::DeviceCreateInfo::builder()
-                    .queue_create_infos(std::slice::from_ref(&queue_info))
-                    .enabled_extension_names(&device_extension_names_raw)
-                    .enabled_features(&features);
-
-                instance
-                    .create_device(physical_device, &device_ci, None)
-                    .unwrap()
-            };
-
-            // rendering queue
-            let queue = device.get_device_queue(queue_family_index as u32, 0);
-
-            // bruh
-            let present_target = PresentTarget::new(
-                window,
-                &instance,
-                device.clone(),
-                surface_loader.clone(),
-                physical_device,
-                surface,
-            );
-
-            // work group size/count
-            let work_group_size = vk::Extent2D {
-                width: config::DEFAULT_WORK_GROUP_SIZE[0],
-                height: config::DEFAULT_WORK_GROUP_SIZE[1],
-            };
-            let work_group_count = calc_work_group_count(
-                present_target.resolution(),
-                vk::Extent2D {
-                    width: work_group_size.width,
-                    height: work_group_size.height,
-                },
-            );
-
-            // create command command_pool
-            let command_pool_ci = vk::CommandPoolCreateInfo::builder()
-                .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-                .queue_family_index(queue_family_index);
-            let command_pool = device.create_command_pool(&command_pool_ci, None).unwrap();
-
-            // create command buffers
-            let command_buffer_allocate_info = vk::CommandBufferAllocateInfo::builder()
-                .command_buffer_count(2)
-                .command_pool(command_pool)
-                .level(vk::CommandBufferLevel::PRIMARY);
-            let command_buffers = device
-                .allocate_command_buffers(&command_buffer_allocate_info)
-                .unwrap();
-            let setup_command_buffer = command_buffers[0];
-            let command_buffer_render = command_buffers[1];
-
-            // create setup and render fences
-            let fence_ci = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
-            let fence_setup_commands_reuse = device
-                .create_fence(&fence_ci, None)
-                .expect("Create fence failed.");
-            let fence_render_commands_reuse = device
-                .create_fence(&fence_ci, None)
-                .expect("Create fence failed.");
-
-            // create semaphores for completion of presenting and rendering
-            let semaphore_ci = vk::SemaphoreCreateInfo::default();
-            let semaphore_present_complete = device.create_semaphore(&semaphore_ci, None).unwrap();
-            let semaphore_rendering_complete =
-                device.create_semaphore(&semaphore_ci, None).unwrap();
-
-            // create render image
-            let render_image_ci = vk::ImageCreateInfo::builder()
-                .image_type(vk::ImageType::TYPE_2D)
-                .format(vk::Format::R8G8B8A8_UNORM)
-                .extent(present_target.resolution().into())
-                .mip_levels(1)
-                .array_layers(1)
-                .samples(vk::SampleCountFlags::TYPE_1)
-                .tiling(vk::ImageTiling::OPTIMAL)
-                .usage(vk::ImageUsageFlags::STORAGE | vk::ImageUsageFlags::SAMPLED)
-                .sharing_mode(vk::SharingMode::EXCLUSIVE);
-
-            let render_image = device.create_image(&render_image_ci, None).unwrap();
-
-            // allocate memory for render image
-            let render_image_memory_req = device.get_image_memory_requirements(render_image);
-            let render_image_memory_index = find_memorytype_index(
-                &render_image_memory_req,
-                &device_memory_properties,
-                vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            )
-            .expect("Unable to find suitable memory index for render image.");
-            let render_image_allocate_info = vk::MemoryAllocateInfo::builder()
-                .allocation_size(render_image_memory_req.size)
-                .memory_type_index(render_image_memory_index);
-            let render_image_memory = device
-                .allocate_memory(&render_image_allocate_info, None)
-                .unwrap();
-            device
-                .bind_image_memory(render_image, render_image_memory, 0)
-                .expect("Unable to bind render image memory");
-
-            // transition image layout for render image
-            record_submit_commandbuffer(
-                &device,
-                setup_command_buffer,
-                fence_setup_commands_reuse,
-                queue,
-                &[],
-                &[],
-                &[],
-                |device, setup_command_buffer| {
-                    let layout_transition_barrier = vk::ImageMemoryBarrier {
-                        image: render_image,
-                        old_layout: vk::ImageLayout::UNDEFINED,
-                        new_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                        src_access_mask: vk::AccessFlags::NONE,
-                        dst_access_mask: vk::AccessFlags::SHADER_READ,
-                        subresource_range: vk::ImageSubresourceRange {
-                            aspect_mask: vk::ImageAspectFlags::COLOR,
-                            layer_count: 1,
-                            level_count: 1,
-                            ..Default::default()
-                        },
-                        ..Default::default()
-                    };
-
-                    device.cmd_pipeline_barrier(
-                        setup_command_buffer,
-                        vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                        vk::PipelineStageFlags::FRAGMENT_SHADER,
-                        vk::DependencyFlags::empty(),
-                        &[],
-                        &[],
-                        &[layout_transition_barrier],
-                    );
-                },
-            );
-
-            // render image view
-            let render_image_view = {
-                let render_image_view_info = vk::ImageViewCreateInfo::builder()
-                    .subresource_range(vk::ImageSubresourceRange {
-                        aspect_mask: vk::ImageAspectFlags::COLOR,
-                        layer_count: 1,
-                        level_count: 1,
-                        ..Default::default()
-                    })
-                    .image(render_image)
-                    .format(render_image_ci.format)
-                    .view_type(vk::ImageViewType::TYPE_2D);
-
-                device
-                    .create_image_view(&render_image_view_info, None)
-                    .unwrap()
-            };
-
-            // render sampler
-            let render_sampler = device
-                .create_sampler(
-                    &vk::SamplerCreateInfo {
-                        mag_filter: vk::Filter::LINEAR,
-                        min_filter: vk::Filter::LINEAR,
-                        mipmap_mode: vk::SamplerMipmapMode::LINEAR,
-                        address_mode_u: vk::SamplerAddressMode::REPEAT,
-                        address_mode_v: vk::SamplerAddressMode::REPEAT,
-                        address_mode_w: vk::SamplerAddressMode::REPEAT,
-                        max_anisotropy: 1.0,
-                        border_color: vk::BorderColor::FLOAT_OPAQUE_WHITE,
-                        compare_op: vk::CompareOp::NEVER,
-                        ..Default::default()
-                    },
-                    None,
-                )
-                .expect("failed to create sampler");
-
-            // descriptor pool
-            let descriptor_pool = {
-                let pool_sizes = [
-                    vk::DescriptorPoolSize {
-                        ty: vk::DescriptorType::STORAGE_IMAGE,
-                        descriptor_count: 1,
-                        ..Default::default()
-                    },
-                    vk::DescriptorPoolSize {
-                        ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-                        descriptor_count: 1,
-                        ..Default::default()
-                    },
-                ];
-                let max_sets = 2;
-                device
-                    .create_descriptor_pool(
-                        &vk::DescriptorPoolCreateInfo::builder()
-                            .pool_sizes(&pool_sizes)
-                            .max_sets(max_sets),
-                        None,
-                    )
-                    .expect("Failed to create descriptor pool")
-            };
-
-            // compute descriptor set
-            let (descriptor_set_layout_compute, descriptor_set_compute) = {
-                let descriptor_bindings = [vk::DescriptorSetLayoutBinding::builder()
-                    .binding(0)
-                    .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-                    .descriptor_count(1)
-                    .stage_flags(vk::ShaderStageFlags::COMPUTE)
-                    .build()];
-                let descriptor_set_layout = device
-                    .create_descriptor_set_layout(
-                        &vk::DescriptorSetLayoutCreateInfo::builder()
-                            .bindings(&descriptor_bindings),
-                        None,
-                    )
-                    .expect("Failed to create compute descriptor set layout");
-
-                let descriptor_set = device
-                    .allocate_descriptor_sets(
-                        &vk::DescriptorSetAllocateInfo::builder()
-                            .descriptor_pool(descriptor_pool)
-                            .set_layouts(&[descriptor_set_layout]),
-                    )
-                    .expect("Failed to create compute descriptor set")[0];
-
-                let descriptor_set_write = vk::WriteDescriptorSet::builder()
-                    .dst_set(descriptor_set)
-                    .dst_binding(0)
-                    .descriptor_type(vk::DescriptorType::STORAGE_IMAGE)
-                    .image_info(&[vk::DescriptorImageInfo {
-                        image_view: render_image_view,
-                        image_layout: vk::ImageLayout::GENERAL,
-                        sampler: vk::Sampler::default(), // unused
-                    }])
-                    .build();
-                device.update_descriptor_sets(&[descriptor_set_write], &[]);
-
-                (descriptor_set_layout, descriptor_set)
-            };
-
-            // compute pipeline
-            let (pipeline_compute, pipeline_layout_compute) = {
-                let render_code = read_spv(&mut Cursor::new(
-                    &include_bytes!("../../assets/shader_binaries/render.comp.spv")[..],
-                ))
-                .expect("Failed to read render compute shader spirv file");
-                let render_shader_module = device
-                    .create_shader_module(
-                        &vk::ShaderModuleCreateInfo::builder().code(&render_code),
-                        None,
-                    )
-                    .expect("Failed to create shader module");
-
-                let pipeline_layout_compute = device
-                    .create_pipeline_layout(
-                        &vk::PipelineLayoutCreateInfo::builder()
-                            .set_layouts(&[descriptor_set_layout_compute]),
-                        None,
-                    )
-                    .expect("Failed to create pipeline layout");
-
-                let pipeline_compute_ci = vk::ComputePipelineCreateInfo::builder()
-                    .stage(vk::PipelineShaderStageCreateInfo {
-                        stage: vk::ShaderStageFlags::COMPUTE,
-                        module: render_shader_module,
-                        p_name: CStr::from_bytes_with_nul_unchecked(b"main\0").as_ptr(),
-                        ..Default::default()
-                    })
-                    .layout(pipeline_layout_compute);
-                let pipeline_compute = device
-                    .create_compute_pipelines(
-                        vk::PipelineCache::null(),
-                        &[pipeline_compute_ci.build()],
-                        None,
-                    )
-                    .expect("failed to create compute pipeline")[0];
-
-                // cleanup shader module
-                device.destroy_shader_module(render_shader_module, None);
-
-                (pipeline_compute, pipeline_layout_compute)
-            };
-
-            // render pass
-            let renderpass = {
-                let color_attachment_ref = [vk::AttachmentReference {
-                    attachment: 0,
-                    layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-                }];
-                let subpass_dependencies = [vk::SubpassDependency {
-                    src_subpass: vk::SUBPASS_EXTERNAL,
-                    src_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                    dst_access_mask: vk::AccessFlags::COLOR_ATTACHMENT_READ
-                        | vk::AccessFlags::COLOR_ATTACHMENT_WRITE,
-                    dst_stage_mask: vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                    ..Default::default()
-                }];
-                let subpass_desc = vk::SubpassDescription::builder()
-                    .color_attachments(&color_attachment_ref)
-                    .pipeline_bind_point(vk::PipelineBindPoint::GRAPHICS);
-
-                let renderpass_attachments = [vk::AttachmentDescription {
-                    format: present_target.format().format,
-                    samples: vk::SampleCountFlags::TYPE_1,
-                    load_op: vk::AttachmentLoadOp::CLEAR,
-                    store_op: vk::AttachmentStoreOp::STORE,
-                    final_layout: vk::ImageLayout::PRESENT_SRC_KHR,
-                    ..Default::default()
-                }];
-                let renderpass_ci = vk::RenderPassCreateInfo::builder()
-                    .attachments(&renderpass_attachments)
-                    .subpasses(std::slice::from_ref(&subpass_desc))
-                    .dependencies(&subpass_dependencies);
-                device
-                    .create_render_pass(&renderpass_ci, None)
-                    .expect("failed to create render pass")
-            };
-
-            // framebuffers
-            let framebuffers: Vec<vk::Framebuffer> = present_target
-                .swapchain_image_views()
-                .iter()
-                .map(|&present_image_view| {
-                    let framebuffer_attachments = [present_image_view];
-                    let framebuffer_ci = vk::FramebufferCreateInfo::builder()
-                        .render_pass(renderpass)
-                        .attachments(&framebuffer_attachments)
-                        .width(present_target.resolution().width)
-                        .height(present_target.resolution().height)
-                        .layers(1);
-                    device
-                        .create_framebuffer(&framebuffer_ci, None)
-                        .expect("failed to create framebuffer")
-                })
-                .collect();
-
-            // post processing descriptor set
-            let (descriptor_set_layout_post, descriptor_set_post) = {
-                let descriptor_bindings = [vk::DescriptorSetLayoutBinding::builder()
-                    .binding(0)
-                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                    .descriptor_count(1)
-                    .stage_flags(vk::ShaderStageFlags::FRAGMENT)
-                    .build()];
-                let descriptor_set_layout = device
-                    .create_descriptor_set_layout(
-                        &vk::DescriptorSetLayoutCreateInfo::builder()
-                            .bindings(&descriptor_bindings)
-                            .build(),
-                        None,
-                    )
-                    .expect("Failed to create post processing descriptor set layout");
-
-                let descriptor_set = device
-                    .allocate_descriptor_sets(
-                        &vk::DescriptorSetAllocateInfo::builder()
-                            .descriptor_pool(descriptor_pool)
-                            .set_layouts(&[descriptor_set_layout])
-                            .build(),
-                    )
-                    .expect("Failed to create post processing descriptor set")[0];
-
-                let descriptor_set_write = vk::WriteDescriptorSet::builder()
-                    .dst_set(descriptor_set)
-                    .dst_binding(0)
-                    .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-                    .image_info(&[vk::DescriptorImageInfo {
-                        image_view: render_image_view,
-                        image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-                        sampler: render_sampler,
-                    }])
-                    .build();
-                device.update_descriptor_sets(&[descriptor_set_write], &[]);
-
-                (descriptor_set_layout, descriptor_set)
-            };
-
-            // post processing graphics pipeline
-            let (pipeline_post, pipeline_layout_post) = {
-                // shaders
-                let vert_code = read_spv(&mut Cursor::new(
-                    &include_bytes!("../../assets/shader_binaries/post.vert.spv")[..],
-                ))
-                .expect("failed to read vertex shader spv file");
-                let vert_shader_module = device
-                    .create_shader_module(
-                        &vk::ShaderModuleCreateInfo::builder().code(&vert_code),
-                        None,
-                    )
-                    .expect("failed to create vertex shader module");
-
-                let frag_code = read_spv(&mut Cursor::new(
-                    &include_bytes!("../../assets/shader_binaries/post.frag.spv")[..],
-                ))
-                .expect("failed to read fragment shader spv file");
-                let frag_shader_module = device
-                    .create_shader_module(
-                        &vk::ShaderModuleCreateInfo::builder().code(&frag_code),
-                        None,
-                    )
-                    .expect("failed to create fragment shader module");
-
-                let shader_entry_name = CStr::from_bytes_with_nul_unchecked(b"main\0");
-                let shader_stage_create_infos = [
-                    vk::PipelineShaderStageCreateInfo {
-                        module: vert_shader_module,
-                        p_name: shader_entry_name.as_ptr(),
-                        stage: vk::ShaderStageFlags::VERTEX,
-                        ..Default::default()
-                    },
-                    vk::PipelineShaderStageCreateInfo {
-                        s_type: vk::StructureType::PIPELINE_SHADER_STAGE_CREATE_INFO,
-                        module: frag_shader_module,
-                        p_name: shader_entry_name.as_ptr(),
-                        stage: vk::ShaderStageFlags::FRAGMENT,
-                        ..Default::default()
-                    },
-                ];
-
-                // pipeline layout
-                let pipeline_layout_post = device
-                    .create_pipeline_layout(
-                        &vk::PipelineLayoutCreateInfo::builder()
-                            .set_layouts(&[descriptor_set_layout_post]),
-                        None,
-                    )
-                    .expect("failed to create post processing pipeline layout");
-
-                // graphics pipeline create info
-                let viewports = [vk::Viewport {
-                    x: 0.0,
-                    y: 0.0,
-                    width: present_target.resolution().width as f32,
-                    height: present_target.resolution().height as f32,
-                    min_depth: 0.0,
-                    max_depth: 1.0,
-                }];
-                let scissors = [present_target.resolution().into()];
-                let viewport_state_info = vk::PipelineViewportStateCreateInfo::builder()
-                    .scissors(&scissors)
-                    .viewports(&viewports);
-
-                let empty_vertex_input_state_info =
-                    vk::PipelineVertexInputStateCreateInfo::builder();
-                let vertex_input_assembly_state_info = vk::PipelineInputAssemblyStateCreateInfo {
-                    topology: vk::PrimitiveTopology::TRIANGLE_LIST,
-                    ..Default::default()
-                };
-                let rasterization_info = vk::PipelineRasterizationStateCreateInfo {
-                    front_face: vk::FrontFace::COUNTER_CLOCKWISE,
-                    line_width: 1.0,
-                    polygon_mode: vk::PolygonMode::FILL,
-                    ..Default::default()
-                };
-                let multisample_state_info = vk::PipelineMultisampleStateCreateInfo {
-                    rasterization_samples: vk::SampleCountFlags::TYPE_1,
-                    ..Default::default()
-                };
-                let noop_stencil_state = vk::StencilOpState {
-                    fail_op: vk::StencilOp::KEEP,
-                    pass_op: vk::StencilOp::KEEP,
-                    depth_fail_op: vk::StencilOp::KEEP,
-                    compare_op: vk::CompareOp::ALWAYS,
-                    ..Default::default()
-                };
-                let depth_state_info = vk::PipelineDepthStencilStateCreateInfo {
-                    depth_test_enable: 1,
-                    depth_write_enable: 1,
-                    depth_compare_op: vk::CompareOp::LESS_OR_EQUAL,
-                    front: noop_stencil_state,
-                    back: noop_stencil_state,
-                    max_depth_bounds: 1.0,
-                    ..Default::default()
-                };
-                let color_blend_attachment_states = [vk::PipelineColorBlendAttachmentState {
-                    blend_enable: 0,
-                    src_color_blend_factor: vk::BlendFactor::SRC_COLOR,
-                    dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_DST_COLOR,
-                    color_blend_op: vk::BlendOp::ADD,
-                    src_alpha_blend_factor: vk::BlendFactor::ZERO,
-                    dst_alpha_blend_factor: vk::BlendFactor::ZERO,
-                    alpha_blend_op: vk::BlendOp::ADD,
-                    color_write_mask: vk::ColorComponentFlags::RGBA,
-                }];
-                let color_blend_state = vk::PipelineColorBlendStateCreateInfo::builder()
-                    .logic_op(vk::LogicOp::CLEAR)
-                    .attachments(&color_blend_attachment_states);
-                let dynamic_state = [vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR];
-                let dynamic_state_info =
-                    vk::PipelineDynamicStateCreateInfo::builder().dynamic_states(&dynamic_state);
-
-                let pipeline_ci = vk::GraphicsPipelineCreateInfo::builder()
-                    .stages(&shader_stage_create_infos)
-                    .vertex_input_state(&empty_vertex_input_state_info)
-                    .input_assembly_state(&vertex_input_assembly_state_info)
-                    .viewport_state(&viewport_state_info)
-                    .rasterization_state(&rasterization_info)
-                    .multisample_state(&multisample_state_info)
-                    .depth_stencil_state(&depth_state_info)
-                    .color_blend_state(&color_blend_state)
-                    .dynamic_state(&dynamic_state_info)
-                    .layout(pipeline_layout_post)
-                    .render_pass(renderpass)
-                    .build();
-
-                let pipeline_post = device
-                    .create_graphics_pipelines(vk::PipelineCache::null(), &[pipeline_ci], None)
-                    .expect("failed to create post processing graphics pipeline")[0];
-
-                // cleanup shader modules
-                device.destroy_shader_module(vert_shader_module, None);
-                device.destroy_shader_module(frag_shader_module, None);
-
-                (pipeline_post, pipeline_layout_post)
-            };
-
-            // return self
-            RenderManager {
-                instance,
-                device,
-                debug_utils_loader,
-                debug_call_back,
-                surface_loader,
-                surface,
-                present_target,
-                queue,
-                command_pool,
-                command_buffer_render,
-                render_image,
-                render_image_view,
-                render_sampler,
-                semaphore_present_complete,
-                semaphore_rendering_complete,
-                fence_render_commands_reuse,
-                fence_setup_commands_reuse,
-                render_image_memory,
-                descriptor_pool,
-                descriptor_set_layout_compute,
-                descriptor_set_layout_post,
-                descriptor_set_compute,
-                descriptor_set_post,
-                work_group_size,
-                work_group_count,
-                pipeline_layout_compute,
-                pipeline_compute,
-                pipeline_layout_post,
-                pipeline_post,
-                renderpass,
-                framebuffers,
-            }
-        }
-    }
-}
-
-impl Drop for RenderManager {
-    fn drop(&mut self) {
-        unsafe {
-            self.device.device_wait_idle().unwrap();
-
-            self.device
-                .destroy_descriptor_pool(self.descriptor_pool, None);
-            self.device
-                .destroy_descriptor_set_layout(self.descriptor_set_layout_compute, None);
-            self.device
-                .destroy_descriptor_set_layout(self.descriptor_set_layout_post, None);
-            self.device.destroy_command_pool(self.command_pool, None);
-
-            self.device
-                .destroy_pipeline_layout(self.pipeline_layout_compute, None);
-            self.device
-                .destroy_pipeline_layout(self.pipeline_layout_post, None);
-            self.device.destroy_pipeline(self.pipeline_compute, None);
-            self.device.destroy_pipeline(self.pipeline_post, None);
-
-            for &framebuffer in self.framebuffers.iter() {
-                self.device.destroy_framebuffer(framebuffer, None);
-            }
-            self.device.destroy_render_pass(self.renderpass, None);
-
-            self.device
-                .destroy_semaphore(self.semaphore_present_complete, None);
-            self.device
-                .destroy_semaphore(self.semaphore_rendering_complete, None);
-            self.device
-                .destroy_fence(self.fence_render_commands_reuse, None);
-            self.device
-                .destroy_fence(self.fence_setup_commands_reuse, None);
-
-            self.device.free_memory(self.render_image_memory, None);
-            self.device.destroy_image_view(self.render_image_view, None);
-            self.device.destroy_image(self.render_image, None);
-            self.device.destroy_sampler(self.render_sampler, None);
-
-            self.surface_loader.destroy_surface(self.surface, None);
-
-            self.device.destroy_device(None);
-
-            self.debug_utils_loader
-                .destroy_debug_utils_messenger(self.debug_call_back, None);
-            self.instance.destroy_instance(None);
-        }
-    }
-}
-
-// vulkan debug layer callback (e.g. validation)
-unsafe extern "system" fn vulkan_debug_callback(
-    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
-    message_type: vk::DebugUtilsMessageTypeFlagsEXT,
-    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
-    _user_data: *mut std::os::raw::c_void,
-) -> vk::Bool32 {
-    let callback_data = *p_callback_data;
-
-    let message = if callback_data.p_message.is_null() {
-        Cow::from("")
-    } else {
-        CStr::from_ptr(callback_data.p_message).to_string_lossy()
-    };
-    let message_severity_str = match message_severity {
-        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => "ERROR:".red(),
-        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => "WARNING:".yellow(),
-        vk::DebugUtilsMessageSeverityFlagsEXT::INFO => "INFO:".blue(),
-        vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => "VERBOSE:".magenta(),
-        _ => "...".normal(),
-    };
-
-    println!(
-        "{} {} {}",
-        message_severity_str,
-        format!("(Vulkan {:?})", message_type).dimmed(),
-        if message_severity == vk::DebugUtilsMessageSeverityFlagsEXT::ERROR {
-            message.bright_red()
-        } else {
-            message.normal()
-        }
-    );
-    // break in debug builds
-    debug_assert!(
-        message_severity != vk::DebugUtilsMessageSeverityFlagsEXT::ERROR,
-        "vulkan validation error (see log)",
-    );
-
-    vk::FALSE
-}
-
-/// Helper function for submitting command buffers. Immediately waits for the fence before the command buffer
-/// is executed. That way we can delay the waiting for the fences by 1 frame which is good for performance.
-/// Make sure to create the fence in a signaled state on the first use.
-#[allow(clippy::too_many_arguments)]
-pub fn record_submit_commandbuffer<F: FnOnce(&Device, vk::CommandBuffer)>(
-    device: &Device,
-    command_buffer: vk::CommandBuffer,
-    command_buffer_reuse_fence: vk::Fence,
-    submit_queue: vk::Queue,
-    wait_mask: &[vk::PipelineStageFlags],
-    wait_semaphores: &[vk::Semaphore],
-    signal_semaphores: &[vk::Semaphore],
-    f: F,
-) {
-    unsafe {
-        device
-            .wait_for_fences(&[command_buffer_reuse_fence], true, std::u64::MAX)
-            .expect("Wait for fence failed.");
-
-        device
-            .reset_fences(&[command_buffer_reuse_fence])
-            .expect("Reset fences failed.");
-
-        device
-            .reset_command_buffer(
-                command_buffer,
-                vk::CommandBufferResetFlags::RELEASE_RESOURCES,
-            )
-            .expect("Reset command buffer failed.");
-
-        let command_buffer_begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-
-        device
-            .begin_command_buffer(command_buffer, &command_buffer_begin_info)
-            .expect("Begin commandbuffer");
-        f(device, command_buffer);
-        device
-            .end_command_buffer(command_buffer)
-            .expect("End commandbuffer");
-
-        let command_buffers = vec![command_buffer];
-
-        let submit_info = vk::SubmitInfo::builder()
-            .wait_semaphores(wait_semaphores)
-            .wait_dst_stage_mask(wait_mask)
-            .command_buffers(&command_buffers)
-            .signal_semaphores(signal_semaphores);
-
-        device
-            .queue_submit(
-                submit_queue,
-                &[submit_info.build()],
-                command_buffer_reuse_fence,
-            )
-            .expect("queue submit failed.");
-    }
-}
-
-fn find_memorytype_index(
-    memory_req: &vk::MemoryRequirements,
-    memory_prop: &vk::PhysicalDeviceMemoryProperties,
-    flags: vk::MemoryPropertyFlags,
-) -> Option<u32> {
-    memory_prop.memory_types[..memory_prop.memory_type_count as _]
-        .iter()
-        .enumerate()
-        .find(|(index, memory_type)| {
-            (1 << index) & memory_req.memory_type_bits != 0
-                && memory_type.property_flags & flags == flags
+impl<'a> RenderManager<'a> {
+    pub fn new(window: &'a Window) -> Self {
+        let required_extensions = vulkano_win::required_extensions();
+
+        let instance = Instance::new(InstanceCreateInfo {
+            enabled_extensions: required_extensions,
+            // enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+            enumerate_portability: true,
+            ..Default::default()
         })
-        .map(|(index, _memory_type)| index as _)
+        .unwrap();
+
+        let surface = create_surface_from_winit(window, instance.clone()).unwrap();
+
+        let device_extensions = DeviceExtensions {
+            khr_swapchain: true,
+            ..DeviceExtensions::none()
+        };
+
+        let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+            .filter(|&p| {
+                p.api_version()
+                    >= Version::major_minor(config::VULKAN_VER_MAJ, config::VULKAN_VER_MIN)
+            })
+            .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+            .filter_map(|p| {
+                p.queue_families()
+                    .find(|&q| {
+                        q.supports_compute()
+                            && q.supports_graphics()
+                            && q.supports_surface(&surface).unwrap_or(false)
+                    })
+                    .map(|q| (p, q))
+            })
+            // device type preference
+            .min_by_key(|(p, _)| match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 0,
+                PhysicalDeviceType::IntegratedGpu => 1,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 3,
+                PhysicalDeviceType::Other => 4,
+            })
+            .expect("No suitable physical device found");
+        info!(
+            "Using vulkan device: {} (type: {:?})",
+            physical_device.properties().device_name,
+            physical_device.properties().device_type,
+        );
+
+        let (device, mut queues) = Device::new(
+            physical_device,
+            DeviceCreateInfo {
+                enabled_extensions: device_extensions,
+                enabled_features: Features {
+                    dynamic_rendering: true,
+                    ..Features::none()
+                },
+                queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let queue = queues.next().unwrap();
+
+        let (swapchain, swapchain_images) = {
+            let surface_capabilities = physical_device
+                .surface_capabilities(&surface, Default::default())
+                .unwrap();
+            let image_format = Some(
+                physical_device
+                    .surface_formats(&surface, Default::default())
+                    .unwrap()[0]
+                    .0,
+            );
+            Swapchain::new(
+                device.clone(),
+                surface.clone(),
+                SwapchainCreateInfo {
+                    min_image_count: surface_capabilities.min_image_count,
+                    image_format,
+                    image_extent: surface.window().inner_size().into(),
+                    image_usage: ImageUsage::color_attachment(),
+                    composite_alpha: surface_capabilities
+                        .supported_composite_alpha
+                        .iter()
+                        .next()
+                        .unwrap(),
+                    ..Default::default()
+                },
+            )
+            .unwrap()
+        };
+
+        // todo safe spirv loading
+        let vs = unsafe {
+            ShaderModule::from_bytes(
+                device.clone(),
+                // load spv at runtime
+                std::fs::read("assets/shader_binaries/post.vert.spv")
+                    .unwrap()
+                    .as_slice(),
+            )
+        }
+        .unwrap();
+        let fs = unsafe {
+            ShaderModule::from_bytes(
+                device.clone(),
+                // load spv at runtime
+                std::fs::read("assets/shader_binaries/post.frag.spv")
+                    .unwrap()
+                    .as_slice(),
+            )
+        }
+        .unwrap();
+
+        let pipeline_graphics = GraphicsPipeline::start()
+            .render_pass(PipelineRenderingCreateInfo {
+                color_attachment_formats: vec![Some(swapchain.image_format())],
+                ..Default::default()
+            })
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .vertex_shader(vs.entry_point("main").unwrap(), ())
+            .fragment_shader(fs.entry_point("main").unwrap(), ())
+            .build(device.clone())
+            .unwrap();
+
+        // dynamic viewport
+        let mut viewport = Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [0.0, 0.0],
+            depth_range: 0.0..1.0,
+        };
+
+        // swapchain image views
+        let swapchain_image_views = window_size_dependent_setup(&swapchain_images, &mut viewport);
+
+        let future_previous_frame = Some(sync::now(device.clone()).boxed());
+        let recreate_swapchain = false;
+
+        RenderManager {
+            device,
+            queue,
+            surface,
+            swapchain,
+            swapchain_image_views,
+            viewport,
+            pipeline_graphics,
+            future_previous_frame,
+            recreate_swapchain,
+        }
+    }
+
+    pub fn render_frame(&mut self, window_resize: bool) {
+        // checks for submission finish and free locks on gpu resources
+        self.future_previous_frame
+            .as_mut()
+            .unwrap()
+            .cleanup_finished();
+
+        self.recreate_swapchain = self.recreate_swapchain || window_resize;
+        // recreate swapchain
+        if self.recreate_swapchain {
+            let (new_swapchain, new_images) = match self.swapchain.recreate(SwapchainCreateInfo {
+                image_extent: self.surface.window().inner_size().into(),
+                ..self.swapchain.create_info()
+            }) {
+                Ok(r) => r,
+                // this error tends to happen when the user is manually resizing the window.
+                // simply restarting the loop is the easiest way to fix this issue.
+                Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
+                Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+            };
+
+            self.swapchain = new_swapchain;
+            self.swapchain_image_views =
+                window_size_dependent_setup(&new_images, &mut self.viewport);
+        }
+        self.recreate_swapchain = false;
+
+        // blocks when no images currently available (all have been submitted already)
+        let (image_num, suboptimal, acquire_future) =
+            // todo timeout for no images case...
+            match acquire_next_image(self.swapchain.clone(), None) {
+                Ok(r) => r,
+                Err(AcquireError::OutOfDate) => {
+                    self.recreate_swapchain = true;
+                    return;
+                }
+                Err(e) => panic!("Failed to acquire next image: {:?}", e),
+            };
+        if suboptimal {
+            self.recreate_swapchain = true;
+        }
+
+        let mut builder = AutoCommandBufferBuilder::primary(
+            self.device.clone(),
+            self.queue.family(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        let bruh: Arc<dyn vulkano::image::view::ImageViewAbstract> =
+            self.swapchain_image_views[image_num].clone();
+
+        builder
+            .begin_rendering(RenderingInfo {
+                color_attachments: vec![Some(RenderingAttachmentInfo {
+                    load_op: LoadOp::Clear,
+                    store_op: StoreOp::Store,
+                    clear_value: Some([0.0, 1.0, 0.0, 1.0].into()),
+                    ..RenderingAttachmentInfo::image_view(
+                        self.swapchain_image_views[image_num].clone(),
+                    )
+                })],
+                ..Default::default()
+            })
+            .unwrap()
+            .set_viewport(0, [self.viewport.clone()])
+            .bind_pipeline_graphics(self.pipeline_graphics.clone())
+            .draw(3, 1, 0, 0)
+            .unwrap()
+            .end_rendering()
+            .unwrap();
+        let command_buffer = builder.build().unwrap();
+
+        // submit
+        let future = self
+            .future_previous_frame
+            .take()
+            .unwrap()
+            .join(acquire_future)
+            .then_execute(self.queue.clone(), command_buffer)
+            .unwrap()
+            .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), image_num)
+            .then_signal_fence_and_flush();
+
+        match future {
+            Ok(future) => {
+                self.future_previous_frame = Some(future.boxed());
+            }
+            Err(FlushError::OutOfDate) => {
+                self.recreate_swapchain = true;
+                self.future_previous_frame = Some(sync::now(self.device.clone()).boxed());
+            }
+            Err(e) => {
+                error!("Failed to flush future: {:?}", e);
+                self.future_previous_frame = Some(sync::now(self.device.clone()).boxed());
+            }
+        }
+    }
+
+    pub fn wait_device(&self) {
+        todo!();
+    }
+}
+
+/// This method is called once during initialization, then again whenever the window is resized
+/// todo refactor?
+fn window_size_dependent_setup<'a>(
+    images: &Vec<Arc<SwapchainImage<&'a Window>>>,
+    viewport: &mut Viewport,
+) -> Vec<Arc<ImageView<SwapchainImage<&'a Window>>>> {
+    let dimensions = images[0].dimensions().width_height();
+    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
+
+    images
+        .iter()
+        .map(|image| ImageView::new_default(image.clone()).unwrap())
+        .collect::<Vec<_>>()
 }
