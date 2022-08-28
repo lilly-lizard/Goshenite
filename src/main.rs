@@ -3,6 +3,7 @@ mod immutable;
 mod renderer;
 
 use renderer::render_manager::RenderManager;
+use std::sync::Arc;
 use winit::event_loop::EventLoop;
 use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
@@ -35,18 +36,20 @@ fn main() {
 
     // create winit window
     let mut event_loop = EventLoop::new();
-    let window = WindowBuilder::new()
-        .with_title(config::ENGINE_NAME)
-        .with_inner_size(winit::dpi::LogicalSize::new(
-            f64::from(init_resolution[0]),
-            f64::from(init_resolution[1]),
-        ))
-        .build(&event_loop)
-        .unwrap();
+    let window = Arc::new(
+        WindowBuilder::new()
+            .with_title(config::ENGINE_NAME)
+            .with_inner_size(winit::dpi::LogicalSize::new(
+                f64::from(init_resolution[0]),
+                f64::from(init_resolution[1]),
+            ))
+            .build(&event_loop)
+            .unwrap(),
+    );
 
     {
         // init renderer
-        let mut renderer = RenderManager::new(&window);
+        let mut renderer = RenderManager::new(window);
 
         // start render loop
         let mut window_resize: bool = false;

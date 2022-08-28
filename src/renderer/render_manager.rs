@@ -34,20 +34,20 @@ use vulkano::{
 use vulkano_win::create_surface_from_winit;
 use winit::window::Window;
 
-pub struct RenderManager<'a> {
+pub struct RenderManager {
     device: Arc<Device>,
     queue: Arc<Queue>,
-    surface: Arc<Surface<&'a Window>>,
-    swapchain: Arc<Swapchain<&'a Window>>,
-    swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<&'a Window>>>>,
+    surface: Arc<Surface<Arc<Window>>>,
+    swapchain: Arc<Swapchain<Arc<Window>>>,
+    swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
     viewport: Viewport,
     pipeline_graphics: Arc<GraphicsPipeline>,
     future_previous_frame: Option<Box<dyn GpuFuture>>, // todo description
     recreate_swapchain: bool, // indicates that the swapchain needs to be recreated next frame
 }
 
-impl<'a> RenderManager<'a> {
-    pub fn new(window: &'a Window) -> Self {
+impl RenderManager {
+    pub fn new(window: Arc<Window>) -> Self {
         let required_extensions = vulkano_win::required_extensions();
 
         let instance = Instance::new(InstanceCreateInfo {
@@ -305,10 +305,13 @@ impl<'a> RenderManager<'a> {
 
 /// This method is called once during initialization, then again whenever the window is resized
 /// todo refactor?
-fn window_size_dependent_setup<'a>(
-    images: &Vec<Arc<SwapchainImage<&'a Window>>>,
+fn window_size_dependent_setup<W: vulkano_win::SafeBorrow<Window>>(
+    images: &Vec<Arc<SwapchainImage<W>>>,
     viewport: &mut Viewport,
-) -> Vec<Arc<ImageView<SwapchainImage<&'a Window>>>> {
+) -> Vec<Arc<ImageView<SwapchainImage<W>>>>
+where
+    SwapchainImage<W>: ImageAccess,
+{
     let dimensions = images[0].dimensions().width_height();
     viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
 
