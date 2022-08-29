@@ -14,7 +14,13 @@ use vulkano::{
         Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
     },
     image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
-    instance::{Instance, InstanceCreateInfo},
+    instance::{
+        debug::{
+            DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
+            DebugUtilsMessengerCreateInfo, Message,
+        },
+        layers_list, Instance, InstanceCreateInfo, InstanceExtensions,
+    },
     pipeline::{
         graphics::{
             render_pass::PipelineRenderingCreateInfo,
@@ -34,7 +40,10 @@ use vulkano::{
 use vulkano_win::create_surface_from_winit;
 use winit::window::Window;
 
+// RenderManager members
+
 pub struct RenderManager {
+    debug_callback: Option<DebugUtilsMessenger>,
     device: Arc<Device>,
     queue: Arc<Queue>,
     surface: Arc<Surface<Arc<Window>>>,
@@ -46,17 +55,54 @@ pub struct RenderManager {
     recreate_swapchain: bool, // indicates that the swapchain needs to be recreated next frame
 }
 
+// RenderManager public functions
+
 impl RenderManager {
     pub fn new(window: Arc<Window>) -> Self {
-        let required_extensions = vulkano_win::required_extensions();
+        let mut instance_extensions = vulkano_win::required_extensions();
+        let mut instance_layers: Vec<String> = Vec::new();
 
+        // check for validation layer/debug callback support
+        let enable_debug_callback =
+            if let Ok(_) = add_debug_validation(&mut instance_extensions, &mut instance_layers) {
+                info!("enabling Vulkan validation layers and debug callback");
+                true
+            } else {
+                warn!("validation layer debug callback requested but cannot be enabled");
+                false
+            };
+
+        // create instance
         let instance = Instance::new(InstanceCreateInfo {
-            enabled_extensions: required_extensions,
-            // enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
-            enumerate_portability: true,
+            enabled_extensions: instance_extensions,
+            enumerate_portability: true, // enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             ..Default::default()
         })
         .unwrap();
+
+        // setup debug callbacks
+        let debug_callback = if enable_debug_callback {
+            unsafe {
+                DebugUtilsMessenger::new(
+                    instance.clone(),
+                    DebugUtilsMessengerCreateInfo {
+                        message_severity: DebugUtilsMessageSeverity {
+                            error: true,
+                            warning: true,
+                            information: true,
+                            verbose: false,
+                        },
+                        message_type: DebugUtilsMessageType::all(),
+                        ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|msg| {
+                            process_debug_callback(msg)
+                        }))
+                    },
+                )
+                .ok()
+            }
+        } else {
+            None
+        };
 
         let surface = create_surface_from_winit(window, instance.clone()).unwrap();
 
@@ -187,6 +233,7 @@ impl RenderManager {
         let recreate_swapchain = false;
 
         RenderManager {
+            debug_callback,
             device,
             queue,
             surface,
@@ -301,6 +348,88 @@ impl RenderManager {
     pub fn wait_device(&self) {
         todo!();
     }
+}
+
+// Helper functions
+
+/// Prints/logs a Vulkan validation layer message
+fn process_debug_callback(msg: &Message) {
+    let ty = if msg.ty.general {
+        "general"
+    } else if msg.ty.validation {
+        "validation"
+    } else if msg.ty.performance {
+        "performance"
+    } else {
+        "type unknown"
+    };
+
+    if msg.severity.error {
+        error!("Vulkan {} [{}]: {}", "ERROR", ty, msg.description);
+    } else if msg.severity.warning {
+        warn!("Vulkan {} [{}]: {}", "WARNING", ty, msg.description);
+    } else if msg.severity.information {
+        info!("Vulkan {} [{}]: {}", "INFO", ty, msg.description);
+    } else if msg.severity.verbose {
+        debug!("Vulkan {} [{}]: {}", "VERBOSE", ty, msg.description);
+    } else {
+        debug!(
+            "Vulkan {} [{}]: {}",
+            "[unkown severity]", ty, msg.description
+        );
+    };
+}
+
+/// Describes issues with enabling instance extensions/layers
+enum InstanceSupportError {
+    /// Requested instance extension is not supported by this vulkan driver
+    ExtensionUnsupported,
+    /// Requested Vulkan layer is not found (may not be installed)
+    LayerNotFound,
+}
+/// Checks for VK_EXT_debug_utils support and presence khronos validation layers
+/// If both can be enabled, adds them to provided extension and layer lists
+fn add_debug_validation(
+    instance_extensions: &mut InstanceExtensions,
+    instance_layers: &mut Vec<String>,
+) -> Result<(), InstanceSupportError> {
+    // check debug utils extension support
+    if match InstanceExtensions::supported_by_core() {
+        Ok(supported) => supported.ext_debug_utils,
+        Err(_) => false,
+    } {
+        info!("VK_EXT_debug_utils was requested and is supported");
+    } else {
+        warn!("VK_EXT_debug_utils was requested but is unsupported");
+        return Err(InstanceSupportError::ExtensionUnsupported);
+    }
+
+    // check validation layers are present
+    #[cfg(not(target_os = "macos"))]
+    let validation_layer = "VK_LAYER_LUNARG_standard_validation";
+    #[cfg(target_os = "macos")]
+    let validation_layer = "VK_LAYER_KHRONOS_validation";
+    if {
+        let available_layers = layers_list().expect("failed to open vulkan library");
+        let mut layer_found = false;
+        for l in available_layers {
+            if validation_layer == l.name() {
+                layer_found = true;
+                break;
+            }
+        }
+        layer_found
+    } {
+        info!("{} was requested and found", validation_layer);
+    } else {
+        warn!("{} was requested but was not found", validation_layer);
+        return Err(InstanceSupportError::LayerNotFound);
+    }
+
+    // add VK_EXT_debug_utils and VK_LAYER_LUNARG_standard_validation
+    instance_extensions.ext_debug_utils = true;
+    instance_layers.push(validation_layer.to_owned());
+    Ok(())
 }
 
 /// This method is called once during initialization, then again whenever the window is resized
