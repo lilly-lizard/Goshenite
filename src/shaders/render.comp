@@ -35,11 +35,11 @@ vec3 scene(const vec3 ray_d)
 
 void main()
 {
-	/*
 	uvec2 dim = uvec2(imageSize(renderImage)); // render image dimensions
 	if (dim.x <= gl_GlobalInvocationID.x || dim.y <= gl_GlobalInvocationID.y)
 		return; // don't bother rendering outside of image bounds
 
+	/*
 	vec2 pos_uv = (vec2(gl_GlobalInvocationID.xy) + vec2(0.5) - vec2(dim) / 2.) / float(dim.x); // clip space position in frame
 	vec4 pos_view = cam.projInverse * vec4(pos_uv.x, -pos_uv.y, 1., 1.); // view space position
 	// todo normalize? divide by w? https://stackoverflow.com/questions/31686664/perspective-divide-why-use-the-w-component
@@ -48,7 +48,6 @@ void main()
 	// render scene
 	vec3 color = scene(ray_d);
 	*/
-	vec3 color = scene(vec3(1., 0., 0.));
 
-	imageStore(renderImage, ivec2(gl_GlobalInvocationID.xy), vec4(color, 1.));
+	imageStore(renderImage, ivec2(gl_GlobalInvocationID.xy), vec4(vec2(gl_GlobalInvocationID.xy) / vec2(dim), .5, 1.));
 }

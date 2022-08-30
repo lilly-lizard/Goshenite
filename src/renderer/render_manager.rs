@@ -16,10 +16,7 @@ use vulkano::{
         Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
     },
     format::Format,
-    image::{
-        view::{ImageView, ImageViewCreateInfo, ImageViewType},
-        ImageAccess, ImageDimensions, ImageUsage, StorageImage, SwapchainImage,
-    },
+    image::{view::ImageView, ImageAccess, ImageUsage, StorageImage, SwapchainImage},
     instance::{
         debug::{
             DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
@@ -200,7 +197,7 @@ impl RenderManager {
         };
 
         // dynamic viewport
-        let mut viewport = Viewport {
+        let viewport = Viewport {
             origin: [0.0, 0.0],
             dimensions: [
                 swapchain_images[0].dimensions().width() as f32,
@@ -465,10 +462,12 @@ impl RenderManager {
             .map(|image| ImageView::new_default(image.clone()).unwrap())
             .collect::<Vec<_>>();
 
+        let resolution = swapchain_images[0].dimensions().width_height();
+
         // compute shader render target
         self.render_image = StorageImage::general_purpose_image_view(
             self.queue.clone(),
-            swapchain_images[0].dimensions().width_height(),
+            resolution,
             self.render_image_format,
             ImageUsage {
                 storage: true,
@@ -478,10 +477,9 @@ impl RenderManager {
         )
         .unwrap();
 
-        self.work_group_count = calc_work_group_count(
-            swapchain_images[0].dimensions().width_height(),
-            self.work_group_size,
-        );
+        self.work_group_count = calc_work_group_count(resolution, self.work_group_size);
+
+        self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
     }
 }
 
@@ -540,9 +538,6 @@ fn add_debug_validation(
     }
 
     // check validation layers are present
-    #[cfg(not(target_os = "macos"))]
-    let validation_layer = "VK_LAYER_LUNARG_standard_validation";
-    #[cfg(target_os = "macos")]
     let validation_layer = "VK_LAYER_KHRONOS_validation";
     if {
         let available_layers = layers_list().expect("failed to open vulkan library");
