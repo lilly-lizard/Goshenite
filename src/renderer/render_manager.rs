@@ -3,17 +3,23 @@
 
 use crate::config;
 #[allow(unused_imports)]
-use log::{debug, error, info, warn}; // todo "Renderer" message prefix
+use log::{debug, error, info, warn};
+use std::fs;
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, RenderingAttachmentInfo, RenderingInfo,
     },
+    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
     },
-    image::{view::ImageView, ImageAccess, ImageUsage, SwapchainImage},
+    format::Format,
+    image::{
+        view::{ImageView, ImageViewCreateInfo, ImageViewType},
+        ImageAccess, ImageDimensions, ImageUsage, StorageImage, SwapchainImage,
+    },
     instance::{
         debug::{
             DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
@@ -26,9 +32,10 @@ use vulkano::{
             render_pass::PipelineRenderingCreateInfo,
             viewport::{Viewport, ViewportState},
         },
-        GraphicsPipeline,
+        ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::{LoadOp, StoreOp},
+    sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
     shader::ShaderModule,
     swapchain::{
         acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
@@ -43,14 +50,20 @@ use winit::window::Window;
 // RenderManager members
 
 pub struct RenderManager {
-    debug_callback: Option<DebugUtilsMessenger>,
+    _debug_callback: Option<DebugUtilsMessenger>,
     device: Arc<Device>,
     queue: Arc<Queue>,
     surface: Arc<Surface<Arc<Window>>>,
     swapchain: Arc<Swapchain<Arc<Window>>>,
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
     viewport: Viewport,
-    pipeline_graphics: Arc<GraphicsPipeline>,
+    render_image: Arc<ImageView<StorageImage>>,
+    render_image_format: Format,
+    sampler: Arc<Sampler>,
+    pipeline_compute: Arc<ComputePipeline>,
+    pipeline_post: Arc<GraphicsPipeline>,
+    work_group_size: [u32; 2],
+    work_group_count: [u32; 3],
     future_previous_frame: Option<Box<dyn GpuFuture>>, // todo description
     recreate_swapchain: bool, // indicates that the swapchain needs to be recreated next frame
 }
@@ -186,61 +199,122 @@ impl RenderManager {
             .unwrap()
         };
 
+        // dynamic viewport
+        let mut viewport = Viewport {
+            origin: [0.0, 0.0],
+            dimensions: [
+                swapchain_images[0].dimensions().width() as f32,
+                swapchain_images[0].dimensions().height() as f32,
+            ],
+            depth_range: 0.0..1.0,
+        };
+
+        // swapchain image views
+        let swapchain_image_views = swapchain_images
+            .iter()
+            .map(|image| ImageView::new_default(image.clone()).unwrap())
+            .collect::<Vec<_>>();
+
+        // compute shader render target
+        let render_image_format = Format::R8G8B8A8_UNORM; // todo check device support. prefer srgb?
+        let render_image = StorageImage::general_purpose_image_view(
+            queue.clone(),
+            swapchain_images[0].dimensions().width_height(),
+            render_image_format,
+            ImageUsage {
+                storage: true,
+                sampled: true,
+                ..ImageUsage::none()
+            },
+        )
+        .unwrap();
+
+        let sampler = Sampler::new(
+            device.clone(),
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::Repeat; 3],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
         // todo safe spirv loading
-        let vs = unsafe {
+        let shader_render = unsafe {
             ShaderModule::from_bytes(
                 device.clone(),
-                // load spv at runtime
-                std::fs::read("assets/shader_binaries/post.vert.spv")
+                fs::read("assets/shader_binaries/render.comp.spv")
                     .unwrap()
                     .as_slice(),
             )
         }
         .unwrap();
-        let fs = unsafe {
+        let shader_post_vert = unsafe {
             ShaderModule::from_bytes(
                 device.clone(),
                 // load spv at runtime
-                std::fs::read("assets/shader_binaries/post.frag.spv")
+                fs::read("assets/shader_binaries/post.vert.spv")
+                    .unwrap()
+                    .as_slice(),
+            )
+        }
+        .unwrap();
+        let shader_post_frag = unsafe {
+            ShaderModule::from_bytes(
+                device.clone(),
+                // load spv at runtime
+                fs::read("assets/shader_binaries/post.frag.spv")
                     .unwrap()
                     .as_slice(),
             )
         }
         .unwrap();
 
-        let pipeline_graphics = GraphicsPipeline::start()
+        let pipeline_compute = ComputePipeline::new(
+            device.clone(),
+            shader_render.entry_point("main").unwrap(),
+            &(),
+            None,
+            |_| {},
+        )
+        .unwrap();
+
+        let work_group_size = config::DEFAULT_WORK_GROUP_SIZE;
+        let work_group_count = calc_work_group_count(
+            swapchain_images[0].dimensions().width_height(),
+            work_group_size,
+        );
+
+        let pipeline_post = GraphicsPipeline::start()
             .render_pass(PipelineRenderingCreateInfo {
                 color_attachment_formats: vec![Some(swapchain.image_format())],
                 ..Default::default()
             })
             .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-            .vertex_shader(vs.entry_point("main").unwrap(), ())
-            .fragment_shader(fs.entry_point("main").unwrap(), ())
+            .vertex_shader(shader_post_vert.entry_point("main").unwrap(), ())
+            .fragment_shader(shader_post_frag.entry_point("main").unwrap(), ())
             .build(device.clone())
             .unwrap();
-
-        // dynamic viewport
-        let mut viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [0.0, 0.0],
-            depth_range: 0.0..1.0,
-        };
-
-        // swapchain image views
-        let swapchain_image_views = window_size_dependent_setup(&swapchain_images, &mut viewport);
 
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
         let recreate_swapchain = false;
 
         RenderManager {
-            debug_callback,
+            _debug_callback: debug_callback,
             device,
             queue,
             surface,
             swapchain,
             swapchain_image_views,
             viewport,
-            pipeline_graphics,
+            render_image,
+            render_image_format,
+            sampler,
+            pipeline_compute,
+            pipeline_post,
+            work_group_size,
+            work_group_count,
             future_previous_frame,
             recreate_swapchain,
         }
@@ -256,26 +330,13 @@ impl RenderManager {
         self.recreate_swapchain = self.recreate_swapchain || window_resize;
         // recreate swapchain
         if self.recreate_swapchain {
-            let (new_swapchain, new_images) = match self.swapchain.recreate(SwapchainCreateInfo {
-                image_extent: self.surface.window().inner_size().into(),
-                ..self.swapchain.create_info()
-            }) {
-                Ok(r) => r,
-                // this error tends to happen when the user is manually resizing the window.
-                // simply restarting the loop is the easiest way to fix this issue.
-                Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-                Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
-            };
-
-            self.swapchain = new_swapchain;
-            self.swapchain_image_views =
-                window_size_dependent_setup(&new_images, &mut self.viewport);
+            self.recreate_swapchain();
         }
         self.recreate_swapchain = false;
 
         // blocks when no images currently available (all have been submitted already)
         let (image_num, suboptimal, acquire_future) =
-            // todo timeout for no images case...
+            // todo timeout for no images returned case?
             match acquire_next_image(self.swapchain.clone(), None) {
                 Ok(r) => r,
                 Err(AcquireError::OutOfDate) => {
@@ -288,17 +349,48 @@ impl RenderManager {
             self.recreate_swapchain = true;
         }
 
+        let desc_set_render = PersistentDescriptorSet::new(
+            self.pipeline_compute
+                .layout()
+                .set_layouts()
+                .get(0)
+                .unwrap()
+                .to_owned(),
+            [WriteDescriptorSet::image_view(0, self.render_image.clone())],
+        )
+        .unwrap();
+
+        let desc_set_post = PersistentDescriptorSet::new(
+            self.pipeline_post
+                .layout()
+                .set_layouts()
+                .get(0)
+                .unwrap()
+                .to_owned(),
+            [WriteDescriptorSet::image_view_sampler(
+                0,
+                self.render_image.clone(),
+                self.sampler.clone(),
+            )],
+        )
+        .unwrap();
+
         let mut builder = AutoCommandBufferBuilder::primary(
             self.device.clone(),
             self.queue.family(),
             CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
-
-        let bruh: Arc<dyn vulkano::image::view::ImageViewAbstract> =
-            self.swapchain_image_views[image_num].clone();
-
         builder
+            .bind_pipeline_compute(self.pipeline_compute.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                self.pipeline_compute.layout().clone(),
+                0,
+                desc_set_render.clone(),
+            )
+            .dispatch(self.work_group_count)
+            .unwrap()
             .begin_rendering(RenderingInfo {
                 color_attachments: vec![Some(RenderingAttachmentInfo {
                     load_op: LoadOp::Clear,
@@ -312,7 +404,13 @@ impl RenderManager {
             })
             .unwrap()
             .set_viewport(0, [self.viewport.clone()])
-            .bind_pipeline_graphics(self.pipeline_graphics.clone())
+            .bind_pipeline_graphics(self.pipeline_post.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.pipeline_post.layout().clone(),
+                0,
+                desc_set_post.clone(),
+            )
             .draw(3, 1, 0, 0)
             .unwrap()
             .end_rendering()
@@ -344,9 +442,46 @@ impl RenderManager {
             }
         }
     }
+}
 
-    pub fn wait_device(&self) {
-        todo!();
+// Private functions
+
+impl RenderManager {
+    fn recreate_swapchain(&mut self) {
+        let (new_swapchain, swapchain_images) = match self.swapchain.recreate(SwapchainCreateInfo {
+            image_extent: self.surface.window().inner_size().into(),
+            ..self.swapchain.create_info()
+        }) {
+            Ok(r) => r,
+            // this error tends to happen when the user is manually resizing the window.
+            // simply restarting the loop is the easiest way to fix this issue.
+            Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
+            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+        };
+
+        self.swapchain = new_swapchain;
+        self.swapchain_image_views = swapchain_images
+            .iter()
+            .map(|image| ImageView::new_default(image.clone()).unwrap())
+            .collect::<Vec<_>>();
+
+        // compute shader render target
+        self.render_image = StorageImage::general_purpose_image_view(
+            self.queue.clone(),
+            swapchain_images[0].dimensions().width_height(),
+            self.render_image_format,
+            ImageUsage {
+                storage: true,
+                sampled: true,
+                ..ImageUsage::none()
+            },
+        )
+        .unwrap();
+
+        self.work_group_count = calc_work_group_count(
+            swapchain_images[0].dimensions().width_height(),
+            self.work_group_size,
+        );
     }
 }
 
@@ -432,20 +567,15 @@ fn add_debug_validation(
     Ok(())
 }
 
-/// This method is called once during initialization, then again whenever the window is resized
-/// todo refactor?
-fn window_size_dependent_setup<W: vulkano_win::SafeBorrow<Window>>(
-    images: &Vec<Arc<SwapchainImage<W>>>,
-    viewport: &mut Viewport,
-) -> Vec<Arc<ImageView<SwapchainImage<W>>>>
-where
-    SwapchainImage<W>: ImageAccess,
-{
-    let dimensions = images[0].dimensions().width_height();
-    viewport.dimensions = [dimensions[0] as f32, dimensions[1] as f32];
-
-    images
-        .iter()
-        .map(|image| ImageView::new_default(image.clone()).unwrap())
-        .collect::<Vec<_>>()
+/// Calculate required work group count for a given render resolution
+pub fn calc_work_group_count(resolution: [u32; 2], work_group_size: [u32; 2]) -> [u32; 3] {
+    let mut group_count_x = resolution[0] / work_group_size[0];
+    if (resolution[0] % work_group_size[0]) != 0 {
+        group_count_x = group_count_x + 1;
+    }
+    let mut group_count_y = resolution[1] / work_group_size[1];
+    if (resolution[1] % work_group_size[1]) != 0 {
+        group_count_y = group_count_y + 1;
+    }
+    [group_count_x, group_count_y, 1]
 }

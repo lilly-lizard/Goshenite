@@ -4,17 +4,18 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# log
+# logging
 log = "0.4"
-env_logger = "0.9"
+# terminal output formatting
+colored = "2.0"
 # winit is a cross-platform window creation and management library
 winit = "0.26"
 # glam is a vector and math library well suited for 3D graphics
-glam = "0.21"
+#glam = "0.21"
 # vulkano is a safe and convenient vulkan (ash) wrapper
 vulkano = "0.30"
 vulkano-win = "0.30" # winit interop
-vulkano-util = "0.30" # convenience functions
+#vulkano-util = "0.30" # convenience functions
 
 # colored: terminal output formatting
 # egui

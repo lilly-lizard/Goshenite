@@ -1,7 +1,10 @@
 mod config;
 mod immutable;
+mod logger;
 mod renderer;
 
+use log::LevelFilter;
+use logger::ConsoleLogger;
 use renderer::render_manager::RenderManager;
 use std::sync::Arc;
 use winit::event_loop::EventLoop;
@@ -29,10 +32,15 @@ const SPLASH: &str = "
 fn main() {
     println!("{}", SPLASH);
 
-    // init logging
-    env_logger::init();
+    // init logger
+    static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
+    if let Err(e) = log::set_logger(&CONSOLE_LOGGER) {
+        println!("Goshenite ERROR - Failed to initialize logger: {:?}", e);
+    };
+    log::set_max_level(LevelFilter::Info);
 
-    let init_resolution = [500, 500];
+    // todo how default res usually handled?
+    let init_resolution = [800, 800];
 
     // create winit window
     let mut event_loop = EventLoop::new();
@@ -80,7 +88,6 @@ fn main() {
             }
         });
 
-        renderer.wait_device();
         // render cleanup on drop
     }
 }
