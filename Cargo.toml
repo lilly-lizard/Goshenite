@@ -16,6 +16,8 @@ winit = "0.26"
 vulkano = "0.30"
 vulkano-win = "0.30" # winit interop
 #vulkano-util = "0.30" # convenience functions
+# bit-casting crate
+bytemuck = { version = "1.7", features = ["derive"] }
 
 # egui
 # slotmap

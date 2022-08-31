@@ -1,3 +1,4 @@
+use crate::camera::Camera;
 use crate::config;
 use crate::renderer::render_manager::RenderManager;
 use std::sync::Arc;
@@ -6,57 +7,77 @@ use winit::{
     event::{ElementState, Event, KeyboardInput, VirtualKeyCode, WindowEvent},
     event_loop::ControlFlow,
     platform::run_return::EventLoopExtRunReturn,
-    window::WindowBuilder,
+    window::{Window, WindowBuilder},
 };
 
-pub fn start() {
-    // todo how default res usually handled?
-    let init_resolution = [800, 800];
+// Members
+pub struct Controller {
+    _window: Arc<Window>,
+    event_loop: EventLoop<()>,
+    renderer: RenderManager,
+    camera: Camera,
+}
 
-    // create winit window
-    let mut event_loop = EventLoop::new();
-    let window = Arc::new(
-        WindowBuilder::new()
-            .with_title(config::ENGINE_NAME)
-            .with_inner_size(winit::dpi::LogicalSize::new(
-                f64::from(init_resolution[0]),
-                f64::from(init_resolution[1]),
-            ))
-            .build(&event_loop)
-            .unwrap(),
-    );
+// Public functions
+impl Controller {
+    pub fn init() -> Self {
+        // todo how default res usually handled?
+        let init_resolution = [800, 800];
 
-    // init renderer
-    let mut renderer = RenderManager::new(window);
+        // create winit window
+        let event_loop = EventLoop::new();
+        let window = Arc::new(
+            WindowBuilder::new()
+                .with_title(config::ENGINE_NAME)
+                .with_inner_size(winit::dpi::LogicalSize::new(
+                    f64::from(init_resolution[0]),
+                    f64::from(init_resolution[1]),
+                ))
+                .build(&event_loop)
+                .unwrap(),
+        );
 
-    // start render loop
-    let mut window_resize: bool = false;
-    event_loop.run_return(|event, _, control_flow| {
-        *control_flow = ControlFlow::Poll;
-        match event {
-            Event::WindowEvent {
-                event:
-                    WindowEvent::CloseRequested
-                    | WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                state: ElementState::Pressed,
-                                virtual_keycode: Some(VirtualKeyCode::Escape),
-                                ..
-                            },
-                        ..
-                    },
-                ..
-            } => *control_flow = ControlFlow::Exit,
-            Event::WindowEvent {
-                event: WindowEvent::Resized(_),
-                ..
-            } => window_resize = true,
-            Event::MainEventsCleared => renderer.render_frame(window_resize),
-            Event::RedrawEventsCleared => window_resize = false,
-            _ => (),
+        // init camera
+        let camera = Camera::new(init_resolution);
+
+        // init renderer
+        let renderer = RenderManager::new(window.clone());
+
+        Controller {
+            _window: window,
+            event_loop,
+            renderer,
+            camera,
         }
-    });
+    }
 
-    // render cleanup on drop
+    pub fn start(&mut self) {
+        let mut window_resize: bool = false;
+        self.event_loop.run_return(|event, _, control_flow| {
+            *control_flow = ControlFlow::Poll;
+            match event {
+                Event::WindowEvent {
+                    event:
+                        WindowEvent::CloseRequested
+                        | WindowEvent::KeyboardInput {
+                            input:
+                                KeyboardInput {
+                                    state: ElementState::Pressed,
+                                    virtual_keycode: Some(VirtualKeyCode::Escape),
+                                    ..
+                                },
+                            ..
+                        },
+                    ..
+                } => *control_flow = ControlFlow::Exit,
+                Event::WindowEvent {
+                    event: WindowEvent::Resized(_),
+                    ..
+                } => window_resize = true,
+                Event::MainEventsCleared => self.renderer.render_frame(window_resize, self.camera),
+                Event::RedrawEventsCleared => window_resize = false,
+                _ => (),
+            }
+        });
+    }
 }

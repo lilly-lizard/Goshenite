@@ -1,12 +1,17 @@
 // todo handle unwraps/panics/expects (e.g. clean exit) and error propagation
 // todo moooore debug logs
 
-use crate::config;
+use crate::{camera::Camera, config, shaders::shader_interfaces};
+use glam::{Mat4, Vec4};
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 use std::fs;
 use std::sync::Arc;
 use vulkano::{
+    buffer::{
+        cpu_pool::CpuBufferPoolSubbuffer, BufferAccessObject, BufferUsage, CpuAccessibleBuffer,
+        CpuBufferPool, TypedBufferAccess,
+    },
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, RenderingAttachmentInfo, RenderingInfo,
     },
@@ -24,6 +29,7 @@ use vulkano::{
         },
         layers_list, Instance, InstanceCreateInfo, InstanceExtensions,
     },
+    memory::pool::StdMemoryPool,
     pipeline::{
         graphics::{
             render_pass::PipelineRenderingCreateInfo,
@@ -59,6 +65,10 @@ pub struct RenderManager {
     sampler: Arc<Sampler>,
     pipeline_compute: Arc<ComputePipeline>,
     pipeline_post: Arc<GraphicsPipeline>,
+    ubo_render:
+        Arc<CpuBufferPoolSubbuffer<shader_interfaces::render_comp::Camera, Arc<StdMemoryPool>>>,
+    desc_set_render: Arc<PersistentDescriptorSet>,
+    desc_set_post: Arc<PersistentDescriptorSet>,
     work_group_size: [u32; 2],
     work_group_count: [u32; 3],
     future_previous_frame: Option<Box<dyn GpuFuture>>, // todo description
@@ -68,7 +78,7 @@ pub struct RenderManager {
 // RenderManager public functions
 
 impl RenderManager {
-    pub fn new(window: Arc<Window>) -> Self {
+    pub fn new(window: Arc<Window>, camera: Camera) -> Self {
         let mut instance_extensions = vulkano_win::required_extensions();
         let mut instance_layers: Vec<String> = Vec::new();
 
@@ -294,6 +304,57 @@ impl RenderManager {
             .build(device.clone())
             .unwrap();
 
+        // uniform buffer
+        let uniform_buffer = CpuBufferPool::<shader_interfaces::render_comp::Camera>::new(
+            device.clone(),
+            BufferUsage::all(),
+        );
+        // camera data for render compute shader
+        let ubo_camera_data = shader_interfaces::render_comp::Camera::new(
+            Mat4::inverse(&camera.view_matrix()),
+            Mat4::inverse(&camera.proj_matrix()),
+            camera.position,
+        );
+        // camera uniform buffer object for render compute shader
+        let ubo_render = uniform_buffer.next(ubo_camera_data).unwrap();
+
+        // descriptor set for render compute shader
+        let desc_set_render = PersistentDescriptorSet::new(
+            pipeline_compute
+                .layout()
+                .set_layouts()
+                .get(shader_interfaces::render_comp::set)
+                .expect("render compute shader: invalid descriptor set index")
+                .to_owned(),
+            [
+                WriteDescriptorSet::image_view(
+                    shader_interfaces::render_comp::binding_render_image,
+                    render_image.clone(),
+                ),
+                WriteDescriptorSet::buffer(
+                    shader_interfaces::render_comp::binding_camera,
+                    ubo_render,
+                ),
+            ],
+        )
+        .expect("error creating render.comp descriptor set");
+
+        // descriptor set for post processing fragment shader
+        let desc_set_post = PersistentDescriptorSet::new(
+            pipeline_post
+                .layout()
+                .set_layouts()
+                .get(0)
+                .unwrap()
+                .to_owned(),
+            [WriteDescriptorSet::image_view_sampler(
+                0,
+                render_image.clone(),
+                sampler.clone(),
+            )],
+        )
+        .unwrap();
+
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
         let recreate_swapchain = false;
 
@@ -310,6 +371,9 @@ impl RenderManager {
             sampler,
             pipeline_compute,
             pipeline_post,
+            ubo_render,
+            desc_set_render,
+            desc_set_post,
             work_group_size,
             work_group_count,
             future_previous_frame,
@@ -317,7 +381,7 @@ impl RenderManager {
         }
     }
 
-    pub fn render_frame(&mut self, window_resize: bool) {
+    pub fn render_frame(&mut self, window_resize: bool, camera: Camera) {
         // checks for submission finish and free locks on gpu resources
         self.future_previous_frame
             .as_mut()
@@ -346,32 +410,10 @@ impl RenderManager {
             self.recreate_swapchain = true;
         }
 
-        let desc_set_render = PersistentDescriptorSet::new(
-            self.pipeline_compute
-                .layout()
-                .set_layouts()
-                .get(0)
-                .unwrap()
-                .to_owned(),
-            [WriteDescriptorSet::image_view(0, self.render_image.clone())],
-        )
-        .unwrap();
+        self.ubo_render.as_buffer_access_object();
+        todo!("update camera ubo");
 
-        let desc_set_post = PersistentDescriptorSet::new(
-            self.pipeline_post
-                .layout()
-                .set_layouts()
-                .get(0)
-                .unwrap()
-                .to_owned(),
-            [WriteDescriptorSet::image_view_sampler(
-                0,
-                self.render_image.clone(),
-                self.sampler.clone(),
-            )],
-        )
-        .unwrap();
-
+        // record command buffer
         let mut builder = AutoCommandBufferBuilder::primary(
             self.device.clone(),
             self.queue.family(),
@@ -384,7 +426,7 @@ impl RenderManager {
                 PipelineBindPoint::Compute,
                 self.pipeline_compute.layout().clone(),
                 0,
-                desc_set_render.clone(),
+                self.desc_set_render.clone(),
             )
             .dispatch(self.work_group_count)
             .unwrap()
@@ -406,7 +448,7 @@ impl RenderManager {
                 PipelineBindPoint::Graphics,
                 self.pipeline_post.layout().clone(),
                 0,
-                desc_set_post.clone(),
+                self.desc_set_post.clone(),
             )
             .draw(3, 1, 0, 0)
             .unwrap()
@@ -474,6 +516,32 @@ impl RenderManager {
                 sampled: true,
                 ..ImageUsage::none()
             },
+        )
+        .unwrap();
+
+        self.desc_set_render = PersistentDescriptorSet::new(
+            self.pipeline_compute
+                .layout()
+                .set_layouts()
+                .get(0)
+                .unwrap()
+                .to_owned(),
+            [WriteDescriptorSet::image_view(0, self.render_image.clone())],
+        )
+        .unwrap();
+
+        self.desc_set_post = PersistentDescriptorSet::new(
+            self.pipeline_post
+                .layout()
+                .set_layouts()
+                .get(0)
+                .unwrap()
+                .to_owned(),
+            [WriteDescriptorSet::image_view_sampler(
+                0,
+                self.render_image.clone(),
+                self.sampler.clone(),
+            )],
         )
         .unwrap();
 

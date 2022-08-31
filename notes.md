@@ -1,10 +1,8 @@
 # TODO
 
-- window resize handling
-	- graphics pipeline dynamic state viewport
+- clippy
 - draw sdf sphere with AABB
 - have multiple spheres
-- make renderer crate
 
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
@@ -37,6 +35,7 @@ possibilities:
 - editor generates shaders. real time feedback?
 - live feedback modes e.g. sculpting mode just has primitives and normals
 - ignore color and render normals to start off with
+- world space: z up; right handed, camera space: z depth
 
 # Resources
 

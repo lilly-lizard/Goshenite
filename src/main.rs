@@ -1,11 +1,14 @@
 mod config;
 //mod immutable;
+mod camera;
 mod controller;
 mod logger;
 mod renderer;
+mod shaders;
 
 // todo propogate errors WHEREVER possible
 
+use controller::Controller;
 use log::LevelFilter;
 use logger::ConsoleLogger;
 
@@ -33,5 +36,9 @@ fn main() {
     };
     log::set_max_level(LevelFilter::Debug);
 
-    controller::start();
+    // init engine
+    let mut controller = Controller::init();
+
+    // start engine
+    controller.start();
 }
