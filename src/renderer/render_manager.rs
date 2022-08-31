@@ -146,7 +146,7 @@ impl RenderManager {
             })
             .expect("No suitable physical device found");
         info!(
-            "Using vulkan device: {} (type: {:?})",
+            "Using Vulkan device: {} (type: {:?})",
             physical_device.properties().device_name,
             physical_device.properties().device_type,
         );
@@ -488,27 +488,27 @@ impl RenderManager {
 /// Prints/logs a Vulkan validation layer message
 fn process_debug_callback(msg: &Message) {
     let ty = if msg.ty.general {
-        "general"
+        "GENERAL"
     } else if msg.ty.validation {
-        "validation"
+        "VALIDATION"
     } else if msg.ty.performance {
-        "performance"
+        "PERFORMANCE"
     } else {
-        "type unknown"
+        "TYPE-UNKNOWN"
     };
 
     if msg.severity.error {
-        error!("Vulkan {} [{}]: {}", "ERROR", ty, msg.description);
+        error!("Vulkan [{}]:\n{}", ty, msg.description);
     } else if msg.severity.warning {
-        warn!("Vulkan {} [{}]: {}", "WARNING", ty, msg.description);
+        warn!("Vulkan [{}]:\n{}", ty, msg.description);
     } else if msg.severity.information {
-        info!("Vulkan {} [{}]: {}", "INFO", ty, msg.description);
+        info!("Vulkan [{}]:\n{}", ty, msg.description);
     } else if msg.severity.verbose {
-        debug!("Vulkan {} [{}]: {}", "VERBOSE", ty, msg.description);
+        debug!("Vulkan [{}]:\n{}", ty, msg.description);
     } else {
-        debug!(
-            "Vulkan {} [{}]: {}",
-            "[unkown severity]", ty, msg.description
+        info!(
+            "Vulkan [{}] [{}]:\n{}",
+            "SEVERITY-UNKONWN", ty, msg.description
         );
     };
 }
