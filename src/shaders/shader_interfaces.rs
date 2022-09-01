@@ -1,32 +1,26 @@
-//! Contains structs matching the interfaces in shaders
+//! Contains structs and descriptor set indices/bindings matching the interfaces in shaders
 
-pub mod render_comp {
-    use bytemuck::Zeroable;
-    use glam::{Mat4, Vec3, Vec4};
+use glam::{Mat4, Vec3, Vec4};
 
-    pub const set: usize = 0; // descriptor set index
-    pub const binding_render_image: u32 = 0; // render image descriptor binding
-    pub const binding_camera: u32 = 1; // camera descriptor binding
+// describes the descriptor set containing the render storage image (render.comp) and sampler (post.frag)
+pub mod descriptor {
+    pub const SET_RENDER_COMP: usize = 0; // descriptor set index in render.comp
+    pub const SET_POST_FRAG: usize = 0; // descriptor set index in post.frag
+    pub const BINDING_IMAGE: u32 = 0; // render storage image binding
+    pub const BINDING_SAMPLER: u32 = 0; // render image sampler binding
+}
 
-    // Render compute shader push constant struct
-    #[derive(Zeroable, Copy, Clone)]
-    pub struct Camera {
-        pub viewInverse: [[f32; 4]; 4],
-        pub projInverse: [[f32; 4]; 4],
-        pub position: [f32; 4],
-    }
-    // allows vulkano::buffer::BufferContents to be implimented
-    unsafe impl Send for Camera {}
-    unsafe impl Sync for Camera {}
-    unsafe impl bytemuck::Pod for Camera {}
-
-    impl Camera {
-        pub fn new(view_inverse: Mat4, proj_inverse: Mat4, position: Vec3) -> Self {
-            Camera {
-                viewInverse: view_inverse.to_cols_array_2d(),
-                projInverse: proj_inverse.to_cols_array_2d(),
-                position: Vec4::from((position, 0.)).to_array(),
-            }
+// render compute shader push constant struct
+#[allow(non_snake_case)]
+pub struct CameraPc {
+    pub viewProjInverse: [f32; 16],
+    pub position: [f32; 4],
+}
+impl CameraPc {
+    pub fn new(view_proj_inverse: Mat4, position: Vec3) -> Self {
+        CameraPc {
+            viewProjInverse: view_proj_inverse.to_cols_array(),
+            position: Vec4::from((position, 0.)).to_array(),
         }
     }
 }

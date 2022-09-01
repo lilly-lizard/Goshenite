@@ -2,9 +2,8 @@
 
 layout (local_size_x = 16, local_size_y = 16) in; // workgroup size todo spec constant
 layout (set = 0, binding = 0, rgba8) uniform writeonly image2D renderImage; // output image
-layout (set = 0, binding = 1) uniform Camera {
-	mat4 viewInverse; // todo mat3?
-	mat4 projInverse;
+layout (push_constant) uniform Camera {
+	mat4 viewProjInverse; // todo mat3? cam.viewInverse * cam.projInverse
 	vec4 position;
 } cam;
 
@@ -26,8 +25,28 @@ vec3 background(const vec3 ray_d)
 
 /// Render the scene and return the color
 /// * `ray_d` - ray direction
-vec3 scene(const vec3 ray_o, const vec3 ray_d)
+vec3 ray_march_scene(const vec3 ray_o, const vec3 ray_d)
 {
+	const uint MAX_STEPS = 32; // maximum number of ray marching steps before confirming a miss
+	const float EPSILON = 0.0001; // defines a threshold for "essentially nothing"
+	const float MAX_DIST = 1000.; // maximum distance to travel
+
+	const vec3 SPHERE_CENTER = vec3(0.);
+	const float SPHERE_RADIUS = 1.;
+
+	float dist = 0.; // total distance traveled
+	for (int i = 0; i < MAX_STEPS && dist < MAX_DIST; i++) {
+		vec3 current_pos = ray_o + dist * ray_d;
+		float dist_to_closest = sdfSphere(current_pos, SPHERE_CENTER, SPHERE_RADIUS);
+
+		if (dist_to_closest < EPSILON) {
+			// ray hit
+			return vec3(.1, .9, .3);
+		}
+		dist += dist_to_closest;
+	}
+
+	// ray miss
 	return background(ray_d);
 }
 
@@ -38,12 +57,10 @@ void main()
 		return; // don't bother rendering outside of image bounds
 
 	vec2 pos_uv = (vec2(gl_GlobalInvocationID.xy) + vec2(0.5) - vec2(dim) / 2.) / float(dim.x); // clip space position in frame
-	vec4 pos_view = cam.projInverse * vec4(pos_uv.x, -pos_uv.y, 1., 1.); // view space position
-	// todo normalize? divide by w? https://stackoverflow.com/questions/31686664/perspective-divide-why-use-the-w-component
-	vec3 ray_d = normalize((cam.viewInverse * vec4(normalize(pos_view.xyz / pos_view.w), 0.)).xyz); // ray direction in world space
+	vec3 ray_d = normalize((cam.viewProjInverse * vec4(pos_uv.x, pos_uv.y, 1., 1.)).xyz); // ray direction in world space
 
 	// render scene
-	vec3 color = scene(cam.position.xyz, ray_d);
+	vec3 color = ray_march_scene(cam.position.xyz, ray_d);
 
 	imageStore(renderImage, ivec2(gl_GlobalInvocationID.xy), vec4(color, 1.));
 }

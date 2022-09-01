@@ -12,7 +12,7 @@ use winit::{
 
 // Members
 pub struct Controller {
-    _window: Arc<Window>,
+    window: Arc<Window>,
     event_loop: EventLoop<()>,
     renderer: RenderManager,
     camera: Camera,
@@ -22,7 +22,7 @@ pub struct Controller {
 impl Controller {
     pub fn init() -> Self {
         // todo how default res usually handled?
-        let init_resolution = [800, 800];
+        let init_resolution = [1000, 700];
 
         // create winit window
         let event_loop = EventLoop::new();
@@ -44,7 +44,7 @@ impl Controller {
         let renderer = RenderManager::new(window.clone());
 
         Controller {
-            _window: window,
+            window,
             event_loop,
             renderer,
             camera,
@@ -73,7 +73,11 @@ impl Controller {
                 Event::WindowEvent {
                     event: WindowEvent::Resized(_),
                     ..
-                } => window_resize = true,
+                } => {
+                    window_resize = true;
+                    self.camera
+                        .set_aspect_ratio(self.window.inner_size().into())
+                }
                 Event::MainEventsCleared => self.renderer.render_frame(window_resize, self.camera),
                 Event::RedrawEventsCleared => window_resize = false,
                 _ => (),

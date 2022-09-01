@@ -2,8 +2,8 @@ use crate::config;
 use glam::{Mat4, Vec3};
 use std::f32::consts::PI;
 
-const NEAR_PLANE: f32 = 0.1;
-const FAR_PLANE: f32 = 10.;
+const NEAR_PLANE: f32 = 0.01;
+const FAR_PLANE: f32 = 100.;
 
 #[derive(Copy, Clone)]
 pub struct Camera {
@@ -21,7 +21,7 @@ pub struct Camera {
 impl Default for Camera {
     fn default() -> Self {
         Camera {
-            position: glam::Vec3::new(-1., 0., 0.),
+            position: glam::Vec3::new(-5., 0., 0.),
             target: glam::Vec3::splat(0.),
             fov: 0.5 * PI,
             aspect_ratio: 1.,
@@ -32,7 +32,7 @@ impl Default for Camera {
 impl Camera {
     pub fn new(resolution: [i32; 2]) -> Self {
         Camera {
-            aspect_ratio: resolution[0] as f32 / resolution[1] as f32,
+            aspect_ratio: Self::calc_aspect_ratio(resolution),
             ..Self::default()
         }
     }
@@ -49,6 +49,10 @@ impl Camera {
 // Setters
 impl Camera {
     pub fn set_aspect_ratio(&mut self, resolution: [i32; 2]) {
-        self.aspect_ratio = resolution[0] as f32 / resolution[1] as f32;
+        self.aspect_ratio = Self::calc_aspect_ratio(resolution);
+    }
+
+    fn calc_aspect_ratio(resolution: [i32; 2]) -> f32 {
+        resolution[0] as f32 / resolution[1] as f32
     }
 }

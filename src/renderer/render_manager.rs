@@ -2,16 +2,12 @@
 // todo moooore debug logs
 
 use crate::{camera::Camera, config, shaders::shader_interfaces};
-use glam::{Mat4, Vec4};
+use glam::Mat4;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 use std::fs;
 use std::sync::Arc;
 use vulkano::{
-    buffer::{
-        cpu_pool::CpuBufferPoolSubbuffer, BufferAccessObject, BufferUsage, CpuAccessibleBuffer,
-        CpuBufferPool, TypedBufferAccess,
-    },
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, RenderingAttachmentInfo, RenderingInfo,
     },
@@ -29,7 +25,6 @@ use vulkano::{
         },
         layers_list, Instance, InstanceCreateInfo, InstanceExtensions,
     },
-    memory::pool::StdMemoryPool,
     pipeline::{
         graphics::{
             render_pass::PipelineRenderingCreateInfo,
@@ -65,8 +60,6 @@ pub struct RenderManager {
     sampler: Arc<Sampler>,
     pipeline_compute: Arc<ComputePipeline>,
     pipeline_post: Arc<GraphicsPipeline>,
-    ubo_render:
-        Arc<CpuBufferPoolSubbuffer<shader_interfaces::render_comp::Camera, Arc<StdMemoryPool>>>,
     desc_set_render: Arc<PersistentDescriptorSet>,
     desc_set_post: Arc<PersistentDescriptorSet>,
     work_group_size: [u32; 2],
@@ -78,7 +71,7 @@ pub struct RenderManager {
 // RenderManager public functions
 
 impl RenderManager {
-    pub fn new(window: Arc<Window>, camera: Camera) -> Self {
+    pub fn new(window: Arc<Window>) -> Self {
         let mut instance_extensions = vulkano_win::required_extensions();
         let mut instance_layers: Vec<String> = Vec::new();
 
@@ -304,51 +297,29 @@ impl RenderManager {
             .build(device.clone())
             .unwrap();
 
-        // uniform buffer
-        let uniform_buffer = CpuBufferPool::<shader_interfaces::render_comp::Camera>::new(
-            device.clone(),
-            BufferUsage::all(),
-        );
-        // camera data for render compute shader
-        let ubo_camera_data = shader_interfaces::render_comp::Camera::new(
-            Mat4::inverse(&camera.view_matrix()),
-            Mat4::inverse(&camera.proj_matrix()),
-            camera.position,
-        );
-        // camera uniform buffer object for render compute shader
-        let ubo_render = uniform_buffer.next(ubo_camera_data).unwrap();
-
-        // descriptor set for render compute shader
         let desc_set_render = PersistentDescriptorSet::new(
             pipeline_compute
                 .layout()
                 .set_layouts()
-                .get(shader_interfaces::render_comp::set)
-                .expect("render compute shader: invalid descriptor set index")
+                .get(shader_interfaces::descriptor::SET_RENDER_COMP)
+                .unwrap()
                 .to_owned(),
-            [
-                WriteDescriptorSet::image_view(
-                    shader_interfaces::render_comp::binding_render_image,
-                    render_image.clone(),
-                ),
-                WriteDescriptorSet::buffer(
-                    shader_interfaces::render_comp::binding_camera,
-                    ubo_render,
-                ),
-            ],
+            [WriteDescriptorSet::image_view(
+                shader_interfaces::descriptor::BINDING_IMAGE,
+                render_image.clone(),
+            )],
         )
-        .expect("error creating render.comp descriptor set");
+        .unwrap();
 
-        // descriptor set for post processing fragment shader
         let desc_set_post = PersistentDescriptorSet::new(
             pipeline_post
                 .layout()
                 .set_layouts()
-                .get(0)
+                .get(shader_interfaces::descriptor::SET_POST_FRAG)
                 .unwrap()
                 .to_owned(),
             [WriteDescriptorSet::image_view_sampler(
-                0,
+                shader_interfaces::descriptor::BINDING_SAMPLER,
                 render_image.clone(),
                 sampler.clone(),
             )],
@@ -371,7 +342,6 @@ impl RenderManager {
             sampler,
             pipeline_compute,
             pipeline_post,
-            ubo_render,
             desc_set_render,
             desc_set_post,
             work_group_size,
@@ -410,8 +380,10 @@ impl RenderManager {
             self.recreate_swapchain = true;
         }
 
-        self.ubo_render.as_buffer_access_object();
-        todo!("update camera ubo");
+        let render_push_constants = shader_interfaces::CameraPc::new(
+            Mat4::inverse(&camera.view_matrix()) * Mat4::inverse(&camera.proj_matrix()),
+            camera.position,
+        );
 
         // record command buffer
         let mut builder = AutoCommandBufferBuilder::primary(
@@ -427,6 +399,11 @@ impl RenderManager {
                 self.pipeline_compute.layout().clone(),
                 0,
                 self.desc_set_render.clone(),
+            )
+            .push_constants(
+                self.pipeline_compute.layout().clone(),
+                0,
+                render_push_constants,
             )
             .dispatch(self.work_group_count)
             .unwrap()
@@ -523,10 +500,13 @@ impl RenderManager {
             self.pipeline_compute
                 .layout()
                 .set_layouts()
-                .get(0)
+                .get(shader_interfaces::descriptor::SET_RENDER_COMP)
                 .unwrap()
                 .to_owned(),
-            [WriteDescriptorSet::image_view(0, self.render_image.clone())],
+            [WriteDescriptorSet::image_view(
+                shader_interfaces::descriptor::BINDING_IMAGE,
+                self.render_image.clone(),
+            )],
         )
         .unwrap();
 
@@ -534,11 +514,11 @@ impl RenderManager {
             self.pipeline_post
                 .layout()
                 .set_layouts()
-                .get(0)
+                .get(shader_interfaces::descriptor::SET_POST_FRAG)
                 .unwrap()
                 .to_owned(),
             [WriteDescriptorSet::image_view_sampler(
-                0,
+                shader_interfaces::descriptor::BINDING_SAMPLER,
                 self.render_image.clone(),
                 self.sampler.clone(),
             )],
