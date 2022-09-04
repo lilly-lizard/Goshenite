@@ -381,7 +381,7 @@ impl RenderManager {
         }
 
         let render_push_constants = shader_interfaces::CameraPc::new(
-            Mat4::inverse(&camera.view_matrix()) * Mat4::inverse(&camera.proj_matrix()),
+            Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
             camera.position,
         );
 

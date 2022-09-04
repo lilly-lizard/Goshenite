@@ -1,6 +1,7 @@
 # TODO
 
 - clippy
+- normals
 - draw sdf sphere with AABB
 - have multiple spheres
 
