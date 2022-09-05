@@ -1,16 +1,16 @@
-mod config;
-//mod immutable;
 mod camera;
-mod controller;
-mod logger;
+mod config;
+mod engine;
+mod helper;
+mod input_manager;
 mod renderer;
 mod shaders;
 
 // todo propogate errors WHEREVER possible
 
-use controller::Controller;
+use engine::EngineEntry;
+use helper::logger::ConsoleLogger;
 use log::LevelFilter;
-use logger::ConsoleLogger;
 
 const SPLASH: &str = "
      ___        ___        ___        ___        ___        ___        ___       ___        ___     
@@ -37,8 +37,8 @@ fn main() {
     log::set_max_level(LevelFilter::Debug);
 
     // init engine
-    let mut controller = Controller::init();
+    let mut engine_entry = EngineEntry::init();
 
     // start engine
-    controller.start();
+    engine_entry.start();
 }

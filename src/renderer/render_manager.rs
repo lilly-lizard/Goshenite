@@ -21,7 +21,7 @@ use vulkano::{
     instance::{
         debug::{
             DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
-            DebugUtilsMessengerCreateInfo, Message,
+            DebugUtilsMessengerCreateInfo,
         },
         layers_list, Instance, InstanceCreateInfo, InstanceExtensions,
     },
@@ -45,7 +45,7 @@ use vulkano::{
 use vulkano_win::create_surface_from_winit;
 use winit::window::Window;
 
-// RenderManager members
+// Members
 
 pub struct RenderManager {
     _debug_callback: Option<DebugUtilsMessenger>,
@@ -67,9 +67,7 @@ pub struct RenderManager {
     future_previous_frame: Option<Box<dyn GpuFuture>>, // todo description
     recreate_swapchain: bool, // indicates that the swapchain needs to be recreated next frame
 }
-
-// RenderManager public functions
-
+// Public functions
 impl RenderManager {
     pub fn new(window: Arc<Window>) -> Self {
         let mut instance_extensions = vulkano_win::required_extensions();
@@ -107,7 +105,7 @@ impl RenderManager {
                         },
                         message_type: DebugUtilsMessageType::all(),
                         ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|msg| {
-                            process_debug_callback(msg)
+                            vulkan_callback::process_debug_callback(msg)
                         }))
                     },
                 )
@@ -533,34 +531,6 @@ impl RenderManager {
 
 // Helper functions
 
-/// Prints/logs a Vulkan validation layer message
-fn process_debug_callback(msg: &Message) {
-    let ty = if msg.ty.general {
-        "GENERAL"
-    } else if msg.ty.validation {
-        "VALIDATION"
-    } else if msg.ty.performance {
-        "PERFORMANCE"
-    } else {
-        "TYPE-UNKNOWN"
-    };
-
-    if msg.severity.error {
-        error!("Vulkan [{}]:\n{}", ty, msg.description);
-    } else if msg.severity.warning {
-        warn!("Vulkan [{}]:\n{}", ty, msg.description);
-    } else if msg.severity.information {
-        info!("Vulkan [{}]:\n{}", ty, msg.description);
-    } else if msg.severity.verbose {
-        debug!("Vulkan [{}]:\n{}", ty, msg.description);
-    } else {
-        info!(
-            "Vulkan [{}] [{}]:\n{}",
-            "SEVERITY-UNKONWN", ty, msg.description
-        );
-    };
-}
-
 /// Describes issues with enabling instance extensions/layers
 enum InstanceSupportError {
     /// Requested instance extension is not supported by this vulkan driver
@@ -608,6 +578,40 @@ fn add_debug_validation(
     instance_extensions.ext_debug_utils = true;
     instance_layers.push(validation_layer.to_owned());
     Ok(())
+}
+
+/// This mod just makes the module path unique for debug callbacks in the log
+mod vulkan_callback {
+    use colored::Colorize;
+    use log::{debug, error, info, warn};
+    use vulkano::instance::debug::Message;
+    /// Prints/logs a Vulkan validation layer message
+    pub fn process_debug_callback(msg: &Message) {
+        let ty = if msg.ty.general {
+            "GENERAL"
+        } else if msg.ty.validation {
+            "VALIDATION"
+        } else if msg.ty.performance {
+            "PERFORMANCE"
+        } else {
+            "TYPE-UNKNOWN"
+        };
+
+        if msg.severity.error {
+            error!("Vulkan [{}]:\n{}", ty, msg.description.bright_red());
+        } else if msg.severity.warning {
+            warn!("Vulkan [{}]:\n{}", ty, msg.description);
+        } else if msg.severity.information {
+            info!("Vulkan [{}]:\n{}", ty, msg.description);
+        } else if msg.severity.verbose {
+            debug!("Vulkan [{}]:\n{}", ty, msg.description);
+        } else {
+            info!(
+                "Vulkan [{}] [{}]:\n{}",
+                "SEVERITY-UNKONWN", ty, msg.description
+            );
+        };
+    }
 }
 
 /// Calculate required work group count for a given render resolution

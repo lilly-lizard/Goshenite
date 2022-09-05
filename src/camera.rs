@@ -16,8 +16,6 @@ pub struct Camera {
     /// Aspect ratio
     pub aspect_ratio: f32,
 }
-
-// Default
 impl Default for Camera {
     fn default() -> Self {
         Camera {
@@ -28,7 +26,6 @@ impl Default for Camera {
         }
     }
 }
-
 impl Camera {
     pub fn new(resolution: [i32; 2]) -> Self {
         Camera {

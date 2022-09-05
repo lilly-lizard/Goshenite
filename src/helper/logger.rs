@@ -11,16 +11,19 @@ impl log::Log for ConsoleLogger {
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
             let (level, color) = match record.level() {
-                Level::Error => ("[ERROR]", Color::Red),
-                Level::Warn => ("[WARN ]", Color::Yellow),
-                Level::Info => ("[INFO ]", Color::Blue),
-                Level::Debug => ("[DEBUG]", Color::Magenta),
-                Level::Trace => ("[TRACE]", Color::White),
+                Level::Error => ("[E]", Color::Red),
+                Level::Warn => ("[W]", Color::Yellow),
+                Level::Info => ("[I]", Color::Blue),
+                Level::Debug => ("[D]", Color::Magenta),
+                Level::Trace => ("[T]", Color::White),
             };
             println!(
-                "{} {} - {}",
+                "{} {} -> {}",
                 level.color(color),
-                record.module_path().unwrap_or("...").color(color),
+                record
+                    .module_path()
+                    .unwrap_or("(unknown module)")
+                    .color(color),
                 record.args()
             );
         }
