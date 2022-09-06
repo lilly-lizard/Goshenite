@@ -51,8 +51,8 @@ impl CursorState {
         };
     }
 
-    pub fn set_in_window(&mut self, in_window: bool) {
-        self.in_window = in_window;
+    pub fn set_in_window_state(&mut self, is_in_window: bool) {
+        self.in_window = is_in_window;
     }
 
     pub fn frame_update(&mut self) {
@@ -86,6 +86,13 @@ impl CursorState {
             cursor_icon = CursorIcon::Grabbing;
         }
         self.window.set_cursor_icon(cursor_icon);
+    }
+
+    pub fn get_position_frame_change(&self) -> DVec2 {
+        self.position_frame_change
+    }
+    pub fn get_is_dragging(&self) -> Option<MouseButton> {
+        self.is_dragging
     }
 }
 

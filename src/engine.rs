@@ -1,7 +1,8 @@
 use crate::camera::Camera;
 use crate::config;
-use crate::input_manager::CursorState;
+use crate::cursor_state::{CursorState, MouseButton};
 use crate::renderer::render_manager::RenderManager;
+use glam::Vec2;
 use std::sync::Arc;
 use winit::event_loop::EventLoop;
 use winit::{
@@ -43,7 +44,6 @@ struct Engine {
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
-        // todo how default res usually handled?
         let init_resolution = [1000, 700];
 
         // create winit window
@@ -97,12 +97,12 @@ impl Engine {
             Event::WindowEvent {
                 event: WindowEvent::CursorEntered { .. },
                 ..
-            } => self.cursor_state.set_in_window(true),
+            } => self.cursor_state.set_in_window_state(true),
             // cursor left window
             Event::WindowEvent {
                 event: WindowEvent::CursorLeft { .. },
                 ..
-            } => self.cursor_state.set_in_window(false),
+            } => self.cursor_state.set_in_window_state(false),
             // window resize
             Event::WindowEvent {
                 event: WindowEvent::Resized(new_inner_size),
@@ -134,6 +134,14 @@ impl Engine {
     fn frame_update(&mut self) {
         // update cursor state
         self.cursor_state.frame_update();
+
+        // update camera
+        if self.cursor_state.get_is_dragging() == Some(MouseButton::Left) {
+            let delta_cursor: Vec2 = (self.cursor_state.get_position_frame_change()
+                * config::SENSITIVITY_LOOK)
+                .as_vec2();
+            self.camera.rotate(delta_cursor.x, -delta_cursor.y);
+        }
 
         // submit rendering commands
         self.renderer.render_frame(self.window_resize, self.camera);

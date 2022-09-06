@@ -36,7 +36,7 @@ possibilities:
 - editor generates shaders. real time feedback?
 - live feedback modes e.g. sculpting mode just has primitives and normals
 - ignore color and render normals to start off with
-- world space: z up; right handed, camera space: z depth
+- **sworld space**: z up; right handed (x forward, y left), camera space: z depth
 
 # Resources
 

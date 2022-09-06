@@ -1,8 +1,8 @@
 mod camera;
 mod config;
+mod cursor_state;
 mod engine;
 mod helper;
-mod input_manager;
 mod renderer;
 mod shaders;
 
