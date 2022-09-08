@@ -16,7 +16,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## cleanup
 
-- validation layers
 - unwrap error handling
 
 ## low priority
@@ -49,6 +48,7 @@ possibilities:
 # Resources
 
 - HIP instead of vulkan compute? https://github.com/charles-r-earp/hip-sys
+- ray marching intro https://michaelwalczyk.com/blog-ray-marching.html
 
 # References
 
