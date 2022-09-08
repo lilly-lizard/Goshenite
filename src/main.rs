@@ -12,6 +12,7 @@ use engine::EngineEntry;
 use helper::logger::ConsoleLogger;
 use log::LevelFilter;
 
+/// spooky symbols, what could it mean...
 const SPLASH: &str = "
      ___        ___        ___        ___        ___        ___        ___       ___        ___     
     /\\  \\      /\\  \\      /\\  \\      /\\__\\      /\\  \\      /\\__\\      /\\  \\     /\\  \\      /\\  \\    

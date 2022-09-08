@@ -25,3 +25,8 @@ vulkano-win = "0.30" # winit interop
 
 [build-dependencies]
 shaderc = "0.8"
+
+# i.e. cargo build --profile=release-with-debug-info
+[profile.release-with-debug-info]
+inherits = "release"
+debug = true

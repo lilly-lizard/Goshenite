@@ -62,7 +62,7 @@ impl Engine {
         let camera = Camera::new(init_resolution);
 
         // init renderer
-        let renderer = RenderManager::new(window.clone());
+        let renderer = RenderManager::new(window.clone()).unwrap();
 
         Engine {
             scale_factor: window.scale_factor(),
@@ -140,7 +140,8 @@ impl Engine {
             let delta_cursor: Vec2 = (self.cursor_state.get_position_frame_change()
                 * config::SENSITIVITY_LOOK)
                 .as_vec2();
-            self.camera.rotate(delta_cursor.x, -delta_cursor.y);
+            self.camera
+                .rotate(delta_cursor.x.into(), (-delta_cursor.y).into());
         }
 
         // submit rendering commands

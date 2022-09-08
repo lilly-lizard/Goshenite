@@ -97,7 +97,7 @@ impl CursorState {
 }
 
 /// Mouse buttons supported by engine
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum MouseButton {
     Left,
     Right,

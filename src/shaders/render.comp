@@ -1,5 +1,8 @@
 #version 450
 
+/// Defines the up/down axis in the world space coordinate system
+const vec3 WORLD_SPACE_UP = vec3(0., 0., 1.);
+
 layout (local_size_x = 16, local_size_y = 16) in; // workgroup size todo spec constant
 layout (set = 0, binding = 0, rgba8) uniform writeonly image2D renderImage; // output image
 layout (push_constant) uniform Camera {
@@ -20,7 +23,7 @@ float sdfSphere(vec3 point, vec3 center, float radius)
 /// * `ray_d` - ray direction
 vec3 background(const vec3 ray_d)
 {
-	return vec3(0.3, 0.4, 0.5) + 0.3 * ray_d.z;
+	return vec3(0.3, 0.4, 0.5) + 0.3 * ray_d * WORLD_SPACE_UP;
 }
 
 /// Calculates the distance to the closest signed distance field in the scene

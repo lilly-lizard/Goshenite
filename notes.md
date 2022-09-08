@@ -1,9 +1,16 @@
 # TODO
 
 - clippy
-- normals
+- cpu writes to buffer with spheres
 - draw sdf sphere with AABB
 - have multiple spheres
+- Camera::rotate quaternions
+- credit unwrap-or gitlab for unwrap_or_exec
+- credit cgmath for radians/degrees idea
+- shaderStorageImageExtendedFormats
+	- https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#features-required-format-support
+	- VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_B10G11R11_UFLOAT_PACK32
+	- https://stackoverflow.com/questions/72548476/whats-the-best-practice-for-handling-format-qualifiers-for-images-in-compute-sh
 
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
@@ -59,6 +66,49 @@ nightly 27.99s
 ramdisk 26.05s
 lld 25.34s
 mold 26.29s
+
+# stack debugging:
+
+- bt -> backtrace
+- p $sp -> stack pointer
+- p &variable -> variable address
+- p variable -> variable contents
+- step -> step into
+- next -> step over
+- b function:line_num -> breakpoint
+- b module::path::function -> breakpoint
+- print sizeof(variable/type) -> sizeof
+- info frame [args] -> info about stack frame
+
+## p $sp
+
+debug:
+main.rs:30 (start of main)						-> 0x7fffffffdae0
+render_manager.rs:73 (start of new) 			-> 0x7fffffff9d20
+vulkano::shader::ShaderModule::from_words		-> 0x7fffffff96f0
+spirv.rs:53 (start of Spirv::new)				-> 0x7fffffff6f60
+spirv_parse.rs Instruction::parse				-> 0x7fffffefa4c0
+(gdb) info frame
+Stack level 0, frame at 0x7fffffff6f60:
+ rip = 0x555555815f4e in vulkano::shader::spirv::Instruction::parse
+    (/home/david/Documents/source/DEV/Goshenite/target/debug/build/vulkano-04304a039d33c327/out/spirv_parse.rs:3977); saved rip = 0x555555811b52
+ called by frame at 0x7fffffff96f0
+ source language rust.
+ Arglist at 0x7fffffefa4b8, args: reader=0x7fffffff7590
+ Locals at 0x7fffffefa4b8, Previous frame's sp is 0x7fffffff6f60
+ Saved registers:
+  rip at 0x7fffffff6f58
+
+release-with-debug-info:
+main.rs:30 (start of main)						-> 0x7fffffffdc20
+render_manager.rs:73 (start of new) 			-> 0x7fffffffc640
+spirv.rs:53 (start of Spirv::new)				-> 0x7fffffffbec0
+b spirv.rs:87; step
+spirv_parse.rs Instruction::parse				-> 0x7fffffffbc40
+
+nightly debug:
+spirv.rs:53 (start of Spirv::new)				-> 0x7fffffff6f70
+spirv_parse.rs Instruction::parse				-> 0x7fffffefa4d0
 
 # splash
 ```
@@ -128,17 +178,6 @@ mold 26.29s
 	     / /  /  
 	    / /  /   
 	    \/__/    
-	            
-	      ___    
-	     /\  \   
-	     \ \  \  
-	     /  \  \ 
-	  __/ /\/__/ 
-	 /\/ /  /    
-	 \  /__/     
-	  \ \__\     
-	   \/__/     
-	             
 	     ___     
 	    /\  \    
 	    \ \  \   
@@ -159,20 +198,7 @@ mold 26.29s
 	   / /  \/__/
 	  / /  /     
 	  \/__/      
-	             
-	             
-     ___         ___         ___         ___         ___         ___         ___        ___         ___     
-    /\  \       /\  \       /\  \       /\__\       /\  \       /\__\       /\  \      /\  \       /\  \    
-   /  \  \     /  \  \     /  \  \     / /  /      /  \  \     / /  /       \ \  \     \ \  \     /  \  \   
-  / /\ \  \   / /\ \  \   / /\ \  \   / /__/      / /\ \  \   / /  /         \ \  \     \ \  \   / /\ \  \  
- / /  \ \  \ / /  \ \  \  \ \ \ \  \ /  \  \ ___ /  \ \ \  \ / /__/_____ ___ /  \  \    /  \  \ /  \ \ \  \ 
-/ /__/ \ \__\ /__/ \ \__\\ \ \ \ \__\ /\ \  /\__\ /\ \ \ \__\  _____ \__\\  / /\ \__\  / /\ \  \ /\ \ \ \__\
-\ \  /\ \/__/ \  \ / /  / \ \ \ \/__//__\ \/ /  / \ \ \ \/__//__/  / /  / \/ /  \/__/ / /  \/__/ \ \ \ \/__/
- \ \ \ \__\  \ \  / /  / \ \ \ \__\      \  /  / \ \ \ \__\       / /  / \  /__/     / /  /     \ \ \ \__\  
-  \ \/ /  /   \ \/ /  /   \ \/ /  /      / /  /   \ \ \/__/      / /  /   \ \  \     \/__/       \ \ \/__/  
-   \  /  /     \  /  /     \  /  /      / /  /     \ \__\       / /  /     \ \__\                 \ \__\    
-    \/__/       \/__/       \/__/       \/__/       \/__/       \/__/       \/__/                  \/__/    
-	
+
      ___        ___        ___        ___        ___        ___        ___       ___        ___     
     /\  \      /\  \      /\  \      /\__\      /\  \      /\__\      /\  \     /\  \      /\  \    
    /  \  \    /  \  \    /  \  \    / /  /     /  \  \    / /  /      \ \  \    \ \  \    /  \  \   

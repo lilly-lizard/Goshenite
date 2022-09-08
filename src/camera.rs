@@ -1,10 +1,11 @@
 use crate::config;
+use crate::helper::angle::Radians;
 use glam::{Mat3, Mat4, Vec3};
-use std::f32::consts::PI;
 
 const NEAR_PLANE: f32 = 0.01;
 const FAR_PLANE: f32 = 100.;
 
+/// Describes the orientation and properties of a camera that can be used for perspective rendering
 #[derive(Copy, Clone)]
 pub struct Camera {
     /// Position in world space
@@ -13,35 +14,33 @@ pub struct Camera {
     direction: Vec3,
     /// Perpindicular to direction and up = cross(up, direction)
     normal: Vec3,
-    /// Field of View in radians
-    fov: f32,
+    /// Field of View
+    fov: Radians,
     /// Aspect ratio
     aspect_ratio: f32,
-}
-impl Default for Camera {
-    fn default() -> Self {
-        let direction = Vec3::new(1., 0., 0.);
-        Camera {
-            position: Vec3::new(-5., 0., 0.),
-            direction,
-            normal: config::WORLD_SPACE_UP.cross(direction),
-            fov: 0.5 * PI,
-            aspect_ratio: 1.,
-        }
-    }
 }
 // Public functions
 impl Camera {
     pub fn new(resolution: [i32; 2]) -> Self {
+        let direction = Vec3::new(1., 0., 0.);
+        let normal = config::WORLD_SPACE_UP.to_vec3().cross(direction);
+        debug_assert!(
+            normal != Vec3::splat(0.),
+            "config::WORLD_SPACE_UP shouldn't be x axis..."
+        );
         Camera {
+            position: Vec3::new(-5., 0., 0.),
+            direction,
+            normal: normal.normalize(),
+            fov: std::f32::consts::FRAC_PI_2.into(),
             aspect_ratio: Self::calc_aspect_ratio(resolution),
-            ..Self::default()
         }
     }
 
-    pub fn rotate(&mut self, radians_horizontal: f32, radians_vertical: f32) {
-        let new_direction = Mat3::from_axis_angle(self.normal, radians_vertical)
-            * Mat3::from_rotation_z(radians_horizontal)
+    /// Changes the viewing direction by
+    pub fn rotate(&mut self, horizontal: Radians, vertical: Radians) {
+        let new_direction = Mat3::from_axis_angle(self.normal, vertical.val)
+            * Mat3::from_rotation_z(horizontal.val)
             * self.direction;
         self.set_direction_and_normal(new_direction);
     }
@@ -50,12 +49,12 @@ impl Camera {
         Mat4::look_at_rh(
             self.position,
             self.position + self.direction,
-            config::WORLD_SPACE_UP,
+            config::WORLD_SPACE_UP.to_vec3(),
         )
     }
 
     pub fn proj_matrix(&self) -> Mat4 {
-        Mat4::perspective_rh(self.fov, self.aspect_ratio, NEAR_PLANE, FAR_PLANE)
+        Mat4::perspective_rh(*self.fov, self.aspect_ratio, NEAR_PLANE, FAR_PLANE)
     }
 
     // Setters
@@ -71,6 +70,7 @@ impl Camera {
     pub fn get_position(&self) -> Vec3 {
         self.position
     }
+    /*
     /// View direction in world space
     pub fn get_direction(&self) -> Vec3 {
         self.direction
@@ -87,6 +87,7 @@ impl Camera {
     pub fn get_aspect_ratio(&self) -> f32 {
         self.aspect_ratio
     }
+    */
 }
 // Private functions
 impl Camera {
@@ -94,8 +95,9 @@ impl Camera {
     fn set_direction_and_normal(&mut self, direction: Vec3) {
         self.direction = direction;
         // only set normal if cross product won't be zero i.e. normal doesn't change if facing up
-        if direction != config::WORLD_SPACE_UP {
-            self.normal = Vec3::normalize(config::WORLD_SPACE_UP.cross(direction));
+        let up = config::WORLD_SPACE_UP.to_vec3();
+        if direction != up {
+            self.normal = Vec3::normalize(up.cross(direction));
         }
     }
 }

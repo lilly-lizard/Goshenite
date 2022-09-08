@@ -1,19 +1,17 @@
 // todo handle unwraps/panics/expects (e.g. clean exit) and error propagation
-// todo moooore debug logs
 
 use crate::{camera::Camera, config, shaders::shader_interfaces};
 use glam::Mat4;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
-use std::fs;
-use std::sync::Arc;
+use std::{error, fmt, fs, sync::Arc};
 use vulkano::{
     command_buffer::{
         AutoCommandBufferBuilder, CommandBufferUsage, RenderingAttachmentInfo, RenderingInfo,
     },
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType},
+        physical::{PhysicalDevice, PhysicalDeviceType, SurfacePropertiesError},
         Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
     },
     format::Format,
@@ -36,7 +34,7 @@ use vulkano::{
     sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
     shader::ShaderModule,
     swapchain::{
-        acquire_next_image, AcquireError, Surface, Swapchain, SwapchainCreateInfo,
+        acquire_next_image, AcquireError, CompositeAlpha, Surface, Swapchain, SwapchainCreateInfo,
         SwapchainCreationError,
     },
     sync::{self, FlushError, GpuFuture},
@@ -45,8 +43,51 @@ use vulkano::{
 use vulkano_win::create_surface_from_winit;
 use winit::window::Window;
 
-// Members
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RenderManagerError {
+    /// Vulkan renderer is unable to initialize, a string containing the reason is included
+    InitializeFailed(String),
 
+    /// An unrecoverable or unexpected error occured while rendering a frame
+    RenderFrameFailed(String),
+
+    /// The window surface is no longer accessible and must be recreated.
+    /// Invalidates the RenderManger and requires re-initialization.
+    /// Equivalent to vulkano::device::physical::SurfacePropertiesError::SurfaceLost
+    SurfaceLost,
+
+    /// Requested dimensions are not within supported range when attempting to create a render target (swapchain)
+    /// Equivalent to vulkano::swapchain::SwapchainCreationError::ImageExtentNotSupported
+    SurfaceSizeUnsupported {
+        provided: [u32; 2],
+        min_supported: [u32; 2],
+        max_supported: [u32; 2],
+    },
+}
+impl error::Error for RenderManagerError {}
+impl fmt::Display for RenderManagerError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            RenderManagerError::InitializeFailed(msg) => write!(fmt, "failed to initialize RenderManager: {}", msg),
+            RenderManagerError::RenderFrameFailed(msg) => write!(fmt, "failed to render frame {}", msg),
+            RenderManagerError::SurfaceLost =>
+                write!(fmt, "the Vulkan surface is no longer accessible, thus invalidating this RenderManager instance"),
+            RenderManagerError::SurfaceSizeUnsupported{ provided, min_supported, max_supported } =>
+                write!(fmt, "cannot create render target with requested dimensions = {:?}. min size = {:?}, max size = {:?}",
+                    provided, min_supported, max_supported),
+        }
+    }
+}
+impl RenderManagerError {
+    /// Passes the error through the `error!` log and returns self
+    #[inline]
+    pub fn log(self) -> Self {
+        error!("{:?}", self);
+        self
+    }
+}
+
+// Members
 pub struct RenderManager {
     _debug_callback: Option<DebugUtilsMessenger>,
     device: Arc<Device>,
@@ -69,7 +110,10 @@ pub struct RenderManager {
 }
 // Public functions
 impl RenderManager {
-    pub fn new(window: Arc<Window>) -> Self {
+    /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
+    pub fn new(window: Arc<Window>) -> Result<Self, RenderManagerError> {
+        use RenderManagerError::{InitializeFailed, SurfaceSizeUnsupported};
+
         let mut instance_extensions = vulkano_win::required_extensions();
         let mut instance_layers: Vec<String> = Vec::new();
 
@@ -84,12 +128,18 @@ impl RenderManager {
             };
 
         // create instance
-        let instance = Instance::new(InstanceCreateInfo {
+        let instance = match Instance::new(InstanceCreateInfo {
             enabled_extensions: instance_extensions,
             enumerate_portability: true, // enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             ..Default::default()
-        })
-        .unwrap();
+        }) {
+            Ok(i) => i,
+            Err(e) => {
+                return Err(
+                    InitializeFailed(format!("Failed to create vulkan instance: {:?}", e)).log(),
+                );
+            }
+        };
 
         // setup debug callbacks
         let debug_callback = if enable_debug_callback {
@@ -115,19 +165,33 @@ impl RenderManager {
             None
         };
 
-        let surface = create_surface_from_winit(window, instance.clone()).unwrap();
+        let surface = match create_surface_from_winit(window, instance.clone()) {
+            Ok(s) => s,
+            Err(e) => {
+                return Err(
+                    InitializeFailed(format!("failed to create vulkan surface: {:?}", e)).log(),
+                );
+            }
+        };
 
         let device_extensions = DeviceExtensions {
             khr_swapchain: true,
             ..DeviceExtensions::none()
         };
 
-        let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
+        // print available devices
+        debug!("Available Vulkan physical devices:");
+        PhysicalDevice::enumerate(&instance).map(|pd| debug!("\t{}", pd.properties().device_name));
+        // choose physical device and queue family
+        let (physical_device, queue_family) = match PhysicalDevice::enumerate(&instance)
+            // filter for vulkan version support
             .filter(|&p| {
                 p.api_version()
                     >= Version::major_minor(config::VULKAN_VER_MAJ, config::VULKAN_VER_MIN)
             })
+            // filter for required device extensions
             .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
+            // filter for queue support
             .filter_map(|p| {
                 p.queue_families()
                     .find(|&q| {
@@ -137,22 +201,28 @@ impl RenderManager {
                     })
                     .map(|q| (p, q))
             })
-            // device type preference
-            .min_by_key(|(p, _)| match p.properties().device_type {
-                PhysicalDeviceType::DiscreteGpu => 0,
-                PhysicalDeviceType::IntegratedGpu => 1,
+            // preference of device type
+            .max_by_key(|(p, _)| match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 4,
+                PhysicalDeviceType::IntegratedGpu => 3,
                 PhysicalDeviceType::VirtualGpu => 2,
-                PhysicalDeviceType::Cpu => 3,
-                PhysicalDeviceType::Other => 4,
-            })
-            .expect("No suitable physical device found");
+                PhysicalDeviceType::Cpu => 1,
+                PhysicalDeviceType::Other => 0,
+            }) {
+            Some(x) => x,
+            None => {
+                return Err(
+                    InitializeFailed("no suitable physical device available".to_owned()).log(),
+                )
+            }
+        };
         info!(
             "Using Vulkan device: {} (type: {:?})",
             physical_device.properties().device_name,
             physical_device.properties().device_type,
         );
 
-        let (device, mut queues) = Device::new(
+        let (device, mut queues) = match Device::new(
             physical_device,
             DeviceCreateInfo {
                 enabled_extensions: device_extensions,
@@ -163,38 +233,96 @@ impl RenderManager {
                 queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
                 ..Default::default()
             },
-        )
-        .unwrap();
+        ) {
+            Ok(x) => x,
+            Err(e) => {
+                return Err(
+                    InitializeFailed(format!("failed to create vulkan device: {:?}", e)).log(),
+                )
+            }
+        };
 
-        let queue = queues.next().unwrap();
+        let queue = queues.next().expect(
+            "vulkano::device::Device::new has an assert to ensure at least 1 queue gets created",
+        );
 
+        // todo prefer sRGB? (linux sRGB)
         let (swapchain, swapchain_images) = {
-            let surface_capabilities = physical_device
-                .surface_capabilities(&surface, Default::default())
-                .unwrap();
-            let image_format = Some(
-                physical_device
-                    .surface_formats(&surface, Default::default())
-                    .unwrap()[0]
-                    .0,
-            );
-            Swapchain::new(
+            let surface_capabilities =
+                match physical_device.surface_capabilities(&surface, Default::default()) {
+                    Ok(x) => x,
+                    Err(SurfacePropertiesError::SurfaceLost) => {
+                        return Err(RenderManagerError::SurfaceLost.log())
+                    }
+                    Err(e) => {
+                        return Err(InitializeFailed(format!(
+                            "failed to get surface capabilities: {:?}",
+                            e,
+                        ))
+                        .log())
+                    }
+                };
+            let swapchain_image_format = match physical_device
+                .surface_formats(&surface, Default::default())
+            {
+                Ok(x) => x,
+                Err(SurfacePropertiesError::SurfaceLost) => {
+                    return Err(RenderManagerError::SurfaceLost)
+                }
+                Err(e) => {
+                    return Err(
+                        InitializeFailed(format!("failed to get surface format: {:?}", e)).log(),
+                    )
+                }
+            }
+            .get(0)
+            .expect("vulkan driver should support at least 1 surface format... right?")
+            .0;
+
+            let composite_alpha = surface_capabilities
+                .supported_composite_alpha
+                .iter()
+                .max_by_key(|c| match c {
+                    CompositeAlpha::PostMultiplied => 4,
+                    CompositeAlpha::Inherit => 3,
+                    CompositeAlpha::Opaque => 2,
+                    CompositeAlpha::PreMultiplied => 1, // because cbf implimenting this logic
+                    _ => 0,
+                })
+                .expect("surface should support at least 1 composite mode... right?");
+
+            match Swapchain::new(
                 device.clone(),
                 surface.clone(),
                 SwapchainCreateInfo {
                     min_image_count: surface_capabilities.min_image_count,
-                    image_format,
+                    image_format: Some(swapchain_image_format),
                     image_extent: surface.window().inner_size().into(),
                     image_usage: ImageUsage::color_attachment(),
-                    composite_alpha: surface_capabilities
-                        .supported_composite_alpha
-                        .iter()
-                        .next()
-                        .unwrap(),
+                    composite_alpha,
                     ..Default::default()
                 },
-            )
-            .unwrap()
+            ) {
+                Ok(x) => x,
+                Err(SwapchainCreationError::ImageExtentNotSupported {
+                    provided,
+                    min_supported,
+                    max_supported,
+                }) => {
+                    let err = SurfaceSizeUnsupported {
+                        provided,
+                        min_supported,
+                        max_supported,
+                    };
+                    warn!("cannot create swapchain: {:?}", err);
+                    return Err(err);
+                }
+                Err(e) => {
+                    return Err(
+                        InitializeFailed(format!("failed to create swapchain: {:?}", e)).log(),
+                    )
+                }
+            }
         };
 
         // dynamic viewport
@@ -207,14 +335,24 @@ impl RenderManager {
             depth_range: 0.0..1.0,
         };
 
-        // swapchain image views
-        let swapchain_image_views = swapchain_images
+        // create swapchain image views
+        let swapchain_image_views: Result<Vec<_>, _> = swapchain_images
             .iter()
-            .map(|image| ImageView::new_default(image.clone()).unwrap())
-            .collect::<Vec<_>>();
+            .map(|image| ImageView::new_default(image.clone()))
+            .collect();
+        let swapchain_image_views = match swapchain_image_views {
+            Ok(x) => x,
+            Err(e) => {
+                return Err(InitializeFailed(format!(
+                    "failed to create swapchain image view(s) {:?}",
+                    e
+                ))
+                .log())
+            }
+        };
 
         // compute shader render target
-        let render_image_format = Format::R8G8B8A8_UNORM; // todo check device support. prefer srgb?
+        let render_image_format = Format::R8G8B8A8_UNORM;
         let render_image = StorageImage::general_purpose_image_view(
             queue.clone(),
             swapchain_images[0].dimensions().width_height(),
@@ -327,7 +465,7 @@ impl RenderManager {
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
         let recreate_swapchain = false;
 
-        RenderManager {
+        Ok(RenderManager {
             _debug_callback: debug_callback,
             device,
             queue,
@@ -346,10 +484,12 @@ impl RenderManager {
             work_group_count,
             future_previous_frame,
             recreate_swapchain,
-        }
+        })
     }
 
-    pub fn render_frame(&mut self, window_resize: bool, camera: Camera) {
+    /// Submits Vulkan commands for rendering a frame.
+    /// Blocks until previous frame has finished rendering todo efficient
+    pub fn render_frame(&mut self, window_resize: bool, camera: Camera) -> Result<(), String> {
         // checks for submission finish and free locks on gpu resources
         self.future_previous_frame
             .as_mut()
@@ -357,22 +497,24 @@ impl RenderManager {
             .cleanup_finished();
 
         self.recreate_swapchain = self.recreate_swapchain || window_resize;
-        // recreate swapchain
         if self.recreate_swapchain {
-            self.recreate_swapchain();
+            self.recreate_swapchain(); // todo error handle/propogation
         }
-        self.recreate_swapchain = false;
 
         // blocks when no images currently available (all have been submitted already)
         let (image_num, suboptimal, acquire_future) =
-            // todo timeout for no images returned case?
             match acquire_next_image(self.swapchain.clone(), None) {
                 Ok(r) => r,
                 Err(AcquireError::OutOfDate) => {
                     self.recreate_swapchain = true;
-                    return;
+                    debug!("out of date swapchain, recreating...");
+                    self.recreate_swapchain(); // todo error handle/propogation
+                    return Ok(());
                 }
-                Err(e) => panic!("Failed to acquire next image: {:?}", e),
+                Err(e) => {
+                    todo!("handle recovery cases, e.g. timeout, surface recreate...");
+                    return Err(format!("Failed to acquire next image: {:?}", e));
+                }
             };
         if suboptimal {
             self.recreate_swapchain = true;
@@ -455,13 +597,17 @@ impl RenderManager {
                 self.future_previous_frame = Some(sync::now(self.device.clone()).boxed());
             }
         }
+        Ok(())
     }
 }
 
 // Private functions
 
 impl RenderManager {
-    fn recreate_swapchain(&mut self) {
+    /// Recreates the swapchain, render image and assiciated descriptor sets. Unsets `recreate_swapchain` trigger
+    fn recreate_swapchain(&mut self) -> Result<(), RenderManagerError> {
+        use RenderManagerError::{RenderFrameFailed, SurfaceSizeUnsupported};
+
         let (new_swapchain, swapchain_images) = match self.swapchain.recreate(SwapchainCreateInfo {
             image_extent: self.surface.window().inner_size().into(),
             ..self.swapchain.create_info()
@@ -469,8 +615,24 @@ impl RenderManager {
             Ok(r) => r,
             // this error tends to happen when the user is manually resizing the window.
             // simply restarting the loop is the easiest way to fix this issue.
-            Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return,
-            Err(e) => panic!("Failed to recreate swapchain: {:?}", e),
+            Err(SwapchainCreationError::ImageExtentNotSupported {
+                provided,
+                min_supported,
+                max_supported,
+            }) => {
+                let err = SurfaceSizeUnsupported {
+                    provided,
+                    min_supported,
+                    max_supported,
+                };
+                warn!("cannot recreate swapchain: {:?}", err);
+                return Err(err);
+            }
+            Err(e) => {
+                return Err(
+                    RenderFrameFailed(format!("Failed to recreate swapchain: {:?}", e)).log(),
+                );
+            }
         };
 
         self.swapchain = new_swapchain;
@@ -479,7 +641,10 @@ impl RenderManager {
             .map(|image| ImageView::new_default(image.clone()).unwrap())
             .collect::<Vec<_>>();
 
+        // set parameters for new resolution
         let resolution = swapchain_images[0].dimensions().width_height();
+        self.work_group_count = calc_work_group_count(resolution, self.work_group_size);
+        self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
 
         // compute shader render target
         self.render_image = StorageImage::general_purpose_image_view(
@@ -523,9 +688,10 @@ impl RenderManager {
         )
         .unwrap();
 
-        self.work_group_count = calc_work_group_count(resolution, self.work_group_size);
+        // unset trigger
+        self.recreate_swapchain = false;
 
-        self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
+        Ok(())
     }
 }
 
