@@ -67,24 +67,24 @@ impl Camera {
 
     // Getters
     /// Position in world space
-    pub fn get_position(&self) -> Vec3 {
+    pub fn position(&self) -> Vec3 {
         self.position
     }
     /*
     /// View direction in world space
-    pub fn get_direction(&self) -> Vec3 {
+    pub fn direction(&self) -> Vec3 {
         self.direction
     }
     /// Perpindicular to direction and up = cross(up, direction)
-    pub fn get_normal(&self) -> Vec3 {
+    pub fn normal(&self) -> Vec3 {
         self.normal
     }
     /// Field of View in radians
-    pub fn get_fov(&self) -> f32 {
+    pub fn fov(&self) -> f32 {
         self.fov
     }
     /// Aspect ratio
-    pub fn get_aspect_ratio(&self) -> f32 {
+    pub fn aspect_ratio(&self) -> f32 {
         self.aspect_ratio
     }
     */

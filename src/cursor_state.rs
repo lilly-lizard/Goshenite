@@ -88,10 +88,10 @@ impl CursorState {
         self.window.set_cursor_icon(cursor_icon);
     }
 
-    pub fn get_position_frame_change(&self) -> DVec2 {
+    pub fn position_frame_change(&self) -> DVec2 {
         self.position_frame_change
     }
-    pub fn get_is_dragging(&self) -> Option<MouseButton> {
+    pub fn is_dragging(&self) -> Option<MouseButton> {
         self.is_dragging
     }
 }

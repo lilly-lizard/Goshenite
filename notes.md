@@ -31,6 +31,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 	image layout (action) for depth buffer (object)'. This makes it easier to search for
 comments by action or object e.g. a search for 'transition image layout' wouldn't find
 	the comment 'transition depth buffer image layout'
+- avoid Box<dyn Error> if possible, just create an enum https://fettblog.eu/rust-enums-wrapping-errors/
 
 # design decisions
 

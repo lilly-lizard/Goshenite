@@ -136,10 +136,9 @@ impl Engine {
         self.cursor_state.frame_update();
 
         // update camera
-        if self.cursor_state.get_is_dragging() == Some(MouseButton::Left) {
-            let delta_cursor: Vec2 = (self.cursor_state.get_position_frame_change()
-                * config::SENSITIVITY_LOOK)
-                .as_vec2();
+        if self.cursor_state.is_dragging() == Some(MouseButton::Left) {
+            let delta_cursor: Vec2 =
+                (self.cursor_state.position_frame_change() * config::SENSITIVITY_LOOK).as_vec2();
             self.camera
                 .rotate(delta_cursor.x.into(), (-delta_cursor.y).into());
         }
