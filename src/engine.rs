@@ -27,13 +27,30 @@ impl fmt::Display for EngineError {
     }
 }
 
+/// Color theme options for the UI.
+/// todo logic for winit
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Theme {
+    Dark,
+    Light,
+}
+impl Default for Theme {
+    /// Default theme is 'Dark'
+    fn default() -> Self {
+        Self::Dark
+    }
+}
+
 pub struct Engine {
-    renderer: RenderManager,
-    camera: Camera,
     _window: Arc<Window>,
     window_resize: bool,
     scale_factor: f64,
     cursor_state: CursorState,
+
+    renderer: RenderManager,
+    camera: Camera,
+
+    theme: Theme,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
@@ -64,6 +81,7 @@ impl Engine {
             _window: window,
             camera,
             renderer,
+            theme: Theme::default(),
         }
     }
 

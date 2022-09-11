@@ -8,18 +8,18 @@ edition = "2021"
 log = "0.4"
 # terminal output formatting
 colored = "2.0"
-# glam is a vector and math library well suited for 3D graphics
+# glam is a vector and math library well suited for 3D graphics (noticeably more lightweight than cgmath)
 glam = "0.21"
 # winit is a cross-platform window creation and management library (version must match vulkano-win support)
 winit = "0.26"
 # vulkano is a safe and convenient vulkan (ash) wrapper
-vulkano = "0.30"
-vulkano-win = "0.30" # winit interop
-#vulkano-util = "0.30" # convenience functions
+vulkano = "0.30.0"
+vulkano-win = "0.30.0" # winit interop boilerplate
 # egui is a simple and fast ui library
-#egui = "0.19"
+egui = "0.18.1"
+egui-winit = "0.18.0"
 
-# bytemuck = { version = "1.7", features = ["derive"] } # bit-casting crate
+# bytemuck = { version = "1.7", features = ["derive"] } # bit-casting crate (for cpu<->gpu buffers)
 # slotmap
 # specs: ECS
 # rayon: parallelize iterators etc
