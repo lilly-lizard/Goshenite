@@ -1,14 +1,14 @@
 #version 450
 
+/// Defines the up/down axis in the world space coordinate system
+const vec3 WORLD_SPACE_UP = vec3(0., 0., 1.);
+
 layout (local_size_x = 16, local_size_y = 16) in; // workgroup size todo spec constant
 layout (set = 0, binding = 0, rgba8) uniform writeonly image2D renderImage; // output image
-/*
-layout(set = 0, binding = 1) uniform Camera {
-	mat4 viewInverse; // todo mat3?
-	mat4 projInverse;
+layout (push_constant) uniform Camera {
+	mat4 projViewInverse;
 	vec4 position;
 } cam;
-*/
 
 /// Signed distance function for a sphere
 /// * `point` - point in space to test for
@@ -23,31 +23,64 @@ float sdfSphere(vec3 point, vec3 center, float radius)
 /// * `ray_d` - ray direction
 vec3 background(const vec3 ray_d)
 {
-	return vec3(0.3, 0.4, 0.5) + 0.3 * ray_d.y;
+	return vec3(0.3, 0.4, 0.5) + 0.3 * ray_d * WORLD_SPACE_UP;
+}
+
+/// Calculates the distance to the closest signed distance field in the scene
+float map(vec3 pos) {
+	const vec3 SPHERE_CENTER = vec3(0.);
+	const float SPHERE_RADIUS = 1.;
+	float dist_sphere = sdfSphere(pos, SPHERE_CENTER, SPHERE_RADIUS);
+
+	return dist_sphere;
+}
+
+// https://iquilezles.org/articles/normalsSDF
+// todo pass in hit primitive instead of checking against whole scene...
+vec3 calcNormal(vec3 pos)
+{
+	const float EPSILON = 0.001; // defines a threshold for "essentially nothing"
+    const vec2 e = vec2(1., -1.) * EPSILON;
+    return normalize(e.xyy * map(pos + e.xyy) + 
+					 e.yyx * map(pos + e.yyx) + 
+					 e.yxy * map(pos + e.yxy) + 
+					 e.xxx * map(pos + e.xxx));
 }
 
 /// Render the scene and return the color
 /// * `ray_d` - ray direction
-vec3 scene(const vec3 ray_d)
+vec3 ray_march(const vec3 ray_o, const vec3 ray_d)
 {
+	const uint MAX_STEPS = 32; // maximum number of ray marching steps before confirming a miss
+	const float MAX_DIST = 1000.; // maximum distance to travel
+	const float MIN_DIST = 0.001; // minimum distance to travel (epsilon)
+
+	float dist = 0.; // total distance traveled
+	for (int i = 0; i < MAX_STEPS && dist < MAX_DIST; i++) {
+		vec3 current_pos = ray_o + dist * ray_d; // get the world space position from the current marching distance
+		float dist_to_closest = map(current_pos); // get the distance to the closest primitive
+		if (dist_to_closest < MIN_DIST) {
+			// ray hit
+			return calcNormal(current_pos) / 2. + .5; // colot output = normal for now
+		}
+		dist += dist_to_closest; // incriment the distance travelled along the ray path
+	}
+
+	// ray miss
 	return background(ray_d);
 }
 
 void main()
 {
-	uvec2 dim = uvec2(imageSize(renderImage)); // render image dimensions
+	uvec2 dim = uvec2(imageSize(renderImage)); // ouput image dimensions
 	if (dim.x <= gl_GlobalInvocationID.x || dim.y <= gl_GlobalInvocationID.y)
 		return; // don't bother rendering outside of image bounds
 
-	/*
-	vec2 pos_uv = (vec2(gl_GlobalInvocationID.xy) + vec2(0.5) - vec2(dim) / 2.) / float(dim.x); // clip space position in frame
-	vec4 pos_view = cam.projInverse * vec4(pos_uv.x, -pos_uv.y, 1., 1.); // view space position
-	// todo normalize? divide by w? https://stackoverflow.com/questions/31686664/perspective-divide-why-use-the-w-component
-	vec3 ray_d = normalize((cam.viewInverse * vec4(normalize(pos_view.xyz / pos_view.w), 0.)).xyz); // ray direction in world space
+	vec2 pos_uv = (vec2(gl_GlobalInvocationID.xy) + vec2(0.5) - vec2(dim) / 2.) / dim; // clip space position in frame
+	vec3 ray_d = normalize((cam.projViewInverse * vec4(pos_uv, 1., 1.)).xyz); // ray direction in world space
 
 	// render scene
-	vec3 color = scene(ray_d);
-	*/
+	vec3 color = ray_march(cam.position.xyz, ray_d);
 
-	imageStore(renderImage, ivec2(gl_GlobalInvocationID.xy), vec4(vec2(gl_GlobalInvocationID.xy) / vec2(dim), .5, 1.));
+	imageStore(renderImage, ivec2(gl_GlobalInvocationID.xy), vec4(color, 1.));
 }

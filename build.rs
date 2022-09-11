@@ -77,7 +77,16 @@ fn gen_shader_spirv() {
             match compiler.compile_into_spirv(&shader_text, shader_stage, &file_name, "main", None)
             {
                 Ok(comp) => comp,
-                Err(e) => panic!("failed to compile {} to spirv:\n{}", file_name, e),
+                Err(e) => {
+                    panic!("failed to compile {} to spirv:\n{}", file_name, e);
+                    /*
+                    println!(
+                        "cargo:warning=failed to compile {} to spirv:\n{}",
+                        file_name, e
+                    );
+                    continue;
+                    */
+                }
             };
         let spirv_bin = spirv_comp.as_binary_u8();
 
