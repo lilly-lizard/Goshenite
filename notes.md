@@ -1,16 +1,18 @@
 # TODO
 
-- clippy
 - cpu writes to buffer with spheres
-- draw sdf sphere with AABB
 - have multiple spheres
+- egui
+- render xyz arrows on selected object
+- draw sdf sphere with AABB
+
 - Camera::rotate quaternions
-- credit unwrap-or gitlab for unwrap_or_exec
-- credit cgmath for radians/degrees idea
 - shaderStorageImageExtendedFormats
 	- https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#features-required-format-support
 	- VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_B10G11R11_UFLOAT_PACK32
 	- https://stackoverflow.com/questions/72548476/whats-the-best-practice-for-handling-format-qualifiers-for-images-in-compute-sh
+
+- clippy
 
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 

@@ -1,3 +1,4 @@
+/// Shout out to cgmath for the idea https://github.com/rustgd/cgmath
 use std::ops::Deref;
 
 /// Represents an angle in f32 radians

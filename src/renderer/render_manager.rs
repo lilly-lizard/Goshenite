@@ -43,13 +43,12 @@ use vulkano::{
 use vulkano_win::create_surface_from_winit;
 use winit::window::Window;
 
+/// Describes the types of errors encountered by the renderer
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RenderManagerError {
-    /// Vulkan renderer is unable to initialize, a string containing the reason is included
-    InitFailed(String),
-
-    /// An unrecoverable or unexpected error occured while rendering a frame
-    RenderFrameFailed(String),
+    /// An unrecoverable or unexpected error has prevented the RenderManager from initializing or rendering.
+    /// Contains an string explaining the cause.
+    Unrecoverable(String),
 
     /// The window surface is no longer accessible and must be recreated.
     /// Invalidates the RenderManger and requires re-initialization.
@@ -70,8 +69,7 @@ impl error::Error for RenderManagerError {}
 impl fmt::Display for RenderManagerError {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            RenderManagerError::InitFailed(msg) => write!(fmt, "failed to initialize RenderManager: {}", msg),
-            RenderManagerError::RenderFrameFailed(msg) => write!(fmt, "failed to render frame {}", msg),
+            RenderManagerError::Unrecoverable(msg) => write!(fmt, "{}", msg),
             RenderManagerError::SurfaceLost =>
                 write!(fmt, "the Vulkan surface is no longer accessible, thus invalidating this RenderManager instance"),
             RenderManagerError::SurfaceSizeUnsupported{ provided, min_supported, max_supported } =>
@@ -89,7 +87,7 @@ impl RenderManagerError {
     }
 }
 
-// Members
+/// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
     _debug_callback: Option<DebugUtilsMessenger>,
     device: Arc<Device>,
@@ -114,7 +112,7 @@ pub struct RenderManager {
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
     pub fn new(window: Arc<Window>) -> Result<Self, RenderManagerError> {
-        use RenderManagerError::{InitFailed, SurfaceSizeUnsupported};
+        use RenderManagerError::{SurfaceSizeUnsupported, Unrecoverable};
 
         trait RenderManagerInitErr<T> {
             /// Shorthand for converting a general error to a RenderManagerError::InitFailed.
@@ -130,7 +128,7 @@ impl RenderManager {
             fn init_err(self, msg: &str) -> Result<T, RenderManagerError> {
                 match self {
                     Ok(x) => Ok(x),
-                    Err(e) => Err(InitFailed(format!("{}: {:?}", msg, e)).log()),
+                    Err(e) => Err(Unrecoverable(format!("{}: {:?}", msg, e)).log()),
                 }
             }
         }
@@ -140,7 +138,7 @@ impl RenderManager {
             fn init_err(self, msg: &str) -> Result<T, RenderManagerError> {
                 match self {
                     Some(x) => Ok(x),
-                    None => Err(InitFailed(msg.to_owned()).log()),
+                    None => Err(Unrecoverable(msg.to_owned()).log()),
                 }
             }
         }
@@ -258,33 +256,35 @@ impl RenderManager {
 
         // todo prefer sRGB? (linux sRGB)
         let (swapchain, swapchain_images) = {
-            let surface_capabilities = match physical_device
-                .surface_capabilities(&surface, Default::default())
-            {
-                Ok(x) => x,
-                Err(SurfacePropertiesError::SurfaceLost) => {
-                    return Err(RenderManagerError::SurfaceLost.log())
+            let surface_capabilities =
+                match physical_device.surface_capabilities(&surface, Default::default()) {
+                    Ok(x) => x,
+                    Err(SurfacePropertiesError::SurfaceLost) => {
+                        return Err(RenderManagerError::SurfaceLost.log())
+                    }
+                    Err(e) => {
+                        return Err(Unrecoverable(format!(
+                            "failed to get surface capabilities: {:?}",
+                            e,
+                        ))
+                        .log())
+                    }
+                };
+            let swapchain_image_format =
+                match physical_device.surface_formats(&surface, Default::default()) {
+                    Ok(x) => x,
+                    Err(SurfacePropertiesError::SurfaceLost) => {
+                        return Err(RenderManagerError::SurfaceLost.log())
+                    }
+                    Err(e) => {
+                        return Err(
+                            Unrecoverable(format!("failed to get surface format: {:?}", e)).log(),
+                        )
+                    }
                 }
-                Err(e) => {
-                    return Err(
-                        InitFailed(format!("failed to get surface capabilities: {:?}", e,)).log(),
-                    )
-                }
-            };
-            let swapchain_image_format = match physical_device
-                .surface_formats(&surface, Default::default())
-            {
-                Ok(x) => x,
-                Err(SurfacePropertiesError::SurfaceLost) => {
-                    return Err(RenderManagerError::SurfaceLost.log())
-                }
-                Err(e) => {
-                    return Err(InitFailed(format!("failed to get surface format: {:?}", e)).log())
-                }
-            }
-            .get(0)
-            .expect("vulkan driver should support at least 1 surface format... right?")
-            .0;
+                .get(0)
+                .expect("vulkan driver should support at least 1 surface format... right?")
+                .0;
 
             let composite_alpha = surface_capabilities
                 .supported_composite_alpha
@@ -325,7 +325,7 @@ impl RenderManager {
                     return Err(err);
                 }
                 Err(e) => {
-                    return Err(InitFailed(format!("failed to create swapchain: {:?}", e)).log())
+                    return Err(Unrecoverable(format!("failed to create swapchain: {:?}", e)).log())
                 }
             }
         };
@@ -490,7 +490,7 @@ impl RenderManager {
         window_resize: bool,
         camera: Camera,
     ) -> Result<(), RenderManagerError> {
-        use RenderManagerError::RenderFrameFailed;
+        use RenderManagerError::Unrecoverable;
 
         // checks for submission finish and free locks on gpu resources
         self.future_previous_frame
@@ -514,8 +514,8 @@ impl RenderManager {
                     return self.recreate_swapchain();
                 }
                 Err(e) => {
-                    todo!("handle recovery cases, e.g. timeout, surface recreate...");
-                    return Err(RenderFrameFailed(format!(
+                    // todo other error handling
+                    return Err(Unrecoverable(format!(
                         "Failed to acquire next image: {:?}",
                         e
                     )));
@@ -610,7 +610,7 @@ impl RenderManager {
 impl RenderManager {
     /// Recreates the swapchain, render image and assiciated descriptor sets. Unsets `recreate_swapchain` trigger
     fn recreate_swapchain(&mut self) -> Result<(), RenderManagerError> {
-        use RenderManagerError::{RenderFrameFailed, SurfaceSizeUnsupported};
+        use RenderManagerError::{SurfaceSizeUnsupported, Unrecoverable};
         debug!("recreating swapchain and render targets...");
 
         let (new_swapchain, swapchain_images) = match self.swapchain.recreate(SwapchainCreateInfo {
@@ -634,9 +634,7 @@ impl RenderManager {
                 return Err(err);
             }
             Err(e) => {
-                return Err(
-                    RenderFrameFailed(format!("Failed to recreate swapchain: {:?}", e)).log(),
-                );
+                return Err(Unrecoverable(format!("Failed to recreate swapchain: {:?}", e)).log());
             }
         };
 

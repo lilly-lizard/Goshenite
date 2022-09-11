@@ -1,9 +1,9 @@
 use crate::camera::Camera;
 use crate::config;
 use crate::cursor_state::{CursorState, MouseButton};
-use crate::renderer::render_manager::RenderManager;
+use crate::renderer::render_manager::{RenderManager, RenderManagerError};
 use glam::Vec2;
-use std::sync::Arc;
+use std::{error, fmt, sync::Arc};
 use winit::event_loop::EventLoop;
 use winit::{
     event::{Event, WindowEvent},
@@ -31,6 +31,22 @@ impl EngineEntry {
         self.event_loop.run_return(|event, _, control_flow| {
             self.engine_instance.control_loop(event, control_flow)
         });
+    }
+}
+
+/// Describes different errors encounted by the engine
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum EngineError {
+    /// The renderer has entered or detected an unrecoverable state. Attempting to re-initialize the
+    /// render manager may restore funtionality.
+    RendererInvalidated(String),
+}
+impl error::Error for EngineError {}
+impl fmt::Display for EngineError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            EngineError::RendererInvalidated(msg) => write!(fmt, "{}", msg),
+        }
     }
 }
 
@@ -125,18 +141,21 @@ impl Engine {
                 self.camera.set_aspect_ratio((*new_inner_size).into())
             }
             // per frame logic todo is this called at screen refresh rate?
-            Event::MainEventsCleared => self.frame_update(), // todo use RedrawRequested?
+            Event::MainEventsCleared => self.frame_update().unwrap(), // todo use RedrawRequested?
             _ => (),
         }
     }
 
     /// Per frame logic
-    fn frame_update(&mut self) {
+    fn frame_update(&mut self) -> Result<(), EngineError> {
+        use EngineError::RendererInvalidated;
+        use RenderManagerError::{SurfaceSizeUnsupported, Unrecoverable};
+
         // update cursor state
         self.cursor_state.frame_update();
 
         // update camera
-        if self.cursor_state.is_dragging() == Some(MouseButton::Left) {
+        if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
             let delta_cursor: Vec2 =
                 (self.cursor_state.position_frame_change() * config::SENSITIVITY_LOOK).as_vec2();
             self.camera
@@ -144,7 +163,13 @@ impl Engine {
         }
 
         // submit rendering commands
-        self.renderer.render_frame(self.window_resize, self.camera);
+        match self.renderer.render_frame(self.window_resize, self.camera) {
+            Err(SurfaceSizeUnsupported { .. }) => (), // todo clamp window inner size
+            Err(Unrecoverable(s)) => return Err(RendererInvalidated(s)),
+            _ => (),
+        };
         self.window_resize = false;
+
+        Ok(())
     }
 }

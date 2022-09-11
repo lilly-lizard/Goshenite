@@ -19,7 +19,7 @@ pub struct CursorState {
     is_pressed: ButtonStates,
     is_pressed_previous: ButtonStates,
     /// Which button (if any) is currently dragging (if multiple, set to the first)
-    is_dragging: Option<MouseButton>,
+    which_dragging: Option<MouseButton>,
 }
 impl CursorState {
     pub fn new(window: Arc<Window>) -> Self {
@@ -31,7 +31,7 @@ impl CursorState {
             position_frame_change: DVec2::default(),
             is_pressed: ButtonStates::default(),
             is_pressed_previous: ButtonStates::default(),
-            is_dragging: None,
+            which_dragging: None,
         }
     }
 
@@ -63,16 +63,16 @@ impl CursorState {
 
         // button processing
         for button in MOUSE_BUTTONS {
-            if let Some(dragging_button) = self.is_dragging {
-                // if dragging set and button released, unset is_dragging
+            if let Some(dragging_button) = self.which_dragging {
+                // if dragging set and button released, unset which_dragging
                 if (dragging_button == button) && !self.is_pressed.get(button) {
-                    self.is_dragging = None;
+                    self.which_dragging = None;
                 }
             } else {
-                // if button held and moving, set is_dragging
+                // if button held and moving, set which_dragging
                 if self.is_pressed.get(button) && self.is_pressed_previous.get(button) && has_moved
                 {
-                    self.is_dragging = Some(button);
+                    self.which_dragging = Some(button);
                 }
             }
             // update 'previous' records
@@ -82,7 +82,7 @@ impl CursorState {
 
         // set cursor icon
         let mut cursor_icon = CursorIcon::Default;
-        if self.is_dragging.is_some() {
+        if self.which_dragging.is_some() {
             cursor_icon = CursorIcon::Grabbing;
         }
         self.window.set_cursor_icon(cursor_icon);
@@ -91,8 +91,8 @@ impl CursorState {
     pub fn position_frame_change(&self) -> DVec2 {
         self.position_frame_change
     }
-    pub fn is_dragging(&self) -> Option<MouseButton> {
-        self.is_dragging
+    pub fn which_dragging(&self) -> Option<MouseButton> {
+        self.which_dragging
     }
 }
 
