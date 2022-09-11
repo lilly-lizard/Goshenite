@@ -1,16 +1,10 @@
 # TODO
 
+- egui
 - cpu writes to buffer with spheres
 - have multiple spheres
-- egui
 - render xyz arrows on selected object
 - draw sdf sphere with AABB
-
-- Camera::rotate quaternions
-- shaderStorageImageExtendedFormats
-	- https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#features-required-format-support
-	- VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_B10G11R11_UFLOAT_PACK32
-	- https://stackoverflow.com/questions/72548476/whats-the-best-practice-for-handling-format-qualifiers-for-images-in-compute-sh
 
 - clippy
 
@@ -22,9 +16,14 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## low priority
 
+- Camera::rotate quaternions
+- shaderStorageImageExtendedFormats
+	- https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#features-required-format-support
+	- VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_B10G11R11_UFLOAT_PACK32
+	- https://stackoverflow.com/questions/72548476/whats-the-best-practice-for-handling-format-qualifiers-for-images-in-compute-sh
 - pipeline cache (and write)
-- curl noise field
 - Bang Wong color palette
+- curl noise field
 
 # Code Guidelines
 
@@ -33,6 +32,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 comments by action or object e.g. a search for 'transition image layout' wouldn't find
 	the comment 'transition depth buffer image layout'
 - avoid Box<dyn Error> if possible, just create an enum https://fettblog.eu/rust-enums-wrapping-errors/
+- https://rust-lang.github.io/api-guidelines yeet
 
 # design decisions
 

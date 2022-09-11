@@ -4,35 +4,12 @@ use crate::cursor_state::{CursorState, MouseButton};
 use crate::renderer::render_manager::{RenderManager, RenderManagerError};
 use glam::Vec2;
 use std::{error, fmt, sync::Arc};
-use winit::event_loop::EventLoop;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::ControlFlow,
-    platform::run_return::EventLoopExtRunReturn,
+    event_loop::EventLoop,
     window::{Window, WindowBuilder},
 };
-
-pub struct EngineEntry {
-    event_loop: EventLoop<()>,
-    engine_instance: Engine,
-}
-impl EngineEntry {
-    pub fn init() -> Self {
-        let event_loop = EventLoop::new();
-        let engine_instance = Engine::new(&event_loop);
-        EngineEntry {
-            event_loop,
-            engine_instance,
-        }
-    }
-
-    pub fn start(&mut self) {
-        // enter control loop
-        self.event_loop.run_return(|event, _, control_flow| {
-            self.engine_instance.control_loop(event, control_flow)
-        });
-    }
-}
 
 /// Describes different errors encounted by the engine
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -50,7 +27,7 @@ impl fmt::Display for EngineError {
     }
 }
 
-struct Engine {
+pub struct Engine {
     renderer: RenderManager,
     camera: Camera,
     _window: Arc<Window>,
@@ -90,7 +67,8 @@ impl Engine {
         }
     }
 
-    pub fn control_loop(&mut self, event: Event<()>, control_flow: &mut ControlFlow) {
+    /// Processes winit events. Pass this function to winit...EventLoop::run_return and think of it as the main loop of the engine.
+    pub fn control_flow(&mut self, event: Event<()>, control_flow: &mut ControlFlow) {
         *control_flow = ControlFlow::Poll; // default control flow
 
         match event {
@@ -146,7 +124,7 @@ impl Engine {
         }
     }
 
-    /// Per frame logic
+    /// Per frame engine logic and rendering
     fn frame_update(&mut self) -> Result<(), EngineError> {
         use EngineError::RendererInvalidated;
         use RenderManagerError::{SurfaceSizeUnsupported, Unrecoverable};

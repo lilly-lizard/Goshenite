@@ -16,9 +16,10 @@ winit = "0.26"
 vulkano = "0.30"
 vulkano-win = "0.30" # winit interop
 #vulkano-util = "0.30" # convenience functions
+# egui is a simple and fast ui library
+#egui = "0.19"
 
 # bytemuck = { version = "1.7", features = ["derive"] } # bit-casting crate
-# egui
 # slotmap
 # specs: ECS
 # rayon: parallelize iterators etc

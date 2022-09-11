@@ -6,11 +6,10 @@ mod helper;
 mod renderer;
 mod shaders;
 
-// todo propogate errors WHEREVER possible
-
-use engine::EngineEntry;
+use engine::Engine;
 use helper::logger::ConsoleLogger;
 use log::LevelFilter;
+use winit::{event_loop::EventLoop, platform::run_return::EventLoopExtRunReturn};
 
 /// spooky symbols, what could it mean...
 const SPLASH: &str = "
@@ -38,8 +37,10 @@ fn main() {
     log::set_max_level(LevelFilter::Debug);
 
     // init engine
-    let mut engine_entry = EngineEntry::init();
+    let mut event_loop = EventLoop::new();
+    let mut engine_instance = Engine::new(&event_loop);
 
     // start engine
-    engine_entry.start();
+    event_loop
+        .run_return(|event, _, control_flow| engine_instance.control_flow(event, control_flow));
 }
