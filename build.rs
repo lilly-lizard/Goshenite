@@ -96,7 +96,7 @@ fn gen_shader_spirv() {
         let mut spirv_file =
             File::create(spirv_path).expect("failed to open spirv file for writing");
         spirv_file
-            .write_all(&spirv_bin)
+            .write_all(spirv_bin)
             .expect("failed to write spirv data to output file");
     }
 }

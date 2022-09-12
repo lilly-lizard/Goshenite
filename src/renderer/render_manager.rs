@@ -1,46 +1,31 @@
-// todo handle unwraps/panics/expects (e.g. clean exit) and error propagation
-
-use crate::{camera::Camera, config, shaders::shader_interfaces};
-use glam::Mat4;
-#[allow(unused_imports)]
+use crate::camera::Camera;
+use crate::config;
+use crate::shaders::shader_interfaces;
 use log::{debug, error, info, warn};
-use std::{error, fmt, fs, sync::Arc};
+use std::{error, fmt, sync::Arc};
 use vulkano::{
-    command_buffer::{
-        AutoCommandBufferBuilder, CommandBufferUsage, RenderingAttachmentInfo, RenderingInfo,
-    },
+    command_buffer,
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
-    device::{
-        physical::{PhysicalDevice, PhysicalDeviceType, SurfacePropertiesError},
-        Device, DeviceCreateInfo, DeviceExtensions, Features, Queue, QueueCreateInfo,
-    },
+    device,
+    device::physical::{PhysicalDevice, PhysicalDeviceType, SurfacePropertiesError},
     format::Format,
     image::{view::ImageView, ImageAccess, ImageUsage, StorageImage, SwapchainImage},
-    instance::{
-        debug::{
-            DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
-            DebugUtilsMessengerCreateInfo,
-        },
-        layers_list, Instance, InstanceCreateInfo, InstanceExtensions,
+    instance,
+    instance::debug::{
+        DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
+        DebugUtilsMessengerCreateInfo,
     },
+    pipeline,
     pipeline::{
-        graphics::{
-            render_pass::PipelineRenderingCreateInfo,
-            viewport::{Viewport, ViewportState},
-        },
-        ComputePipeline, GraphicsPipeline, Pipeline, PipelineBindPoint,
+        graphics::viewport::{Viewport, ViewportState},
+        Pipeline,
     },
     render_pass::{LoadOp, StoreOp},
-    sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
+    sampler,
     shader::ShaderModule,
-    swapchain::{
-        acquire_next_image, AcquireError, CompositeAlpha, Surface, Swapchain, SwapchainCreateInfo,
-        SwapchainCreationError,
-    },
+    swapchain,
     sync::{self, FlushError, GpuFuture},
-    Version,
 };
-use vulkano_win::create_surface_from_winit;
 use winit::window::Window;
 
 /// Describes the types of errors encountered by the renderer
@@ -90,22 +75,22 @@ impl RenderManagerError {
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
     _debug_callback: Option<DebugUtilsMessenger>,
-    device: Arc<Device>,
-    queue: Arc<Queue>,
-    surface: Arc<Surface<Arc<Window>>>,
-    swapchain: Arc<Swapchain<Arc<Window>>>,
+    device: Arc<device::Device>,
+    queue: Arc<device::Queue>,
+    surface: Arc<swapchain::Surface<Arc<Window>>>,
+    swapchain: Arc<swapchain::Swapchain<Arc<Window>>>,
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
     viewport: Viewport,
     render_image: Arc<ImageView<StorageImage>>,
     render_image_format: Format,
-    sampler: Arc<Sampler>,
-    pipeline_compute: Arc<ComputePipeline>,
-    pipeline_post: Arc<GraphicsPipeline>,
+    sampler: Arc<sampler::Sampler>,
+    pipeline_compute: Arc<pipeline::ComputePipeline>,
+    pipeline_post: Arc<pipeline::GraphicsPipeline>,
     desc_set_render: Arc<PersistentDescriptorSet>,
     desc_set_post: Arc<PersistentDescriptorSet>,
     work_group_size: [u32; 2],
     work_group_count: [u32; 3],
-    future_previous_frame: Option<Box<dyn GpuFuture>>, // todo description
+    future_previous_frame: Option<Box<dyn vulkano::sync::GpuFuture>>, // todo description
     recreate_swapchain: bool, // indicates that the swapchain needs to be recreated next frame
 }
 // Public functions
@@ -148,7 +133,7 @@ impl RenderManager {
 
         // check for validation layer/debug callback support
         let enable_debug_callback =
-            if let Ok(_) = add_debug_validation(&mut instance_extensions, &mut instance_layers) {
+            if add_debug_validation(&mut instance_extensions, &mut instance_layers).is_ok() {
                 info!("enabling Vulkan validation layers and debug callback");
                 true
             } else {
@@ -157,7 +142,7 @@ impl RenderManager {
             };
 
         // create instance
-        let instance = Instance::new(InstanceCreateInfo {
+        let instance = instance::Instance::new(instance::InstanceCreateInfo {
             enabled_extensions: instance_extensions,
             enumerate_portability: true, // enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enabled_layers: instance_layers,
@@ -189,12 +174,12 @@ impl RenderManager {
             None
         };
 
-        let surface = create_surface_from_winit(window, instance.clone())
+        let surface = vulkano_win::create_surface_from_winit(window, instance.clone())
             .init_err("failed to create vulkan surface")?;
 
-        let device_extensions = DeviceExtensions {
+        let device_extensions = device::DeviceExtensions {
             khr_swapchain: true,
-            ..DeviceExtensions::none()
+            ..device::DeviceExtensions::none()
         };
 
         // print available devices
@@ -207,7 +192,7 @@ impl RenderManager {
             // filter for vulkan version support
             .filter(|&p| {
                 p.api_version()
-                    >= Version::major_minor(config::VULKAN_VER_MAJ, config::VULKAN_VER_MIN)
+                    >= vulkano::Version::major_minor(config::VULKAN_VER_MAJ, config::VULKAN_VER_MIN)
             })
             // filter for required device extensions
             .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
@@ -236,15 +221,15 @@ impl RenderManager {
             physical_device.properties().device_type,
         );
 
-        let (device, mut queues) = Device::new(
+        let (device, mut queues) = device::Device::new(
             physical_device,
-            DeviceCreateInfo {
+            device::DeviceCreateInfo {
                 enabled_extensions: device_extensions,
-                enabled_features: Features {
+                enabled_features: device::Features {
                     dynamic_rendering: true,
-                    ..Features::none()
+                    ..device::Features::none()
                 },
-                queue_create_infos: vec![QueueCreateInfo::family(queue_family)],
+                queue_create_infos: vec![device::QueueCreateInfo::family(queue_family)],
                 ..Default::default()
             },
         )
@@ -290,18 +275,18 @@ impl RenderManager {
                 .supported_composite_alpha
                 .iter()
                 .max_by_key(|c| match c {
-                    CompositeAlpha::PostMultiplied => 4,
-                    CompositeAlpha::Inherit => 3,
-                    CompositeAlpha::Opaque => 2,
-                    CompositeAlpha::PreMultiplied => 1, // because cbf implimenting this logic
+                    swapchain::CompositeAlpha::PostMultiplied => 4,
+                    swapchain::CompositeAlpha::Inherit => 3,
+                    swapchain::CompositeAlpha::Opaque => 2,
+                    swapchain::CompositeAlpha::PreMultiplied => 1, // because cbf implimenting this logic
                     _ => 0,
                 })
                 .expect("surface should support at least 1 composite mode... right?");
 
-            match Swapchain::new(
+            match swapchain::Swapchain::new(
                 device.clone(),
                 surface.clone(),
-                SwapchainCreateInfo {
+                swapchain::SwapchainCreateInfo {
                     min_image_count: surface_capabilities.min_image_count,
                     image_format: Some(swapchain_image_format),
                     image_extent: surface.window().inner_size().into(),
@@ -311,7 +296,7 @@ impl RenderManager {
                 },
             ) {
                 Ok(x) => x,
-                Err(SwapchainCreationError::ImageExtentNotSupported {
+                Err(swapchain::SwapchainCreationError::ImageExtentNotSupported {
                     provided,
                     min_supported,
                     max_supported,
@@ -362,22 +347,22 @@ impl RenderManager {
         )
         .init_err("failed to create render image")?;
 
-        let sampler = Sampler::new(
+        let sampler = sampler::Sampler::new(
             device.clone(),
-            SamplerCreateInfo {
-                mag_filter: Filter::Linear,
-                min_filter: Filter::Linear,
-                address_mode: [SamplerAddressMode::Repeat; 3],
+            sampler::SamplerCreateInfo {
+                mag_filter: sampler::Filter::Linear,
+                min_filter: sampler::Filter::Linear,
+                address_mode: [sampler::SamplerAddressMode::Repeat; 3],
                 ..Default::default()
             },
         )
         .init_err("failed to create sampler")?;
 
-        let shader_render = fs::read("assets/shader_binaries/render.comp.spv")
+        let shader_render = std::fs::read("assets/shader_binaries/render.comp.spv")
             .init_err("render.comp.spv read failed")?;
-        let shader_post_vert = fs::read("assets/shader_binaries/post.vert.spv")
+        let shader_post_vert = std::fs::read("assets/shader_binaries/post.vert.spv")
             .init_err("post.vert.spv read failed")?;
-        let shader_post_frag = fs::read("assets/shader_binaries/post.frag.spv")
+        let shader_post_frag = std::fs::read("assets/shader_binaries/post.frag.spv")
             .init_err("post.frag.spv read failed")?;
 
         // todo conv to &[u32] and use from_words (guarentees 4 byte multiple)
@@ -391,7 +376,7 @@ impl RenderManager {
             unsafe { ShaderModule::from_bytes(device.clone(), shader_post_frag.as_slice()) }
                 .init_err("post.frag shader compile failed")?;
 
-        let pipeline_compute = ComputePipeline::new(
+        let pipeline_compute = pipeline::ComputePipeline::new(
             device.clone(),
             shader_render
                 .entry_point("main")
@@ -408,11 +393,13 @@ impl RenderManager {
             work_group_size,
         );
 
-        let pipeline_post = GraphicsPipeline::start()
-            .render_pass(PipelineRenderingCreateInfo {
-                color_attachment_formats: vec![Some(swapchain.image_format())],
-                ..Default::default()
-            })
+        let pipeline_post = pipeline::GraphicsPipeline::start()
+            .render_pass(
+                pipeline::graphics::render_pass::PipelineRenderingCreateInfo {
+                    color_attachment_formats: vec![Some(swapchain.image_format())],
+                    ..Default::default()
+                },
+            )
             .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .vertex_shader(
                 shader_post_vert
@@ -484,7 +471,6 @@ impl RenderManager {
     }
 
     /// Submits Vulkan commands for rendering a frame.
-    /// Blocks until previous frame has finished rendering todo efficient
     pub fn render_frame(
         &mut self,
         window_resize: bool,
@@ -506,9 +492,9 @@ impl RenderManager {
 
         // blocks when no images currently available (all have been submitted already)
         let (image_num, suboptimal, acquire_future) =
-            match acquire_next_image(self.swapchain.clone(), None) {
+            match swapchain::acquire_next_image(self.swapchain.clone(), None) {
                 Ok(r) => r,
-                Err(AcquireError::OutOfDate) => {
+                Err(swapchain::AcquireError::OutOfDate) => {
                     self.recreate_swapchain = true;
                     // recreate swapchain and skip frame render
                     return self.recreate_swapchain();
@@ -526,21 +512,21 @@ impl RenderManager {
         }
 
         let render_push_constants = shader_interfaces::CameraPc::new(
-            Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
+            glam::Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
             camera.position(),
         );
 
         // record command buffer
-        let mut builder = AutoCommandBufferBuilder::primary(
+        let mut builder = command_buffer::AutoCommandBufferBuilder::primary(
             self.device.clone(),
             self.queue.family(),
-            CommandBufferUsage::OneTimeSubmit,
+            command_buffer::CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
         builder
             .bind_pipeline_compute(self.pipeline_compute.clone())
             .bind_descriptor_sets(
-                PipelineBindPoint::Compute,
+                pipeline::PipelineBindPoint::Compute,
                 self.pipeline_compute.layout().clone(),
                 0,
                 self.desc_set_render.clone(),
@@ -552,12 +538,12 @@ impl RenderManager {
             )
             .dispatch(self.work_group_count)
             .unwrap()
-            .begin_rendering(RenderingInfo {
-                color_attachments: vec![Some(RenderingAttachmentInfo {
+            .begin_rendering(command_buffer::RenderingInfo {
+                color_attachments: vec![Some(command_buffer::RenderingAttachmentInfo {
                     load_op: LoadOp::Clear,
                     store_op: StoreOp::Store,
                     clear_value: Some([0.0, 1.0, 0.0, 1.0].into()),
-                    ..RenderingAttachmentInfo::image_view(
+                    ..command_buffer::RenderingAttachmentInfo::image_view(
                         self.swapchain_image_views[image_num].clone(),
                     )
                 })],
@@ -567,7 +553,7 @@ impl RenderManager {
             .set_viewport(0, [self.viewport.clone()])
             .bind_pipeline_graphics(self.pipeline_post.clone())
             .bind_descriptor_sets(
-                PipelineBindPoint::Graphics,
+                pipeline::PipelineBindPoint::Graphics,
                 self.pipeline_post.layout().clone(),
                 0,
                 self.desc_set_post.clone(),
@@ -613,30 +599,33 @@ impl RenderManager {
         use RenderManagerError::{SurfaceSizeUnsupported, Unrecoverable};
         debug!("recreating swapchain and render targets...");
 
-        let (new_swapchain, swapchain_images) = match self.swapchain.recreate(SwapchainCreateInfo {
-            image_extent: self.surface.window().inner_size().into(),
-            ..self.swapchain.create_info()
-        }) {
-            Ok(r) => r,
-            // this error tends to happen when the user is manually resizing the window.
-            // simply restarting the loop is the easiest way to fix this issue.
-            Err(SwapchainCreationError::ImageExtentNotSupported {
-                provided,
-                min_supported,
-                max_supported,
-            }) => {
-                let err = SurfaceSizeUnsupported {
+        let (new_swapchain, swapchain_images) =
+            match self.swapchain.recreate(swapchain::SwapchainCreateInfo {
+                image_extent: self.surface.window().inner_size().into(),
+                ..self.swapchain.create_info()
+            }) {
+                Ok(r) => r,
+                // this error tends to happen when the user is manually resizing the window.
+                // simply restarting the loop is the easiest way to fix this issue.
+                Err(swapchain::SwapchainCreationError::ImageExtentNotSupported {
                     provided,
                     min_supported,
                     max_supported,
-                };
-                debug!("cannot recreate swapchain: {:?}", err);
-                return Err(err);
-            }
-            Err(e) => {
-                return Err(Unrecoverable(format!("Failed to recreate swapchain: {:?}", e)).log());
-            }
-        };
+                }) => {
+                    let err = SurfaceSizeUnsupported {
+                        provided,
+                        min_supported,
+                        max_supported,
+                    };
+                    debug!("cannot recreate swapchain: {:?}", err);
+                    return Err(err);
+                }
+                Err(e) => {
+                    return Err(
+                        Unrecoverable(format!("Failed to recreate swapchain: {:?}", e)).log(),
+                    );
+                }
+            };
 
         self.swapchain = new_swapchain;
         self.swapchain_image_views = swapchain_images
@@ -706,15 +695,17 @@ enum InstanceSupportError {
     ExtensionUnsupported,
     /// Requested Vulkan layer is not found (may not be installed)
     LayerNotFound,
+    /// Failed to load the Vulkan shared library.
+    LayersListError(instance::LayersListError),
 }
 /// Checks for VK_EXT_debug_utils support and presence khronos validation layers
 /// If both can be enabled, adds them to provided extension and layer lists
 fn add_debug_validation(
-    instance_extensions: &mut InstanceExtensions,
+    instance_extensions: &mut instance::InstanceExtensions,
     instance_layers: &mut Vec<String>,
 ) -> Result<(), InstanceSupportError> {
     // check debug utils extension support
-    if match InstanceExtensions::supported_by_core() {
+    if match instance::InstanceExtensions::supported_by_core() {
         Ok(supported) => supported.ext_debug_utils,
         Err(_) => false,
     } {
@@ -726,17 +717,11 @@ fn add_debug_validation(
 
     // check validation layers are present
     let validation_layer = "VK_LAYER_KHRONOS_validation";
-    if {
-        let available_layers = layers_list().expect("failed to open vulkan library");
-        let mut layer_found = false;
-        for l in available_layers {
-            if validation_layer == l.name() {
-                layer_found = true;
-                break;
-            }
-        }
-        layer_found
-    } {
+    let mut available_layers = match instance::layers_list() {
+        Ok(x) => x,
+        Err(e) => return Err(InstanceSupportError::LayersListError(e)),
+    };
+    if available_layers.any(|l| l.name() == validation_layer) {
         info!("{} was requested and found", validation_layer);
     } else {
         warn!("{} was requested but was not found", validation_layer);
@@ -787,11 +772,11 @@ mod vulkan_callback {
 pub fn calc_work_group_count(resolution: [u32; 2], work_group_size: [u32; 2]) -> [u32; 3] {
     let mut group_count_x = resolution[0] / work_group_size[0];
     if (resolution[0] % work_group_size[0]) != 0 {
-        group_count_x = group_count_x + 1;
+        group_count_x += 1;
     }
     let mut group_count_y = resolution[1] / work_group_size[1];
     if (resolution[1] % work_group_size[1]) != 0 {
-        group_count_y = group_count_y + 1;
+        group_count_y += 1;
     }
     [group_count_x, group_count_y, 1]
 }

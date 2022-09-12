@@ -6,8 +6,7 @@ use glam::Vec2;
 use std::{error, fmt, sync::Arc};
 use winit::{
     event::{Event, WindowEvent},
-    event_loop::ControlFlow,
-    event_loop::EventLoop,
+    event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
 
@@ -64,7 +63,7 @@ impl Engine {
                     f64::from(init_resolution[0]),
                     f64::from(init_resolution[1]),
                 ))
-                .build(&event_loop)
+                .build(event_loop)
                 .unwrap(),
         );
 

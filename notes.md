@@ -16,6 +16,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## low priority
 
+- double buffering (2 frames in flight) -> double up futures/per-frame resources, reduce cpu-gpu sync blocking
 - Camera::rotate quaternions
 - shaderStorageImageExtendedFormats
 	- https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#features-required-format-support

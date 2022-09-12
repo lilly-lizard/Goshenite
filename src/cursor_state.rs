@@ -2,7 +2,6 @@ use glam::DVec2;
 use log::debug;
 use std::sync::Arc;
 use winit::{
-    dpi::PhysicalPosition,
     event::ElementState,
     window::{CursorIcon, Window},
 };
@@ -35,7 +34,7 @@ impl CursorState {
         }
     }
 
-    pub fn set_new_position(&mut self, position: PhysicalPosition<f64>) {
+    pub fn set_new_position(&mut self, position: winit::dpi::PhysicalPosition<f64>) {
         let position: [f64; 2] = position.into();
         self.position = position.into();
     }
