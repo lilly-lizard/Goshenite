@@ -26,15 +26,16 @@ impl fmt::Display for EngineError {
     }
 }
 
+// todo logic for winit
 /// Color theme options for the UI.
-/// todo logic for winit
+///
+/// Default is [`Theme::Dark`]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Theme {
     Dark,
     Light,
 }
 impl Default for Theme {
-    /// Default theme is 'Dark'
     fn default() -> Self {
         Self::Dark
     }

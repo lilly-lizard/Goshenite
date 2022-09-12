@@ -11,9 +11,12 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, ImageAccess, ImageUsage, StorageImage, SwapchainImage},
     instance,
-    instance::debug::{
-        DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
-        DebugUtilsMessengerCreateInfo,
+    instance::{
+        debug::{
+            DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
+            DebugUtilsMessengerCreateInfo,
+        },
+        LayersListError,
     },
     pipeline,
     pipeline::{
@@ -37,13 +40,15 @@ pub enum RenderManagerError {
 
     /// The window surface is no longer accessible and must be recreated.
     /// Invalidates the RenderManger and requires re-initialization.
-    /// (Equivalent to vulkano::device::physical::SurfacePropertiesError::SurfaceLost)
+    ///
+    /// Equivalent to [`vulkano::device::physical::SurfacePropertiesError::SurfaceLost`]
     SurfaceLost,
 
     /// Requested dimensions are not within supported range when attempting to create a render target (swapchain)
     /// This error tends to happen when the user is manually resizing the window.
     /// Simply restarting the loop is the easiest way to fix this issue.
-    /// (Equivalent to vulkano::swapchain::SwapchainCreationError::ImageExtentNotSupported)
+    ///
+    /// Equivalent to [`vulkano::swapchain::SwapchainCreationError::ImageExtentNotSupported`]
     SurfaceSizeUnsupported {
         provided: [u32; 2],
         min_supported: [u32; 2],
@@ -91,7 +96,8 @@ pub struct RenderManager {
     work_group_size: [u32; 2],
     work_group_count: [u32; 3],
     future_previous_frame: Option<Box<dyn vulkano::sync::GpuFuture>>, // todo description
-    recreate_swapchain: bool, // indicates that the swapchain needs to be recreated next frame
+    /// indicates that the swapchain needs to be recreated next frame
+    recreate_swapchain: bool,
 }
 // Public functions
 impl RenderManager {
@@ -239,23 +245,10 @@ impl RenderManager {
             "vulkano::device::Device::new has an assert to ensure at least 1 queue gets created",
         );
 
-        // todo prefer sRGB? (linux sRGB)
+        // create swapchain and images
         let (swapchain, swapchain_images) = {
-            let surface_capabilities =
-                match physical_device.surface_capabilities(&surface, Default::default()) {
-                    Ok(x) => x,
-                    Err(SurfacePropertiesError::SurfaceLost) => {
-                        return Err(RenderManagerError::SurfaceLost.log())
-                    }
-                    Err(e) => {
-                        return Err(Unrecoverable(format!(
-                            "failed to get surface capabilities: {:?}",
-                            e,
-                        ))
-                        .log())
-                    }
-                };
-            let swapchain_image_format =
+            // todo prefer sRGB? (linux sRGB)
+            let image_format =
                 match physical_device.surface_formats(&surface, Default::default()) {
                     Ok(x) => x,
                     Err(SurfacePropertiesError::SurfaceLost) => {
@@ -270,7 +263,22 @@ impl RenderManager {
                 .get(0)
                 .expect("vulkan driver should support at least 1 surface format... right?")
                 .0;
+            debug!("swapchain image format = {:?}", image_format);
 
+            let surface_capabilities =
+                match physical_device.surface_capabilities(&surface, Default::default()) {
+                    Ok(x) => x,
+                    Err(SurfacePropertiesError::SurfaceLost) => {
+                        return Err(RenderManagerError::SurfaceLost.log())
+                    }
+                    Err(e) => {
+                        return Err(Unrecoverable(format!(
+                            "failed to get surface capabilities: {:?}",
+                            e,
+                        ))
+                        .log())
+                    }
+                };
             let composite_alpha = surface_capabilities
                 .supported_composite_alpha
                 .iter()
@@ -282,16 +290,36 @@ impl RenderManager {
                     _ => 0,
                 })
                 .expect("surface should support at least 1 composite mode... right?");
+            debug!("swapchain composite alpha = {:?}", composite_alpha);
+
+            let mut present_modes = match physical_device.surface_present_modes(&surface) {
+                Ok(x) => x,
+                Err(SurfacePropertiesError::SurfaceLost) => {
+                    return Err(RenderManagerError::SurfaceLost.log())
+                }
+                Err(e) => {
+                    return Err(Unrecoverable(format!(
+                        "failed to get surface capabilities: {:?}",
+                        e,
+                    ))
+                    .log())
+                }
+            };
+            let present_mode = present_modes
+                .find(|&pm| pm == swapchain::PresentMode::Mailbox)
+                .unwrap_or(swapchain::PresentMode::Fifo);
+            debug!("swapchain present mode = {:?}", present_mode);
 
             match swapchain::Swapchain::new(
                 device.clone(),
                 surface.clone(),
                 swapchain::SwapchainCreateInfo {
                     min_image_count: surface_capabilities.min_image_count,
-                    image_format: Some(swapchain_image_format),
                     image_extent: surface.window().inner_size().into(),
                     image_usage: ImageUsage::color_attachment(),
+                    image_format: Some(image_format),
                     composite_alpha,
+                    present_mode,
                     ..Default::default()
                 },
             ) {
@@ -314,6 +342,10 @@ impl RenderManager {
                 }
             }
         };
+        debug!(
+            "initial swapchain image size = {:?}",
+            swapchain_images[0].dimensions()
+        );
 
         // dynamic viewport
         let viewport = Viewport {
@@ -698,6 +730,12 @@ enum InstanceSupportError {
     /// Failed to load the Vulkan shared library.
     LayersListError(instance::LayersListError),
 }
+impl From<instance::LayersListError> for InstanceSupportError {
+    #[inline]
+    fn from(err: LayersListError) -> Self {
+        Self::LayersListError(err)
+    }
+}
 /// Checks for VK_EXT_debug_utils support and presence khronos validation layers
 /// If both can be enabled, adds them to provided extension and layer lists
 fn add_debug_validation(
@@ -717,11 +755,10 @@ fn add_debug_validation(
 
     // check validation layers are present
     let validation_layer = "VK_LAYER_KHRONOS_validation";
-    let mut available_layers = match instance::layers_list() {
-        Ok(x) => x,
-        Err(e) => return Err(InstanceSupportError::LayersListError(e)),
-    };
-    if available_layers.any(|l| l.name() == validation_layer) {
+    if instance::layers_list()?
+        .find(|l| l.name() == validation_layer)
+        .is_some()
+    {
         info!("{} was requested and found", validation_layer);
     } else {
         warn!("{} was requested but was not found", validation_layer);
