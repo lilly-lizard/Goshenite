@@ -85,16 +85,18 @@ pub struct RenderManager {
     surface: Arc<swapchain::Surface<Arc<Window>>>,
     swapchain: Arc<swapchain::Swapchain<Arc<Window>>>,
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
-    viewport: Viewport,
+
     render_image: Arc<ImageView<StorageImage>>,
     render_image_format: Format,
     sampler: Arc<sampler::Sampler>,
-    pipeline_compute: Arc<pipeline::ComputePipeline>,
+    pipeline_render: Arc<pipeline::ComputePipeline>,
     pipeline_post: Arc<pipeline::GraphicsPipeline>,
     desc_set_render: Arc<PersistentDescriptorSet>,
     desc_set_post: Arc<PersistentDescriptorSet>,
+    viewport: Viewport,
     work_group_size: [u32; 2],
     work_group_count: [u32; 3],
+
     future_previous_frame: Option<Box<dyn vulkano::sync::GpuFuture>>, // todo description
     /// indicates that the swapchain needs to be recreated next frame
     recreate_swapchain: bool,
@@ -408,7 +410,7 @@ impl RenderManager {
             unsafe { ShaderModule::from_bytes(device.clone(), shader_post_frag.as_slice()) }
                 .init_err("post.frag shader compile failed")?;
 
-        let pipeline_compute = pipeline::ComputePipeline::new(
+        let pipeline_render = pipeline::ComputePipeline::new(
             device.clone(),
             shader_render
                 .entry_point("main")
@@ -449,7 +451,7 @@ impl RenderManager {
             .unwrap();
 
         let desc_set_render = PersistentDescriptorSet::new(
-            pipeline_compute
+            pipeline_render
                 .layout()
                 .set_layouts()
                 .get(shader_interfaces::descriptor::SET_RENDER_COMP)
@@ -491,7 +493,7 @@ impl RenderManager {
             render_image,
             render_image_format,
             sampler,
-            pipeline_compute,
+            pipeline_render,
             pipeline_post,
             desc_set_render,
             desc_set_post,
@@ -556,15 +558,15 @@ impl RenderManager {
         )
         .unwrap();
         builder
-            .bind_pipeline_compute(self.pipeline_compute.clone())
+            .bind_pipeline_compute(self.pipeline_render.clone())
             .bind_descriptor_sets(
                 pipeline::PipelineBindPoint::Compute,
-                self.pipeline_compute.layout().clone(),
+                self.pipeline_render.layout().clone(),
                 0,
                 self.desc_set_render.clone(),
             )
             .push_constants(
-                self.pipeline_compute.layout().clone(),
+                self.pipeline_render.layout().clone(),
                 0,
                 render_push_constants,
             )
@@ -684,7 +686,7 @@ impl RenderManager {
         .unwrap();
 
         self.desc_set_render = PersistentDescriptorSet::new(
-            self.pipeline_compute
+            self.pipeline_render
                 .layout()
                 .set_layouts()
                 .get(shader_interfaces::descriptor::SET_RENDER_COMP)
