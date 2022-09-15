@@ -15,14 +15,16 @@ winit = "0.26"
 # vulkano is a safe and convenient vulkan (ash) wrapper
 vulkano = "0.30.0"
 vulkano-win = "0.30.0" # winit interop boilerplate
+# bit-casting crate (for cpu<->gpu buffers)
+bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
 egui = "0.18.1"
 egui-winit = "0.18.0"
 
-# bytemuck = { version = "1.7", features = ["derive"] } # bit-casting crate (for cpu<->gpu buffers)
 # slotmap
 # specs: ECS
 # rayon: parallelize iterators etc
+# ahash: im fast af boiii
 
 [build-dependencies]
 shaderc = "0.8"

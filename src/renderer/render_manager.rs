@@ -6,8 +6,8 @@ use std::{error, fmt, sync::Arc};
 use vulkano::{
     command_buffer,
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
-    device,
     device::physical::{PhysicalDevice, PhysicalDeviceType, SurfacePropertiesError},
+    device::{self, Device},
     format::Format,
     image::{view::ImageView, ImageAccess, ImageUsage, StorageImage, SwapchainImage},
     instance,
@@ -72,11 +72,39 @@ impl RenderManagerError {
         self
     }
 }
+trait RenderManagerUnrecoverable<T> {
+    /// Shorthand for converting a general error to a RenderManagerError::InitFailed.
+    /// Commonly used with error propogation `?` in RenderManager::new.
+    fn unrec_err(self, msg: &str) -> Result<T, RenderManagerError>;
+}
+impl<T, E> RenderManagerUnrecoverable<T> for std::result::Result<T, E>
+where
+    E: fmt::Debug,
+{
+    #[inline]
+    #[track_caller]
+    fn unrec_err(self, msg: &str) -> Result<T, RenderManagerError> {
+        match self {
+            Ok(x) => Ok(x),
+            Err(e) => Err(RenderManagerError::Unrecoverable(format!("{}: {:?}", msg, e)).log()),
+        }
+    }
+}
+impl<T> RenderManagerUnrecoverable<T> for std::option::Option<T> {
+    #[inline]
+    #[track_caller]
+    fn unrec_err(self, msg: &str) -> Result<T, RenderManagerError> {
+        match self {
+            Some(x) => Ok(x),
+            None => Err(RenderManagerError::Unrecoverable(msg.to_owned()).log()),
+        }
+    }
+}
 
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
     _debug_callback: Option<DebugUtilsMessenger>,
-    pub device: Arc<device::Device>,
+    pub device: Arc<Device>,
     pub queue: Arc<device::Queue>,
 
     surface: Arc<swapchain::Surface<Arc<Window>>>,
@@ -85,14 +113,15 @@ pub struct RenderManager {
 
     render_image: Arc<ImageView<StorageImage>>,
     render_image_format: Format,
-    sampler: Arc<sampler::Sampler>,
-    pipeline_render: Arc<pipeline::ComputePipeline>,
-    pipeline_post: Arc<pipeline::GraphicsPipeline>,
-    desc_set_render: Arc<PersistentDescriptorSet>,
-    desc_set_post: Arc<PersistentDescriptorSet>,
-    viewport: Viewport,
+    render_image_sampler: Arc<sampler::Sampler>,
+
+    render_pipeline: Arc<pipeline::ComputePipeline>,
+    render_desc_set: Arc<PersistentDescriptorSet>,
     work_group_size: [u32; 2],
     work_group_count: [u32; 3],
+    blit_pipeline: Arc<pipeline::GraphicsPipeline>,
+    blit_desc_set: Arc<PersistentDescriptorSet>,
+    viewport: Viewport,
 
     future_previous_frame: Option<Box<dyn vulkano::sync::GpuFuture>>, // todo description
     /// indicates that the swapchain needs to be recreated next frame
@@ -103,35 +132,6 @@ impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
     pub fn new(window: Arc<Window>) -> Result<Self, RenderManagerError> {
         use RenderManagerError::{SurfaceSizeUnsupported, Unrecoverable};
-
-        trait RenderManagerInitErr<T> {
-            /// Shorthand for converting a general error to a RenderManagerError::InitFailed.
-            /// Commonly used with error propogation `?` in RenderManager::new.
-            fn init_err(self, msg: &str) -> Result<T, RenderManagerError>;
-        }
-        impl<T, E> RenderManagerInitErr<T> for std::result::Result<T, E>
-        where
-            E: fmt::Debug,
-        {
-            #[inline]
-            #[track_caller]
-            fn init_err(self, msg: &str) -> Result<T, RenderManagerError> {
-                match self {
-                    Ok(x) => Ok(x),
-                    Err(e) => Err(Unrecoverable(format!("{}: {:?}", msg, e)).log()),
-                }
-            }
-        }
-        impl<T> RenderManagerInitErr<T> for std::option::Option<T> {
-            #[inline]
-            #[track_caller]
-            fn init_err(self, msg: &str) -> Result<T, RenderManagerError> {
-                match self {
-                    Some(x) => Ok(x),
-                    None => Err(Unrecoverable(msg.to_owned()).log()),
-                }
-            }
-        }
 
         let mut instance_extensions = vulkano_win::required_extensions();
         let mut instance_layers: Vec<String> = Vec::new();
@@ -153,7 +153,7 @@ impl RenderManager {
             enabled_layers: instance_layers,
             ..Default::default()
         })
-        .init_err("Failed to create vulkan instance")?;
+        .unrec_err("Failed to create vulkan instance")?;
 
         // setup debug callbacks
         let debug_callback = if enable_debug_callback {
@@ -180,7 +180,7 @@ impl RenderManager {
         };
 
         let surface = vulkano_win::create_surface_from_winit(window, instance.clone())
-            .init_err("failed to create vulkan surface")?;
+            .unrec_err("failed to create vulkan surface")?;
 
         let device_extensions = device::DeviceExtensions {
             khr_swapchain: true,
@@ -219,7 +219,7 @@ impl RenderManager {
                 PhysicalDeviceType::Cpu => 1,
                 PhysicalDeviceType::Other => 0,
             })
-            .init_err("no suitable physical device available")?;
+            .unrec_err("no suitable physical device available")?;
         info!(
             "Using Vulkan device: {} (type: {:?})",
             physical_device.properties().device_name,
@@ -238,7 +238,7 @@ impl RenderManager {
                 ..Default::default()
             },
         )
-        .init_err("failed to create vulkan device")?;
+        .unrec_err("failed to create vulkan device")?;
 
         let queue = queues.next().expect(
             "vulkano::device::Device::new has an assert to ensure at least 1 queue gets created",
@@ -246,7 +246,7 @@ impl RenderManager {
 
         // create swapchain and images
         let (swapchain, swapchain_images) = {
-            // todo prefer sRGB? (linux sRGB)
+            // todo prefer sRGB (linux sRGB)
             let image_format =
                 match physical_device.surface_formats(&surface, Default::default()) {
                     Ok(x) => x,
@@ -362,7 +362,7 @@ impl RenderManager {
             .map(|image| ImageView::new_default(image.clone()))
             .collect();
         let swapchain_image_views =
-            swapchain_image_views.init_err("failed to create swapchain image view(s)")?;
+            swapchain_image_views.unrec_err("failed to create swapchain image view(s)")?;
 
         // compute shader render target
         let render_image_format = Format::R8G8B8A8_UNORM;
@@ -376,9 +376,9 @@ impl RenderManager {
                 ..ImageUsage::none()
             },
         )
-        .init_err("failed to create render image")?;
+        .unrec_err("failed to create render image")?;
 
-        let sampler = sampler::Sampler::new(
+        let render_image_sampler = sampler::Sampler::new(
             device.clone(),
             sampler::SamplerCreateInfo {
                 mag_filter: sampler::Filter::Linear,
@@ -387,31 +387,20 @@ impl RenderManager {
                 ..Default::default()
             },
         )
-        .init_err("failed to create sampler")?;
+        .unrec_err("failed to create sampler")?;
 
-        let shader_render = std::fs::read("assets/shader_binaries/render.comp.spv")
-            .init_err("render.comp.spv read failed")?;
-        let shader_post_vert = std::fs::read("assets/shader_binaries/post.vert.spv")
-            .init_err("post.vert.spv read failed")?;
-        let shader_post_frag = std::fs::read("assets/shader_binaries/post.frag.spv")
-            .init_err("post.frag.spv read failed")?;
-
-        // todo conv to &[u32] and use from_words (guarentees 4 byte multiple)
         let shader_render =
-            unsafe { ShaderModule::from_bytes(device.clone(), shader_render.as_slice()) }
-                .init_err("render.comp shader compile failed")?;
-        let shader_post_vert =
-            unsafe { ShaderModule::from_bytes(device.clone(), shader_post_vert.as_slice()) }
-                .init_err("post.vert shader compile failed")?;
-        let shader_post_frag =
-            unsafe { ShaderModule::from_bytes(device.clone(), shader_post_frag.as_slice()) }
-                .init_err("post.frag shader compile failed")?;
+            create_shader_module(device.clone(), "assets/shader_binaries/render.comp.spv")?;
+        let shader_blit_vert =
+            create_shader_module(device.clone(), "assets/shader_binaries/blit.vert.spv")?;
+        let shader_blit_frag =
+            create_shader_module(device.clone(), "assets/shader_binaries/blit.frag.spv")?;
 
-        let pipeline_render = pipeline::ComputePipeline::new(
+        let render_pipeline = pipeline::ComputePipeline::new(
             device.clone(),
             shader_render
                 .entry_point("main")
-                .init_err("no main in render.comp")?,
+                .unrec_err("no main in render.comp")?,
             &(),
             None,
             |_| {},
@@ -424,7 +413,7 @@ impl RenderManager {
             work_group_size,
         );
 
-        let pipeline_post = pipeline::GraphicsPipeline::start()
+        let blit_pipeline = pipeline::GraphicsPipeline::start()
             .render_pass(
                 pipeline::graphics::render_pass::PipelineRenderingCreateInfo {
                     color_attachment_formats: vec![Some(swapchain.image_format())],
@@ -433,22 +422,22 @@ impl RenderManager {
             )
             .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .vertex_shader(
-                shader_post_vert
+                shader_blit_vert
                     .entry_point("main")
-                    .init_err("no main in post.vert")?,
+                    .unrec_err("no main in blit.vert")?,
                 (),
             )
             .fragment_shader(
-                shader_post_frag
+                shader_blit_frag
                     .entry_point("main")
-                    .init_err("no main in post.frag")?,
+                    .unrec_err("no main in blit.frag")?,
                 (),
             )
             .build(device.clone())
             .unwrap();
 
-        let desc_set_render = PersistentDescriptorSet::new(
-            pipeline_render
+        let render_desc_set = PersistentDescriptorSet::new(
+            render_pipeline
                 .layout()
                 .set_layouts()
                 .get(shader_interfaces::descriptor::SET_RENDER_COMP)
@@ -461,17 +450,17 @@ impl RenderManager {
         )
         .unwrap();
 
-        let desc_set_post = PersistentDescriptorSet::new(
-            pipeline_post
+        let blit_desc_set = PersistentDescriptorSet::new(
+            blit_pipeline
                 .layout()
                 .set_layouts()
-                .get(shader_interfaces::descriptor::SET_POST_FRAG)
+                .get(shader_interfaces::descriptor::SET_BLIT_FRAG)
                 .unwrap()
                 .to_owned(),
             [WriteDescriptorSet::image_view_sampler(
                 shader_interfaces::descriptor::BINDING_SAMPLER,
                 render_image.clone(),
-                sampler.clone(),
+                render_image_sampler.clone(),
             )],
         )
         .unwrap();
@@ -489,11 +478,11 @@ impl RenderManager {
             viewport,
             render_image,
             render_image_format,
-            sampler,
-            pipeline_render,
-            pipeline_post,
-            desc_set_render,
-            desc_set_post,
+            render_image_sampler,
+            render_pipeline,
+            blit_pipeline,
+            render_desc_set,
+            blit_desc_set,
             work_group_size,
             work_group_count,
             future_previous_frame,
@@ -555,15 +544,15 @@ impl RenderManager {
         )
         .unwrap();
         builder
-            .bind_pipeline_compute(self.pipeline_render.clone())
+            .bind_pipeline_compute(self.render_pipeline.clone())
             .bind_descriptor_sets(
                 pipeline::PipelineBindPoint::Compute,
-                self.pipeline_render.layout().clone(),
+                self.render_pipeline.layout().clone(),
                 0,
-                self.desc_set_render.clone(),
+                self.render_desc_set.clone(),
             )
             .push_constants(
-                self.pipeline_render.layout().clone(),
+                self.render_pipeline.layout().clone(),
                 0,
                 render_push_constants,
             )
@@ -582,12 +571,12 @@ impl RenderManager {
             })
             .unwrap()
             .set_viewport(0, [self.viewport.clone()])
-            .bind_pipeline_graphics(self.pipeline_post.clone())
+            .bind_pipeline_graphics(self.blit_pipeline.clone())
             .bind_descriptor_sets(
                 pipeline::PipelineBindPoint::Graphics,
-                self.pipeline_post.layout().clone(),
+                self.blit_pipeline.layout().clone(),
                 0,
-                self.desc_set_post.clone(),
+                self.blit_desc_set.clone(),
             )
             .draw(3, 1, 0, 0)
             .unwrap()
@@ -682,8 +671,8 @@ impl RenderManager {
         )
         .unwrap();
 
-        self.desc_set_render = PersistentDescriptorSet::new(
-            self.pipeline_render
+        self.render_desc_set = PersistentDescriptorSet::new(
+            self.render_pipeline
                 .layout()
                 .set_layouts()
                 .get(shader_interfaces::descriptor::SET_RENDER_COMP)
@@ -696,17 +685,17 @@ impl RenderManager {
         )
         .unwrap();
 
-        self.desc_set_post = PersistentDescriptorSet::new(
-            self.pipeline_post
+        self.blit_desc_set = PersistentDescriptorSet::new(
+            self.blit_pipeline
                 .layout()
                 .set_layouts()
-                .get(shader_interfaces::descriptor::SET_POST_FRAG)
+                .get(shader_interfaces::descriptor::SET_BLIT_FRAG)
                 .unwrap()
                 .to_owned(),
             [WriteDescriptorSet::image_view_sampler(
                 shader_interfaces::descriptor::BINDING_SAMPLER,
                 self.render_image.clone(),
-                self.sampler.clone(),
+                self.render_image_sampler.clone(),
             )],
         )
         .unwrap();
@@ -719,6 +708,17 @@ impl RenderManager {
 }
 
 // Helper functions
+
+/// Creates a Vulkan shader module given a spirv path (relative to crate root)
+pub fn create_shader_module(
+    device: Arc<Device>,
+    spirv_path: &str,
+) -> Result<Arc<ShaderModule>, RenderManagerError> {
+    let bytes = std::fs::read(spirv_path).unrec_err("render.comp.spv read failed")?;
+    // todo conv to &[u32] and use from_words (guarentees 4 byte multiple)
+    unsafe { ShaderModule::from_bytes(device.clone(), bytes.as_slice()) }
+        .unrec_err([spirv_path, "shader compile failed"].concat().as_str())
+}
 
 /// Describes issues with enabling instance extensions/layers
 enum InstanceSupportError {

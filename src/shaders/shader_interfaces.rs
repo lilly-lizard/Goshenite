@@ -5,7 +5,7 @@ use glam::{Mat4, Vec3, Vec4};
 /// Describes the descriptor set containing the render storage image (render.comp) and sampler (post.frag)
 pub mod descriptor {
     pub const SET_RENDER_COMP: usize = 0; // descriptor set index in render.comp
-    pub const SET_POST_FRAG: usize = 0; // descriptor set index in post.frag
+    pub const SET_BLIT_FRAG: usize = 0; // descriptor set index in post.frag
     pub const BINDING_IMAGE: u32 = 0; // render storage image binding
     pub const BINDING_SAMPLER: u32 = 0; // render image sampler binding
 }

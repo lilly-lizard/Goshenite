@@ -1,49 +1,116 @@
 // shout out to https://github.com/hakolao/egui_winit_vulkano
 
-use crate::renderer::render_manager::RenderManager;
+use crate::renderer::render_manager::{create_shader_module, RenderManager, RenderManagerError};
 use egui::epaint;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, hash::Hash, sync::Arc};
 use vulkano::{
     buffer::cpu_access::CpuAccessibleBuffer,
     buffer::BufferUsage,
     command_buffer::{self, PrimaryCommandBuffer},
+    descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet, WriteDescriptorSet},
     format::Format,
     image::{self, ImageAccess, ImageViewAbstract},
+    pipeline::{
+        graphics::{
+            color_blend::{AttachmentBlend, BlendFactor, ColorBlendState},
+            input_assembly::InputAssemblyState,
+            rasterization::{CullMode, RasterizationState},
+            viewport::ViewportState,
+        },
+        graphics::{vertex_input::BuffersDefinition, GraphicsPipeline},
+        Pipeline,
+    },
+    render_pass::Subpass,
+    sampler::{self, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
     swapchain,
+    sync::GpuFuture,
 };
 use winit::window::Window;
+
+/// Should match vertex definition of egui (except color is `[f32; 4]`)
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
+pub struct EguiVertex {
+    pub position: [f32; 2],
+    pub tex_coords: [f32; 2],
+    pub color: [f32; 4],
+}
+vulkano::impl_vertex!(EguiVertex, position, tex_coords, color);
 
 pub struct GuiRenderer {
     context: egui::Context,
     window_state: egui_winit::State,
-    window: Arc<winit::window::Window>,
-    surface: Arc<swapchain::Surface<Window>>,
+    window: Arc<Window>,
+
+    pipeline: Arc<GraphicsPipeline>,
+    sampler: Arc<Sampler>,
 
     shapes: Vec<epaint::ClippedShape>,
     textures_delta: egui::TexturesDelta,
-
     texture_images: HashMap<egui::TextureId, Arc<dyn ImageViewAbstract + Send + Sync + 'static>>,
+    texture_desc_sets: HashMap<egui::TextureId, Arc<PersistentDescriptorSet>>,
 }
 
 impl GuiRenderer {
     pub fn new(
         window: Arc<winit::window::Window>,
         physical_device: &vulkano::device::physical::PhysicalDevice,
-        surface: Arc<swapchain::Surface<Window>>,
-    ) -> Self {
+        render_manager: &RenderManager,
+        subpass: Subpass,
+    ) -> Result<Self, RenderManagerError> {
         let window_state = egui_winit::State::new(
             physical_device.properties().max_image_array_layers as usize,
             window.as_ref(),
         );
-        Self {
+
+        let vert_shader = create_shader_module(
+            render_manager.device.clone(),
+            "assets/shader_binaries/gui.vert.spv",
+        )?;
+        let frag_shader = create_shader_module(
+            render_manager.device.clone(),
+            "assets/shader_binaries/gui.frag.spv",
+        )?;
+
+        let mut blend = AttachmentBlend::alpha();
+        blend.color_source = BlendFactor::One;
+        let blend_state = ColorBlendState::new(1).blend(blend);
+
+        let pipeline = GraphicsPipeline::start()
+            .vertex_input_state(BuffersDefinition::new().vertex::<EguiVertex>())
+            .vertex_shader(vert_shader.entry_point("main").unwrap(), ())
+            .input_assembly_state(InputAssemblyState::new())
+            .fragment_shader(frag_shader.entry_point("main").unwrap(), ())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_dynamic(1))
+            .color_blend_state(blend_state)
+            .rasterization_state(RasterizationState::new().cull_mode(CullMode::None))
+            .render_pass(subpass)
+            .build(render_manager.queue.device().clone())
+            .unwrap();
+
+        let sampler = Sampler::new(
+            render_manager.queue.device().clone(),
+            SamplerCreateInfo {
+                mag_filter: sampler::Filter::Linear,
+                min_filter: sampler::Filter::Linear,
+                address_mode: [SamplerAddressMode::ClampToEdge; 3],
+                mipmap_mode: SamplerMipmapMode::Linear,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        Ok(Self {
             context: Default::default(),
             window_state,
             window,
-            surface,
+            pipeline,
+            sampler,
             shapes: vec![],
             textures_delta: Default::default(),
-            texture_images: todo!(),
-        }
+            texture_images: HashMap::default(),
+            texture_desc_sets: HashMap::default(),
+        })
     }
 
     /// Updates context state by winit window event.
@@ -226,5 +293,22 @@ impl GuiRenderer {
             .execute(render_manager.queue.clone())
             .unwrap();
         let _fut = finished.then_signal_fence_and_flush().unwrap();
+    }
+
+    /// Creates a descriptor set for images
+    fn sampled_image_desc_set(
+        &self,
+        layout: &Arc<DescriptorSetLayout>,
+        image: Arc<dyn ImageViewAbstract + 'static>,
+    ) -> Arc<PersistentDescriptorSet> {
+        PersistentDescriptorSet::new(
+            layout.clone(),
+            [WriteDescriptorSet::image_view_sampler(
+                0,
+                image.clone(),
+                self.sampler.clone(),
+            )],
+        )
+        .unwrap()
     }
 }

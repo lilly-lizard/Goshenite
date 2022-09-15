@@ -1,6 +1,8 @@
 # TODO
 
 - egui
+- split RenderManager::new into helper functions
+- todos around the place (including shaders)
 - cpu writes to buffer with spheres
 - have multiple spheres
 - render xyz arrows on selected object
@@ -20,7 +22,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 ## low priority
 
 - double buffering (2 frames in flight) -> double up futures/per-frame resources, reduce cpu-gpu sync blocking
-- Camera::rotate quaternions
+- Camera::rotate quaternions https://www.3dgep.com/understanding-quaternions/
 - shaderStorageImageExtendedFormats
 	- https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#features-required-format-support
 	- VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_B10G11R11_UFLOAT_PACK32
