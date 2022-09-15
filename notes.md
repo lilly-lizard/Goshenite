@@ -5,6 +5,9 @@
 - have multiple spheres
 - render xyz arrows on selected object
 - draw sdf sphere with AABB
+- interface to disable shader compilation in build.rs
+	- feature flag (disabled by default) https://doc.rust-lang.org/cargo/reference/features.html#command-line-feature-options
+	- environment variable checked in build.rs (still ends up compiling shaderc tho)
 
 - clippy
 
@@ -23,6 +26,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 	- VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_B10G11R11_UFLOAT_PACK32
 	- https://stackoverflow.com/questions/72548476/whats-the-best-practice-for-handling-format-qualifiers-for-images-in-compute-sh
 - pipeline cache (and write)
+
 - Bang Wong color palette
 - curl noise field
 

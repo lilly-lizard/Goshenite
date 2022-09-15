@@ -1,7 +1,16 @@
 // shout out to https://github.com/hakolao/egui_winit_vulkano
 
-use std::sync::Arc;
-use vulkano::swapchain;
+use crate::renderer::render_manager::RenderManager;
+use egui::epaint;
+use std::{collections::HashMap, sync::Arc};
+use vulkano::{
+    buffer::cpu_access::CpuAccessibleBuffer,
+    buffer::BufferUsage,
+    command_buffer::{self, PrimaryCommandBuffer},
+    format::Format,
+    image::{self, ImageAccess, ImageViewAbstract},
+    swapchain,
+};
 use winit::window::Window;
 
 pub struct GuiRenderer {
@@ -9,8 +18,11 @@ pub struct GuiRenderer {
     window_state: egui_winit::State,
     window: Arc<winit::window::Window>,
     surface: Arc<swapchain::Surface<Window>>,
-    shapes: Vec<egui::epaint::ClippedShape>,
+
+    shapes: Vec<epaint::ClippedShape>,
     textures_delta: egui::TexturesDelta,
+
+    texture_images: HashMap<egui::TextureId, Arc<dyn ImageViewAbstract + Send + Sync + 'static>>,
 }
 
 impl GuiRenderer {
@@ -30,6 +42,7 @@ impl GuiRenderer {
             surface,
             shapes: vec![],
             textures_delta: Default::default(),
+            texture_images: todo!(),
         }
     }
 
@@ -62,7 +75,7 @@ impl GuiRenderer {
             });
     }
 
-    pub fn draw_cmds(&mut self) {
+    pub fn draw_cmds(&mut self, render_manager: &RenderManager) {
         self.end_frame();
 
         let shapes = std::mem::take(&mut self.shapes);
@@ -70,10 +83,10 @@ impl GuiRenderer {
         let clipped_meshes = self.context.tessellate(shapes);
 
         for (id, image_delta) in &textures_delta.set {
-            self.update_texture(*id, image_delta);
+            self.update_texture(render_manager, *id, image_delta);
         }
 
-        todo!("");
+        todo!();
     }
 
     fn end_frame(&mut self) {
@@ -93,7 +106,12 @@ impl GuiRenderer {
         self.textures_delta = textures_delta;
     }
 
-    fn update_texture(&mut self, texture_id: egui::TextureId, delta: &egui::epaint::ImageDelta) {
+    fn update_texture(
+        &mut self,
+        render_manager: &RenderManager,
+        texture_id: egui::TextureId,
+        delta: &egui::epaint::ImageDelta,
+    ) {
         // Extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
             egui::ImageData::Color(image) => {
@@ -118,15 +136,15 @@ impl GuiRenderer {
         };
         // Create buffer to be copied to the image
         let texture_data_buffer = CpuAccessibleBuffer::from_iter(
-            self.gfx_queue.device().clone(),
+            render_manager.device.clone(),
             BufferUsage::transfer_src(),
             false,
             data,
         )
         .unwrap();
         // Create image
-        let (img, init) = ImmutableImage::uninitialized(
-            self.gfx_queue.device().clone(),
+        let (img, init) = image::ImmutableImage::uninitialized(
+            render_manager.device.clone(),
             vulkano::image::ImageDimensions::Dim2d {
                 width: delta.image.width() as u32,
                 height: delta.image.height() as u32,
@@ -134,29 +152,29 @@ impl GuiRenderer {
             },
             Format::R8G8B8A8_SRGB,
             vulkano::image::MipmapsCount::One,
-            ImageUsage {
+            image::ImageUsage {
                 transfer_dst: true,
                 transfer_src: true,
                 sampled: true,
-                ..ImageUsage::none()
+                ..image::ImageUsage::none()
             },
             Default::default(),
-            ImageLayout::ShaderReadOnlyOptimal,
-            Some(self.gfx_queue.family()),
+            image::ImageLayout::ShaderReadOnlyOptimal,
+            Some(render_manager.queue.family()),
         )
         .unwrap();
-        let font_image = ImageView::new_default(img).unwrap();
+        let font_image = image::view::ImageView::new_default(img).unwrap();
 
         // Create command buffer builder
-        let mut cbb = AutoCommandBufferBuilder::primary(
-            self.gfx_queue.device().clone(),
-            self.gfx_queue.family(),
-            CommandBufferUsage::OneTimeSubmit,
+        let mut cbb = command_buffer::AutoCommandBufferBuilder::primary(
+            render_manager.device.clone(),
+            render_manager.queue.family(),
+            command_buffer::CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
 
         // Copy buffer to image
-        cbb.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
+        cbb.copy_buffer_to_image(command_buffer::CopyBufferToImageInfo::buffer_image(
             texture_data_buffer,
             init.clone(),
         ))
@@ -173,10 +191,10 @@ impl GuiRenderer {
                     1,
                 ];
 
-                cbb.blit_image(BlitImageInfo {
-                    src_image_layout: ImageLayout::General,
-                    dst_image_layout: ImageLayout::General,
-                    regions: [ImageBlit {
+                cbb.blit_image(command_buffer::BlitImageInfo {
+                    src_image_layout: image::ImageLayout::General,
+                    dst_image_layout: image::ImageLayout::General,
+                    regions: [command_buffer::ImageBlit {
                         src_subresource: font_image.image().subresource_layers(),
                         src_offsets: [
                             [0, 0, 0],
@@ -187,8 +205,8 @@ impl GuiRenderer {
                         ..Default::default()
                     }]
                     .into(),
-                    filter: Filter::Nearest,
-                    ..BlitImageInfo::images(
+                    filter: vulkano::sampler::Filter::Nearest,
+                    ..command_buffer::BlitImageInfo::images(
                         font_image.image().clone(),
                         existing_image.image().clone(),
                     )
@@ -204,7 +222,9 @@ impl GuiRenderer {
         }
         // Execute command buffer
         let command_buffer = cbb.build().unwrap();
-        let finished = command_buffer.execute(self.gfx_queue.clone()).unwrap();
+        let finished = command_buffer
+            .execute(render_manager.queue.clone())
+            .unwrap();
         let _fut = finished.then_signal_fence_and_flush().unwrap();
     }
 }

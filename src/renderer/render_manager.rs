@@ -11,18 +11,14 @@ use vulkano::{
     format::Format,
     image::{view::ImageView, ImageAccess, ImageUsage, StorageImage, SwapchainImage},
     instance,
-    instance::{
-        debug::{
-            DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
-            DebugUtilsMessengerCreateInfo,
-        },
-        LayersListError,
+    instance::debug::{
+        DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
+        DebugUtilsMessengerCreateInfo,
     },
+    instance::LayersListError,
     pipeline,
-    pipeline::{
-        graphics::viewport::{Viewport, ViewportState},
-        Pipeline,
-    },
+    pipeline::graphics::viewport::{Viewport, ViewportState},
+    pipeline::Pipeline,
     render_pass::{LoadOp, StoreOp},
     sampler,
     shader::ShaderModule,
@@ -80,8 +76,9 @@ impl RenderManagerError {
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
     _debug_callback: Option<DebugUtilsMessenger>,
-    device: Arc<device::Device>,
-    queue: Arc<device::Queue>,
+    pub device: Arc<device::Device>,
+    pub queue: Arc<device::Queue>,
+
     surface: Arc<swapchain::Surface<Arc<Window>>>,
     swapchain: Arc<swapchain::Swapchain<Arc<Window>>>,
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
