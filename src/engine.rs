@@ -30,7 +30,7 @@ impl fmt::Display for EngineError {
 /// Color theme options for the UI.
 ///
 /// Default is [`Theme::Dark`]
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Theme {
     Dark,
     Light,
@@ -88,53 +88,44 @@ impl Engine {
     /// Processes winit events. Pass this function to winit...EventLoop::run_return and think of it as the main loop of the engine.
     pub fn control_flow(&mut self, event: Event<()>, control_flow: &mut ControlFlow) {
         *control_flow = ControlFlow::Poll; // default control flow
+        let mut gui_captured_event = false; // todo how to handle this in engine logic?
 
         match event {
-            // exit the event loop and close application
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => *control_flow = ControlFlow::Exit,
-            // send cursor event to input manager
-            Event::WindowEvent {
-                event: WindowEvent::MouseInput { state, button, .. },
-                ..
-            } => self.cursor_state.set_click_state(button, state),
-            // cursor moved
-            Event::WindowEvent {
-                event: WindowEvent::CursorMoved { position, .. },
-                ..
-            } => self.cursor_state.set_new_position(position),
-            // cursor entered window
-            Event::WindowEvent {
-                event: WindowEvent::CursorEntered { .. },
-                ..
-            } => self.cursor_state.set_in_window_state(true),
-            // cursor left window
-            Event::WindowEvent {
-                event: WindowEvent::CursorLeft { .. },
-                ..
-            } => self.cursor_state.set_in_window_state(false),
-            // window resize
-            Event::WindowEvent {
-                event: WindowEvent::Resized(new_inner_size),
-                ..
-            } => {
-                self.window_resize = true;
-                self.camera.set_aspect_ratio(new_inner_size.into())
-            }
-            // dpi change
-            Event::WindowEvent {
-                event:
+            Event::WindowEvent { event, .. } => {
+                gui_captured_event = self.renderer.gui_renderer.update(&event);
+                match event {
+                    // exit the event loop and close application
+                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+                    // cursor moved
+                    WindowEvent::CursorMoved { position, .. } => {
+                        self.cursor_state.set_new_position(position)
+                    }
+                    // send cursor event to input manager
+                    WindowEvent::MouseInput { state, button, .. } => {
+                        self.cursor_state.set_click_state(button, state)
+                    }
+                    // cursor entered window
+                    WindowEvent::CursorEntered { .. } => {
+                        self.cursor_state.set_in_window_state(true)
+                    }
+                    // cursor left window
+                    WindowEvent::CursorLeft { .. } => self.cursor_state.set_in_window_state(false),
+                    // window resize
+                    WindowEvent::Resized(new_inner_size) => {
+                        self.window_resize = true;
+                        self.camera.set_aspect_ratio(new_inner_size.into())
+                    }
+                    // dpi change
                     WindowEvent::ScaleFactorChanged {
                         scale_factor,
                         new_inner_size,
-                    },
-                ..
-            } => {
-                self.scale_factor = scale_factor;
-                self.window_resize = true;
-                self.camera.set_aspect_ratio((*new_inner_size).into())
+                    } => {
+                        self.scale_factor = scale_factor;
+                        self.window_resize = true;
+                        self.camera.set_aspect_ratio((*new_inner_size).into())
+                    }
+                    _ => (),
+                }
             }
             // per frame logic todo is this called at screen refresh rate?
             Event::MainEventsCleared => self.frame_update().unwrap(), // todo use RedrawRequested?

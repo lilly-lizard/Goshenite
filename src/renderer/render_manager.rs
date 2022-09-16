@@ -1,8 +1,14 @@
+use super::gui_renderer::GuiRenderer;
 use crate::camera::Camera;
 use crate::config;
 use crate::shaders::shader_interfaces;
 use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
+use vulkano::device::Queue;
+use vulkano::pipeline::graphics::render_pass::PipelineRenderingCreateInfo;
+use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
+use vulkano::sampler::Sampler;
+use vulkano::swapchain::{Surface, Swapchain};
 use vulkano::{
     command_buffer,
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
@@ -27,107 +33,35 @@ use vulkano::{
 };
 use winit::window::Window;
 
-/// Describes the types of errors encountered by the renderer
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum RenderManagerError {
-    /// An unrecoverable or unexpected error has prevented the RenderManager from initializing or rendering.
-    /// Contains an string explaining the cause.
-    Unrecoverable(String),
-
-    /// The window surface is no longer accessible and must be recreated.
-    /// Invalidates the RenderManger and requires re-initialization.
-    ///
-    /// Equivalent to [`vulkano::device::physical::SurfacePropertiesError::SurfaceLost`]
-    SurfaceLost,
-
-    /// Requested dimensions are not within supported range when attempting to create a render target (swapchain)
-    /// This error tends to happen when the user is manually resizing the window.
-    /// Simply restarting the loop is the easiest way to fix this issue.
-    ///
-    /// Equivalent to [`vulkano::swapchain::SwapchainCreationError::ImageExtentNotSupported`]
-    SurfaceSizeUnsupported {
-        provided: [u32; 2],
-        min_supported: [u32; 2],
-        max_supported: [u32; 2],
-    },
-}
-impl error::Error for RenderManagerError {}
-impl fmt::Display for RenderManagerError {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            RenderManagerError::Unrecoverable(msg) => write!(fmt, "{}", msg),
-            RenderManagerError::SurfaceLost =>
-                write!(fmt, "the Vulkan surface is no longer accessible, thus invalidating this RenderManager instance"),
-            RenderManagerError::SurfaceSizeUnsupported{ provided, min_supported, max_supported } =>
-                write!(fmt, "cannot create render target with requested dimensions = {:?}. min size = {:?}, max size = {:?}",
-                    provided, min_supported, max_supported),
-        }
-    }
-}
-impl RenderManagerError {
-    /// Passes the error through the `error!` log and returns self
-    #[inline]
-    pub fn log(self) -> Self {
-        error!("{:?}", self);
-        self
-    }
-}
-trait RenderManagerUnrecoverable<T> {
-    /// Shorthand for converting a general error to a RenderManagerError::InitFailed.
-    /// Commonly used with error propogation `?` in RenderManager::new.
-    fn unrec_err(self, msg: &str) -> Result<T, RenderManagerError>;
-}
-impl<T, E> RenderManagerUnrecoverable<T> for std::result::Result<T, E>
-where
-    E: fmt::Debug,
-{
-    #[inline]
-    #[track_caller]
-    fn unrec_err(self, msg: &str) -> Result<T, RenderManagerError> {
-        match self {
-            Ok(x) => Ok(x),
-            Err(e) => Err(RenderManagerError::Unrecoverable(format!("{}: {:?}", msg, e)).log()),
-        }
-    }
-}
-impl<T> RenderManagerUnrecoverable<T> for std::option::Option<T> {
-    #[inline]
-    #[track_caller]
-    fn unrec_err(self, msg: &str) -> Result<T, RenderManagerError> {
-        match self {
-            Some(x) => Ok(x),
-            None => Err(RenderManagerError::Unrecoverable(msg.to_owned()).log()),
-        }
-    }
-}
-
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
     _debug_callback: Option<DebugUtilsMessenger>,
-    pub device: Arc<Device>,
-    pub queue: Arc<device::Queue>,
+    device: Arc<Device>,
+    queue: Arc<Queue>,
 
-    surface: Arc<swapchain::Surface<Arc<Window>>>,
-    swapchain: Arc<swapchain::Swapchain<Arc<Window>>>,
+    surface: Arc<Surface<Arc<Window>>>,
+    swapchain: Arc<Swapchain<Arc<Window>>>,
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
 
     render_image: Arc<ImageView<StorageImage>>,
     render_image_format: Format,
-    render_image_sampler: Arc<sampler::Sampler>,
+    render_image_sampler: Arc<Sampler>,
 
-    render_pipeline: Arc<pipeline::ComputePipeline>,
+    render_pipeline: Arc<ComputePipeline>,
     render_desc_set: Arc<PersistentDescriptorSet>,
     work_group_size: [u32; 2],
     work_group_count: [u32; 3],
-    blit_pipeline: Arc<pipeline::GraphicsPipeline>,
+    blit_pipeline: Arc<GraphicsPipeline>,
     blit_desc_set: Arc<PersistentDescriptorSet>,
     viewport: Viewport,
 
-    future_previous_frame: Option<Box<dyn vulkano::sync::GpuFuture>>, // todo description
+    pub gui_renderer: GuiRenderer,
+
+    future_previous_frame: Option<Box<dyn GpuFuture>>, // todo description
     /// indicates that the swapchain needs to be recreated next frame
     recreate_swapchain: bool,
 }
-// Public functions
+// ~~~ Public functions ~~~
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
     pub fn new(window: Arc<Window>) -> Result<Self, RenderManagerError> {
@@ -179,7 +113,7 @@ impl RenderManager {
             None
         };
 
-        let surface = vulkano_win::create_surface_from_winit(window, instance.clone())
+        let surface = vulkano_win::create_surface_from_winit(window.clone(), instance.clone())
             .unrec_err("failed to create vulkan surface")?;
 
         let device_extensions = device::DeviceExtensions {
@@ -413,13 +347,11 @@ impl RenderManager {
             work_group_size,
         );
 
-        let blit_pipeline = pipeline::GraphicsPipeline::start()
-            .render_pass(
-                pipeline::graphics::render_pass::PipelineRenderingCreateInfo {
-                    color_attachment_formats: vec![Some(swapchain.image_format())],
-                    ..Default::default()
-                },
-            )
+        let blit_pipeline = GraphicsPipeline::start()
+            .render_pass(PipelineRenderingCreateInfo {
+                color_attachment_formats: vec![Some(swapchain.image_format())],
+                ..Default::default()
+            })
             .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
             .vertex_shader(
                 shader_blit_vert
@@ -465,6 +397,13 @@ impl RenderManager {
         )
         .unwrap();
 
+        let gui_renderer = GuiRenderer::new(
+            window.clone(),
+            &physical_device,
+            device.clone(),
+            swapchain.image_format(),
+        )?;
+
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
         let recreate_swapchain = false;
 
@@ -485,6 +424,7 @@ impl RenderManager {
             blit_desc_set,
             work_group_size,
             work_group_count,
+            gui_renderer,
             future_previous_frame,
             recreate_swapchain,
         })
@@ -544,6 +484,7 @@ impl RenderManager {
         )
         .unwrap();
         builder
+            // compute shader scene render
             .bind_pipeline_compute(self.render_pipeline.clone())
             .bind_descriptor_sets(
                 pipeline::PipelineBindPoint::Compute,
@@ -558,6 +499,7 @@ impl RenderManager {
             )
             .dispatch(self.work_group_count)
             .unwrap()
+            // write the render to the swapchain image
             .begin_rendering(command_buffer::RenderingInfo {
                 color_attachments: vec![Some(command_buffer::RenderingAttachmentInfo {
                     load_op: LoadOp::Clear,
@@ -580,6 +522,7 @@ impl RenderManager {
             )
             .draw(3, 1, 0, 0)
             .unwrap()
+            // render gui
             .end_rendering()
             .unwrap();
         let command_buffer = builder.build().unwrap();
@@ -611,8 +554,7 @@ impl RenderManager {
         Ok(())
     }
 }
-
-// Private functions
+// ~~~ Private functions ~~~
 impl RenderManager {
     /// Recreates the swapchain, render image and assiciated descriptor sets. Unsets `recreate_swapchain` trigger
     fn recreate_swapchain(&mut self) -> Result<(), RenderManagerError> {
@@ -707,7 +649,81 @@ impl RenderManager {
     }
 }
 
-// Helper functions
+/// Describes the types of errors encountered by the renderer
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RenderManagerError {
+    /// An unrecoverable or unexpected error has prevented the RenderManager from initializing or rendering.
+    /// Contains an string explaining the cause.
+    Unrecoverable(String),
+
+    /// The window surface is no longer accessible and must be recreated.
+    /// Invalidates the RenderManger and requires re-initialization.
+    ///
+    /// Equivalent to [`vulkano::device::physical::SurfacePropertiesError::SurfaceLost`]
+    SurfaceLost,
+
+    /// Requested dimensions are not within supported range when attempting to create a render target (swapchain)
+    /// This error tends to happen when the user is manually resizing the window.
+    /// Simply restarting the loop is the easiest way to fix this issue.
+    ///
+    /// Equivalent to [`vulkano::swapchain::SwapchainCreationError::ImageExtentNotSupported`]
+    SurfaceSizeUnsupported {
+        provided: [u32; 2],
+        min_supported: [u32; 2],
+        max_supported: [u32; 2],
+    },
+}
+impl error::Error for RenderManagerError {}
+impl fmt::Display for RenderManagerError {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            RenderManagerError::Unrecoverable(msg) => write!(fmt, "{}", msg),
+            RenderManagerError::SurfaceLost =>
+                write!(fmt, "the Vulkan surface is no longer accessible, thus invalidating this RenderManager instance"),
+            RenderManagerError::SurfaceSizeUnsupported{ provided, min_supported, max_supported } =>
+                write!(fmt, "cannot create render target with requested dimensions = {:?}. min size = {:?}, max size = {:?}",
+                    provided, min_supported, max_supported),
+        }
+    }
+}
+impl RenderManagerError {
+    /// Passes the error through the `error!` log and returns self
+    #[inline]
+    pub fn log(self) -> Self {
+        error!("{:?}", self);
+        self
+    }
+}
+trait RenderManagerUnrecoverable<T> {
+    /// Shorthand for converting a general error to a RenderManagerError::InitFailed.
+    /// Commonly used with error propogation `?` in RenderManager::new.
+    fn unrec_err(self, msg: &str) -> Result<T, RenderManagerError>;
+}
+impl<T, E> RenderManagerUnrecoverable<T> for std::result::Result<T, E>
+where
+    E: fmt::Debug,
+{
+    #[inline]
+    #[track_caller]
+    fn unrec_err(self, msg: &str) -> Result<T, RenderManagerError> {
+        match self {
+            Ok(x) => Ok(x),
+            Err(e) => Err(RenderManagerError::Unrecoverable(format!("{}: {:?}", msg, e)).log()),
+        }
+    }
+}
+impl<T> RenderManagerUnrecoverable<T> for std::option::Option<T> {
+    #[inline]
+    #[track_caller]
+    fn unrec_err(self, msg: &str) -> Result<T, RenderManagerError> {
+        match self {
+            Some(x) => Ok(x),
+            None => Err(RenderManagerError::Unrecoverable(msg.to_owned()).log()),
+        }
+    }
+}
+
+// ~~~ Helper functions ~~~
 
 /// Creates a Vulkan shader module given a spirv path (relative to crate root)
 pub fn create_shader_module(
@@ -721,6 +737,7 @@ pub fn create_shader_module(
 }
 
 /// Describes issues with enabling instance extensions/layers
+#[derive(Clone, Debug)]
 enum InstanceSupportError {
     /// Requested instance extension is not supported by this vulkan driver
     ExtensionUnsupported,

@@ -32,5 +32,7 @@ pub const SENSITIVITY_LOOK: f64 = 0.001;
 
 // renderer settings
 pub const VULKAN_VER_MAJ: u32 = 1;
+/// Renderer requires core features:
+/// - dynamic rendering
 pub const VULKAN_VER_MIN: u32 = 3;
 pub const DEFAULT_WORK_GROUP_SIZE: [u32; 2] = [16, 16];

@@ -2,13 +2,13 @@
 use std::ops::Deref;
 
 /// Represents an angle in f32 radians
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, PartialOrd, Default, Debug)]
 pub struct Radians {
     pub val: f32,
 }
 
 /// Represents an angle in f32 degrees
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq, PartialOrd, Default, Debug)]
 pub struct Degrees {
     pub val: f32,
 }

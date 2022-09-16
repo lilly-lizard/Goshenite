@@ -2,7 +2,7 @@
 
 - egui
 - split RenderManager::new into helper functions
-- todos around the place (including shaders)
+- todos around the place (including shaders) unwraps in render code
 - cpu writes to buffer with spheres
 - have multiple spheres
 - render xyz arrows on selected object

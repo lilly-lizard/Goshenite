@@ -11,6 +11,8 @@ pub mod descriptor {
 }
 
 /// Render compute shader push constant struct. size should be no more than 128 bytes for full vulkan coverage
+#[derive(Clone, Copy, Default, Debug)]
+#[repr(C)]
 #[allow(non_snake_case)]
 pub struct CameraPc {
     /// Inverse of projection matrix multiplied by view matrix. Converts clip space coordinates to world space
@@ -20,9 +22,27 @@ pub struct CameraPc {
 }
 impl CameraPc {
     pub fn new(proj_view_inverse: Mat4, position: Vec3) -> Self {
-        CameraPc {
+        Self {
             projViewInverse: proj_view_inverse.to_cols_array(),
             position: Vec4::from((position, 0.)).to_array(),
+        }
+    }
+}
+
+// todo doc
+#[derive(Clone, Copy, Default, Debug)]
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct GuiPc {
+    pub screen_size: [f32; 2],
+    /// bool (use into())
+    pub need_srgb_conv: u32,
+}
+impl GuiPc {
+    pub fn new(screen_size: [f32; 2], need_srgb_conv: bool) -> Self {
+        Self {
+            screen_size,
+            need_srgb_conv: need_srgb_conv as u32,
         }
     }
 }
