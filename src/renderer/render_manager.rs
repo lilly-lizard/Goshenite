@@ -3,7 +3,11 @@ use crate::camera::Camera;
 use crate::config;
 use crate::shaders::shader_interfaces;
 use log::{debug, error, info, warn};
+use std::default;
 use std::{error, fmt, sync::Arc};
+use vulkano::command_buffer::{
+    CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo,
+};
 use vulkano::device::Queue;
 use vulkano::pipeline::graphics::render_pass::PipelineRenderingCreateInfo;
 use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
@@ -471,6 +475,9 @@ impl RenderManager {
             self.recreate_swapchain = true;
         }
 
+        // update gui
+        let need_srgb_conv = false; // todo
+
         let render_push_constants = shader_interfaces::CameraPc::new(
             glam::Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
             camera.position(),
@@ -499,7 +506,7 @@ impl RenderManager {
             )
             .dispatch(self.work_group_count)
             .unwrap()
-            // write the render to the swapchain image
+            // begin render pass
             .begin_rendering(command_buffer::RenderingInfo {
                 color_attachments: vec![Some(command_buffer::RenderingAttachmentInfo {
                     load_op: LoadOp::Clear,
@@ -512,6 +519,7 @@ impl RenderManager {
                 ..Default::default()
             })
             .unwrap()
+            // write the render to the swapchain image
             .set_viewport(0, [self.viewport.clone()])
             .bind_pipeline_graphics(self.blit_pipeline.clone())
             .bind_descriptor_sets(
@@ -521,10 +529,20 @@ impl RenderManager {
                 self.blit_desc_set.clone(),
             )
             .draw(3, 1, 0, 0)
-            .unwrap()
-            // render gui
-            .end_rendering()
             .unwrap();
+        // render gui
+        self.gui_renderer.update_gui(
+            self.device.clone(),
+            self.queue.clone(),
+            &mut builder,
+            [
+                self.viewport.dimensions[0] as u32,
+                self.viewport.dimensions[1] as u32,
+            ],
+            need_srgb_conv,
+        );
+        // end render pass
+        builder.end_rendering().unwrap();
         let command_buffer = builder.build().unwrap();
 
         // submit

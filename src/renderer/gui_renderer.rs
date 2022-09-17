@@ -1,6 +1,6 @@
 // shout out to https://github.com/hakolao/egui_winit_vulkano
 
-use crate::renderer::render_manager::{create_shader_module, RenderManager, RenderManagerError};
+use crate::renderer::render_manager::{create_shader_module, RenderManagerError};
 use crate::shaders::shader_interfaces;
 use egui::epaint::ClippedShape;
 use egui::{epaint::Primitive, ClippedPrimitive};
@@ -8,6 +8,10 @@ use egui::{Mesh, Rect};
 use std::{collections::HashMap, sync::Arc};
 use vulkano::buffer::cpu_pool::CpuBufferPoolChunk;
 use vulkano::buffer::{CpuBufferPool, TypedBufferAccess};
+use vulkano::command_buffer::{
+    CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferUsage,
+    PrimaryAutoCommandBuffer,
+};
 use vulkano::pipeline::graphics::viewport::{Scissor, Viewport};
 use vulkano::pipeline::PipelineBindPoint;
 use vulkano::DeviceSize;
@@ -33,7 +37,6 @@ use vulkano::{
         graphics::{vertex_input::BuffersDefinition, GraphicsPipeline},
         Pipeline,
     },
-    render_pass::Subpass,
     sampler::{self, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
     sync::GpuFuture,
 };
@@ -160,16 +163,42 @@ impl GuiRenderer {
     /// and only when this returns `false` pass on the events to your game.
     ///
     /// Note that egui uses `tab` to move focus between elements, so this will always return `true` for tabs.
-    pub fn update(&mut self, event: &winit::event::WindowEvent<'_>) -> bool {
+    pub fn update_event(&mut self, event: &winit::event::WindowEvent<'_>) -> bool {
         self.window_state.on_event(&self.context, event)
     }
 
-    /// Begins Egui frame & determines what will be drawn later. This must be called before draw, and after `update` (winit event).
-    pub fn immediate_ui(
+    fn layout(&mut self) {
+        egui::Window::new("bruh")
+            .resizable(true)
+            .vscroll(true)
+            .hscroll(true)
+            .show(&self.context, |ui| {
+                ui.heading("hello egui!");
+            });
+    }
+
+    fn end_frame(&mut self) {
+        let egui::FullOutput {
+            platform_output,
+            needs_repaint: _r,
+            textures_delta,
+            shapes,
+        } = self.context.end_frame();
+
+        self.window_state.handle_platform_output(
+            self.window.as_ref(),
+            &self.context,
+            platform_output,
+        );
+        self.shapes = shapes;
+        self.textures_delta = textures_delta;
+    }
+
+    pub fn update_gui(
         &mut self,
         device: Arc<Device>,
         queue: Arc<Queue>,
-        command_buffer_builder: AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
+        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         framebuffer_dimensions: [u32; 2],
         need_srgb_conv: bool,
     ) {
@@ -179,34 +208,6 @@ impl GuiRenderer {
         // set new layout
         self.layout();
 
-        // update resources and command buffer
-        self.update_renderer(
-            device,
-            queue,
-            command_buffer_builder,
-            framebuffer_dimensions,
-            need_srgb_conv,
-        );
-    }
-
-    fn layout(&mut self) {
-        egui::Window::new("Mah Tree")
-            .resizable(true)
-            .vscroll(true)
-            .hscroll(true)
-            .show(&self.context, |ui| {
-                ui.heading("hello egui!");
-            });
-    }
-
-    fn update_renderer(
-        &mut self,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
-        mut command_buffer_builder: AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
-        framebuffer_dimensions: [u32; 2],
-        need_srgb_conv: bool,
-    ) -> SecondaryAutoCommandBuffer {
         self.end_frame();
 
         let shapes = std::mem::take(&mut self.shapes);
@@ -218,28 +219,25 @@ impl GuiRenderer {
         }
 
         self.record_commands(
+            command_buffer,
             self.window_state.pixels_per_point(),
             need_srgb_conv,
             &clipped_meshes,
             framebuffer_dimensions,
-            &mut command_buffer_builder,
         );
-        let command_buffer = command_buffer_builder.build().unwrap();
 
         for &id in &textures_delta.free {
             self.unregister_image(id);
         }
-
-        command_buffer
     }
 
     fn record_commands(
         &mut self,
+        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         scale_factor: f32,
         need_srgb_conv: bool,
         clipped_meshes: &[ClippedPrimitive],
         framebuffer_dimensions: [u32; 2],
-        builder: &mut AutoCommandBufferBuilder<SecondaryAutoCommandBuffer>,
     ) {
         let push_constants = shader_interfaces::GuiPc::new(
             [
@@ -278,7 +276,7 @@ impl GuiRenderer {
                         .get(&mesh.texture_id)
                         .unwrap()
                         .clone();
-                    builder
+                    command_buffer
                         .bind_pipeline_graphics(self.pipeline.clone())
                         .set_viewport(
                             0,
@@ -371,23 +369,6 @@ impl GuiRenderer {
         let index_chunk = self.index_buffer_pool.chunk(i_slice.clone()).unwrap();
 
         (vertex_chunk, index_chunk)
-    }
-
-    fn end_frame(&mut self) {
-        let egui::FullOutput {
-            platform_output,
-            needs_repaint: _r,
-            textures_delta,
-            shapes,
-        } = self.context.end_frame();
-
-        self.window_state.handle_platform_output(
-            self.window.as_ref(),
-            &self.context,
-            platform_output,
-        );
-        self.shapes = shapes;
-        self.textures_delta = textures_delta;
     }
 
     fn update_texture(

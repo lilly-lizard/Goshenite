@@ -92,7 +92,7 @@ impl Engine {
 
         match event {
             Event::WindowEvent { event, .. } => {
-                gui_captured_event = self.renderer.gui_renderer.update(&event);
+                gui_captured_event = self.renderer.gui_renderer.update_event(&event);
                 match event {
                     // exit the event loop and close application
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,

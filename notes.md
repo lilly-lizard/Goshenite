@@ -15,6 +15,10 @@
 
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
+## bugz
+
+- CursorState not initialized properly! e.g. cursor position 0,0 at start so start dragging before moving it and a big jump occurs. also check latest winit in case querying was made better?
+
 ## cleanup
 
 - unwrap error handling
