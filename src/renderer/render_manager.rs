@@ -3,11 +3,7 @@ use crate::camera::Camera;
 use crate::config;
 use crate::shaders::shader_interfaces;
 use log::{debug, error, info, warn};
-use std::default;
 use std::{error, fmt, sync::Arc};
-use vulkano::command_buffer::{
-    CommandBufferInheritanceRenderPassType, CommandBufferInheritanceRenderingInfo,
-};
 use vulkano::device::Queue;
 use vulkano::pipeline::graphics::render_pass::PipelineRenderingCreateInfo;
 use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};

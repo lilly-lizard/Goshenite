@@ -8,19 +8,14 @@ use egui::{Mesh, Rect};
 use std::{collections::HashMap, sync::Arc};
 use vulkano::buffer::cpu_pool::CpuBufferPoolChunk;
 use vulkano::buffer::{CpuBufferPool, TypedBufferAccess};
-use vulkano::command_buffer::{
-    CommandBufferInheritanceInfo, CommandBufferInheritanceRenderPassType, CommandBufferUsage,
-    PrimaryAutoCommandBuffer,
-};
+use vulkano::command_buffer::PrimaryAutoCommandBuffer;
 use vulkano::pipeline::graphics::viewport::{Scissor, Viewport};
 use vulkano::pipeline::PipelineBindPoint;
 use vulkano::DeviceSize;
 use vulkano::{
     buffer::cpu_access::CpuAccessibleBuffer,
     buffer::BufferUsage,
-    command_buffer::{
-        self, AutoCommandBufferBuilder, PrimaryCommandBuffer, SecondaryAutoCommandBuffer,
-    },
+    command_buffer::{self, AutoCommandBufferBuilder, PrimaryCommandBuffer},
     descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet, WriteDescriptorSet},
     device::{Device, Queue},
     format::Format,
@@ -163,7 +158,7 @@ impl GuiRenderer {
     /// and only when this returns `false` pass on the events to your game.
     ///
     /// Note that egui uses `tab` to move focus between elements, so this will always return `true` for tabs.
-    pub fn update_event(&mut self, event: &winit::event::WindowEvent<'_>) -> bool {
+    pub fn process_event(&mut self, event: &winit::event::WindowEvent<'_>) -> bool {
         self.window_state.on_event(&self.context, event)
     }
 

@@ -34,7 +34,7 @@ fn main() {
     if let Err(e) = log::set_logger(&CONSOLE_LOGGER) {
         println!("Goshenite ERROR - Failed to initialize logger: {:?}", e);
     };
-    log::set_max_level(LevelFilter::Debug);
+    log::set_max_level(LevelFilter::Info);
 
     // init engine
     let mut event_loop = EventLoop::new();

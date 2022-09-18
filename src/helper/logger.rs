@@ -13,17 +13,18 @@ impl log::Log for ConsoleLogger {
             let (level, color) = match record.level() {
                 Level::Error => ("[E]", Color::Red),
                 Level::Warn => ("[W]", Color::Yellow),
-                Level::Info => ("[I]", Color::Blue),
+                Level::Info => ("[I]", Color::Cyan),
                 Level::Debug => ("[D]", Color::Magenta),
-                Level::Trace => ("[T]", Color::White),
+                Level::Trace => ("[T]", Color::Blue),
             };
             println!(
-                "{} {} -> {}",
+                "{} {} {} {}",
                 level.color(color),
                 record
                     .module_path()
                     .unwrap_or("(unknown module)")
                     .color(color),
+                ">".color(color),
                 record.args()
             );
         }

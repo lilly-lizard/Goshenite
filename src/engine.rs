@@ -3,6 +3,8 @@ use crate::config;
 use crate::cursor_state::{CursorState, MouseButton};
 use crate::renderer::render_manager::{RenderManager, RenderManagerError};
 use glam::Vec2;
+#[allow(unused_imports)]
+use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
 use winit::{
     event::{Event, WindowEvent},
@@ -88,58 +90,67 @@ impl Engine {
     /// Processes winit events. Pass this function to winit...EventLoop::run_return and think of it as the main loop of the engine.
     pub fn control_flow(&mut self, event: Event<()>, control_flow: &mut ControlFlow) {
         *control_flow = ControlFlow::Poll; // default control flow
-        let mut gui_captured_event = false; // todo how to handle this in engine logic?
 
         match event {
-            Event::WindowEvent { event, .. } => {
-                gui_captured_event = self.renderer.gui_renderer.update_event(&event);
-                match event {
-                    // exit the event loop and close application
-                    WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    // cursor moved
-                    WindowEvent::CursorMoved { position, .. } => {
-                        self.cursor_state.set_new_position(position)
-                    }
-                    // send cursor event to input manager
-                    WindowEvent::MouseInput { state, button, .. } => {
-                        self.cursor_state.set_click_state(button, state)
-                    }
-                    // cursor entered window
-                    WindowEvent::CursorEntered { .. } => {
-                        self.cursor_state.set_in_window_state(true)
-                    }
-                    // cursor left window
-                    WindowEvent::CursorLeft { .. } => self.cursor_state.set_in_window_state(false),
-                    // window resize
-                    WindowEvent::Resized(new_inner_size) => {
-                        self.window_resize = true;
-                        self.camera.set_aspect_ratio(new_inner_size.into())
-                    }
-                    // dpi change
-                    WindowEvent::ScaleFactorChanged {
-                        scale_factor,
-                        new_inner_size,
-                    } => {
-                        self.scale_factor = scale_factor;
-                        self.window_resize = true;
-                        self.camera.set_aspect_ratio((*new_inner_size).into())
-                    }
-                    _ => (),
-                }
-            }
+            // exit the event loop and close application
+            Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                ..
+            } => *control_flow = ControlFlow::Exit,
+            // process window events and update state
+            Event::WindowEvent { event, .. } => self.process_input(event),
             // per frame logic todo is this called at screen refresh rate?
-            Event::MainEventsCleared => self.frame_update().unwrap(), // todo use RedrawRequested?
+            Event::MainEventsCleared => self.process_frame().unwrap(), // todo use RedrawRequested?
+            _ => (),
+        }
+    }
+
+    /// Process window events and update state
+    fn process_input(&mut self, event: WindowEvent) {
+        debug!("winit event: {:?}", event);
+
+        // egui event handling
+        let captured_by_gui = self.renderer.gui_renderer.process_event(&event);
+
+        match event {
+            // cursor moved. triggered when cursor is in window or if currently dragging and started in the window (on linux at least)
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor_state.set_position(position.into())
+            }
+            // send cursor event to input manager
+            WindowEvent::MouseInput { state, button, .. } => {
+                self.cursor_state
+                    .set_click_state(button, state, captured_by_gui)
+            }
+            // cursor entered window
+            WindowEvent::CursorEntered { .. } => self.cursor_state.set_in_window_state(true),
+            // cursor left window
+            WindowEvent::CursorLeft { .. } => self.cursor_state.set_in_window_state(false),
+            // window resize
+            WindowEvent::Resized(new_inner_size) => {
+                self.window_resize = true;
+                self.camera.set_aspect_ratio(new_inner_size.into())
+            }
+            // dpi change
+            WindowEvent::ScaleFactorChanged {
+                scale_factor,
+                new_inner_size,
+            } => {
+                self.scale_factor = scale_factor;
+                self.window_resize = true;
+                self.camera.set_aspect_ratio((*new_inner_size).into())
+            }
             _ => (),
         }
     }
 
     /// Per frame engine logic and rendering
-    fn frame_update(&mut self) -> Result<(), EngineError> {
+    fn process_frame(&mut self) -> Result<(), EngineError> {
         use EngineError::RendererInvalidated;
         use RenderManagerError::{SurfaceSizeUnsupported, Unrecoverable};
 
         // update cursor state
-        self.cursor_state.frame_update();
+        self.cursor_state.process_frame();
 
         // update camera
         if self.cursor_state.which_dragging() == Some(MouseButton::Left) {

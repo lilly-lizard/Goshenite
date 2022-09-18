@@ -1,8 +1,10 @@
 # TODO
 
-- egui
+- unified (separated) event handling logic
+- cleanup gui code
 - split RenderManager::new into helper functions
 - todos around the place (including shaders) unwraps in render code
+- documentation
 - cpu writes to buffer with spheres
 - have multiple spheres
 - render xyz arrows on selected object
@@ -32,6 +34,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 	- VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_B10G11R11_UFLOAT_PACK32
 	- https://stackoverflow.com/questions/72548476/whats-the-best-practice-for-handling-format-qualifiers-for-images-in-compute-sh
 - pipeline cache (and write)
+- colored log output feature
 
 - Bang Wong color palette
 - curl noise field

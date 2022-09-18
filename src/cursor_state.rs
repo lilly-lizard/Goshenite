@@ -12,10 +12,13 @@ pub struct CursorState {
     in_window: bool,
     /// The current cursor position
     position: DVec2,
+    /// The cursor position in the previous frame. Used to calculate [`CursorState::position_frame_change`]
     position_previous: DVec2,
+    /// The change in cursor position since the previous frame
     position_frame_change: DVec2,
-    /// Describes wherver each mouse button is pressed
+    /// Describes wherever each mouse button is pressed
     is_pressed: ButtonStates,
+    /// Describes the state of the mouse buttons in the previous frame. Used to determine [`CursorState::which_dragging`]
     is_pressed_previous: ButtonStates,
     /// Which button (if any) is currently dragging (if multiple, set to the first)
     which_dragging: Option<MouseButton>,
@@ -34,8 +37,7 @@ impl CursorState {
         }
     }
 
-    pub fn set_new_position(&mut self, position: winit::dpi::PhysicalPosition<f64>) {
-        let position: [f64; 2] = position.into();
+    pub fn set_position(&mut self, position: [f64; 2]) {
         self.position = position.into();
     }
 
@@ -43,9 +45,13 @@ impl CursorState {
         &mut self,
         winit_button: winit::event::MouseButton,
         state: ElementState,
+        cursor_captured: bool,
     ) {
         match MouseButton::from_winit(winit_button) {
-            Ok(button) => self.is_pressed.set(button, state == ElementState::Pressed),
+            Ok(button) => self
+                .is_pressed
+                // button is only set to pressed when cursor hasn't been captured by e.g. gui
+                .set(button, !cursor_captured && state == ElementState::Pressed),
             Err(e) => debug!("{}", e),
         };
     }
@@ -54,37 +60,33 @@ impl CursorState {
         self.in_window = is_in_window;
     }
 
-    pub fn frame_update(&mut self) {
+    pub fn process_frame(&mut self) {
         // position processing
         self.position_frame_change = self.position - self.position_previous;
         let has_moved = self.position_frame_change.x != 0. && self.position_frame_change.y != 0.;
         self.position_previous = self.position;
 
-        // button processing
-        for button in MOUSE_BUTTONS {
-            if let Some(dragging_button) = self.which_dragging {
-                // if dragging set and button released, unset which_dragging
-                if (dragging_button == button) && !self.is_pressed.get(button) {
-                    self.which_dragging = None;
-                }
-            } else {
-                // if button held and moving, set which_dragging
+        // dragging logic
+        if let Some(dragging_button) = self.which_dragging {
+            // if which_dragging set but button released, unset which_dragging
+            if !self.is_pressed.get(dragging_button) {
+                self.which_dragging = None;
+                self.window.set_cursor_icon(CursorIcon::Default);
+            }
+        } else {
+            // check each button
+            for button in MOUSE_BUTTONS {
+                // if button held and cursor has moved, set which_dragging
                 if self.is_pressed.get(button) && self.is_pressed_previous.get(button) && has_moved
                 {
                     self.which_dragging = Some(button);
+                    self.window.set_cursor_icon(CursorIcon::Grabbing);
+                    break; // priority given to the order of `MOUSE_BUTTONS`
                 }
             }
-            // update 'previous' records
-            self.is_pressed_previous
-                .set(button, self.is_pressed.get(button));
         }
-
-        // set cursor icon
-        let mut cursor_icon = CursorIcon::Default;
-        if self.which_dragging.is_some() {
-            cursor_icon = CursorIcon::Grabbing;
-        }
-        self.window.set_cursor_icon(cursor_icon);
+        // update previous pressed state
+        self.is_pressed_previous = self.is_pressed;
     }
 
     pub fn position_frame_change(&self) -> DVec2 {
@@ -104,6 +106,7 @@ pub enum MouseButton {
     //Button4,
     //Button5,
 }
+/// List of available [`MouseButton`] enum variations. Note that the order affects the priority for things like dragging logic.
 static MOUSE_BUTTONS: [MouseButton; 3] =
     [MouseButton::Left, MouseButton::Right, MouseButton::Middle];
 impl MouseButton {
