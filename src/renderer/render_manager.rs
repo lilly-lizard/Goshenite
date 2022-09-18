@@ -1,7 +1,6 @@
 use super::gui_renderer::GuiRenderer;
 use crate::camera::Camera;
 use crate::config;
-use crate::gui::Gui;
 use crate::shaders::shader_interfaces;
 use egui::ClippedPrimitive;
 use log::{debug, error, info, warn};
@@ -38,7 +37,7 @@ use winit::window::Window;
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
     _debug_callback: Option<DebugUtilsMessenger>,
-    pub device: Arc<Device>, // todo remove pub
+    device: Arc<Device>, // todo remove pub
     queue: Arc<Queue>,
 
     surface: Arc<Surface<Arc<Window>>>,
@@ -57,7 +56,7 @@ pub struct RenderManager {
     blit_desc_set: Arc<PersistentDescriptorSet>,
     viewport: Viewport,
 
-    pub gui_renderer: GuiRenderer,
+    gui_renderer: GuiRenderer,
 
     future_previous_frame: Option<Box<dyn GpuFuture>>, // todo description
     /// indicates that the swapchain needs to be recreated next frame
@@ -428,11 +427,24 @@ impl RenderManager {
         })
     }
 
+    /// bruh
+    pub fn max_image_array_layers(&self) -> u32 {
+        self.device
+            .physical_device()
+            .properties()
+            .max_image_array_layers
+    }
+
+    /// Returns a mutable reference to the gui renderer so its resources can be updated by the gui
+    pub fn gui_renderer(&mut self) -> &mut GuiRenderer {
+        &mut self.gui_renderer
+    }
+
     /// Submits Vulkan commands for rendering a frame.
     pub fn render_frame(
         &mut self,
         window_resize: bool,
-        gui_clipped_meshes: &Vec<ClippedPrimitive>, //gui.context.tessellate(gui.shapes.clone())
+        gui_primitives: &Vec<ClippedPrimitive>,
         gui_scale_factor: f32,
         camera: Camera,
     ) -> Result<(), RenderManagerError> {
@@ -529,7 +541,7 @@ impl RenderManager {
         // render gui
         self.gui_renderer.record_commands(
             &mut builder,
-            gui_clipped_meshes,
+            gui_primitives,
             gui_scale_factor,
             need_srgb_conv,
             [

@@ -79,14 +79,7 @@ impl Engine {
         let renderer = RenderManager::new(window.clone()).unwrap();
 
         // init gui
-        let gui = Gui::new(
-            window.clone(),
-            renderer
-                .device
-                .physical_device()
-                .properties()
-                .max_image_array_layers as usize,
-        );
+        let gui = Gui::new(window.clone(), renderer.max_image_array_layers() as usize);
 
         Engine {
             scale_factor: window.scale_factor(),
@@ -165,7 +158,7 @@ impl Engine {
         self.cursor_state.process_frame();
 
         // update gui
-        self.gui.update_frame(&mut self.renderer.gui_renderer);
+        self.gui.update_frame(&mut self.renderer.gui_renderer());
 
         // update camera
         if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
@@ -178,7 +171,7 @@ impl Engine {
         // submit rendering commands
         match self.renderer.render_frame(
             self.window_resize,
-            &self.gui.clipped_meshes(),
+            &self.gui.primitives(),
             self.gui.scale_factor(),
             self.camera,
         ) {

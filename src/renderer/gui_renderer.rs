@@ -1,6 +1,4 @@
-// shout out to https://github.com/hakolao/egui_winit_vulkano
-
-use crate::gui::Gui;
+/// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
 use crate::renderer::render_manager::{create_shader_module, RenderManagerError};
 use crate::shaders::shader_interfaces;
 use ahash::AHashMap;
@@ -155,7 +153,7 @@ impl GuiRenderer {
     pub fn record_commands(
         &mut self,
         command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-        clipped_meshes: &Vec<ClippedPrimitive>,
+        primitives: &Vec<ClippedPrimitive>,
         scale_factor: f32,
         need_srgb_conv: bool,
         framebuffer_dimensions: [u32; 2],
@@ -171,7 +169,7 @@ impl GuiRenderer {
         for ClippedPrimitive {
             clip_rect,
             primitive,
-        } in clipped_meshes
+        } in primitives
         {
             match primitive {
                 Primitive::Mesh(mesh) => {

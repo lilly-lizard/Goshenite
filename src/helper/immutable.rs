@@ -1,7 +1,7 @@
+// Shout out to danthedaniel for the code/idea https://stackoverflow.com/a/62948428/5256085
 use std::ops::Deref;
 
 /// A container for values that can only be deref'd immutably.
-/// Shout out to danthedaniel https://stackoverflow.com/a/62948428/5256085
 pub struct Immutable<T> {
     value: T,
 }

@@ -1,6 +1,8 @@
 use colored::{Color, Colorize};
 use log::{Level, Metadata, Record};
 
+/// A simple [`log`] implimentation which I found easier to configure than using something
+/// like `env_logger` (and less to compile too)
 pub struct ConsoleLogger;
 
 impl log::Log for ConsoleLogger {

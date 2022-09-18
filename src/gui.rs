@@ -1,26 +1,27 @@
+/// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
 use crate::renderer::gui_renderer::GuiRenderer;
-use egui::epaint::ClippedShape;
 use std::sync::Arc;
 use winit::window::Window;
 
-// todo remove `pub`s
+/// Controller for an [`egui`] immediate-mode gui
 pub struct Gui {
     window: Arc<Window>,
-    pub context: egui::Context,
-    pub window_state: egui_winit::State,
-    pub shapes: Vec<ClippedShape>,
-    pub textures_delta: egui::TexturesDelta,
+    context: egui::Context,
+    window_state: egui_winit::State,
+    primitives: Vec<egui::ClippedPrimitive>,
 }
 // Public functions
 impl Gui {
-    // physical_device.properties().max_image_array_layers as usize
-    pub fn new(window: Arc<winit::window::Window>, max_image_array_layers: usize) -> Self {
+    /// Creates a new [`Gui`].
+    /// * `window`: [`winit`] window
+    /// * `max_texture_side`: maximum size of a texture. Query from graphics driver using
+    /// [`crate::renderer::render_manager::RenderManager::max_image_array_layers`]
+    pub fn new(window: Arc<winit::window::Window>, max_texture_side: usize) -> Self {
         Self {
             window: window.clone(),
             context: Default::default(),
-            window_state: egui_winit::State::new(max_image_array_layers as usize, window.as_ref()),
-            shapes: vec![],
-            textures_delta: Default::default(),
+            window_state: egui_winit::State::new(max_texture_side, window.as_ref()),
+            primitives: vec![],
         }
     }
 
@@ -35,15 +36,19 @@ impl Gui {
         self.window_state.on_event(&self.context, event)
     }
 
-    pub fn clipped_meshes(&self) -> Vec<egui::ClippedPrimitive> {
-        // todo don't use clone because shapes going to be cleared anyway?
-        self.context.tessellate(self.shapes.clone())
+    /// Get a reference to the clipped meshes required for rendering
+    pub fn primitives(&self) -> &Vec<egui::ClippedPrimitive> {
+        &self.primitives
     }
 
+    /// Returns the scale factor (i.e. window dpi) currently configured for the egui context.
+    ///
+    /// See [`winit::window::Window::scale_factor`]
     pub fn scale_factor(&self) -> f32 {
         self.window_state.pixels_per_point()
     }
 
+    /// Updates the gui layout and tells the renderer to update any changed resources
     pub fn update_frame(&mut self, gui_renderer: &mut GuiRenderer) {
         // begin frame
         let raw_input = self.window_state.take_egui_input(self.window.as_ref());
@@ -64,14 +69,18 @@ impl Gui {
             &self.context,
             platform_output,
         );
-        self.shapes = shapes;
-        self.textures_delta = textures_delta;
 
-        gui_renderer.update_textures(&self.textures_delta);
+        // store clipped primitive data for use by the renderer
+        self.primitives = self.context.tessellate(shapes);
+
+        // add/free textures resources in the gui renderer. note this must happen here to be
+        // certain that this frame's `textures_delta` is processed
+        gui_renderer.update_textures(&textures_delta);
     }
 }
 // Private functions
 impl Gui {
+    /// Sets the layout for the gui
     fn layout(&mut self) {
         egui::Window::new("bruh")
             .resizable(true)
