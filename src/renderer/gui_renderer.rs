@@ -1,11 +1,13 @@
 // shout out to https://github.com/hakolao/egui_winit_vulkano
 
+use crate::gui::Gui;
 use crate::renderer::render_manager::{create_shader_module, RenderManagerError};
 use crate::shaders::shader_interfaces;
-use egui::epaint::ClippedShape;
-use egui::{epaint::Primitive, ClippedPrimitive};
-use egui::{Mesh, Rect};
-use std::{collections::HashMap, sync::Arc};
+use ahash::AHashMap;
+use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect};
+#[allow(unused_imports)]
+use log::{debug, error, info, warn};
+use std::sync::Arc;
 use vulkano::buffer::cpu_pool::CpuBufferPoolChunk;
 use vulkano::buffer::{CpuBufferPool, TypedBufferAccess};
 use vulkano::command_buffer::PrimaryAutoCommandBuffer;
@@ -35,7 +37,6 @@ use vulkano::{
     sampler::{self, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
     sync::GpuFuture,
 };
-use winit::window::Window;
 
 const VERTICES_PER_QUAD: DeviceSize = 4;
 const VERTEX_BUFFER_SIZE: DeviceSize = 1024 * 1024 * VERTICES_PER_QUAD;
@@ -52,50 +53,40 @@ pub struct EguiVertex {
 vulkano::impl_vertex!(EguiVertex, position, tex_coords, color);
 
 pub struct GuiRenderer {
-    context: egui::Context,
-    window_state: egui_winit::State,
-    window: Arc<Window>,
+    device: Arc<Device>,
+    queue: Arc<Queue>,
 
     pipeline: Arc<GraphicsPipeline>,
     sampler: Arc<Sampler>,
     vertex_buffer_pool: CpuBufferPool<EguiVertex>,
     index_buffer_pool: CpuBufferPool<u32>,
 
-    shapes: Vec<ClippedShape>,
-    textures_delta: egui::TexturesDelta,
-    texture_images: HashMap<egui::TextureId, Arc<dyn ImageViewAbstract + Send + Sync + 'static>>,
-    texture_desc_sets: HashMap<egui::TextureId, Arc<PersistentDescriptorSet>>,
+    texture_images: AHashMap<egui::TextureId, Arc<dyn ImageViewAbstract + Send + Sync + 'static>>,
+    texture_desc_sets: AHashMap<egui::TextureId, Arc<PersistentDescriptorSet>>,
 }
 
 impl GuiRenderer {
     pub fn new(
-        window: Arc<winit::window::Window>,
-        physical_device: &vulkano::device::physical::PhysicalDevice,
         device: Arc<Device>,
+        queue: Arc<Queue>,
         swapchain_image_format: Format,
     ) -> Result<Self, RenderManagerError> {
-        let window_state = egui_winit::State::new(
-            physical_device.properties().max_image_array_layers as usize,
-            window.as_ref(),
-        );
         let pipeline = Self::create_pipeline(device.clone(), swapchain_image_format)?;
         let sampler = Self::create_sampler(device.clone());
         let (vertex_buffer_pool, index_buffer_pool) = Self::create_buffers(device.clone());
 
         Ok(Self {
-            context: Default::default(),
-            window_state,
-            window,
+            device: device.clone(),
+            queue: queue.clone(),
             pipeline,
             sampler,
             vertex_buffer_pool,
             index_buffer_pool,
-            shapes: vec![],
-            textures_delta: Default::default(),
-            texture_images: HashMap::default(),
-            texture_desc_sets: HashMap::default(),
+            texture_images: AHashMap::default(),
+            texture_desc_sets: AHashMap::default(),
         })
     }
+    // todo remove device arg (other fns too)
     fn create_pipeline(
         device: Arc<Device>,
         swapchain_image_format: Format,
@@ -151,87 +142,22 @@ impl GuiRenderer {
         .unwrap()
     }
 
-    /// Updates context state by winit window event.
-    /// Returns `true` if egui wants exclusive use of this event
-    /// (e.g. a mouse click on an egui window, or entering text into a text field).
-    /// For instance, if you use egui for a game, you want to first call this
-    /// and only when this returns `false` pass on the events to your game.
-    ///
-    /// Note that egui uses `tab` to move focus between elements, so this will always return `true` for tabs.
-    pub fn process_event(&mut self, event: &winit::event::WindowEvent<'_>) -> bool {
-        self.window_state.on_event(&self.context, event)
-    }
-
-    fn layout(&mut self) {
-        egui::Window::new("bruh")
-            .resizable(true)
-            .vscroll(true)
-            .hscroll(true)
-            .show(&self.context, |ui| {
-                ui.heading("hello egui!");
-            });
-    }
-
-    fn end_frame(&mut self) {
-        let egui::FullOutput {
-            platform_output,
-            needs_repaint: _r,
-            textures_delta,
-            shapes,
-        } = self.context.end_frame();
-
-        self.window_state.handle_platform_output(
-            self.window.as_ref(),
-            &self.context,
-            platform_output,
-        );
-        self.shapes = shapes;
-        self.textures_delta = textures_delta;
-    }
-
-    pub fn update_gui(
-        &mut self,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
-        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-        framebuffer_dimensions: [u32; 2],
-        need_srgb_conv: bool,
-    ) {
-        let raw_input = self.window_state.take_egui_input(self.window.as_ref());
-        self.context.begin_frame(raw_input);
-
-        // set new layout
-        self.layout();
-
-        self.end_frame();
-
-        let shapes = std::mem::take(&mut self.shapes);
-        let textures_delta = std::mem::take(&mut self.textures_delta);
-        let clipped_meshes = self.context.tessellate(shapes);
-
+    // todo whats going on here?
+    pub fn update_textures(&mut self, textures_delta: &egui::TexturesDelta) {
         for (id, image_delta) in &textures_delta.set {
-            self.update_texture(device.clone(), queue.clone(), *id, image_delta);
+            self.update_texture(*id, image_delta);
         }
-
-        self.record_commands(
-            command_buffer,
-            self.window_state.pixels_per_point(),
-            need_srgb_conv,
-            &clipped_meshes,
-            framebuffer_dimensions,
-        );
-
         for &id in &textures_delta.free {
             self.unregister_image(id);
         }
     }
 
-    fn record_commands(
+    pub fn record_commands(
         &mut self,
         command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        clipped_meshes: &Vec<ClippedPrimitive>,
         scale_factor: f32,
         need_srgb_conv: bool,
-        clipped_meshes: &[ClippedPrimitive],
         framebuffer_dimensions: [u32; 2],
     ) {
         let push_constants = shader_interfaces::GuiPc::new(
@@ -254,7 +180,7 @@ impl GuiRenderer {
                         continue;
                     }
                     if self.texture_desc_sets.get(&mesh.texture_id).is_none() {
-                        eprintln!("This texture no longer exists {:?}", mesh.texture_id);
+                        error!("This texture no longer exists {:?}", mesh.texture_id);
                         continue;
                     }
 
@@ -301,7 +227,6 @@ impl GuiRenderer {
             }
         }
     }
-
     fn get_rect_scissor(
         &self,
         scale_factor: f32,
@@ -334,7 +259,6 @@ impl GuiRenderer {
             ],
         }
     }
-
     fn create_subbuffers(
         &self,
         mesh: &Mesh,
@@ -365,14 +289,7 @@ impl GuiRenderer {
 
         (vertex_chunk, index_chunk)
     }
-
-    fn update_texture(
-        &mut self,
-        device: Arc<Device>,
-        queue: Arc<Queue>,
-        texture_id: egui::TextureId,
-        delta: &egui::epaint::ImageDelta,
-    ) {
+    fn update_texture(&mut self, texture_id: egui::TextureId, delta: &egui::epaint::ImageDelta) {
         // Extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
             egui::ImageData::Color(image) => {
@@ -397,7 +314,7 @@ impl GuiRenderer {
         };
         // Create buffer to be copied to the image
         let texture_data_buffer = CpuAccessibleBuffer::from_iter(
-            device.clone(),
+            self.device.clone(),
             BufferUsage::transfer_src(),
             false,
             data,
@@ -405,7 +322,7 @@ impl GuiRenderer {
         .unwrap();
         // Create image
         let (img, init) = image::ImmutableImage::uninitialized(
-            device.clone(),
+            self.device.clone(),
             vulkano::image::ImageDimensions::Dim2d {
                 width: delta.image.width() as u32,
                 height: delta.image.height() as u32,
@@ -421,15 +338,15 @@ impl GuiRenderer {
             },
             Default::default(),
             image::ImageLayout::ShaderReadOnlyOptimal,
-            Some(queue.family()),
+            Some(self.queue.family()),
         )
         .unwrap();
         let font_image = image::view::ImageView::new_default(img).unwrap();
 
         // Create command buffer builder
         let mut cbb = command_buffer::AutoCommandBufferBuilder::primary(
-            device.clone(),
-            queue.family(),
+            self.device.clone(),
+            self.queue.family(),
             command_buffer::CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
@@ -483,10 +400,9 @@ impl GuiRenderer {
         }
         // Execute command buffer
         let command_buffer = cbb.build().unwrap();
-        let finished = command_buffer.execute(queue.clone()).unwrap();
+        let finished = command_buffer.execute(self.queue.clone()).unwrap();
         let _fut = finished.then_signal_fence_and_flush().unwrap();
     }
-
     /// Creates a descriptor set for images
     fn sampled_image_desc_set(
         &self,
@@ -503,7 +419,6 @@ impl GuiRenderer {
         )
         .unwrap()
     }
-
     /// Unregister user texture.
     fn unregister_image(&mut self, texture_id: egui::TextureId) {
         self.texture_desc_sets.remove(&texture_id);

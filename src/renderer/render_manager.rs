@@ -1,7 +1,9 @@
 use super::gui_renderer::GuiRenderer;
 use crate::camera::Camera;
 use crate::config;
+use crate::gui::Gui;
 use crate::shaders::shader_interfaces;
+use egui::ClippedPrimitive;
 use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
 use vulkano::device::Queue;
@@ -36,7 +38,7 @@ use winit::window::Window;
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
     _debug_callback: Option<DebugUtilsMessenger>,
-    device: Arc<Device>,
+    pub device: Arc<Device>, // todo remove pub
     queue: Arc<Queue>,
 
     surface: Arc<Surface<Arc<Window>>>,
@@ -397,12 +399,8 @@ impl RenderManager {
         )
         .unwrap();
 
-        let gui_renderer = GuiRenderer::new(
-            window.clone(),
-            &physical_device,
-            device.clone(),
-            swapchain.image_format(),
-        )?;
+        let gui_renderer =
+            GuiRenderer::new(device.clone(), queue.clone(), swapchain.image_format())?;
 
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
         let recreate_swapchain = false;
@@ -434,6 +432,8 @@ impl RenderManager {
     pub fn render_frame(
         &mut self,
         window_resize: bool,
+        gui_clipped_meshes: &Vec<ClippedPrimitive>, //gui.context.tessellate(gui.shapes.clone())
+        gui_scale_factor: f32,
         camera: Camera,
     ) -> Result<(), RenderManagerError> {
         use RenderManagerError::Unrecoverable;
@@ -527,15 +527,15 @@ impl RenderManager {
             .draw(3, 1, 0, 0)
             .unwrap();
         // render gui
-        self.gui_renderer.update_gui(
-            self.device.clone(),
-            self.queue.clone(),
+        self.gui_renderer.record_commands(
             &mut builder,
+            gui_clipped_meshes,
+            gui_scale_factor,
+            need_srgb_conv,
             [
                 self.viewport.dimensions[0] as u32,
                 self.viewport.dimensions[1] as u32,
             ],
-            need_srgb_conv,
         );
         // end render pass
         builder.end_rendering().unwrap();

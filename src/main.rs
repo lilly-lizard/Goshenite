@@ -2,6 +2,7 @@ mod camera;
 mod config;
 mod cursor_state;
 mod engine;
+mod gui;
 mod helper;
 mod renderer;
 mod shaders;

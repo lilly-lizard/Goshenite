@@ -1,6 +1,7 @@
 use crate::camera::Camera;
 use crate::config;
 use crate::cursor_state::{CursorState, MouseButton};
+use crate::gui::Gui;
 use crate::renderer::render_manager::{RenderManager, RenderManagerError};
 use glam::Vec2;
 #[allow(unused_imports)]
@@ -32,6 +33,7 @@ impl fmt::Display for EngineError {
 /// Color theme options for the UI.
 ///
 /// Default is [`Theme::Dark`]
+/*
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Theme {
     Dark,
@@ -42,17 +44,17 @@ impl Default for Theme {
         Self::Dark
     }
 }
+*/
 
 pub struct Engine {
     _window: Arc<Window>,
     window_resize: bool,
     scale_factor: f64,
     cursor_state: CursorState,
-
     renderer: RenderManager,
+    gui: Gui,
+    //theme: Theme,
     camera: Camera,
-
-    theme: Theme,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
@@ -76,14 +78,24 @@ impl Engine {
         // init renderer
         let renderer = RenderManager::new(window.clone()).unwrap();
 
+        // init gui
+        let gui = Gui::new(
+            window.clone(),
+            renderer
+                .device
+                .physical_device()
+                .properties()
+                .max_image_array_layers as usize,
+        );
+
         Engine {
             scale_factor: window.scale_factor(),
             cursor_state: CursorState::new(window.clone()),
             window_resize: false,
             _window: window,
             camera,
+            gui,
             renderer,
-            theme: Theme::default(),
         }
     }
 
@@ -110,7 +122,7 @@ impl Engine {
         debug!("winit event: {:?}", event);
 
         // egui event handling
-        let captured_by_gui = self.renderer.gui_renderer.process_event(&event);
+        let captured_by_gui = self.gui.process_event(&event);
 
         match event {
             // cursor moved. triggered when cursor is in window or if currently dragging and started in the window (on linux at least)
@@ -152,6 +164,9 @@ impl Engine {
         // update cursor state
         self.cursor_state.process_frame();
 
+        // update gui
+        self.gui.update_frame(&mut self.renderer.gui_renderer);
+
         // update camera
         if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
             let delta_cursor: Vec2 =
@@ -161,7 +176,12 @@ impl Engine {
         }
 
         // submit rendering commands
-        match self.renderer.render_frame(self.window_resize, self.camera) {
+        match self.renderer.render_frame(
+            self.window_resize,
+            &self.gui.clipped_meshes(),
+            self.gui.scale_factor(),
+            self.camera,
+        ) {
             Err(SurfaceSizeUnsupported { .. }) => (), // todo clamp window inner size
             Err(Unrecoverable(s)) => return Err(RendererInvalidated(s)),
             _ => (),

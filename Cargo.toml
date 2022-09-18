@@ -20,6 +20,8 @@ bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
 egui = "0.18.1"
 egui-winit = "0.18.0"
+# hash library used by egui (im fast af boii)
+ahash = "0.7.6"
 
 # slotmap
 # specs: ECS
