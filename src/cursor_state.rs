@@ -10,10 +10,11 @@ pub struct CursorState {
     window: Arc<Window>,
     /// Describes wherver the cursur is currently within the window bounds
     in_window: bool,
-    /// The current cursor position
-    position: DVec2,
+    /// The current cursor position. None if the cursor position is unknown
+    /// (waiting for first [`WindowEvent::CursorMoved`](winit::event::WindowEvent::CursorMoved) event)
+    position: Option<DVec2>,
     /// The cursor position in the previous frame. Used to calculate [`CursorState::position_frame_change`]
-    position_previous: DVec2,
+    position_previous: Option<DVec2>,
     /// The change in cursor position since the previous frame
     position_frame_change: DVec2,
     /// Describes wherever each mouse button is pressed
@@ -28,8 +29,8 @@ impl CursorState {
         Self {
             window,
             in_window: false,
-            position: DVec2::default(),
-            position_previous: DVec2::default(),
+            position: None, // because there's (currenlty) no way to know the initial cursor position until the first `WindowEvent::CursorMoved` event
+            position_previous: None,
             position_frame_change: DVec2::default(),
             is_pressed: ButtonStates::default(),
             is_pressed_previous: ButtonStates::default(),
@@ -38,7 +39,11 @@ impl CursorState {
     }
 
     pub fn set_position(&mut self, position: [f64; 2]) {
-        self.position = position.into();
+        self.position = Some(position.into());
+        // if positions aren't initialized yet
+        if self.position_previous.is_none() {
+            self.position_previous = self.position;
+        }
     }
 
     pub fn set_click_state(
@@ -62,7 +67,8 @@ impl CursorState {
 
     pub fn process_frame(&mut self) {
         // position processing
-        self.position_frame_change = self.position - self.position_previous;
+        self.position_frame_change =
+            self.position.unwrap_or_default() - self.position_previous.unwrap_or_default();
         let has_moved = self.position_frame_change.x != 0. && self.position_frame_change.y != 0.;
         self.position_previous = self.position;
 

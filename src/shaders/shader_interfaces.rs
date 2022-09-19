@@ -66,7 +66,7 @@ unsafe impl SpecializationConstants for ComputeSpecConstant {
 #[allow(non_snake_case)]
 pub struct GuiPc {
     pub screen_size: [f32; 2],
-    /// bool (use into())
+    /// use bool.into()
     pub need_srgb_conv: u32,
 }
 impl GuiPc {

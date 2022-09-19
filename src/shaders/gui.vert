@@ -9,7 +9,7 @@ layout(location = 1) out vec2 v_tex_coords;
 
 layout(push_constant) uniform PushConstants {
     vec2 screen_size;
-    int need_srgb_conv;
+    uint need_srgb_conv;
 } push_constants;
 
 // 0-1 linear  from  0-255 sRGB

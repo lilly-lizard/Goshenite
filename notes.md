@@ -4,15 +4,12 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - cpu writes to buffer with spheres
 - have multiple spheres
 - render xyz arrows on selected object
-- draw sdf sphere with AABB
 - interface to disable shader compilation in build.rs
 	- feature flag (disabled by default) https://doc.rust-lang.org/cargo/reference/features.html#command-line-feature-options
 	- environment variable checked in build.rs (still ends up compiling shaderc tho)
 
 ## cleanup
 
-- split RenderManager::new into helper functions
-- clean up gui.vert/frag
 
 ## always
 
@@ -31,6 +28,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## low priority
 
+- draw sdf sphere with AABB
 - GuiRenderer::create_texture -> create_textures batch texture creation
 - double buffering (2 frames in flight) -> double up futures/per-frame resources, reduce cpu-gpu sync blocking
 - Camera::rotate quaternions https://www.3dgep.com/understanding-quaternions/

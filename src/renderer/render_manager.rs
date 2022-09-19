@@ -637,7 +637,7 @@ impl RenderManager {
         .unrec_err("unable to create blit pass descriptor set")
     }
 
-    /// Recreates the swapchain, render image and assiciated descriptor sets. Unsets `recreate_swapchain` trigger
+    /// Recreates the swapchain, render image and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> Result<(), RenderManagerError> {
         debug!("recreating swapchain and render targets...");
 
@@ -864,7 +864,6 @@ mod vulkan_callback {
         } else {
             "TYPE-UNKNOWN"
         };
-
         if msg.severity.error {
             error!("Vulkan [{}]:\n{}", ty, msg.description.bright_red());
         } else if msg.severity.warning {
@@ -903,7 +902,7 @@ pub fn calc_work_group_count(
         || group_count_y > physical_device.properties().max_compute_work_group_count[1]
     {
         return Err(RenderManagerError::Unrecoverable(
-            "compute shader work group count exceeds physical device limits".to_string(),
+            "compute shader work group count exceeds physical device limits. TODO this can be handled more elegently by doing multiple dispatches...".to_string(),
         ));
     }
     Ok([group_count_x, group_count_y, 1])
