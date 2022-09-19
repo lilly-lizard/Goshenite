@@ -62,7 +62,7 @@ pub struct RenderManager {
     /// indicates that the swapchain needs to be recreated next frame
     recreate_swapchain: bool,
 }
-// ~~~ Public functions ~~~
+// Public functions
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
     pub fn new(window: Arc<Window>) -> Result<Self, RenderManagerError> {
@@ -580,7 +580,7 @@ impl RenderManager {
         Ok(())
     }
 }
-// ~~~ Private functions ~~~
+// Private functions
 impl RenderManager {
     /// Recreates the swapchain, render image and assiciated descriptor sets. Unsets `recreate_swapchain` trigger
     fn recreate_swapchain(&mut self) -> Result<(), RenderManagerError> {
@@ -675,6 +675,8 @@ impl RenderManager {
     }
 }
 
+// ~~~ Errors ~~~
+
 /// Describes the types of errors encountered by the renderer
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RenderManagerError {
@@ -685,14 +687,14 @@ pub enum RenderManagerError {
     /// The window surface is no longer accessible and must be recreated.
     /// Invalidates the RenderManger and requires re-initialization.
     ///
-    /// Equivalent to [`vulkano::device::physical::SurfacePropertiesError::SurfaceLost`]
+    /// Equivalent to vulkano [SurfacePropertiesError::SurfaceLost](`vulkano::device::physical::SurfacePropertiesError::SurfaceLost`)
     SurfaceLost,
 
     /// Requested dimensions are not within supported range when attempting to create a render target (swapchain)
     /// This error tends to happen when the user is manually resizing the window.
     /// Simply restarting the loop is the easiest way to fix this issue.
     ///
-    /// Equivalent to [`vulkano::swapchain::SwapchainCreationError::ImageExtentNotSupported`]
+    /// Equivalent to vulkano [SwapchainCreationError::ImageExtentNotSupported](`vulkano::swapchain::SwapchainCreationError::ImageExtentNotSupported`)
     SurfaceSizeUnsupported {
         provided: [u32; 2],
         min_supported: [u32; 2],
@@ -749,19 +751,6 @@ impl<T> RenderManagerUnrecoverable<T> for std::option::Option<T> {
     }
 }
 
-// ~~~ Helper functions ~~~
-
-/// Creates a Vulkan shader module given a spirv path (relative to crate root)
-pub fn create_shader_module(
-    device: Arc<Device>,
-    spirv_path: &str,
-) -> Result<Arc<ShaderModule>, RenderManagerError> {
-    let bytes = std::fs::read(spirv_path).unrec_err("render.comp.spv read failed")?;
-    // todo conv to &[u32] and use from_words (guarentees 4 byte multiple)
-    unsafe { ShaderModule::from_bytes(device.clone(), bytes.as_slice()) }
-        .unrec_err([spirv_path, "shader compile failed"].concat().as_str())
-}
-
 /// Describes issues with enabling instance extensions/layers
 #[derive(Clone, Debug)]
 enum InstanceSupportError {
@@ -778,6 +767,20 @@ impl From<instance::LayersListError> for InstanceSupportError {
         Self::LayersListError(err)
     }
 }
+
+// ~~~ Helper functions ~~~
+
+/// Creates a Vulkan shader module given a spirv path (relative to crate root)
+pub fn create_shader_module(
+    device: Arc<Device>,
+    spirv_path: &str,
+) -> Result<Arc<ShaderModule>, RenderManagerError> {
+    let bytes = std::fs::read(spirv_path).unrec_err("render.comp.spv read failed")?;
+    // todo conv to &[u32] and use from_words (guarentees 4 byte multiple)
+    unsafe { ShaderModule::from_bytes(device.clone(), bytes.as_slice()) }
+        .unrec_err([spirv_path, "shader compile failed"].concat().as_str())
+}
+
 /// Checks for VK_EXT_debug_utils support and presence khronos validation layers
 /// If both can be enabled, adds them to provided extension and layer lists
 fn add_debug_validation(

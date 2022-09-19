@@ -1,10 +1,7 @@
 # TODO
 
-- unified (separated) event handling logic
-- cleanup gui code
 - split RenderManager::new into helper functions
-- todos around the place (including shaders) unwraps in render code
-- documentation
+- clean up gui.vert/frag
 - cpu writes to buffer with spheres
 - have multiple spheres
 - render xyz arrows on selected object
@@ -17,6 +14,12 @@
 
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
+## always
+
+- documentation
+- todos
+- unwrap/except
+
 ## bugz
 
 - CursorState not initialized properly! e.g. cursor position 0,0 at start so start dragging before moving it and a big jump occurs. also check latest winit in case querying was made better?
@@ -27,6 +30,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## low priority
 
+- GuiRenderer::create_texture -> create_textures batch texture creation
 - double buffering (2 frames in flight) -> double up futures/per-frame resources, reduce cpu-gpu sync blocking
 - Camera::rotate quaternions https://www.3dgep.com/understanding-quaternions/
 - shaderStorageImageExtendedFormats
