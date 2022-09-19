@@ -1,7 +1,6 @@
 # TODO
+focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
-- split RenderManager::new into helper functions
-- clean up gui.vert/frag
 - cpu writes to buffer with spheres
 - have multiple spheres
 - render xyz arrows on selected object
@@ -10,15 +9,17 @@
 	- feature flag (disabled by default) https://doc.rust-lang.org/cargo/reference/features.html#command-line-feature-options
 	- environment variable checked in build.rs (still ends up compiling shaderc tho)
 
-- clippy
+## cleanup
 
-focus on fast iteration! **avoid premature optimization** quick and dirty first.
+- split RenderManager::new into helper functions
+- clean up gui.vert/frag
 
 ## always
 
 - documentation
 - todos
-- unwrap/except
+- unwrap/except/assert
+- clippy
 
 ## bugz
 
@@ -64,6 +65,10 @@ possibilities:
 - live feedback modes e.g. sculpting mode just has primitives and normals
 - ignore color and render normals to start off with
 - **sworld space**: z up; right handed (x forward, y left), camera space: z depth
+
+## ideas
+
+- defer shading to raster pass? render to g-buffer, including shadow info (e.g. bitmap of light sources for primitive?)
 
 # Resources
 

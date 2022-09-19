@@ -36,9 +36,9 @@ use winit::window::Window;
 
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
-    _debug_callback: Option<DebugUtilsMessenger>,
-    device: Arc<Device>, // todo remove pub
+    device: Arc<Device>,
     queue: Arc<Queue>,
+    _debug_callback: Option<DebugUtilsMessenger>,
 
     surface: Arc<Surface<Arc<Window>>>,
     swapchain: Arc<Swapchain<Arc<Window>>>,
@@ -291,6 +291,23 @@ impl RenderManager {
             depth_range: 0.0..1.0,
         };
 
+        // calculate work group size and count for render compute shader
+        let work_group_size = [
+            std::cmp::min(
+                config::DEFAULT_WORK_GROUP_SIZE[0],
+                physical_device.properties().max_compute_work_group_size[0],
+            ),
+            std::cmp::min(
+                config::DEFAULT_WORK_GROUP_SIZE[1],
+                physical_device.properties().max_compute_work_group_size[1],
+            ),
+        ];
+        let work_group_count = calc_work_group_count(
+            physical_device,
+            swapchain_images[0].dimensions().width_height(),
+            work_group_size,
+        )?;
+
         // create swapchain image views
         let swapchain_image_views: Result<Vec<_>, _> = swapchain_images
             .iter()
@@ -331,22 +348,20 @@ impl RenderManager {
         let shader_blit_frag =
             create_shader_module(device.clone(), "assets/shader_binaries/blit.frag.spv")?;
 
+        let compute_spec_constant = shader_interfaces::ComputeSpecConstant {
+            local_size_x: work_group_size[0],
+            local_size_y: work_group_size[1],
+        };
         let render_pipeline = pipeline::ComputePipeline::new(
             device.clone(),
             shader_render
                 .entry_point("main")
                 .unrec_err("no main in render.comp")?,
-            &(),
+            &compute_spec_constant,
             None,
             |_| {},
         )
         .unwrap();
-
-        let work_group_size = config::DEFAULT_WORK_GROUP_SIZE;
-        let work_group_count = calc_work_group_count(
-            swapchain_images[0].dimensions().width_height(),
-            work_group_size,
-        );
 
         let blit_pipeline = GraphicsPipeline::start()
             .render_pass(PipelineRenderingCreateInfo {
@@ -623,7 +638,11 @@ impl RenderManager {
 
         // set parameters for new resolution
         let resolution = swapchain_images[0].dimensions().width_height();
-        self.work_group_count = calc_work_group_count(resolution, self.work_group_size);
+        self.work_group_count = calc_work_group_count(
+            self.device.physical_device(),
+            resolution,
+            self.work_group_size,
+        )?;
         self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
 
         // compute shader render target
@@ -850,8 +869,13 @@ mod vulkan_callback {
     }
 }
 
-/// Calculate required work group count for a given render resolution
-pub fn calc_work_group_count(resolution: [u32; 2], work_group_size: [u32; 2]) -> [u32; 3] {
+/// Calculate required work group count for a given render resolution,
+/// and checks that the work group count is within the physical device limits
+pub fn calc_work_group_count(
+    physical_device: PhysicalDevice,
+    resolution: [u32; 2],
+    work_group_size: [u32; 2],
+) -> Result<[u32; 3], RenderManagerError> {
     let mut group_count_x = resolution[0] / work_group_size[0];
     if (resolution[0] % work_group_size[0]) != 0 {
         group_count_x += 1;
@@ -860,5 +884,19 @@ pub fn calc_work_group_count(resolution: [u32; 2], work_group_size: [u32; 2]) ->
     if (resolution[1] % work_group_size[1]) != 0 {
         group_count_y += 1;
     }
-    [group_count_x, group_count_y, 1]
+    // check that work group count is within physical device limits
+    // todo this can be handled more elegently by either increasing the work group size (yuck)
+    // or doing multiple dispatches...
+    if group_count_x > physical_device.properties().max_compute_work_group_count[0]
+        || group_count_y > physical_device.properties().max_compute_work_group_count[1]
+        || group_count_x * group_count_y
+            > physical_device
+                .properties()
+                .max_compute_work_group_invocations
+    {
+        return Err(RenderManagerError::Unrecoverable(
+            "compute shader work group count exceeds physical device limits".to_string(),
+        ));
+    }
+    Ok([group_count_x, group_count_y, 1])
 }

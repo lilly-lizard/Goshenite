@@ -1,6 +1,7 @@
 //! Contains structs and descriptor set indices/bindings matching the interfaces in shaders
 
 use glam::{Mat4, Vec3, Vec4};
+use vulkano::shader::{SpecializationConstants, SpecializationMapEntry};
 
 /// Describes the descriptor set containing the render storage image (render.comp) and sampler (post.frag)
 pub mod descriptor {
@@ -10,7 +11,7 @@ pub mod descriptor {
     pub const BINDING_SAMPLER: u32 = 0; // render image sampler binding
 }
 
-/// Render compute shader push constant struct. size should be no more than 128 bytes for full vulkan coverage
+/// Render compute shader push constant struct. Size should be no more than 128 bytes for full vulkan coverage
 #[derive(Clone, Copy, Default, Debug)]
 #[repr(C)]
 #[allow(non_snake_case)]
@@ -26,6 +27,36 @@ impl CameraPc {
             projViewInverse: proj_view_inverse.to_cols_array(),
             position: Vec4::from((position, 0.)).to_array(),
         }
+    }
+}
+
+/// Render compute shader specialization constants. Used for setting the local work group size
+#[derive(Clone, Copy, Default, Debug)]
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct ComputeSpecConstant {
+    /// Local work group size x value
+    pub local_size_x: u32,
+    /// Local work group size y value
+    pub local_size_y: u32,
+}
+unsafe impl SpecializationConstants for ComputeSpecConstant {
+    /// Returns descriptors of the struct's layout.
+    fn descriptors() -> &'static [SpecializationMapEntry] {
+        &[
+            // local_size_x
+            SpecializationMapEntry {
+                constant_id: 0,
+                offset: 0,
+                size: 4,
+            },
+            // local_size_y
+            SpecializationMapEntry {
+                constant_id: 1,
+                offset: 4,
+                size: 4,
+            },
+        ]
     }
 }
 
