@@ -6,10 +6,11 @@ use egui::ClippedPrimitive;
 use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
 use vulkano::device::Queue;
+use vulkano::instance::Instance;
 use vulkano::pipeline::graphics::render_pass::PipelineRenderingCreateInfo;
 use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
 use vulkano::sampler::Sampler;
-use vulkano::swapchain::{Surface, Swapchain};
+use vulkano::swapchain::{Surface, Swapchain, SwapchainCreationError};
 use vulkano::{
     command_buffer,
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
@@ -45,7 +46,6 @@ pub struct RenderManager {
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
 
     render_image: Arc<ImageView<StorageImage>>,
-    render_image_format: Format,
     render_image_sampler: Arc<Sampler>,
 
     render_pipeline: Arc<ComputePipeline>,
@@ -66,8 +66,6 @@ pub struct RenderManager {
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
     pub fn new(window: Arc<Window>) -> Result<Self, RenderManagerError> {
-        use RenderManagerError::{SurfaceSizeUnsupported, Unrecoverable};
-
         let mut instance_extensions = vulkano_win::required_extensions();
         let mut instance_layers: Vec<String> = Vec::new();
 
@@ -82,7 +80,7 @@ impl RenderManager {
             };
 
         // create instance
-        let instance = instance::Instance::new(instance::InstanceCreateInfo {
+        let instance = Instance::new(instance::InstanceCreateInfo {
             enabled_extensions: instance_extensions,
             enumerate_portability: true, // enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
             enabled_layers: instance_layers,
@@ -180,102 +178,8 @@ impl RenderManager {
         );
 
         // create swapchain and images
-        let (swapchain, swapchain_images) = {
-            // todo prefer sRGB (linux sRGB)
-            let image_format =
-                match physical_device.surface_formats(&surface, Default::default()) {
-                    Ok(x) => x,
-                    Err(SurfacePropertiesError::SurfaceLost) => {
-                        return Err(RenderManagerError::SurfaceLost.log())
-                    }
-                    Err(e) => {
-                        return Err(
-                            Unrecoverable(format!("failed to get surface format: {:?}", e)).log(),
-                        )
-                    }
-                }
-                .get(0)
-                .expect("vulkan driver should support at least 1 surface format... right?")
-                .0;
-            debug!("swapchain image format = {:?}", image_format);
-
-            let surface_capabilities =
-                match physical_device.surface_capabilities(&surface, Default::default()) {
-                    Ok(x) => x,
-                    Err(SurfacePropertiesError::SurfaceLost) => {
-                        return Err(RenderManagerError::SurfaceLost.log())
-                    }
-                    Err(e) => {
-                        return Err(Unrecoverable(format!(
-                            "failed to get surface capabilities: {:?}",
-                            e,
-                        ))
-                        .log())
-                    }
-                };
-            let composite_alpha = surface_capabilities
-                .supported_composite_alpha
-                .iter()
-                .max_by_key(|c| match c {
-                    swapchain::CompositeAlpha::PostMultiplied => 4,
-                    swapchain::CompositeAlpha::Inherit => 3,
-                    swapchain::CompositeAlpha::Opaque => 2,
-                    swapchain::CompositeAlpha::PreMultiplied => 1, // because cbf implimenting this logic
-                    _ => 0,
-                })
-                .expect("surface should support at least 1 composite mode... right?");
-            debug!("swapchain composite alpha = {:?}", composite_alpha);
-
-            let mut present_modes = match physical_device.surface_present_modes(&surface) {
-                Ok(x) => x,
-                Err(SurfacePropertiesError::SurfaceLost) => {
-                    return Err(RenderManagerError::SurfaceLost.log())
-                }
-                Err(e) => {
-                    return Err(Unrecoverable(format!(
-                        "failed to get surface capabilities: {:?}",
-                        e,
-                    ))
-                    .log())
-                }
-            };
-            let present_mode = present_modes
-                .find(|&pm| pm == swapchain::PresentMode::Mailbox)
-                .unwrap_or(swapchain::PresentMode::Fifo);
-            debug!("swapchain present mode = {:?}", present_mode);
-
-            match swapchain::Swapchain::new(
-                device.clone(),
-                surface.clone(),
-                swapchain::SwapchainCreateInfo {
-                    min_image_count: surface_capabilities.min_image_count,
-                    image_extent: surface.window().inner_size().into(),
-                    image_usage: ImageUsage::color_attachment(),
-                    image_format: Some(image_format),
-                    composite_alpha,
-                    present_mode,
-                    ..Default::default()
-                },
-            ) {
-                Ok(x) => x,
-                Err(swapchain::SwapchainCreationError::ImageExtentNotSupported {
-                    provided,
-                    min_supported,
-                    max_supported,
-                }) => {
-                    let err = SurfaceSizeUnsupported {
-                        provided,
-                        min_supported,
-                        max_supported,
-                    };
-                    warn!("cannot create swapchain: {:?}", err);
-                    return Err(err);
-                }
-                Err(e) => {
-                    return Err(Unrecoverable(format!("failed to create swapchain: {:?}", e)).log())
-                }
-            }
-        };
+        let (swapchain, swapchain_images) =
+            Self::create_swapchain(device.clone(), physical_device, surface.clone())?;
         debug!(
             "initial swapchain image size = {:?}",
             swapchain_images[0].dimensions()
@@ -317,101 +221,22 @@ impl RenderManager {
             swapchain_image_views.unrec_err("failed to create swapchain image view(s)")?;
 
         // compute shader render target
-        let render_image_format = Format::R8G8B8A8_UNORM;
-        let render_image = StorageImage::general_purpose_image_view(
+        let render_image = Self::create_render_image(
             queue.clone(),
             swapchain_images[0].dimensions().width_height(),
-            render_image_format,
-            ImageUsage {
-                storage: true,
-                sampled: true,
-                ..ImageUsage::none()
-            },
-        )
-        .unrec_err("failed to create render image")?;
+        )?;
+        let render_image_sampler = Self::create_render_image_sampler(device.clone())?;
 
-        let render_image_sampler = sampler::Sampler::new(
-            device.clone(),
-            sampler::SamplerCreateInfo {
-                mag_filter: sampler::Filter::Linear,
-                min_filter: sampler::Filter::Linear,
-                address_mode: [sampler::SamplerAddressMode::Repeat; 3],
-                ..Default::default()
-            },
-        )
-        .unrec_err("failed to create sampler")?;
+        let render_pipeline = Self::create_compute_pipeline(device.clone(), work_group_size)?;
+        let render_desc_set =
+            Self::create_compute_desc_set(render_pipeline.clone(), render_image.clone())?;
 
-        let shader_render =
-            create_shader_module(device.clone(), "assets/shader_binaries/render.comp.spv")?;
-        let shader_blit_vert =
-            create_shader_module(device.clone(), "assets/shader_binaries/blit.vert.spv")?;
-        let shader_blit_frag =
-            create_shader_module(device.clone(), "assets/shader_binaries/blit.frag.spv")?;
-
-        let compute_spec_constant = shader_interfaces::ComputeSpecConstant {
-            local_size_x: work_group_size[0],
-            local_size_y: work_group_size[1],
-        };
-        let render_pipeline = pipeline::ComputePipeline::new(
-            device.clone(),
-            shader_render
-                .entry_point("main")
-                .unrec_err("no main in render.comp")?,
-            &compute_spec_constant,
-            None,
-            |_| {},
-        )
-        .unwrap();
-
-        let blit_pipeline = GraphicsPipeline::start()
-            .render_pass(PipelineRenderingCreateInfo {
-                color_attachment_formats: vec![Some(swapchain.image_format())],
-                ..Default::default()
-            })
-            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-            .vertex_shader(
-                shader_blit_vert
-                    .entry_point("main")
-                    .unrec_err("no main in blit.vert")?,
-                (),
-            )
-            .fragment_shader(
-                shader_blit_frag
-                    .entry_point("main")
-                    .unrec_err("no main in blit.frag")?,
-                (),
-            )
-            .build(device.clone())
-            .unwrap();
-
-        let render_desc_set = PersistentDescriptorSet::new(
-            render_pipeline
-                .layout()
-                .set_layouts()
-                .get(shader_interfaces::descriptor::SET_RENDER_COMP)
-                .unwrap()
-                .to_owned(),
-            [WriteDescriptorSet::image_view(
-                shader_interfaces::descriptor::BINDING_IMAGE,
-                render_image.clone(),
-            )],
-        )
-        .unwrap();
-
-        let blit_desc_set = PersistentDescriptorSet::new(
-            blit_pipeline
-                .layout()
-                .set_layouts()
-                .get(shader_interfaces::descriptor::SET_BLIT_FRAG)
-                .unwrap()
-                .to_owned(),
-            [WriteDescriptorSet::image_view_sampler(
-                shader_interfaces::descriptor::BINDING_SAMPLER,
-                render_image.clone(),
-                render_image_sampler.clone(),
-            )],
-        )
-        .unwrap();
+        let blit_pipeline = Self::create_blit_pipeline(device.clone(), swapchain.image_format())?;
+        let blit_desc_set = Self::create_blit_desc_set(
+            blit_pipeline.clone(),
+            render_image.clone(),
+            render_image_sampler.clone(),
+        )?;
 
         let gui_renderer =
             GuiRenderer::new(device.clone(), queue.clone(), swapchain.image_format())?;
@@ -428,7 +253,6 @@ impl RenderManager {
             swapchain_image_views,
             viewport,
             render_image,
-            render_image_format,
             render_image_sampler,
             render_pipeline,
             blit_pipeline,
@@ -597,9 +421,224 @@ impl RenderManager {
 }
 // Private functions
 impl RenderManager {
+    fn create_swapchain(
+        device: Arc<Device>,
+        physical_device: PhysicalDevice,
+        surface: Arc<Surface<Arc<Window>>>,
+    ) -> Result<
+        (
+            Arc<Swapchain<Arc<Window>>>,
+            Vec<Arc<SwapchainImage<Arc<Window>>>>,
+        ),
+        RenderManagerError,
+    > {
+        use RenderManagerError::Unrecoverable;
+
+        // todo prefer sRGB (linux sRGB)
+        let image_format = match physical_device.surface_formats(&surface, Default::default()) {
+            Ok(x) => x,
+            Err(SurfacePropertiesError::SurfaceLost) => {
+                return Err(RenderManagerError::SurfaceLost.log())
+            }
+            Err(e) => {
+                return Err(Unrecoverable(format!("failed to get surface format: {:?}", e)).log())
+            }
+        }
+        .get(0)
+        .expect("vulkan driver should support at least 1 surface format... right?")
+        .0;
+        debug!("swapchain image format = {:?}", image_format);
+
+        let surface_capabilities = match physical_device
+            .surface_capabilities(&surface, Default::default())
+        {
+            Ok(x) => x,
+            Err(SurfacePropertiesError::SurfaceLost) => {
+                return Err(RenderManagerError::SurfaceLost.log())
+            }
+            Err(e) => {
+                return Err(
+                    Unrecoverable(format!("failed to get surface capabilities: {:?}", e,)).log(),
+                )
+            }
+        };
+        let composite_alpha = surface_capabilities
+            .supported_composite_alpha
+            .iter()
+            .max_by_key(|c| match c {
+                swapchain::CompositeAlpha::PostMultiplied => 4,
+                swapchain::CompositeAlpha::Inherit => 3,
+                swapchain::CompositeAlpha::Opaque => 2,
+                swapchain::CompositeAlpha::PreMultiplied => 1, // because cbf implimenting this logic
+                _ => 0,
+            })
+            .expect("surface should support at least 1 composite mode... right?");
+        debug!("swapchain composite alpha = {:?}", composite_alpha);
+
+        let mut present_modes = match physical_device.surface_present_modes(&surface) {
+            Ok(x) => x,
+            Err(SurfacePropertiesError::SurfaceLost) => {
+                return Err(RenderManagerError::SurfaceLost.log())
+            }
+            Err(e) => {
+                return Err(
+                    Unrecoverable(format!("failed to get surface capabilities: {:?}", e,)).log(),
+                )
+            }
+        };
+        let present_mode = present_modes
+            .find(|&pm| pm == swapchain::PresentMode::Mailbox)
+            .unwrap_or(swapchain::PresentMode::Fifo);
+        debug!("swapchain present mode = {:?}", present_mode);
+
+        match swapchain::Swapchain::new(
+            device.clone(),
+            surface.clone(),
+            swapchain::SwapchainCreateInfo {
+                min_image_count: surface_capabilities.min_image_count,
+                image_extent: surface.window().inner_size().into(),
+                image_usage: ImageUsage::color_attachment(),
+                image_format: Some(image_format),
+                composite_alpha,
+                present_mode,
+                ..Default::default()
+            },
+        ) {
+            Ok(x) => Ok(x),
+            Err(e) => return Err(e.into()),
+        }
+    }
+
+    fn create_render_image(
+        queue: Arc<Queue>,
+        size: [u32; 2],
+    ) -> Result<Arc<ImageView<StorageImage>>, RenderManagerError> {
+        // format must match what's specified in the compute shader layout
+        let render_image_format = Format::R8G8B8A8_UNORM;
+        StorageImage::general_purpose_image_view(
+            queue,
+            size,
+            render_image_format,
+            ImageUsage {
+                storage: true,
+                sampled: true,
+                ..ImageUsage::none()
+            },
+        )
+        .unrec_err("failed to create render image")
+    }
+
+    fn create_render_image_sampler(
+        device: Arc<Device>,
+    ) -> Result<Arc<Sampler>, RenderManagerError> {
+        sampler::Sampler::new(
+            device,
+            sampler::SamplerCreateInfo {
+                mag_filter: sampler::Filter::Linear,
+                min_filter: sampler::Filter::Linear,
+                address_mode: [sampler::SamplerAddressMode::Repeat; 3],
+                ..Default::default()
+            },
+        )
+        .unrec_err("failed to create sampler")
+    }
+
+    fn create_compute_pipeline(
+        device: Arc<Device>,
+        work_group_size: [u32; 2],
+    ) -> Result<Arc<ComputePipeline>, RenderManagerError> {
+        let render_shader =
+            create_shader_module(device.clone(), "assets/shader_binaries/render.comp.spv")?;
+
+        let compute_spec_constant = shader_interfaces::ComputeSpecConstant {
+            local_size_x: work_group_size[0],
+            local_size_y: work_group_size[1],
+        };
+        pipeline::ComputePipeline::new(
+            device.clone(),
+            render_shader
+                .entry_point("main")
+                .unrec_err("no main in render.comp")?,
+            &compute_spec_constant,
+            None,
+            |_| {},
+        )
+        .unrec_err("failed to create render compute pipeline")
+    }
+
+    fn create_compute_desc_set(
+        render_pipeline: Arc<ComputePipeline>,
+        render_image: Arc<ImageView<StorageImage>>,
+    ) -> Result<Arc<PersistentDescriptorSet>, RenderManagerError> {
+        PersistentDescriptorSet::new(
+            render_pipeline
+                .layout()
+                .set_layouts()
+                .get(shader_interfaces::descriptor::SET_RENDER_COMP)
+                .unwrap()
+                .to_owned(),
+            [WriteDescriptorSet::image_view(
+                shader_interfaces::descriptor::BINDING_IMAGE,
+                render_image,
+            )],
+        )
+        .unrec_err("unable to create render compute shader descriptor set")
+    }
+
+    fn create_blit_pipeline(
+        device: Arc<Device>,
+        swapchain_image_format: Format,
+    ) -> Result<Arc<GraphicsPipeline>, RenderManagerError> {
+        let blit_vert_shader =
+            create_shader_module(device.clone(), "assets/shader_binaries/blit.vert.spv")?;
+        let blit_frag_shader =
+            create_shader_module(device.clone(), "assets/shader_binaries/blit.frag.spv")?;
+
+        GraphicsPipeline::start()
+            .render_pass(PipelineRenderingCreateInfo {
+                color_attachment_formats: vec![Some(swapchain_image_format)],
+                ..Default::default()
+            })
+            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+            .vertex_shader(
+                blit_vert_shader
+                    .entry_point("main")
+                    .unrec_err("no main in blit.vert")?,
+                (),
+            )
+            .fragment_shader(
+                blit_frag_shader
+                    .entry_point("main")
+                    .unrec_err("no main in blit.frag")?,
+                (),
+            )
+            .build(device.clone())
+            .unrec_err("failed to create blit graphics pipeline")
+    }
+
+    fn create_blit_desc_set(
+        blit_pipeline: Arc<GraphicsPipeline>,
+        render_image: Arc<ImageView<StorageImage>>,
+        render_image_sampler: Arc<Sampler>,
+    ) -> Result<Arc<PersistentDescriptorSet>, RenderManagerError> {
+        PersistentDescriptorSet::new(
+            blit_pipeline
+                .layout()
+                .set_layouts()
+                .get(shader_interfaces::descriptor::SET_BLIT_FRAG)
+                .unwrap()
+                .to_owned(),
+            [WriteDescriptorSet::image_view_sampler(
+                shader_interfaces::descriptor::BINDING_SAMPLER,
+                render_image,
+                render_image_sampler,
+            )],
+        )
+        .unrec_err("unable to create blit pass descriptor set")
+    }
+
     /// Recreates the swapchain, render image and assiciated descriptor sets. Unsets `recreate_swapchain` trigger
     fn recreate_swapchain(&mut self) -> Result<(), RenderManagerError> {
-        use RenderManagerError::{SurfaceSizeUnsupported, Unrecoverable};
         debug!("recreating swapchain and render targets...");
 
         let (new_swapchain, swapchain_images) =
@@ -608,26 +647,7 @@ impl RenderManager {
                 ..self.swapchain.create_info()
             }) {
                 Ok(r) => r,
-                // this error tends to happen when the user is manually resizing the window.
-                // simply restarting the loop is the easiest way to fix this issue.
-                Err(swapchain::SwapchainCreationError::ImageExtentNotSupported {
-                    provided,
-                    min_supported,
-                    max_supported,
-                }) => {
-                    let err = SurfaceSizeUnsupported {
-                        provided,
-                        min_supported,
-                        max_supported,
-                    };
-                    debug!("cannot recreate swapchain: {:?}", err);
-                    return Err(err);
-                }
-                Err(e) => {
-                    return Err(
-                        Unrecoverable(format!("Failed to recreate swapchain: {:?}", e)).log(),
-                    );
-                }
+                Err(e) => return Err(e.into()),
             };
 
         self.swapchain = new_swapchain;
@@ -645,47 +665,17 @@ impl RenderManager {
         )?;
         self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
 
-        // compute shader render target
-        self.render_image = StorageImage::general_purpose_image_view(
+        self.render_image = Self::create_render_image(
             self.queue.clone(),
-            resolution,
-            self.render_image_format,
-            ImageUsage {
-                storage: true,
-                sampled: true,
-                ..ImageUsage::none()
-            },
-        )
-        .unwrap();
-
-        self.render_desc_set = PersistentDescriptorSet::new(
-            self.render_pipeline
-                .layout()
-                .set_layouts()
-                .get(shader_interfaces::descriptor::SET_RENDER_COMP)
-                .unwrap()
-                .to_owned(),
-            [WriteDescriptorSet::image_view(
-                shader_interfaces::descriptor::BINDING_IMAGE,
-                self.render_image.clone(),
-            )],
-        )
-        .unwrap();
-
-        self.blit_desc_set = PersistentDescriptorSet::new(
-            self.blit_pipeline
-                .layout()
-                .set_layouts()
-                .get(shader_interfaces::descriptor::SET_BLIT_FRAG)
-                .unwrap()
-                .to_owned(),
-            [WriteDescriptorSet::image_view_sampler(
-                shader_interfaces::descriptor::BINDING_SAMPLER,
-                self.render_image.clone(),
-                self.render_image_sampler.clone(),
-            )],
-        )
-        .unwrap();
+            swapchain_images[0].dimensions().width_height(),
+        )?;
+        self.render_desc_set =
+            Self::create_compute_desc_set(self.render_pipeline.clone(), self.render_image.clone())?;
+        self.blit_desc_set = Self::create_blit_desc_set(
+            self.blit_pipeline.clone(),
+            self.render_image.clone(),
+            self.render_image_sampler.clone(),
+        )?;
 
         // unset trigger
         self.recreate_swapchain = false;
@@ -766,6 +756,29 @@ impl<T> RenderManagerUnrecoverable<T> for std::option::Option<T> {
         match self {
             Some(x) => Ok(x),
             None => Err(RenderManagerError::Unrecoverable(msg.to_owned()).log()),
+        }
+    }
+}
+impl From<SwapchainCreationError> for RenderManagerError {
+    fn from(error: SwapchainCreationError) -> Self {
+        use RenderManagerError::{SurfaceSizeUnsupported, Unrecoverable};
+        match error {
+            // this error tends to happen when the user is manually resizing the window.
+            // simply restarting the loop is the easiest way to fix this issue.
+            SwapchainCreationError::ImageExtentNotSupported {
+                provided,
+                min_supported,
+                max_supported,
+            } => {
+                let err = SurfaceSizeUnsupported {
+                    provided,
+                    min_supported,
+                    max_supported,
+                };
+                debug!("cannot create swapchain: {:?}", err);
+                err
+            }
+            e => Unrecoverable(format!("Failed to recreate swapchain: {:?}", e)).log(),
         }
     }
 }
@@ -885,14 +898,9 @@ pub fn calc_work_group_count(
         group_count_y += 1;
     }
     // check that work group count is within physical device limits
-    // todo this can be handled more elegently by either increasing the work group size (yuck)
-    // or doing multiple dispatches...
+    // todo this can be handled more elegently by doing multiple dispatches...
     if group_count_x > physical_device.properties().max_compute_work_group_count[0]
         || group_count_y > physical_device.properties().max_compute_work_group_count[1]
-        || group_count_x * group_count_y
-            > physical_device
-                .properties()
-                .max_compute_work_group_invocations
     {
         return Err(RenderManagerError::Unrecoverable(
             "compute shader work group count exceeds physical device limits".to_string(),
