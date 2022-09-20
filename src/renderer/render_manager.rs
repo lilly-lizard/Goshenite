@@ -10,15 +10,18 @@ use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
 use vulkano::{
     command_buffer,
-    device::physical::{PhysicalDevice, PhysicalDeviceType, SurfacePropertiesError},
     device::{self, Device, Queue},
+    device::{
+        physical::{PhysicalDevice, PhysicalDeviceType, QueueFamily, SurfacePropertiesError},
+        DeviceExtensions,
+    },
     format::Format,
     image::{view::ImageView, ImageAccess, ImageUsage, StorageImage, SwapchainImage},
     instance::debug::{
         DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
         DebugUtilsMessengerCreateInfo,
     },
-    instance::{self, Instance, LayersListError},
+    instance::{self, debug::DebugUtilsMessengerCreationError, Instance, LayersListError},
     pipeline::{self, graphics::viewport::Viewport, Pipeline},
     render_pass::{LoadOp, StoreOp},
     sampler::{self, Sampler},
@@ -51,7 +54,9 @@ pub struct RenderManager {
     /// indicates that the swapchain needs to be recreated next frame
     recreate_swapchain: bool,
 }
-// Public functions
+
+// ~~~ Public functions ~~~
+
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
     pub fn new(window: Arc<Window>) -> Result<Self, RenderManagerError> {
@@ -79,31 +84,16 @@ impl RenderManager {
 
         // setup debug callbacks
         let debug_callback = if enable_debug_callback {
-            unsafe {
-                DebugUtilsMessenger::new(
-                    instance.clone(),
-                    DebugUtilsMessengerCreateInfo {
-                        message_severity: DebugUtilsMessageSeverity {
-                            error: true,
-                            warning: true,
-                            information: true,
-                            verbose: false,
-                        },
-                        message_type: DebugUtilsMessageType::all(),
-                        ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|msg| {
-                            vulkan_callback::process_debug_callback(msg)
-                        }))
-                    },
-                )
-                .ok()
-            }
+            Self::setup_debug_callback(instance.clone())
         } else {
             None
         };
 
+        // create surface
         let surface = vulkano_win::create_surface_from_winit(window.clone(), instance.clone())
             .to_renderer_err("failed to create vulkan surface")?;
 
+        // required device extensions
         let device_extensions = device::DeviceExtensions {
             khr_swapchain: true,
             ..device::DeviceExtensions::none()
@@ -115,39 +105,15 @@ impl RenderManager {
             debug!("\t{}", pd.properties().device_name);
         }
         // choose physical device and queue family
-        let (physical_device, queue_family) = PhysicalDevice::enumerate(&instance)
-            // filter for vulkan version support
-            .filter(|&p| {
-                p.api_version()
-                    >= vulkano::Version::major_minor(config::VULKAN_VER_MAJ, config::VULKAN_VER_MIN)
-            })
-            // filter for required device extensions
-            .filter(|&p| p.supported_extensions().is_superset_of(&device_extensions))
-            // filter for queue support
-            .filter_map(|p| {
-                p.queue_families()
-                    .find(|&q| {
-                        q.supports_compute()
-                            && q.supports_graphics()
-                            && q.supports_surface(&surface).unwrap_or(false)
-                    })
-                    .map(|q| (p, q))
-            })
-            // preference of device type
-            .max_by_key(|(p, _)| match p.properties().device_type {
-                PhysicalDeviceType::DiscreteGpu => 4,
-                PhysicalDeviceType::IntegratedGpu => 3,
-                PhysicalDeviceType::VirtualGpu => 2,
-                PhysicalDeviceType::Cpu => 1,
-                PhysicalDeviceType::Other => 0,
-            })
-            .to_renderer_err("no suitable physical device available")?;
+        let (physical_device, queue_family) =
+            Self::choose_physical_device(&instance, &device_extensions, &surface)?;
         info!(
             "Using Vulkan device: {} (type: {:?})",
             physical_device.properties().device_name,
             physical_device.properties().device_type,
         );
 
+        // create device and queue
         let (device, mut queues) = device::Device::new(
             physical_device,
             device::DeviceCreateInfo {
@@ -393,7 +359,9 @@ impl RenderManager {
         Ok(())
     }
 }
-// Private functions
+
+// ~~~ Private functions ~~~
+
 impl RenderManager {
     /// Checks for VK_EXT_debug_utils support and presence khronos validation layers
     /// If both can be enabled, adds them to provided extension and layer lists
@@ -428,6 +396,72 @@ impl RenderManager {
         instance_extensions.ext_debug_utils = true;
         instance_layers.push(validation_layer.to_owned());
         Ok(())
+    }
+
+    fn setup_debug_callback(instance: Arc<Instance>) -> Option<DebugUtilsMessenger> {
+        unsafe {
+            match DebugUtilsMessenger::new(
+                instance,
+                DebugUtilsMessengerCreateInfo {
+                    message_severity: DebugUtilsMessageSeverity {
+                        error: true,
+                        warning: true,
+                        information: true,
+                        verbose: false,
+                    },
+                    message_type: DebugUtilsMessageType::all(),
+                    ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|msg| {
+                        vulkan_callback::process_debug_callback(msg)
+                    }))
+                },
+            ) {
+                Ok(x) => Some(x),
+                Err(DebugUtilsMessengerCreationError::ExtensionNotEnabled {
+                    extension,
+                    reason,
+                }) => {
+                    warn!(
+                        "failed to setup vulkan debug callback. extension: {}, reason: {}",
+                        extension, reason,
+                    );
+                    None
+                }
+            }
+        }
+    }
+
+    fn choose_physical_device<'a>(
+        instance: &'a Arc<Instance>,
+        device_extensions: &DeviceExtensions,
+        surface: &Arc<Surface<Arc<Window>>>,
+    ) -> Result<(PhysicalDevice<'a>, QueueFamily<'a>), RenderManagerError> {
+        PhysicalDevice::enumerate(instance)
+            // filter for vulkan version support
+            .filter(|&p| {
+                p.api_version()
+                    >= vulkano::Version::major_minor(config::VULKAN_VER_MAJ, config::VULKAN_VER_MIN)
+            })
+            // filter for required device extensions
+            .filter(|&p| p.supported_extensions().is_superset_of(device_extensions))
+            // filter for queue support
+            .filter_map(|p| {
+                p.queue_families()
+                    .find(|&q| {
+                        q.supports_compute()
+                            && q.supports_graphics()
+                            && q.supports_surface(surface).unwrap_or(false)
+                    })
+                    .map(|q| (p, q))
+            })
+            // preference of device type
+            .max_by_key(|(p, _)| match p.properties().device_type {
+                PhysicalDeviceType::DiscreteGpu => 4,
+                PhysicalDeviceType::IntegratedGpu => 3,
+                PhysicalDeviceType::VirtualGpu => 2,
+                PhysicalDeviceType::Cpu => 1,
+                PhysicalDeviceType::Other => 0,
+            })
+            .to_renderer_err("no suitable physical device available")
     }
 
     fn create_swapchain(

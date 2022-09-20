@@ -1,6 +1,5 @@
-use crate::{config, shaders::shader_interfaces};
-
 use super::render_manager::{create_shader_module, RenderManagerError, RenderManagerUnrecoverable};
+use crate::{config, shaders::shader_interfaces};
 use std::sync::Arc;
 use vulkano::{
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
