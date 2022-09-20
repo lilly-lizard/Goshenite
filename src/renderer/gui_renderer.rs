@@ -140,7 +140,7 @@ impl GuiRenderer {
                     }
 
                     // get region of screen to render
-                    let scissors = [Self::get_rect_scissor(
+                    let scissors = [get_rect_scissor(
                         scale_factor,
                         framebuffer_dimensions,
                         *clip_rect,
@@ -376,39 +376,6 @@ impl GuiRenderer {
         self.texture_images.remove(&texture_id);
     }
 
-    /// Caclulates the region of the framebuffer to render a gui element.
-    fn get_rect_scissor(
-        scale_factor: f32,
-        framebuffer_dimensions: [u32; 2],
-        rect: Rect,
-    ) -> Scissor {
-        let min = rect.min;
-        let min = egui::Pos2 {
-            x: min.x * scale_factor,
-            y: min.y * scale_factor,
-        };
-        let min = egui::Pos2 {
-            x: min.x.clamp(0.0, framebuffer_dimensions[0] as f32),
-            y: min.y.clamp(0.0, framebuffer_dimensions[1] as f32),
-        };
-        let max = rect.max;
-        let max = egui::Pos2 {
-            x: max.x * scale_factor,
-            y: max.y * scale_factor,
-        };
-        let max = egui::Pos2 {
-            x: max.x.clamp(min.x, framebuffer_dimensions[0] as f32),
-            y: max.y.clamp(min.y, framebuffer_dimensions[1] as f32),
-        };
-        Scissor {
-            origin: [min.x.round() as u32, min.y.round() as u32],
-            dimensions: [
-                (max.x.round() - min.x) as u32,
-                (max.y.round() - min.y) as u32,
-            ],
-        }
-    }
-
     fn create_subbuffers(
         &self,
         mesh: &Mesh,
@@ -454,5 +421,36 @@ impl GuiRenderer {
             )],
         )
         .unwrap()
+    }
+}
+
+// ~~~ Helper functions ~~~
+
+/// Caclulates the region of the framebuffer to render a gui element.
+fn get_rect_scissor(scale_factor: f32, framebuffer_dimensions: [u32; 2], rect: Rect) -> Scissor {
+    let min = rect.min;
+    let min = egui::Pos2 {
+        x: min.x * scale_factor,
+        y: min.y * scale_factor,
+    };
+    let min = egui::Pos2 {
+        x: min.x.clamp(0.0, framebuffer_dimensions[0] as f32),
+        y: min.y.clamp(0.0, framebuffer_dimensions[1] as f32),
+    };
+    let max = rect.max;
+    let max = egui::Pos2 {
+        x: max.x * scale_factor,
+        y: max.y * scale_factor,
+    };
+    let max = egui::Pos2 {
+        x: max.x.clamp(min.x, framebuffer_dimensions[0] as f32),
+        y: max.y.clamp(min.y, framebuffer_dimensions[1] as f32),
+    };
+    Scissor {
+        origin: [min.x.round() as u32, min.y.round() as u32],
+        dimensions: [
+            (max.x.round() - min.x) as u32,
+            (max.y.round() - min.y) as u32,
+        ],
     }
 }

@@ -1,36 +1,29 @@
+use super::blit_pass::BlitPass;
 use super::gui_renderer::GuiRenderer;
+use super::primitives::Primitives;
+use super::scene_pass::ScenePass;
 use crate::camera::Camera;
 use crate::config;
 use crate::shaders::shader_interfaces;
 use egui::ClippedPrimitive;
 use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
-use vulkano::device::Queue;
-use vulkano::instance::Instance;
-use vulkano::pipeline::graphics::render_pass::PipelineRenderingCreateInfo;
-use vulkano::pipeline::{ComputePipeline, GraphicsPipeline};
-use vulkano::sampler::Sampler;
-use vulkano::swapchain::{Surface, Swapchain, SwapchainCreationError};
 use vulkano::{
     command_buffer,
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::physical::{PhysicalDevice, PhysicalDeviceType, SurfacePropertiesError},
-    device::{self, Device},
+    device::{self, Device, Queue},
     format::Format,
     image::{view::ImageView, ImageAccess, ImageUsage, StorageImage, SwapchainImage},
-    instance,
     instance::debug::{
         DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
         DebugUtilsMessengerCreateInfo,
     },
-    instance::LayersListError,
-    pipeline,
-    pipeline::graphics::viewport::{Viewport, ViewportState},
-    pipeline::Pipeline,
+    instance::{self, Instance, LayersListError},
+    pipeline::{self, graphics::viewport::Viewport, Pipeline},
     render_pass::{LoadOp, StoreOp},
-    sampler,
+    sampler::{self, Sampler},
     shader::ShaderModule,
-    swapchain,
+    swapchain::{self, Surface, Swapchain, SwapchainCreationError},
     sync::{self, FlushError, GpuFuture},
 };
 use winit::window::Window;
@@ -44,19 +37,15 @@ pub struct RenderManager {
     surface: Arc<Surface<Arc<Window>>>,
     swapchain: Arc<Swapchain<Arc<Window>>>,
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
+    viewport: Viewport,
 
     render_image: Arc<ImageView<StorageImage>>,
     render_image_sampler: Arc<Sampler>,
+    primitives: Primitives,
 
-    render_pipeline: Arc<ComputePipeline>,
-    render_desc_set: Arc<PersistentDescriptorSet>,
-    work_group_size: [u32; 2],
-    work_group_count: [u32; 3],
-    blit_pipeline: Arc<GraphicsPipeline>,
-    blit_desc_set: Arc<PersistentDescriptorSet>,
-    viewport: Viewport,
-
-    gui_renderer: GuiRenderer,
+    scene_pass: ScenePass,
+    blit_pass: BlitPass,
+    gui_pass: GuiRenderer,
 
     future_previous_frame: Option<Box<dyn GpuFuture>>, // todo description
     /// indicates that the swapchain needs to be recreated next frame
@@ -71,7 +60,7 @@ impl RenderManager {
 
         // check for validation layer/debug callback support
         let enable_debug_callback =
-            if add_debug_validation(&mut instance_extensions, &mut instance_layers).is_ok() {
+            if Self::add_debug_validation(&mut instance_extensions, &mut instance_layers).is_ok() {
                 info!("enabling Vulkan validation layers and debug callback");
                 true
             } else {
@@ -86,7 +75,7 @@ impl RenderManager {
             enabled_layers: instance_layers,
             ..Default::default()
         })
-        .unrec_err("Failed to create vulkan instance")?;
+        .to_renderer_err("Failed to create vulkan instance")?;
 
         // setup debug callbacks
         let debug_callback = if enable_debug_callback {
@@ -113,7 +102,7 @@ impl RenderManager {
         };
 
         let surface = vulkano_win::create_surface_from_winit(window.clone(), instance.clone())
-            .unrec_err("failed to create vulkan surface")?;
+            .to_renderer_err("failed to create vulkan surface")?;
 
         let device_extensions = device::DeviceExtensions {
             khr_swapchain: true,
@@ -152,7 +141,7 @@ impl RenderManager {
                 PhysicalDeviceType::Cpu => 1,
                 PhysicalDeviceType::Other => 0,
             })
-            .unrec_err("no suitable physical device available")?;
+            .to_renderer_err("no suitable physical device available")?;
         info!(
             "Using Vulkan device: {} (type: {:?})",
             physical_device.properties().device_name,
@@ -171,7 +160,7 @@ impl RenderManager {
                 ..Default::default()
             },
         )
-        .unrec_err("failed to create vulkan device")?;
+        .to_renderer_err("failed to create vulkan device")?;
 
         let queue = queues.next().expect(
             "vulkano::device::Device::new has an assert to ensure at least 1 queue gets created",
@@ -195,30 +184,13 @@ impl RenderManager {
             depth_range: 0.0..1.0,
         };
 
-        // calculate work group size and count for render compute shader
-        let work_group_size = [
-            std::cmp::min(
-                config::DEFAULT_WORK_GROUP_SIZE[0],
-                physical_device.properties().max_compute_work_group_size[0],
-            ),
-            std::cmp::min(
-                config::DEFAULT_WORK_GROUP_SIZE[1],
-                physical_device.properties().max_compute_work_group_size[1],
-            ),
-        ];
-        let work_group_count = calc_work_group_count(
-            physical_device,
-            swapchain_images[0].dimensions().width_height(),
-            work_group_size,
-        )?;
-
         // create swapchain image views
         let swapchain_image_views: Result<Vec<_>, _> = swapchain_images
             .iter()
             .map(|image| ImageView::new_default(image.clone()))
             .collect();
         let swapchain_image_views =
-            swapchain_image_views.unrec_err("failed to create swapchain image view(s)")?;
+            swapchain_image_views.to_renderer_err("failed to create swapchain image view(s)")?;
 
         // compute shader render target
         let render_image = Self::create_render_image(
@@ -227,19 +199,24 @@ impl RenderManager {
         )?;
         let render_image_sampler = Self::create_render_image_sampler(device.clone())?;
 
-        let render_pipeline = Self::create_compute_pipeline(device.clone(), work_group_size)?;
-        let render_desc_set =
-            Self::create_compute_desc_set(render_pipeline.clone(), render_image.clone())?;
+        let scene_pass = ScenePass::new(
+            device.clone(),
+            swapchain_images[0].dimensions().width_height(),
+            render_image.clone(),
+        )?;
 
-        let blit_pipeline = Self::create_blit_pipeline(device.clone(), swapchain.image_format())?;
-        let blit_desc_set = Self::create_blit_desc_set(
-            blit_pipeline.clone(),
+        let blit_pass = BlitPass::new(
+            device.clone(),
+            swapchain.image_format(),
             render_image.clone(),
             render_image_sampler.clone(),
         )?;
 
-        let gui_renderer =
-            GuiRenderer::new(device.clone(), queue.clone(), swapchain.image_format())?;
+        // init primitives buffer
+        let primitives = Primitives::new(device.clone())?;
+
+        // init gui renderer
+        let gui_pass = GuiRenderer::new(device.clone(), queue.clone(), swapchain.image_format())?;
 
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
         let recreate_swapchain = false;
@@ -254,13 +231,10 @@ impl RenderManager {
             viewport,
             render_image,
             render_image_sampler,
-            render_pipeline,
-            blit_pipeline,
-            render_desc_set,
-            blit_desc_set,
-            work_group_size,
-            work_group_count,
-            gui_renderer,
+            primitives,
+            scene_pass,
+            blit_pass,
+            gui_pass,
             future_previous_frame,
             recreate_swapchain,
         })
@@ -276,7 +250,7 @@ impl RenderManager {
 
     /// Returns a mutable reference to the gui renderer so its resources can be updated by the gui
     pub fn gui_renderer(&mut self) -> &mut GuiRenderer {
-        &mut self.gui_renderer
+        &mut self.gui_pass
     }
 
     /// Submits Vulkan commands for rendering a frame.
@@ -339,19 +313,19 @@ impl RenderManager {
         .unwrap();
         builder
             // compute shader scene render
-            .bind_pipeline_compute(self.render_pipeline.clone())
+            .bind_pipeline_compute(self.scene_pass.pipeline.clone())
             .bind_descriptor_sets(
                 pipeline::PipelineBindPoint::Compute,
-                self.render_pipeline.layout().clone(),
+                self.scene_pass.pipeline.layout().clone(),
                 0,
-                self.render_desc_set.clone(),
+                self.scene_pass.desc_set.clone(),
             )
             .push_constants(
-                self.render_pipeline.layout().clone(),
+                self.scene_pass.pipeline.layout().clone(),
                 0,
                 render_push_constants,
             )
-            .dispatch(self.work_group_count)
+            .dispatch(self.scene_pass.work_group_count)
             .unwrap()
             // begin render pass
             .begin_rendering(command_buffer::RenderingInfo {
@@ -368,17 +342,17 @@ impl RenderManager {
             .unwrap()
             // write the render to the swapchain image
             .set_viewport(0, [self.viewport.clone()])
-            .bind_pipeline_graphics(self.blit_pipeline.clone())
+            .bind_pipeline_graphics(self.blit_pass.pipeline.clone())
             .bind_descriptor_sets(
                 pipeline::PipelineBindPoint::Graphics,
-                self.blit_pipeline.layout().clone(),
+                self.blit_pass.pipeline.layout().clone(),
                 0,
-                self.blit_desc_set.clone(),
+                self.blit_pass.desc_set.clone(),
             )
             .draw(3, 1, 0, 0)
             .unwrap();
         // render gui
-        self.gui_renderer.record_commands(
+        self.gui_pass.record_commands(
             &mut builder,
             gui_primitives,
             gui_scale_factor,
@@ -421,6 +395,41 @@ impl RenderManager {
 }
 // Private functions
 impl RenderManager {
+    /// Checks for VK_EXT_debug_utils support and presence khronos validation layers
+    /// If both can be enabled, adds them to provided extension and layer lists
+    fn add_debug_validation(
+        instance_extensions: &mut instance::InstanceExtensions,
+        instance_layers: &mut Vec<String>,
+    ) -> Result<(), InstanceSupportError> {
+        // check debug utils extension support
+        if match instance::InstanceExtensions::supported_by_core() {
+            Ok(supported) => supported.ext_debug_utils,
+            Err(_) => false,
+        } {
+            info!("VK_EXT_debug_utils was requested and is supported");
+        } else {
+            warn!("VK_EXT_debug_utils was requested but is unsupported");
+            return Err(InstanceSupportError::ExtensionUnsupported);
+        }
+
+        // check validation layers are present
+        let validation_layer = "VK_LAYER_KHRONOS_validation";
+        if instance::layers_list()?
+            .find(|l| l.name() == validation_layer)
+            .is_some()
+        {
+            info!("{} was requested and found", validation_layer);
+        } else {
+            warn!("{} was requested but was not found", validation_layer);
+            return Err(InstanceSupportError::LayerNotFound);
+        }
+
+        // add VK_EXT_debug_utils and VK_LAYER_LUNARG_standard_validation
+        instance_extensions.ext_debug_utils = true;
+        instance_layers.push(validation_layer.to_owned());
+        Ok(())
+    }
+
     fn create_swapchain(
         device: Arc<Device>,
         physical_device: PhysicalDevice,
@@ -525,7 +534,7 @@ impl RenderManager {
                 ..ImageUsage::none()
             },
         )
-        .unrec_err("failed to create render image")
+        .to_renderer_err("failed to create render image")
     }
 
     fn create_render_image_sampler(
@@ -540,101 +549,7 @@ impl RenderManager {
                 ..Default::default()
             },
         )
-        .unrec_err("failed to create sampler")
-    }
-
-    fn create_compute_pipeline(
-        device: Arc<Device>,
-        work_group_size: [u32; 2],
-    ) -> Result<Arc<ComputePipeline>, RenderManagerError> {
-        let render_shader =
-            create_shader_module(device.clone(), "assets/shader_binaries/render.comp.spv")?;
-
-        let compute_spec_constant = shader_interfaces::ComputeSpecConstant {
-            local_size_x: work_group_size[0],
-            local_size_y: work_group_size[1],
-        };
-        pipeline::ComputePipeline::new(
-            device.clone(),
-            render_shader
-                .entry_point("main")
-                .unrec_err("no main in render.comp")?,
-            &compute_spec_constant,
-            None,
-            |_| {},
-        )
-        .unrec_err("failed to create render compute pipeline")
-    }
-
-    fn create_compute_desc_set(
-        render_pipeline: Arc<ComputePipeline>,
-        render_image: Arc<ImageView<StorageImage>>,
-    ) -> Result<Arc<PersistentDescriptorSet>, RenderManagerError> {
-        PersistentDescriptorSet::new(
-            render_pipeline
-                .layout()
-                .set_layouts()
-                .get(shader_interfaces::descriptor::SET_RENDER_COMP)
-                .unwrap()
-                .to_owned(),
-            [WriteDescriptorSet::image_view(
-                shader_interfaces::descriptor::BINDING_IMAGE,
-                render_image,
-            )],
-        )
-        .unrec_err("unable to create render compute shader descriptor set")
-    }
-
-    fn create_blit_pipeline(
-        device: Arc<Device>,
-        swapchain_image_format: Format,
-    ) -> Result<Arc<GraphicsPipeline>, RenderManagerError> {
-        let blit_vert_shader =
-            create_shader_module(device.clone(), "assets/shader_binaries/blit.vert.spv")?;
-        let blit_frag_shader =
-            create_shader_module(device.clone(), "assets/shader_binaries/blit.frag.spv")?;
-
-        GraphicsPipeline::start()
-            .render_pass(PipelineRenderingCreateInfo {
-                color_attachment_formats: vec![Some(swapchain_image_format)],
-                ..Default::default()
-            })
-            .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-            .vertex_shader(
-                blit_vert_shader
-                    .entry_point("main")
-                    .unrec_err("no main in blit.vert")?,
-                (),
-            )
-            .fragment_shader(
-                blit_frag_shader
-                    .entry_point("main")
-                    .unrec_err("no main in blit.frag")?,
-                (),
-            )
-            .build(device.clone())
-            .unrec_err("failed to create blit graphics pipeline")
-    }
-
-    fn create_blit_desc_set(
-        blit_pipeline: Arc<GraphicsPipeline>,
-        render_image: Arc<ImageView<StorageImage>>,
-        render_image_sampler: Arc<Sampler>,
-    ) -> Result<Arc<PersistentDescriptorSet>, RenderManagerError> {
-        PersistentDescriptorSet::new(
-            blit_pipeline
-                .layout()
-                .set_layouts()
-                .get(shader_interfaces::descriptor::SET_BLIT_FRAG)
-                .unwrap()
-                .to_owned(),
-            [WriteDescriptorSet::image_view_sampler(
-                shader_interfaces::descriptor::BINDING_SAMPLER,
-                render_image,
-                render_image_sampler,
-            )],
-        )
-        .unrec_err("unable to create blit pass descriptor set")
+        .to_renderer_err("failed to create sampler")
     }
 
     /// Recreates the swapchain, render image and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
@@ -658,10 +573,10 @@ impl RenderManager {
 
         // set parameters for new resolution
         let resolution = swapchain_images[0].dimensions().width_height();
-        self.work_group_count = calc_work_group_count(
+        self.scene_pass.work_group_count = ScenePass::calc_work_group_count(
             self.device.physical_device(),
             resolution,
-            self.work_group_size,
+            self.scene_pass.work_group_size,
         )?;
         self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
 
@@ -669,10 +584,12 @@ impl RenderManager {
             self.queue.clone(),
             swapchain_images[0].dimensions().width_height(),
         )?;
-        self.render_desc_set =
-            Self::create_compute_desc_set(self.render_pipeline.clone(), self.render_image.clone())?;
-        self.blit_desc_set = Self::create_blit_desc_set(
-            self.blit_pipeline.clone(),
+        self.scene_pass.desc_set = ScenePass::create_desc_set(
+            self.scene_pass.pipeline.clone(),
+            self.render_image.clone(),
+        )?;
+        self.blit_pass.desc_set = BlitPass::create_desc_set(
+            self.blit_pass.pipeline.clone(),
             self.render_image.clone(),
             self.render_image_sampler.clone(),
         )?;
@@ -681,6 +598,53 @@ impl RenderManager {
         self.recreate_swapchain = false;
 
         Ok(())
+    }
+}
+
+// ~~~ Helper functions ~~~
+
+/// Creates a Vulkan shader module given a spirv path (relative to crate root)
+pub fn create_shader_module(
+    device: Arc<Device>,
+    spirv_path: &str,
+) -> Result<Arc<ShaderModule>, RenderManagerError> {
+    let bytes = std::fs::read(spirv_path)
+        .to_renderer_err(["spirv read failed", spirv_path].concat().as_str())?;
+    // todo conv to &[u32] and use from_words (guarentees 4 byte multiple)
+    unsafe { ShaderModule::from_bytes(device.clone(), bytes.as_slice()) }
+        .to_renderer_err([spirv_path, "shader compile failed"].concat().as_str())
+}
+
+/// This mod just makes the module path unique for debug callbacks in the log
+mod vulkan_callback {
+    use colored::Colorize;
+    use log::{debug, error, info, warn};
+    use vulkano::instance::debug::Message;
+    /// Prints/logs a Vulkan validation layer message
+    pub fn process_debug_callback(msg: &Message) {
+        let ty = if msg.ty.general {
+            "GENERAL"
+        } else if msg.ty.validation {
+            "VALIDATION"
+        } else if msg.ty.performance {
+            "PERFORMANCE"
+        } else {
+            "TYPE-UNKNOWN"
+        };
+        if msg.severity.error {
+            error!("Vulkan [{}]:\n{}", ty, msg.description.bright_red());
+        } else if msg.severity.warning {
+            warn!("Vulkan [{}]:\n{}", ty, msg.description);
+        } else if msg.severity.information {
+            info!("Vulkan [{}]:\n{}", ty, msg.description);
+        } else if msg.severity.verbose {
+            debug!("Vulkan [{}]:\n{}", ty, msg.description);
+        } else {
+            info!(
+                "Vulkan [{}] [{}]:\n{}",
+                "SEVERITY-UNKONWN", ty, msg.description
+            );
+        };
     }
 }
 
@@ -731,10 +695,10 @@ impl RenderManagerError {
         self
     }
 }
-trait RenderManagerUnrecoverable<T> {
+pub trait RenderManagerUnrecoverable<T> {
     /// Shorthand for converting a general error to a RenderManagerError::InitFailed.
     /// Commonly used with error propogation `?` in RenderManager::new.
-    fn unrec_err(self, msg: &str) -> Result<T, RenderManagerError>;
+    fn to_renderer_err(self, msg: &str) -> Result<T, RenderManagerError>;
 }
 impl<T, E> RenderManagerUnrecoverable<T> for std::result::Result<T, E>
 where
@@ -742,7 +706,7 @@ where
 {
     #[inline]
     #[track_caller]
-    fn unrec_err(self, msg: &str) -> Result<T, RenderManagerError> {
+    fn to_renderer_err(self, msg: &str) -> Result<T, RenderManagerError> {
         match self {
             Ok(x) => Ok(x),
             Err(e) => Err(RenderManagerError::Unrecoverable(format!("{}: {:?}", msg, e)).log()),
@@ -752,7 +716,7 @@ where
 impl<T> RenderManagerUnrecoverable<T> for std::option::Option<T> {
     #[inline]
     #[track_caller]
-    fn unrec_err(self, msg: &str) -> Result<T, RenderManagerError> {
+    fn to_renderer_err(self, msg: &str) -> Result<T, RenderManagerError> {
         match self {
             Some(x) => Ok(x),
             None => Err(RenderManagerError::Unrecoverable(msg.to_owned()).log()),
@@ -798,112 +762,4 @@ impl From<instance::LayersListError> for InstanceSupportError {
     fn from(err: LayersListError) -> Self {
         Self::LayersListError(err)
     }
-}
-
-// ~~~ Helper functions ~~~
-
-/// Creates a Vulkan shader module given a spirv path (relative to crate root)
-pub fn create_shader_module(
-    device: Arc<Device>,
-    spirv_path: &str,
-) -> Result<Arc<ShaderModule>, RenderManagerError> {
-    let bytes = std::fs::read(spirv_path).unrec_err("render.comp.spv read failed")?;
-    // todo conv to &[u32] and use from_words (guarentees 4 byte multiple)
-    unsafe { ShaderModule::from_bytes(device.clone(), bytes.as_slice()) }
-        .unrec_err([spirv_path, "shader compile failed"].concat().as_str())
-}
-
-/// Checks for VK_EXT_debug_utils support and presence khronos validation layers
-/// If both can be enabled, adds them to provided extension and layer lists
-fn add_debug_validation(
-    instance_extensions: &mut instance::InstanceExtensions,
-    instance_layers: &mut Vec<String>,
-) -> Result<(), InstanceSupportError> {
-    // check debug utils extension support
-    if match instance::InstanceExtensions::supported_by_core() {
-        Ok(supported) => supported.ext_debug_utils,
-        Err(_) => false,
-    } {
-        info!("VK_EXT_debug_utils was requested and is supported");
-    } else {
-        warn!("VK_EXT_debug_utils was requested but is unsupported");
-        return Err(InstanceSupportError::ExtensionUnsupported);
-    }
-
-    // check validation layers are present
-    let validation_layer = "VK_LAYER_KHRONOS_validation";
-    if instance::layers_list()?
-        .find(|l| l.name() == validation_layer)
-        .is_some()
-    {
-        info!("{} was requested and found", validation_layer);
-    } else {
-        warn!("{} was requested but was not found", validation_layer);
-        return Err(InstanceSupportError::LayerNotFound);
-    }
-
-    // add VK_EXT_debug_utils and VK_LAYER_LUNARG_standard_validation
-    instance_extensions.ext_debug_utils = true;
-    instance_layers.push(validation_layer.to_owned());
-    Ok(())
-}
-
-/// This mod just makes the module path unique for debug callbacks in the log
-mod vulkan_callback {
-    use colored::Colorize;
-    use log::{debug, error, info, warn};
-    use vulkano::instance::debug::Message;
-    /// Prints/logs a Vulkan validation layer message
-    pub fn process_debug_callback(msg: &Message) {
-        let ty = if msg.ty.general {
-            "GENERAL"
-        } else if msg.ty.validation {
-            "VALIDATION"
-        } else if msg.ty.performance {
-            "PERFORMANCE"
-        } else {
-            "TYPE-UNKNOWN"
-        };
-        if msg.severity.error {
-            error!("Vulkan [{}]:\n{}", ty, msg.description.bright_red());
-        } else if msg.severity.warning {
-            warn!("Vulkan [{}]:\n{}", ty, msg.description);
-        } else if msg.severity.information {
-            info!("Vulkan [{}]:\n{}", ty, msg.description);
-        } else if msg.severity.verbose {
-            debug!("Vulkan [{}]:\n{}", ty, msg.description);
-        } else {
-            info!(
-                "Vulkan [{}] [{}]:\n{}",
-                "SEVERITY-UNKONWN", ty, msg.description
-            );
-        };
-    }
-}
-
-/// Calculate required work group count for a given render resolution,
-/// and checks that the work group count is within the physical device limits
-pub fn calc_work_group_count(
-    physical_device: PhysicalDevice,
-    resolution: [u32; 2],
-    work_group_size: [u32; 2],
-) -> Result<[u32; 3], RenderManagerError> {
-    let mut group_count_x = resolution[0] / work_group_size[0];
-    if (resolution[0] % work_group_size[0]) != 0 {
-        group_count_x += 1;
-    }
-    let mut group_count_y = resolution[1] / work_group_size[1];
-    if (resolution[1] % work_group_size[1]) != 0 {
-        group_count_y += 1;
-    }
-    // check that work group count is within physical device limits
-    // todo this can be handled more elegently by doing multiple dispatches...
-    if group_count_x > physical_device.properties().max_compute_work_group_count[0]
-        || group_count_y > physical_device.properties().max_compute_work_group_count[1]
-    {
-        return Err(RenderManagerError::Unrecoverable(
-            "compute shader work group count exceeds physical device limits. TODO this can be handled more elegently by doing multiple dispatches...".to_string(),
-        ));
-    }
-    Ok([group_count_x, group_count_y, 1])
 }
