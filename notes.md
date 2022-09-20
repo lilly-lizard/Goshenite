@@ -10,6 +10,9 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## cleanup
 
+- update gui buffers pub fn
+- GuiRenderer::create_texture -> create_textures batch texture creation
+- gui_renderer unwraps/error handling
 
 ## always
 
@@ -29,7 +32,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 ## low priority
 
 - draw sdf sphere with AABB
-- GuiRenderer::create_texture -> create_textures batch texture creation
 - double buffering (2 frames in flight) -> double up futures/per-frame resources, reduce cpu-gpu sync blocking
 - Camera::rotate quaternions https://www.3dgep.com/understanding-quaternions/
 - shaderStorageImageExtendedFormats

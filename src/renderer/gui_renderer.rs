@@ -90,11 +90,11 @@ impl GuiRenderer {
 
     /// Creates and/or removes texture resources for a [Gui](`crate::gui::Gui) frame.
     pub fn update_textures(&mut self, textures_delta: &egui::TexturesDelta) {
-        for (id, image_delta) in &textures_delta.set {
-            self.create_texture(*id, image_delta);
-        }
         for &id in &textures_delta.free {
             self.unregister_image(id);
+        }
+        for (id, image_delta) in &textures_delta.set {
+            self.create_texture(*id, image_delta);
         }
     }
 
@@ -112,8 +112,6 @@ impl GuiRenderer {
         need_srgb_conv: bool,
         framebuffer_dimensions: [u32; 2],
     ) {
-        // todo review code
-
         let push_constants = shader_interfaces::GuiPc::new(
             [
                 framebuffer_dimensions[0] as f32 / scale_factor,
@@ -121,7 +119,6 @@ impl GuiRenderer {
             ],
             need_srgb_conv,
         );
-
         for ClippedPrimitive {
             clip_rect,
             primitive,
@@ -129,21 +126,26 @@ impl GuiRenderer {
         {
             match primitive {
                 Primitive::Mesh(mesh) => {
-                    // Nothing to draw if we don't have vertices & indices
+                    // nothing to draw if we don't have vertices & indices
                     if mesh.vertices.is_empty() || mesh.indices.is_empty() {
                         continue;
                     }
+                    // indicates problem occurred with updating textures...
                     if self.texture_desc_sets.get(&mesh.texture_id).is_none() {
-                        error!("This texture no longer exists {:?}", mesh.texture_id);
+                        error!(
+                            "required gui texture no longer exists: {:?}",
+                            mesh.texture_id
+                        );
                         continue;
                     }
 
-                    let scissors = vec![Self::get_rect_scissor(
+                    // get region of screen to render
+                    let scissors = [Self::get_rect_scissor(
                         scale_factor,
                         framebuffer_dimensions,
                         *clip_rect,
                     )];
-
+                    // todo description
                     let (vertices, indices) = self.create_subbuffers(mesh);
 
                     let desc_set = self
@@ -155,7 +157,7 @@ impl GuiRenderer {
                         .bind_pipeline_graphics(self.pipeline.clone())
                         .set_viewport(
                             0,
-                            vec![Viewport {
+                            [Viewport {
                                 origin: [0.0, 0.0],
                                 dimensions: [
                                     framebuffer_dimensions[0] as f32,
@@ -177,7 +179,7 @@ impl GuiRenderer {
                         .draw_indexed(indices.len() as u32, 1, 0, 0, 0)
                         .unwrap();
                 }
-                _ => continue,
+                _ => continue, // don't need to support Primitive::Callback
             }
         }
     }
@@ -374,6 +376,7 @@ impl GuiRenderer {
         self.texture_images.remove(&texture_id);
     }
 
+    /// Caclulates the region of the framebuffer to render a gui element.
     fn get_rect_scissor(
         scale_factor: f32,
         framebuffer_dimensions: [u32; 2],
