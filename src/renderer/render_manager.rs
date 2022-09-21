@@ -738,7 +738,13 @@ where
     fn to_renderer_err(self, msg: &str) -> Result<T, RenderManagerError> {
         match self {
             Ok(x) => Ok(x),
-            Err(e) => Err(RenderManagerError::Unrecoverable(format!("{}: {:?}", msg, e)).log()),
+            Err(e) => {
+                if config::PANIC_ON_RENDERER_UNRECOVERABLE {
+                    panic!("{:?}", e);
+                } else {
+                    Err(RenderManagerError::Unrecoverable(format!("{}: {:?}", msg, e)).log())
+                }
+            }
         }
     }
 }
@@ -748,7 +754,13 @@ impl<T> RenderManagerUnrecoverable<T> for std::option::Option<T> {
     fn to_renderer_err(self, msg: &str) -> Result<T, RenderManagerError> {
         match self {
             Some(x) => Ok(x),
-            None => Err(RenderManagerError::Unrecoverable(msg.to_owned()).log()),
+            None => {
+                if config::PANIC_ON_RENDERER_UNRECOVERABLE {
+                    panic!();
+                } else {
+                    Err(RenderManagerError::Unrecoverable(msg.to_owned()).log())
+                }
+            }
         }
     }
 }

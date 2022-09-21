@@ -148,7 +148,7 @@ impl ScenePass {
                 .layout()
                 .set_layouts()
                 .get(descriptor::SET_PRIMITVES)
-                .unwrap()
+                .to_renderer_err("no compute shader primitives descriptor set layout")?
                 .to_owned(),
             [WriteDescriptorSet::buffer(
                 descriptor::BINDING_PRIMITVES,

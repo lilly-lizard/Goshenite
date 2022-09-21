@@ -3,6 +3,12 @@
 
 /// Defines the up/down axis in the world space coordinate system
 const vec3 WORLD_SPACE_UP = vec3(0., 0., 1.);
+/// Maximum number of ray marching steps before confirming a miss
+const uint MAX_STEPS = 32;
+/// Maximum distance to travel
+const float MAX_DIST = 1000.;
+/// Minimum distance to travel (epsilon)
+const float MIN_DIST = 0.001;
 
 // workgroup size. set via specialization constants 0 and 1
 layout (local_size_x_id = 0, local_size_y_id = 1) in;
@@ -38,9 +44,13 @@ vec3 background(const vec3 ray_d)
 float map(vec3 pos) {
 	const vec3 SPHERE_CENTER = vec3(0.);
 	const float SPHERE_RADIUS = 1.;
-	float dist_sphere = sdfSphere(pos, SPHERE_CENTER, SPHERE_RADIUS);
+	float dist = MAX_DIST;
 
-	return dist_sphere;
+	if (primitives.data[0] == 0) {
+		dist = sdfSphere(pos, SPHERE_CENTER, SPHERE_RADIUS);
+	}
+
+	return dist;
 }
 
 // https://iquilezles.org/articles/normalsSDF
@@ -59,10 +69,6 @@ vec3 calcNormal(vec3 pos)
 /// * `ray_d` - ray direction
 vec3 ray_march(const vec3 ray_o, const vec3 ray_d)
 {
-	const uint MAX_STEPS = 32; // maximum number of ray marching steps before confirming a miss
-	const float MAX_DIST = 1000.; // maximum distance to travel
-	const float MIN_DIST = 0.001; // minimum distance to travel (epsilon)
-
 	float dist = 0.; // total distance traveled
 	for (int i = 0; i < MAX_STEPS && dist < MAX_DIST; i++) {
 		vec3 current_pos = ray_o + dist * ray_d; // get the world space position from the current marching distance

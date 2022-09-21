@@ -1,9 +1,9 @@
 use super::render_manager::{RenderManagerError, RenderManagerUnrecoverable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{cpu_pool::CpuBufferPoolChunk, BufferAccess, BufferUsage, CpuBufferPool},
+    buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
     device::Device,
-    memory::{pool::StdMemoryPool, DeviceMemoryAllocationError},
+    memory::pool::StdMemoryPool,
     DeviceSize,
 };
 
@@ -21,19 +21,15 @@ impl Primitives {
         buffer_pool
             .reserve(DATA_SIZE * MAX_DATA_COUNT)
             .to_renderer_err("unable to reserve primitives buffer")?;
-        Ok(Self {
-            data: vec![0u32],
-            buffer_pool,
-        })
+        let data = vec![0u32];
+        Ok(Self { data, buffer_pool })
     }
 
     pub fn buffer_access(
         &self,
     ) -> Result<Arc<CpuBufferPoolChunk<u32, Arc<StdMemoryPool>>>, RenderManagerError> {
         self.buffer_pool
-            .chunk(&self.data.into_iter())
+            .chunk(self.data.clone())
             .to_renderer_err("unable to create primitives subbuffer")
     }
 }
-// Private functions
-impl Primitives {}
