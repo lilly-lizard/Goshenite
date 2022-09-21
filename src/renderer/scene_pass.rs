@@ -152,7 +152,7 @@ impl ScenePass {
                 .to_owned(),
             [WriteDescriptorSet::buffer(
                 descriptor::BINDING_PRIMITVES,
-                primitives.buffer_access(),
+                primitives.buffer_access()?,
             )],
         )
         .to_renderer_err("unable to create render compute shader descriptor set")
@@ -163,17 +163,16 @@ impl ScenePass {
         command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         camera_push_constant: shader_interfaces::CameraPc,
     ) -> Result<(), RenderManagerError> {
-        let mut desc_sets: [Arc<PersistentDescriptorSet>; descriptor::SET_COUNT];
-        desc_sets[descriptor::SET_IMAGE] = self.desc_set_render_image.clone();
-        desc_sets[descriptor::SET_PRIMITVES] = self.desc_set_primitives.clone();
-
+        let mut desc_sets: Vec<Arc<PersistentDescriptorSet>> = Vec::default();
+        desc_sets.insert(descriptor::SET_IMAGE, self.desc_set_render_image.clone());
+        desc_sets.insert(descriptor::SET_PRIMITVES, self.desc_set_primitives.clone());
         command_buffer
             .bind_pipeline_compute(self.pipeline.clone())
             .bind_descriptor_sets(
                 PipelineBindPoint::Compute,
                 self.pipeline.layout().clone(),
                 0,
-                desc_sets.to_vec(),
+                desc_sets,
             )
             .push_constants(self.pipeline.layout().clone(), 0, camera_push_constant)
             .dispatch(self.work_group_count)
