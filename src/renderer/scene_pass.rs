@@ -1,16 +1,32 @@
-use super::render_manager::{create_shader_module, RenderManagerError, RenderManagerUnrecoverable};
+use super::{
+    primitives::Primitives,
+    render_manager::{create_shader_module, RenderManagerError, RenderManagerUnrecoverable},
+};
 use crate::{config, shaders::shader_interfaces};
-use std::sync::Arc;
+use std::{default, sync::Arc};
 use vulkano::{
+    command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{physical::PhysicalDevice, Device},
     image::{view::ImageView, StorageImage},
-    pipeline::{ComputePipeline, Pipeline},
+    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
 };
+
+/// Describes descriptor set indices
+pub mod descriptor {
+    pub const SET_IMAGE: usize = 0;
+    pub const SET_PRIMITVES: usize = 1;
+    /// Number of sets
+    pub const SET_COUNT: usize = 2;
+
+    pub const BINDING_IMAGE: u32 = 0;
+    pub const BINDING_PRIMITVES: u32 = 0;
+}
 
 pub struct ScenePass {
     pub pipeline: Arc<ComputePipeline>,
-    pub desc_set: Arc<PersistentDescriptorSet>,
+    pub desc_set_render_image: Arc<PersistentDescriptorSet>,
+    pub desc_set_primitives: Arc<PersistentDescriptorSet>,
     pub work_group_size: [u32; 2],
     pub work_group_count: [u32; 3],
 }
@@ -19,6 +35,7 @@ impl ScenePass {
         device: Arc<Device>,
         render_image_size: [u32; 2],
         render_image: Arc<ImageView<StorageImage>>,
+        primitives: &Primitives,
     ) -> Result<Self, RenderManagerError> {
         let physical_device = device.physical_device();
 
@@ -40,11 +57,14 @@ impl ScenePass {
         )?;
 
         let pipeline = Self::create_pipeline(device.clone(), work_group_size)?;
-        let desc_set = Self::create_desc_set(pipeline.clone(), render_image)?;
+        let desc_set_render_image =
+            Self::create_desc_set_render_image(pipeline.clone(), render_image)?;
+        let desc_set_primitives = Self::create_desc_set_primitives(pipeline.clone(), primitives)?;
 
         Ok(Self {
             pipeline,
-            desc_set,
+            desc_set_render_image,
+            desc_set_primitives,
             work_group_size,
             work_group_count,
         })
@@ -100,7 +120,7 @@ impl ScenePass {
         .to_renderer_err("failed to create render compute pipeline")
     }
 
-    pub fn create_desc_set(
+    pub fn create_desc_set_render_image(
         scene_pipeline: Arc<ComputePipeline>,
         render_image: Arc<ImageView<StorageImage>>,
     ) -> Result<Arc<PersistentDescriptorSet>, RenderManagerError> {
@@ -108,14 +128,56 @@ impl ScenePass {
             scene_pipeline
                 .layout()
                 .set_layouts()
-                .get(shader_interfaces::descriptor::SET_RENDER_COMP)
+                .get(descriptor::SET_IMAGE)
                 .unwrap()
                 .to_owned(),
             [WriteDescriptorSet::image_view(
-                shader_interfaces::descriptor::BINDING_IMAGE,
+                descriptor::BINDING_IMAGE,
                 render_image,
             )],
         )
         .to_renderer_err("unable to create render compute shader descriptor set")
+    }
+
+    pub fn create_desc_set_primitives(
+        scene_pipeline: Arc<ComputePipeline>,
+        primitives: &Primitives,
+    ) -> Result<Arc<PersistentDescriptorSet>, RenderManagerError> {
+        PersistentDescriptorSet::new(
+            scene_pipeline
+                .layout()
+                .set_layouts()
+                .get(descriptor::SET_PRIMITVES)
+                .unwrap()
+                .to_owned(),
+            [WriteDescriptorSet::buffer(
+                descriptor::BINDING_PRIMITVES,
+                primitives.buffer_access(),
+            )],
+        )
+        .to_renderer_err("unable to create render compute shader descriptor set")
+    }
+
+    pub fn record_commands(
+        &self,
+        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        camera_push_constant: shader_interfaces::CameraPc,
+    ) -> Result<(), RenderManagerError> {
+        let mut desc_sets: [Arc<PersistentDescriptorSet>; descriptor::SET_COUNT];
+        desc_sets[descriptor::SET_IMAGE] = self.desc_set_render_image.clone();
+        desc_sets[descriptor::SET_PRIMITVES] = self.desc_set_primitives.clone();
+
+        command_buffer
+            .bind_pipeline_compute(self.pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                self.pipeline.layout().clone(),
+                0,
+                desc_sets.to_vec(),
+            )
+            .push_constants(self.pipeline.layout().clone(), 0, camera_push_constant)
+            .dispatch(self.work_group_count)
+            .to_renderer_err("failed to dispatch compute shader")?;
+        Ok(())
     }
 }

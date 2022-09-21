@@ -13,6 +13,12 @@ use vulkano::{
     sampler::Sampler,
 };
 
+/// Describes descriptor set indices
+pub mod descriptor {
+    pub const SET_BLIT_FRAG: usize = 0; // descriptor set index in post.frag
+    pub const BINDING_SAMPLER: u32 = 0; // render image sampler binding
+}
+
 pub struct BlitPass {
     pub pipeline: Arc<GraphicsPipeline>,
     pub desc_set: Arc<PersistentDescriptorSet>,
@@ -73,11 +79,11 @@ impl BlitPass {
             blit_pipeline
                 .layout()
                 .set_layouts()
-                .get(shader_interfaces::descriptor::SET_BLIT_FRAG)
+                .get(descriptor::SET_BLIT_FRAG)
                 .unwrap()
                 .to_owned(),
             [WriteDescriptorSet::image_view_sampler(
-                shader_interfaces::descriptor::BINDING_SAMPLER,
+                descriptor::BINDING_SAMPLER,
                 render_image,
                 render_image_sampler,
             )],

@@ -1,7 +1,7 @@
 use super::render_manager::{RenderManagerError, RenderManagerUnrecoverable};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{BufferUsage, CpuBufferPool},
+    buffer::{BufferAccess, BufferUsage, CpuBufferPool},
     device::Device,
     DeviceSize,
 };
@@ -20,5 +20,9 @@ impl Primitives {
             .reserve(DATA_SIZE * MAX_DATA_COUNT)
             .to_renderer_err("unable to reserve primitives buffer")?;
         Ok(Self { buffer })
+    }
+
+    pub fn buffer_access(&self) -> Arc<dyn BufferAccess> {
+        self.buffer.into()
     }
 }

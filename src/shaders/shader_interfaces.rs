@@ -3,14 +3,6 @@
 use glam::{Mat4, Vec3, Vec4};
 use vulkano::shader::{SpecializationConstants, SpecializationMapEntry};
 
-/// Describes the descriptor set containing the render storage image (render.comp) and sampler (post.frag)
-pub mod descriptor {
-    pub const SET_RENDER_COMP: usize = 0; // descriptor set index in render.comp
-    pub const SET_BLIT_FRAG: usize = 0; // descriptor set index in post.frag
-    pub const BINDING_IMAGE: u32 = 0; // render storage image binding
-    pub const BINDING_SAMPLER: u32 = 0; // render image sampler binding
-}
-
 /// Render compute shader push constant struct. Size should be no more than 128 bytes for full vulkan coverage
 #[derive(Clone, Copy, Default, Debug)]
 #[repr(C)]

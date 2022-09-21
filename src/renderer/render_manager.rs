@@ -64,14 +64,18 @@ impl RenderManager {
         let mut instance_layers: Vec<String> = Vec::new();
 
         // check for validation layer/debug callback support
-        let enable_debug_callback =
+        let enable_debug_callback = if config::ENABLE_VULKAN_VALIDATION {
             if Self::add_debug_validation(&mut instance_extensions, &mut instance_layers).is_ok() {
                 info!("enabling Vulkan validation layers and debug callback");
                 true
             } else {
                 warn!("validation layer debug callback requested but cannot be enabled");
                 false
-            };
+            }
+        } else {
+            debug!("Vulkan validation layers disabled by config");
+            false
+        };
 
         // create instance
         let instance = Instance::new(instance::InstanceCreateInfo {
@@ -82,7 +86,7 @@ impl RenderManager {
         })
         .to_renderer_err("Failed to create vulkan instance")?;
 
-        // setup debug callbacks
+        // setup debug callback
         let debug_callback = if enable_debug_callback {
             Self::setup_debug_callback(instance.clone())
         } else {
@@ -99,7 +103,7 @@ impl RenderManager {
             ..device::DeviceExtensions::none()
         };
 
-        // print available devices
+        // print available physical devices
         debug!("Available Vulkan physical devices:");
         for pd in PhysicalDevice::enumerate(&instance) {
             debug!("\t{}", pd.properties().device_name);
@@ -127,7 +131,6 @@ impl RenderManager {
             },
         )
         .to_renderer_err("failed to create vulkan device")?;
-
         let queue = queues.next().expect(
             "vulkano::device::Device::new has an assert to ensure at least 1 queue gets created",
         );
@@ -140,7 +143,7 @@ impl RenderManager {
             swapchain_images[0].dimensions()
         );
 
-        // dynamic viewport
+        // init dynamic viewport
         let viewport = Viewport {
             origin: [0.0, 0.0],
             dimensions: [
@@ -158,19 +161,25 @@ impl RenderManager {
         let swapchain_image_views =
             swapchain_image_views.to_renderer_err("failed to create swapchain image view(s)")?;
 
-        // compute shader render target
+        // scene render target
         let render_image = Self::create_render_image(
             queue.clone(),
             swapchain_images[0].dimensions().width_height(),
         )?;
         let render_image_sampler = Self::create_render_image_sampler(device.clone())?;
 
+        // init primitives buffer
+        let primitives = Primitives::new(device.clone())?;
+
+        // init compute shader scene pass
         let scene_pass = ScenePass::new(
             device.clone(),
             swapchain_images[0].dimensions().width_height(),
             render_image.clone(),
+            &primitives,
         )?;
 
+        // init blit pass
         let blit_pass = BlitPass::new(
             device.clone(),
             swapchain.image_format(),
@@ -178,12 +187,10 @@ impl RenderManager {
             render_image_sampler.clone(),
         )?;
 
-        // init primitives buffer
-        let primitives = Primitives::new(device.clone())?;
-
         // init gui renderer
         let gui_pass = GuiRenderer::new(device.clone(), queue.clone(), swapchain.image_format())?;
 
+        // create futures used for frame synchronization
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
         let recreate_swapchain = false;
 
@@ -265,7 +272,7 @@ impl RenderManager {
         // update gui
         let need_srgb_conv = false; // todo
 
-        let render_push_constants = shader_interfaces::CameraPc::new(
+        let camera_push_constant = shader_interfaces::CameraPc::new(
             glam::Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
             camera.position(),
         );
@@ -277,23 +284,11 @@ impl RenderManager {
             command_buffer::CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
+        // compute shader scene render
+        self.scene_pass
+            .record_commands(&mut builder, camera_push_constant)?;
+        // begin render pass
         builder
-            // compute shader scene render
-            .bind_pipeline_compute(self.scene_pass.pipeline.clone())
-            .bind_descriptor_sets(
-                pipeline::PipelineBindPoint::Compute,
-                self.scene_pass.pipeline.layout().clone(),
-                0,
-                self.scene_pass.desc_set.clone(),
-            )
-            .push_constants(
-                self.scene_pass.pipeline.layout().clone(),
-                0,
-                render_push_constants,
-            )
-            .dispatch(self.scene_pass.work_group_count)
-            .unwrap()
-            // begin render pass
             .begin_rendering(command_buffer::RenderingInfo {
                 color_attachments: vec![Some(command_buffer::RenderingAttachmentInfo {
                     load_op: LoadOp::Clear,
@@ -317,7 +312,7 @@ impl RenderManager {
             )
             .draw(3, 1, 0, 0)
             .unwrap();
-        // render gui
+        // render gui todo return error
         self.gui_pass.record_commands(
             &mut builder,
             gui_primitives,
@@ -618,7 +613,7 @@ impl RenderManager {
             self.queue.clone(),
             swapchain_images[0].dimensions().width_height(),
         )?;
-        self.scene_pass.desc_set = ScenePass::create_desc_set(
+        self.scene_pass.desc_set_render_image = ScenePass::create_desc_set_render_image(
             self.scene_pass.pipeline.clone(),
             self.render_image.clone(),
         )?;
