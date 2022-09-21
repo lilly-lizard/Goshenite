@@ -44,7 +44,8 @@ pub struct RenderManager {
 
     render_image: Arc<ImageView<StorageImage>>,
     render_image_sampler: Arc<Sampler>,
-    primitives: Primitives,
+    // todo remove pub
+    pub primitives: Primitives,
 
     scene_pass: ScenePass,
     blit_pass: BlitPass,
@@ -272,7 +273,7 @@ impl RenderManager {
         // update gui
         let need_srgb_conv = false; // todo
 
-        let camera_push_constant = shader_interfaces::CameraPc::new(
+        let camera_push_constant = shader_interfaces::CameraPushConstant::new(
             glam::Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
             camera.position(),
         );
@@ -682,7 +683,7 @@ mod vulkan_callback {
 /// Describes the types of errors encountered by the renderer
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum RenderManagerError {
-    /// An unrecoverable or unexpected error has prevented the RenderManager from initializing or rendering.
+    /// An unrecoverable/unexpected error has prevented the RenderManager from initializing or rendering.
     /// Contains an string explaining the cause.
     Unrecoverable(String),
 

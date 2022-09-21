@@ -3,7 +3,7 @@ use super::{
     render_manager::{create_shader_module, RenderManagerError, RenderManagerUnrecoverable},
 };
 use crate::{config, shaders::shader_interfaces};
-use std::{default, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
@@ -16,8 +16,6 @@ use vulkano::{
 pub mod descriptor {
     pub const SET_IMAGE: usize = 0;
     pub const SET_PRIMITVES: usize = 1;
-    /// Number of sets
-    pub const SET_COUNT: usize = 2;
 
     pub const BINDING_IMAGE: u32 = 0;
     pub const BINDING_PRIMITVES: u32 = 0;
@@ -152,7 +150,7 @@ impl ScenePass {
                 .to_owned(),
             [WriteDescriptorSet::buffer(
                 descriptor::BINDING_PRIMITVES,
-                primitives.buffer_access()?,
+                primitives.buffer(),
             )],
         )
         .to_renderer_err("unable to create render compute shader descriptor set")
@@ -161,7 +159,7 @@ impl ScenePass {
     pub fn record_commands(
         &self,
         command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-        camera_push_constant: shader_interfaces::CameraPc,
+        camera_push_constant: shader_interfaces::CameraPushConstant,
     ) -> Result<(), RenderManagerError> {
         let mut desc_sets: Vec<Arc<PersistentDescriptorSet>> = Vec::default();
         desc_sets.insert(descriptor::SET_IMAGE, self.desc_set_render_image.clone());

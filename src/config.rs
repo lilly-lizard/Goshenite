@@ -38,7 +38,6 @@ pub const VULKAN_VER_MIN: u32 = 3;
 pub const DEFAULT_WORK_GROUP_SIZE: [u32; 2] = [16, 16];
 /// If true, the renderer will attempt to enable valication layers
 pub const ENABLE_VULKAN_VALIDATION: bool = true;
-#[cfg(debug_assertions)]
-pub const PANIC_ON_RENDERER_UNRECOVERABLE: bool = true;
-#[cfg(not(debug_assertions))]
-pub const PANIC_ON_RENDERER_UNRECOVERABLE: bool = false;
+/// If true, any calls to [`RenderManagerUnrecoverable::to_renderer_err`](crate::renderer::render_manager::RenderManagerUnrecoverable::to_renderer_err) will panic
+/// rather than propogating [`RenderManagerError::Unrecoverable`](crate::renderer::render_manager::RenderManagerError::Unrecoverable) cases.
+pub const PANIC_ON_RENDERER_UNRECOVERABLE: bool = cfg!(debug_assertions);

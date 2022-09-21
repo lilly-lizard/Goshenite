@@ -76,7 +76,8 @@ impl Engine {
         let camera = Camera::new(init_resolution);
 
         // init renderer
-        let renderer = RenderManager::new(window.clone()).unwrap();
+        let mut renderer = RenderManager::new(window.clone()).unwrap();
+        renderer.primitives.add_sphere(glam::Vec3::ZERO, 1.0);
 
         // init gui
         let gui = Gui::new(window.clone(), renderer.max_image_array_layers() as usize);

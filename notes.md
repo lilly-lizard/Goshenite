@@ -7,6 +7,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - interface to disable shader compilation in build.rs
 	- feature flag (disabled by default) https://doc.rust-lang.org/cargo/reference/features.html#command-line-feature-options
 	- environment variable checked in build.rs (still ends up compiling shaderc tho)
+- tests for Primitives data
 
 ## cleanup
 

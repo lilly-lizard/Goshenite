@@ -3,17 +3,34 @@
 use glam::{Mat4, Vec3, Vec4};
 use vulkano::shader::{SpecializationConstants, SpecializationMapEntry};
 
+#[derive(Clone, Default, Debug)]
+#[repr(C)]
+#[allow(non_snake_case)]
+pub struct PrimitivesStorageBuffer {
+    pub data_len: u32,
+    pub data: Vec<u32>,
+}
+impl PrimitivesStorageBuffer {
+    pub fn combined_data(&self) -> Vec<u32> {
+        // todo return err instead of assert
+        assert!(self.data.len() < u32::MAX as usize);
+        let mut combined_data = self.data.clone();
+        combined_data.insert(0, self.data_len as u32);
+        combined_data
+    }
+}
+
 /// Render compute shader push constant struct. Size should be no more than 128 bytes for full vulkan coverage
 #[derive(Clone, Copy, Default, Debug)]
 #[repr(C)]
 #[allow(non_snake_case)]
-pub struct CameraPc {
+pub struct CameraPushConstant {
     /// Inverse of projection matrix multiplied by view matrix. Converts clip space coordinates to world space
     pub projViewInverse: [f32; 16],
     /// Camera position in world space (w component unused)
     pub position: [f32; 4],
 }
-impl CameraPc {
+impl CameraPushConstant {
     pub fn new(proj_view_inverse: Mat4, position: Vec3) -> Self {
         Self {
             projViewInverse: proj_view_inverse.to_cols_array(),
@@ -56,12 +73,12 @@ unsafe impl SpecializationConstants for ComputeSpecConstant {
 #[derive(Clone, Copy, Default, Debug)]
 #[repr(C)]
 #[allow(non_snake_case)]
-pub struct GuiPc {
+pub struct GuiPushConstant {
     pub screen_size: [f32; 2],
     /// use bool.into()
     pub need_srgb_conv: u32,
 }
-impl GuiPc {
+impl GuiPushConstant {
     pub fn new(screen_size: [f32; 2], need_srgb_conv: bool) -> Self {
         Self {
             screen_size,

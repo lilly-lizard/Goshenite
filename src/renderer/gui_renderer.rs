@@ -112,7 +112,7 @@ impl GuiRenderer {
         need_srgb_conv: bool,
         framebuffer_dimensions: [u32; 2],
     ) {
-        let push_constants = shader_interfaces::GuiPc::new(
+        let push_constants = shader_interfaces::GuiPushConstant::new(
             [
                 framebuffer_dimensions[0] as f32 / scale_factor,
                 framebuffer_dimensions[1] as f32 / scale_factor,
