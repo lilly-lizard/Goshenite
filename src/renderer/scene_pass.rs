@@ -33,7 +33,7 @@ impl ScenePass {
         device: Arc<Device>,
         render_image_size: [u32; 2],
         render_image: Arc<ImageView<StorageImage>>,
-        primitives: &Primitives,
+        primitives: &mut Primitives,
     ) -> Result<Self, RenderManagerError> {
         let physical_device = device.physical_device();
 
@@ -139,7 +139,7 @@ impl ScenePass {
 
     pub fn create_desc_set_primitives(
         scene_pipeline: Arc<ComputePipeline>,
-        primitives: &Primitives,
+        primitives: &mut Primitives,
     ) -> Result<Arc<PersistentDescriptorSet>, RenderManagerError> {
         PersistentDescriptorSet::new(
             scene_pipeline
@@ -150,7 +150,7 @@ impl ScenePass {
                 .to_owned(),
             [WriteDescriptorSet::buffer(
                 descriptor::BINDING_PRIMITVES,
-                primitives.buffer(),
+                primitives.buffer()?,
             )],
         )
         .to_renderer_err("unable to create render compute shader descriptor set")

@@ -170,14 +170,14 @@ impl RenderManager {
         let render_image_sampler = Self::create_render_image_sampler(device.clone())?;
 
         // init primitives buffer
-        let primitives = Primitives::new(device.clone())?;
+        let mut primitives = Primitives::new(device.clone())?;
 
         // init compute shader scene pass
         let scene_pass = ScenePass::new(
             device.clone(),
             swapchain_images[0].dimensions().width_height(),
             render_image.clone(),
-            &primitives,
+            &mut primitives,
         )?;
 
         // init blit pass
@@ -270,13 +270,12 @@ impl RenderManager {
             self.recreate_swapchain = true;
         }
 
-        // update gui
-        let need_srgb_conv = false; // todo
+        self.scene_pass.desc_set_primitives = ScenePass::create_desc_set_primitives(
+            self.scene_pass.pipeline.clone(),
+            &mut self.primitives,
+        )?;
 
-        let camera_push_constant = shader_interfaces::CameraPushConstant::new(
-            glam::Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
-            camera.position(),
-        );
+        let need_srgb_conv = false; // todo
 
         // record command buffer
         let mut builder = command_buffer::AutoCommandBufferBuilder::primary(
@@ -286,6 +285,10 @@ impl RenderManager {
         )
         .unwrap();
         // compute shader scene render
+        let camera_push_constant = shader_interfaces::CameraPushConstant::new(
+            glam::Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
+            camera.position(),
+        );
         self.scene_pass
             .record_commands(&mut builder, camera_push_constant)?;
         // begin render pass
