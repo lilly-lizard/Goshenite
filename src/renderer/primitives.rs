@@ -1,5 +1,5 @@
 use super::render_manager::{RenderManagerError, RenderManagerUnrecoverable};
-use crate::shaders::shader_interfaces::{self, PrimitivesStorageBuffer};
+use crate::shaders::shader_interfaces::{self, primitve_codes, PrimitivesStorageBuffer};
 use glam::Vec3;
 use std::sync::Arc;
 use vulkano::{
@@ -13,11 +13,6 @@ use vulkano::{
 
 const DATA_SIZE: DeviceSize = 4;
 const MAX_DATA_COUNT: DeviceSize = 1024;
-
-mod primitve_codes {
-    pub const NULL: u32 = 0xFFFFFFFF;
-    pub const SPHERE: u32 = 0x7FFFFFFF;
-}
 
 pub struct Primitives {
     encoded_data: PrimitivesStorageBuffer,
@@ -42,27 +37,26 @@ impl Primitives {
     ) -> Result<Arc<CpuBufferPoolChunk<u32, Arc<StdMemoryPool>>>, RenderManagerError> {
         // todo should be able to update buffer wihtout updating descriptor set?
         // todo better way of handling this case...
-        assert!(self.encoded_data.primitive_data.len() < u32::MAX as usize);
-        self.encoded_data.data_len = self.encoded_data.primitive_data.len() as u32;
+        let len = self.encoded_data.data.len() / shader_interfaces::PRIMITIVE_UNIT_LEN;
+        assert!(len < u32::MAX as usize);
+        self.encoded_data.count = len as u32;
         self.buffer_pool
             .chunk(self.encoded_data.combined_data())
             .to_renderer_err("unable to create primitives subbuffer")
     }
 
-    pub fn add_sphere(&mut self, position: Vec3, radius: f32) {
+    pub fn add_sphere(&mut self, radius: f32, center: Vec3) {
         let sphere_data: [u32; shader_interfaces::PRIMITIVE_UNIT_LEN] = [
             primitve_codes::SPHERE,
-            position.x.to_bits(),
-            position.y.to_bits(),
-            position.z.to_bits(),
             radius.to_bits(),
+            center.x.to_bits(),
+            center.y.to_bits(),
+            center.z.to_bits(),
             // padding
             primitve_codes::NULL,
             primitve_codes::NULL,
             primitve_codes::NULL,
         ];
-        self.encoded_data
-            .primitive_data
-            .extend_from_slice(&sphere_data);
+        self.encoded_data.data.extend_from_slice(&sphere_data);
     }
 }

@@ -7,20 +7,25 @@ use vulkano::shader::{SpecializationConstants, SpecializationMapEntry};
 #[repr(C)]
 #[allow(non_snake_case)]
 pub struct PrimitivesStorageBuffer {
-    pub data_len: u32,
-    pub primitive_data: Vec<u32>,
+    pub count: u32,
+    pub data: Vec<u32>,
 }
 impl PrimitivesStorageBuffer {
     pub fn combined_data(&self) -> Vec<u32> {
-        // todo return err instead of assert
-        assert!(self.primitive_data.len() < u32::MAX as usize);
-        let mut combined_data = self.primitive_data.clone();
-        combined_data.insert(0, self.data_len as u32);
+        // todo return err instead of assert, also checked in buffer()??
+        assert!(self.data.len() < u32::MAX as usize);
+        let mut combined_data = self.data.clone();
+        combined_data.insert(0, self.count as u32);
         combined_data
     }
 }
 /// bruh
 pub const PRIMITIVE_UNIT_LEN: usize = 8;
+
+pub mod primitve_codes {
+    pub const NULL: u32 = 0xFFFFFFFF;
+    pub const SPHERE: u32 = 0x7FFFFFFF;
+}
 
 /// Render compute shader push constant struct. Size should be no more than 128 bytes for full vulkan coverage
 #[derive(Clone, Copy, Default, Debug)]

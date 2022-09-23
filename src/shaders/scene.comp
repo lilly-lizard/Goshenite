@@ -11,6 +11,9 @@ const float MAX_DIST = 1000.;
 const float MIN_DIST = 0.001;
 /// bruh
 const uint PRIMITIVE_UNIT_LENGTH = 8;
+// bruh
+const uint NULL = 0xFFFFFFFF;
+const uint SPHERE = 0x7FFFFFFF;
 
 // workgroup size. set via specialization constants 0 and 1
 layout (local_size_x_id = 0, local_size_y_id = 1) in;
@@ -18,7 +21,7 @@ layout (local_size_x_id = 0, local_size_y_id = 1) in;
 layout (set = 0, binding = 0, rgba8) uniform writeonly image2D renderImage;
 // encoded object data to render
 layout (set = 1, binding = 0, std430) readonly buffer Primitives {
-	uint data_len;
+	uint count;
 	uint data[];
 } primitives;
 // push constant with camera data
@@ -44,13 +47,25 @@ vec3 background(const vec3 ray_d)
 }
 
 /// Calculates the distance to the closest signed distance field in the scene
-float map(vec3 pos) {
+float map(vec3 pos)
+{
 	const vec3 SPHERE_CENTER = vec3(0.);
 	const float SPHERE_RADIUS = 1.;
 	float dist = MAX_DIST;
 
-	if (primitives.data_len == PRIMITIVE_UNIT_LENGTH) {
-		dist = sdfSphere(pos, SPHERE_CENTER, SPHERE_RADIUS);
+	uint primitive_index = 0;
+	while (primitive_index < primitives.count) {
+		uint buffer_pos = primitive_index * PRIMITIVE_UNIT_LENGTH;
+		if (primitives.data[buffer_pos++] == SPHERE) {
+			float radius = uintBitsToFloat(primitives.data[buffer_pos++]);
+			vec3 center = vec3(
+				uintBitsToFloat(primitives.data[buffer_pos++]),
+				uintBitsToFloat(primitives.data[buffer_pos++]),
+				uintBitsToFloat(primitives.data[buffer_pos++])
+			);
+			dist = sdfSphere(pos, SPHERE_CENTER, radius);
+		}
+		primitive_index++;
 	}
 
 	return dist;
