@@ -4,6 +4,7 @@ mod cursor_state;
 mod engine;
 mod gui;
 mod helper;
+mod primitives;
 mod renderer;
 mod shaders;
 

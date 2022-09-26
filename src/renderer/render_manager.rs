@@ -1,10 +1,10 @@
 use super::blit_pass::BlitPass;
 use super::gui_renderer::GuiRenderer;
-use super::primitives::Primitives;
 use super::scene_pass::ScenePass;
 use crate::camera::Camera;
 use crate::config;
-use crate::shaders::shader_interfaces;
+use crate::primitives::Primitives;
+use crate::shaders::shader_interfaces::CameraPushConstant;
 use egui::ClippedPrimitive;
 use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
@@ -44,8 +44,6 @@ pub struct RenderManager {
 
     render_image: Arc<ImageView<StorageImage>>,
     render_image_sampler: Arc<Sampler>,
-    // todo remove pub
-    pub primitives: Primitives,
 
     scene_pass: ScenePass,
     blit_pass: BlitPass,
@@ -60,7 +58,7 @@ pub struct RenderManager {
 
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
-    pub fn new(window: Arc<Window>) -> Result<Self, RenderManagerError> {
+    pub fn new(window: Arc<Window>, primitives: &Primitives) -> Result<Self, RenderManagerError> {
         let mut instance_extensions = vulkano_win::required_extensions();
         let mut instance_layers: Vec<String> = Vec::new();
 
@@ -169,15 +167,12 @@ impl RenderManager {
         )?;
         let render_image_sampler = Self::create_render_image_sampler(device.clone())?;
 
-        // init primitives buffer
-        let mut primitives = Primitives::new(device.clone())?;
-
         // init compute shader scene pass
         let scene_pass = ScenePass::new(
             device.clone(),
+            primitives,
             swapchain_images[0].dimensions().width_height(),
             render_image.clone(),
-            &mut primitives,
         )?;
 
         // init blit pass
@@ -205,7 +200,6 @@ impl RenderManager {
             viewport,
             render_image,
             render_image_sampler,
-            primitives,
             scene_pass,
             blit_pass,
             gui_pass,
@@ -231,6 +225,7 @@ impl RenderManager {
     pub fn render_frame(
         &mut self,
         window_resize: bool,
+        primitives: &Primitives,
         gui_primitives: &Vec<ClippedPrimitive>,
         gui_scale_factor: f32,
         camera: Camera,
@@ -270,10 +265,8 @@ impl RenderManager {
             self.recreate_swapchain = true;
         }
 
-        self.scene_pass.desc_set_primitives = ScenePass::create_desc_set_primitives(
-            self.scene_pass.pipeline.clone(),
-            &mut self.primitives,
-        )?;
+        // todo doc?
+        self.scene_pass.update_frame(primitives)?;
 
         let need_srgb_conv = false; // todo
 
@@ -285,7 +278,7 @@ impl RenderManager {
         )
         .unwrap();
         // compute shader scene render
-        let camera_push_constant = shader_interfaces::CameraPushConstant::new(
+        let camera_push_constant = CameraPushConstant::new(
             glam::Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
             camera.position(),
         );

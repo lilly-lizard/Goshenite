@@ -2,6 +2,7 @@ use crate::camera::Camera;
 use crate::config;
 use crate::cursor_state::{CursorState, MouseButton};
 use crate::gui::Gui;
+use crate::primitives::Primitives;
 use crate::renderer::render_manager::{RenderManager, RenderManagerError};
 use glam::Vec2;
 #[allow(unused_imports)]
@@ -48,19 +49,21 @@ impl Default for Theme {
 
 pub struct Engine {
     _window: Arc<Window>,
+    cursor_state: CursorState,
     window_resize: bool,
     scale_factor: f64,
-    cursor_state: CursorState,
-    renderer: RenderManager,
+
+    camera: Camera,
+    primitives: Primitives,
     gui: Gui,
     //theme: Theme,
-    camera: Camera,
+    renderer: RenderManager,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
         let init_resolution = [1000, 700];
 
-        // create winit window
+        // init window
         let window = Arc::new(
             WindowBuilder::new()
                 .with_title(config::ENGINE_NAME)
@@ -71,26 +74,30 @@ impl Engine {
                 .build(event_loop)
                 .unwrap(),
         );
+        let scale_factor = window.scale_factor();
+        let cursor_state = CursorState::new(window.clone());
 
         // init camera
         let camera = Camera::new(init_resolution);
 
+        // init primitives
+        let mut primitives = Primitives::default();
+        primitives.add_sphere(1.0, glam::Vec3::new(0.0, 0.0, 1.0));
+        primitives.add_sphere(1.0, glam::Vec3::ZERO);
+
         // init renderer
-        let mut renderer = RenderManager::new(window.clone()).unwrap();
-        renderer
-            .primitives
-            .add_sphere(1.0, glam::Vec3::new(0.0, 0.0, 1.0));
-        renderer.primitives.add_sphere(1.0, glam::Vec3::ZERO);
+        let renderer = RenderManager::new(window.clone(), &primitives).unwrap();
 
         // init gui
         let gui = Gui::new(window.clone(), renderer.max_image_array_layers() as usize);
 
         Engine {
-            scale_factor: window.scale_factor(),
-            cursor_state: CursorState::new(window.clone()),
-            window_resize: false,
             _window: window,
+            cursor_state,
+            window_resize: false,
+            scale_factor,
             camera,
+            primitives,
             gui,
             renderer,
         }
@@ -175,6 +182,7 @@ impl Engine {
         // submit rendering commands
         match self.renderer.render_frame(
             self.window_resize,
+            &self.primitives,
             &self.gui.primitives(),
             self.gui.scale_factor(),
             self.camera,

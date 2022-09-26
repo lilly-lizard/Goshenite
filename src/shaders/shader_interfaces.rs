@@ -1,30 +1,37 @@
 //! Contains structs and descriptor set indices/bindings matching the interfaces in shaders
-
+use crate::primitives::Primitives;
 use glam::{Mat4, Vec3, Vec4};
 use vulkano::shader::{SpecializationConstants, SpecializationMapEntry};
 
-#[derive(Clone, Default, Debug)]
-#[repr(C)]
-#[allow(non_snake_case)]
-pub struct PrimitivesStorageBuffer {
-    pub count: u32,
-    pub data: Vec<u32>,
-}
-impl PrimitivesStorageBuffer {
-    pub fn combined_data(&self) -> Vec<u32> {
-        // todo return err instead of assert, also checked in buffer()??
-        assert!(self.data.len() < u32::MAX as usize);
-        let mut combined_data = self.data.clone();
-        combined_data.insert(0, self.count as u32);
-        combined_data
-    }
-}
+pub type PrimitiveDataUnit = u32;
 /// bruh
-pub const PRIMITIVE_UNIT_LEN: usize = 8;
-
+pub const PRIMITIVE_LEN: usize = 8;
+/// bruh
 pub mod primitve_codes {
     pub const NULL: u32 = 0xFFFFFFFF;
     pub const SPHERE: u32 = 0x7FFFFFFF;
+}
+
+/// todo doc
+#[repr(C)]
+pub struct PrimitiveData {
+    pub _count: PrimitiveDataUnit,
+    pub _data: Vec<PrimitiveDataUnit>,
+}
+impl PrimitiveData {
+    // todo document code
+    pub fn combined_data(primitives: &Primitives) -> Vec<PrimitiveDataUnit> {
+        let data = primitives.encoded_data();
+        // todo return err instead of assert, also checked in buffer()??
+        let count = data.len() / PRIMITIVE_LEN;
+        assert!(
+            count < PrimitiveDataUnit::MAX as usize,
+            "primitive count exceeded `PrimitiveDataUnit::MAX`! todo handle this..."
+        );
+        let mut combined_data = data.clone();
+        combined_data.insert(0, count as PrimitiveDataUnit);
+        combined_data
+    }
 }
 
 /// Render compute shader push constant struct. Size should be no more than 128 bytes for full vulkan coverage
@@ -49,7 +56,6 @@ impl CameraPushConstant {
 /// Render compute shader specialization constants. Used for setting the local work group size
 #[derive(Clone, Copy, Default, Debug)]
 #[repr(C)]
-#[allow(non_snake_case)]
 pub struct ComputeSpecConstant {
     /// Local work group size x value
     pub local_size_x: u32,
@@ -79,7 +85,6 @@ unsafe impl SpecializationConstants for ComputeSpecConstant {
 // todo doc
 #[derive(Clone, Copy, Default, Debug)]
 #[repr(C)]
-#[allow(non_snake_case)]
 pub struct GuiPushConstant {
     pub screen_size: [f32; 2],
     /// use bool.into()
