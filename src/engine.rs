@@ -77,6 +77,9 @@ impl Engine {
 
         // init renderer
         let mut renderer = RenderManager::new(window.clone()).unwrap();
+        renderer
+            .primitives
+            .add_sphere(1.0, glam::Vec3::new(0.0, 0.0, 1.0));
         renderer.primitives.add_sphere(1.0, glam::Vec3::ZERO);
 
         // init gui

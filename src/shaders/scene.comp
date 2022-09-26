@@ -49,8 +49,6 @@ vec3 background(const vec3 ray_d)
 /// Calculates the distance to the closest signed distance field in the scene
 float map(vec3 pos)
 {
-	const vec3 SPHERE_CENTER = vec3(0.);
-	const float SPHERE_RADIUS = 1.;
 	float dist = MAX_DIST;
 
 	uint primitive_index = 0;
@@ -63,7 +61,7 @@ float map(vec3 pos)
 				uintBitsToFloat(primitives.data[buffer_pos++]),
 				uintBitsToFloat(primitives.data[buffer_pos++])
 			);
-			dist = sdfSphere(pos, SPHERE_CENTER, radius);
+			dist = min(dist, sdfSphere(pos, center, radius));
 		}
 		primitive_index++;
 	}
