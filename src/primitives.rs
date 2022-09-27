@@ -33,7 +33,19 @@ impl Primitives {
     }
 
     pub fn spheres(&self) -> &Vec<Sphere> {
-        &&self.spheres
+        &self.spheres
+    }
+
+    pub fn update_sphere(&mut self, index: usize, new_sphere: Sphere) {
+        if let Some(s_ref) = self.spheres.get_mut(index) {
+            let encoded = Self::encode_sphere(new_sphere);
+            let data_start = index * PRIMITIVE_LEN;
+            let data_end = data_start + PRIMITIVE_LEN;
+            self.data.splice(data_start..data_end, encoded);
+            *s_ref = new_sphere;
+        } else {
+            todo!();
+        }
     }
 }
 // Private functions
