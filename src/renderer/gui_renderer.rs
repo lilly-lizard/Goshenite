@@ -1,4 +1,5 @@
 /// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
+use crate::gui::Gui;
 use crate::renderer::render_manager::{create_shader_module, RenderManagerError};
 use crate::shaders::shader_interfaces;
 use ahash::AHashMap;
@@ -107,11 +108,13 @@ impl GuiRenderer {
     pub fn record_commands(
         &mut self,
         command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-        primitives: &Vec<ClippedPrimitive>,
-        scale_factor: f32,
+        gui: &Gui,
         need_srgb_conv: bool,
         framebuffer_dimensions: [u32; 2],
     ) {
+        let scale_factor = gui.scale_factor();
+        let primitives = gui.primitives();
+
         let push_constants = shader_interfaces::GuiPushConstant::new(
             [
                 framebuffer_dimensions[0] as f32 / scale_factor,

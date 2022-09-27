@@ -3,9 +3,9 @@ use super::gui_renderer::GuiRenderer;
 use super::scene_pass::ScenePass;
 use crate::camera::Camera;
 use crate::config;
+use crate::gui::Gui;
 use crate::primitives::Primitives;
 use crate::shaders::shader_interfaces::CameraPushConstant;
-use egui::ClippedPrimitive;
 use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
 use vulkano::{
@@ -226,8 +226,7 @@ impl RenderManager {
         &mut self,
         window_resize: bool,
         primitives: &Primitives,
-        gui_primitives: &Vec<ClippedPrimitive>,
-        gui_scale_factor: f32,
+        gui: &Gui,
         camera: Camera,
     ) -> Result<(), RenderManagerError> {
         use RenderManagerError::Unrecoverable;
@@ -312,8 +311,7 @@ impl RenderManager {
         // render gui todo return error
         self.gui_pass.record_commands(
             &mut builder,
-            gui_primitives,
-            gui_scale_factor,
+            gui,
             need_srgb_conv,
             [
                 self.viewport.dimensions[0] as u32,

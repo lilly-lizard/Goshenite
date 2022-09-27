@@ -2,7 +2,7 @@ use crate::camera::Camera;
 use crate::config;
 use crate::cursor_state::{CursorState, MouseButton};
 use crate::gui::Gui;
-use crate::primitives::Primitives;
+use crate::primitives::{Primitives, Sphere};
 use crate::renderer::render_manager::{RenderManager, RenderManagerError};
 use glam::Vec2;
 #[allow(unused_imports)]
@@ -30,23 +30,6 @@ impl fmt::Display for EngineError {
     }
 }
 
-// todo logic for winit
-/// Color theme options for the UI.
-///
-/// Default is [`Theme::Dark`]
-/*
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Theme {
-    Dark,
-    Light,
-}
-impl Default for Theme {
-    fn default() -> Self {
-        Self::Dark
-    }
-}
-*/
-
 pub struct Engine {
     _window: Arc<Window>,
     cursor_state: CursorState,
@@ -56,20 +39,19 @@ pub struct Engine {
     camera: Camera,
     primitives: Primitives,
     gui: Gui,
-    //theme: Theme,
     renderer: RenderManager,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
-        let init_resolution = [1000, 700];
+        let default_resolution = [1000, 700];
 
         // init window
         let window = Arc::new(
             WindowBuilder::new()
                 .with_title(config::ENGINE_NAME)
                 .with_inner_size(winit::dpi::LogicalSize::new(
-                    f64::from(init_resolution[0]),
-                    f64::from(init_resolution[1]),
+                    f64::from(default_resolution[0]),
+                    f64::from(default_resolution[1]),
                 ))
                 .build(event_loop)
                 .unwrap(),
@@ -78,12 +60,11 @@ impl Engine {
         let cursor_state = CursorState::new(window.clone());
 
         // init camera
-        let camera = Camera::new(init_resolution);
+        let camera = Camera::new(window.inner_size().into());
 
         // init primitives
         let mut primitives = Primitives::default();
-        primitives.add_sphere(1.0, glam::Vec3::new(0.0, 0.0, 1.0));
-        primitives.add_sphere(1.0, glam::Vec3::ZERO);
+        primitives.add_sphere(Sphere::new(0.4, glam::Vec3::new(0.0, 0.0, 1.2)));
 
         // init renderer
         let renderer = RenderManager::new(window.clone(), &primitives).unwrap();
@@ -144,6 +125,7 @@ impl Engine {
             WindowEvent::CursorLeft { .. } => self.cursor_state.set_in_window_state(false),
             // window resize
             WindowEvent::Resized(new_inner_size) => {
+                // todo instant renderer resize?
                 self.window_resize = true;
                 self.camera.set_aspect_ratio(new_inner_size.into())
             }
@@ -152,6 +134,7 @@ impl Engine {
                 scale_factor,
                 new_inner_size,
             } => {
+                // todo instant renderer resize?
                 self.scale_factor = scale_factor;
                 self.window_resize = true;
                 self.camera.set_aspect_ratio((*new_inner_size).into())
@@ -169,7 +152,8 @@ impl Engine {
         self.cursor_state.process_frame();
 
         // update gui
-        self.gui.update_frame(&mut self.renderer.gui_renderer());
+        self.gui
+            .update_frame(&mut self.renderer.gui_renderer(), &mut self.primitives);
 
         // update camera
         if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
@@ -183,8 +167,7 @@ impl Engine {
         match self.renderer.render_frame(
             self.window_resize,
             &self.primitives,
-            &self.gui.primitives(),
-            self.gui.scale_factor(),
+            &self.gui,
             self.camera,
         ) {
             Err(SurfaceSizeUnsupported { .. }) => (), // todo clamp window inner size

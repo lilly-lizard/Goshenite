@@ -1,7 +1,25 @@
+use crate::primitives::{Primitives, Sphere};
 /// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
 use crate::renderer::gui_renderer::GuiRenderer;
+use egui::{Button, DragValue};
+use glam::Vec3;
 use std::sync::Arc;
 use winit::window::Window;
+
+// user input values...
+#[derive(Clone, Copy, Debug)]
+struct InputStorage {
+    sphere_radius: f32,
+    sphere_center: Vec3,
+}
+impl Default for InputStorage {
+    fn default() -> Self {
+        Self {
+            sphere_radius: 1.0,
+            sphere_center: Vec3::ZERO,
+        }
+    }
+}
 
 /// Controller for an [`egui`] immediate-mode gui
 pub struct Gui {
@@ -9,6 +27,7 @@ pub struct Gui {
     context: egui::Context,
     window_state: egui_winit::State,
     primitives: Vec<egui::ClippedPrimitive>,
+    input_storage: InputStorage,
 }
 // Public functions
 impl Gui {
@@ -17,11 +36,18 @@ impl Gui {
     /// * `max_texture_side`: maximum size of a texture. Query from graphics driver using
     /// [`crate::renderer::render_manager::RenderManager::max_image_array_layers`]
     pub fn new(window: Arc<winit::window::Window>, max_texture_side: usize) -> Self {
+        let context = egui::Context::default();
+        context.set_style(egui::Style {
+            // disable sentance wrap by default (horizontal scroll instead)
+            wrap: Some(false),
+            ..Default::default()
+        });
         Self {
             window: window.clone(),
-            context: Default::default(),
+            context,
             window_state: egui_winit::State::new(max_texture_side, window.as_ref()),
             primitives: vec![],
+            input_storage: Default::default(),
         }
     }
 
@@ -49,13 +75,16 @@ impl Gui {
     }
 
     /// Updates the gui layout and tells the renderer to update any changed resources
-    pub fn update_frame(&mut self, gui_renderer: &mut GuiRenderer) {
+    pub fn update_frame(&mut self, gui_renderer: &mut GuiRenderer, primitives: &mut Primitives) {
         // begin frame
         let raw_input = self.window_state.take_egui_input(self.window.as_ref());
         self.context.begin_frame(raw_input);
 
-        // set new layout
-        self.layout();
+        // primitive list window
+        self.primitive_list_window(primitives);
+
+        // new primitive window
+        self.add_primitive_window(primitives);
 
         // end frame
         let egui::FullOutput {
@@ -80,14 +109,47 @@ impl Gui {
 }
 // Private functions
 impl Gui {
-    /// Sets the layout for the gui
-    fn layout(&mut self) {
-        egui::Window::new("bruh")
+    fn primitive_list_window(&mut self, primitives: &Primitives) {
+        egui::Window::new("Primitive List")
             .resizable(true)
             .vscroll(true)
             .hscroll(true)
             .show(&self.context, |ui| {
-                ui.heading("hello egui!");
+                for sphere in primitives.spheres() {
+                    ui.label(format!(
+                        "Sphere: radius = {}, center = {}",
+                        sphere.radius, sphere.center
+                    ));
+                }
+            });
+    }
+
+    fn add_primitive_window(&mut self, primitives: &mut Primitives) {
+        egui::Window::new("Add Primitive")
+            .resizable(true)
+            .vscroll(true)
+            .hscroll(true)
+            .show(&self.context, |ui| {
+                ui.horizontal(|ui| {
+                    ui.label("Radius:");
+                    ui.add(
+                        DragValue::new(&mut self.input_storage.sphere_radius)
+                            .speed(0.1)
+                            .clamp_range(0..=100),
+                    );
+                });
+                ui.horizontal(|ui| {
+                    ui.label("Center:");
+                    ui.add(DragValue::new(&mut self.input_storage.sphere_center.x).speed(0.1));
+                    ui.add(DragValue::new(&mut self.input_storage.sphere_center.y).speed(0.1));
+                    ui.add(DragValue::new(&mut self.input_storage.sphere_center.z).speed(0.1));
+                });
+                if ui.add(Button::new("Add")).clicked() {
+                    primitives.add_sphere(Sphere::new(
+                        self.input_storage.sphere_radius,
+                        self.input_storage.sphere_center,
+                    ));
+                }
             });
     }
 }
