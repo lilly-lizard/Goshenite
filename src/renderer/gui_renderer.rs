@@ -105,6 +105,7 @@ impl GuiRenderer {
     /// * `scale_factor`: Gui dpi config. Can aquire from [Gui::scale_factor](`crate::gui::Gui::scale_factor`).
     /// * `need_srgb_conv`: Set to true if rendering to an SRGB framebuffer.
     /// * `framebuffer_dimensions`: Framebuffer dimensions.
+    /// todo return REsult
     pub fn record_commands(
         &mut self,
         command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,

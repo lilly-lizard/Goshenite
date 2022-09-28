@@ -5,6 +5,7 @@ use crate::shaders::shader_interfaces::{
     CameraPushConstant, ComputeSpecConstant, PrimitiveData, PrimitiveDataUnit,
 };
 use std::sync::Arc;
+use vulkano::command_buffer::DispatchError;
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
     command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
@@ -25,18 +26,22 @@ pub mod descriptor {
     pub const BINDING_PRIMITVES: u32 = 0;
 }
 
-/// todo bruh?
-const MAX_DATA_COUNT: DeviceSize = 1024;
+/// The initial primitive buffer pool allocation
+const RESERVED_PRIMITIVE_BUFFER_POOL: DeviceSize = 8 * 4 * 1024;
 
+/// Defines functionality for the scene render compute shader pass
 pub struct ScenePass {
-    // todo remove pubs?
-    pub primitive_buffer_pool: CpuBufferPool<PrimitiveDataUnit>,
-    pub work_group_size: [u32; 2],
-    pub work_group_count: [u32; 3],
-    pub pipeline: Arc<ComputePipeline>,
-    pub desc_set_render_image: Arc<PersistentDescriptorSet>,
-    pub desc_set_primitives: Arc<PersistentDescriptorSet>,
+    device: Arc<Device>,
+
+    work_group_size: [u32; 2],
+    work_group_count: [u32; 3],
+    primitive_buffer_pool: CpuBufferPool<PrimitiveDataUnit>,
+
+    pipeline: Arc<ComputePipeline>,
+    desc_set_render_image: Arc<PersistentDescriptorSet>,
+    desc_set_primitives: Arc<PersistentDescriptorSet>,
 }
+// Public functions
 impl ScenePass {
     pub fn new(
         device: Arc<Device>,
@@ -63,19 +68,23 @@ impl ScenePass {
             work_group_size,
         )?;
 
+        // init primitive buffer pool
         let primitive_buffer_pool =
             CpuBufferPool::new(device.clone(), BufferUsage::storage_buffer());
         primitive_buffer_pool
-            .reserve(MAX_DATA_COUNT)
+            .reserve(RESERVED_PRIMITIVE_BUFFER_POOL)
             .to_renderer_err("unable to reserve primitives buffer")?;
 
+        // init compute pipeline and descriptor sets
         let pipeline = Self::create_pipeline(device.clone(), work_group_size)?;
         let desc_set_render_image =
             Self::create_desc_set_render_image(pipeline.clone(), render_image)?;
+        let primitive_buffer = Self::create_primitives_buffer(primitives, &primitive_buffer_pool)?;
         let desc_set_primitives =
-            Self::create_desc_set_primitives(pipeline.clone(), primitives, &primitive_buffer_pool)?;
+            Self::create_desc_set_primitives(pipeline.clone(), primitive_buffer)?;
 
         Ok(Self {
+            device,
             pipeline,
             desc_set_render_image,
             desc_set_primitives,
@@ -85,9 +94,63 @@ impl ScenePass {
         })
     }
 
+    /// Update the primitives storage buffer.
+    ///
+    /// todo shoul be optimized to not create a new buffer each time...
+    pub fn update_primitives(
+        &mut self,
+        primitives: &PrimitiveCollection,
+    ) -> Result<(), RenderManagerError> {
+        let primitive_buffer =
+            Self::create_primitives_buffer(primitives, &self.primitive_buffer_pool)?;
+        self.desc_set_primitives =
+            Self::create_desc_set_primitives(self.pipeline.clone(), primitive_buffer)?;
+        Ok(())
+    }
+
+    /// Updates render target data e.g. when it has been resized
+    pub fn update_render_target(
+        &mut self,
+        resolution: [u32; 2],
+        render_image: Arc<ImageView<StorageImage>>,
+    ) -> Result<(), RenderManagerError> {
+        self.work_group_count = Self::calc_work_group_count(
+            self.device.physical_device(),
+            resolution,
+            self.work_group_size,
+        )?;
+        self.desc_set_render_image =
+            ScenePass::create_desc_set_render_image(self.pipeline.clone(), render_image.clone())?;
+        Ok(())
+    }
+
+    /// Records rendering commands to a command buffer
+    pub fn record_commands(
+        &self,
+        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        camera_push_constant: CameraPushConstant,
+    ) -> Result<(), DispatchError> {
+        let mut desc_sets: Vec<Arc<PersistentDescriptorSet>> = Vec::default();
+        desc_sets.insert(descriptor::SET_IMAGE, self.desc_set_render_image.clone());
+        desc_sets.insert(descriptor::SET_PRIMITVES, self.desc_set_primitives.clone());
+        command_buffer
+            .bind_pipeline_compute(self.pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Compute,
+                self.pipeline.layout().clone(),
+                0,
+                desc_sets,
+            )
+            .push_constants(self.pipeline.layout().clone(), 0, camera_push_constant)
+            .dispatch(self.work_group_count)?;
+        Ok(())
+    }
+}
+// Private functions
+impl ScenePass {
     /// Calculate required work group count for a given render resolution,
     /// and checks that the work group count is within the physical device limits
-    pub fn calc_work_group_count(
+    fn calc_work_group_count(
         physical_device: PhysicalDevice,
         resolution: [u32; 2],
         work_group_size: [u32; 2],
@@ -135,7 +198,7 @@ impl ScenePass {
         .to_renderer_err("failed to create render compute pipeline")
     }
 
-    pub fn create_desc_set_render_image(
+    fn create_desc_set_render_image(
         scene_pipeline: Arc<ComputePipeline>,
         render_image: Arc<ImageView<StorageImage>>,
     ) -> Result<Arc<PersistentDescriptorSet>, RenderManagerError> {
@@ -154,57 +217,9 @@ impl ScenePass {
         .to_renderer_err("unable to create render compute shader descriptor set")
     }
 
-    pub fn update_frame(
-        &mut self,
-        primitives: &PrimitiveCollection,
-    ) -> Result<(), RenderManagerError> {
-        self.desc_set_primitives = ScenePass::create_desc_set_primitives(
-            self.pipeline.clone(),
-            primitives,
-            &self.primitive_buffer_pool,
-        )?;
-        Ok(())
-    }
-
-    pub fn record_commands(
-        &self,
-        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
-        camera_push_constant: CameraPushConstant,
-    ) -> Result<(), RenderManagerError> {
-        let mut desc_sets: Vec<Arc<PersistentDescriptorSet>> = Vec::default();
-        desc_sets.insert(descriptor::SET_IMAGE, self.desc_set_render_image.clone());
-        desc_sets.insert(descriptor::SET_PRIMITVES, self.desc_set_primitives.clone());
-        command_buffer
-            .bind_pipeline_compute(self.pipeline.clone())
-            .bind_descriptor_sets(
-                PipelineBindPoint::Compute,
-                self.pipeline.layout().clone(),
-                0,
-                desc_sets,
-            )
-            .push_constants(self.pipeline.layout().clone(), 0, camera_push_constant)
-            .dispatch(self.work_group_count)
-            .to_renderer_err("failed to dispatch compute shader")?;
-        Ok(())
-    }
-}
-impl ScenePass {
-    fn new_primitives_buffer(
-        primitives: &PrimitiveCollection,
-        buffer_pool: &CpuBufferPool<PrimitiveDataUnit>,
-    ) -> Result<Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StdMemoryPool>>>, RenderManagerError>
-    {
-        // todo should be able to update buffer wihtout updating descriptor set?
-        buffer_pool
-            .chunk(PrimitiveData::combined_data(primitives))
-            .to_renderer_err("unable to create primitives subbuffer")
-    }
-
-    /// todo shouldn't have to recreate buffer for each update...
     fn create_desc_set_primitives(
         scene_pipeline: Arc<ComputePipeline>,
-        primitives: &PrimitiveCollection,
-        primitive_buffer_pool: &CpuBufferPool<PrimitiveDataUnit>,
+        primitive_buffer: Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StdMemoryPool>>>,
     ) -> Result<Arc<PersistentDescriptorSet>, RenderManagerError> {
         PersistentDescriptorSet::new(
             scene_pipeline
@@ -215,9 +230,23 @@ impl ScenePass {
                 .to_owned(),
             [WriteDescriptorSet::buffer(
                 descriptor::BINDING_PRIMITVES,
-                Self::new_primitives_buffer(primitives, primitive_buffer_pool)?,
+                primitive_buffer,
             )],
         )
         .to_renderer_err("unable to create render compute shader descriptor set")
+    }
+
+    fn create_primitives_buffer(
+        primitives: &PrimitiveCollection,
+        buffer_pool: &CpuBufferPool<PrimitiveDataUnit>,
+    ) -> Result<Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StdMemoryPool>>>, RenderManagerError>
+    {
+        // todo should be able to update buffer wihtout recreating?
+        buffer_pool
+            .chunk(
+                PrimitiveData::combined_data(primitives)
+                    .to_renderer_err("too many primitives to encode a storage buffer")?,
+            )
+            .to_renderer_err("unable to create primitives subbuffer")
     }
 }

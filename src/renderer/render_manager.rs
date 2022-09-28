@@ -267,8 +267,8 @@ impl RenderManager {
             self.recreate_swapchain = true;
         }
 
-        // todo doc?
-        self.scene_pass.update_frame(primitives)?;
+        // todo shouldn't need to recreate each frame??
+        self.scene_pass.update_primitives(primitives)?;
 
         let need_srgb_conv = false; // todo
 
@@ -285,7 +285,8 @@ impl RenderManager {
             camera.position(),
         );
         self.scene_pass
-            .record_commands(&mut builder, camera_push_constant)?;
+            .record_commands(&mut builder, camera_push_constant)
+            .to_renderer_err("failed to dispatch compute shader")?;
         // begin render pass
         builder
             .begin_rendering(command_buffer::RenderingInfo {
@@ -299,18 +300,11 @@ impl RenderManager {
                 })],
                 ..Default::default()
             })
-            .unwrap()
-            // write the render to the swapchain image
-            .set_viewport(0, [self.viewport.clone()])
-            .bind_pipeline_graphics(self.blit_pass.pipeline.clone())
-            .bind_descriptor_sets(
-                pipeline::PipelineBindPoint::Graphics,
-                self.blit_pass.pipeline.layout().clone(),
-                0,
-                self.blit_pass.desc_set.clone(),
-            )
-            .draw(3, 1, 0, 0)
-            .unwrap();
+            .to_renderer_err("failed to record vkCmdBeginRendering")?;
+        // draw render image to screen
+        self.blit_pass
+            .record_commands(&mut builder, self.viewport.clone())
+            .to_renderer_err("failed to record blit pass draw commands")?;
         // render gui todo return error
         self.gui_pass.record_commands(
             &mut builder,
@@ -322,8 +316,12 @@ impl RenderManager {
             ],
         );
         // end render pass
-        builder.end_rendering().unwrap();
-        let command_buffer = builder.build().unwrap();
+        builder
+            .end_rendering()
+            .to_renderer_err("failed to record vkCmdEndRendering")?;
+        let command_buffer = builder
+            .build()
+            .to_renderer_err("failed to build command buffer")?;
 
         // submit
         let future = self
@@ -600,26 +598,20 @@ impl RenderManager {
 
         // set parameters for new resolution
         let resolution = swapchain_images[0].dimensions().width_height();
-        self.scene_pass.work_group_count = ScenePass::calc_work_group_count(
-            self.device.physical_device(),
-            resolution,
-            self.scene_pass.work_group_size,
-        )?;
         self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
 
         self.render_image = Self::create_render_image(
             self.queue.clone(),
             swapchain_images[0].dimensions().width_height(),
         )?;
-        self.scene_pass.desc_set_render_image = ScenePass::create_desc_set_render_image(
-            self.scene_pass.pipeline.clone(),
-            self.render_image.clone(),
-        )?;
-        self.blit_pass.desc_set = BlitPass::create_desc_set(
-            self.blit_pass.pipeline.clone(),
-            self.render_image.clone(),
-            self.render_image_sampler.clone(),
-        )?;
+
+        // update scene pass
+        self.scene_pass
+            .update_render_target(resolution, self.render_image.clone())?;
+
+        // update blit pass
+        self.blit_pass
+            .update_render_image(self.render_image.clone(), self.render_image_sampler.clone());
 
         // unset trigger
         self.recreate_swapchain = false;

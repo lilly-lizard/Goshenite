@@ -22,7 +22,7 @@ layout (set = 1, binding = 0, std430) readonly buffer PrimitiveData {
 } primitives;
 // push constant with camera data
 layout (push_constant) uniform Camera {
-	mat4 projViewInverse;
+	mat4 proj_view_inverse;
 	vec4 position;
 } cam;
 
@@ -129,7 +129,7 @@ void main()
 		return; // don't bother rendering outside of image bounds
 
 	vec2 pos_uv = (vec2(gl_GlobalInvocationID.xy) + vec2(0.5) - vec2(dim) / 2.) / dim; // clip space position in frame
-	vec3 ray_d = normalize((cam.projViewInverse * vec4(pos_uv, 1., 1.)).xyz); // ray direction in world space
+	vec3 ray_d = normalize((cam.proj_view_inverse * vec4(pos_uv, 1., 1.)).xyz); // ray direction in world space
 
 	// render scene
 	vec3 color = ray_march(cam.position.xyz, ray_d);

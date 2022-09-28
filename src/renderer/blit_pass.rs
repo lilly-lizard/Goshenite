@@ -1,26 +1,33 @@
 use super::render_manager::{create_shader_module, RenderManagerError, RenderManagerUnrecoverable};
 use std::sync::Arc;
 use vulkano::{
+    command_buffer::{AutoCommandBufferBuilder, DrawError, PrimaryAutoCommandBuffer},
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::Device,
     format::Format,
     image::{view::ImageView, StorageImage},
     pipeline::{
-        graphics::{render_pass::PipelineRenderingCreateInfo, viewport::ViewportState},
-        GraphicsPipeline, Pipeline,
+        graphics::{
+            render_pass::PipelineRenderingCreateInfo,
+            viewport::{Viewport, ViewportState},
+        },
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     sampler::Sampler,
 };
 
 /// Describes descriptor set indices
 pub mod descriptor {
-    pub const SET_BLIT_FRAG: usize = 0; // descriptor set index in post.frag
-    pub const BINDING_SAMPLER: u32 = 0; // render image sampler binding
+    /// descriptor set index in `post.frag`
+    pub const SET_BLIT_FRAG: usize = 0;
+    /// render image sampler binding in `post.frag`
+    pub const BINDING_SAMPLER: u32 = 0;
 }
 
+/// Defines functionality for writing the render image to the swapchain image
 pub struct BlitPass {
-    pub pipeline: Arc<GraphicsPipeline>,
-    pub desc_set: Arc<PersistentDescriptorSet>,
+    pipeline: Arc<GraphicsPipeline>,
+    desc_set: Arc<PersistentDescriptorSet>,
 }
 impl BlitPass {
     pub fn new(
@@ -38,6 +45,39 @@ impl BlitPass {
         Ok(Self { pipeline, desc_set })
     }
 
+    /// Updates render image data e.g. when it has been resized
+    pub fn update_render_image(
+        &mut self,
+        render_image: Arc<ImageView<StorageImage>>,
+        render_image_sampler: Arc<Sampler>,
+    ) -> Result<(), RenderManagerError> {
+        self.desc_set =
+            BlitPass::create_desc_set(self.pipeline.clone(), render_image, render_image_sampler)?;
+        Ok(())
+    }
+
+    /// Records draw commands to a command buffer. Assumes that the command buffer is
+    /// already in a render pass state, otherwise an error will be returned.
+    pub fn record_commands(
+        &self,
+        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        viewport: Viewport,
+    ) -> Result<(), DrawError> {
+        command_buffer
+            .set_viewport(0, [viewport])
+            .bind_pipeline_graphics(self.pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.pipeline.layout().clone(),
+                0,
+                self.desc_set.clone(),
+            )
+            .draw(3, 1, 0, 0)?;
+        Ok(())
+    }
+}
+// Private functions
+impl BlitPass {
     fn create_pipeline(
         device: Arc<Device>,
         swapchain_image_format: Format,
@@ -69,7 +109,7 @@ impl BlitPass {
             .to_renderer_err("failed to create blit graphics pipeline")
     }
 
-    pub fn create_desc_set(
+    fn create_desc_set(
         blit_pipeline: Arc<GraphicsPipeline>,
         render_image: Arc<ImageView<StorageImage>>,
         render_image_sampler: Arc<Sampler>,
