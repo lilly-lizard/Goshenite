@@ -4,7 +4,7 @@ use super::scene_pass::ScenePass;
 use crate::camera::Camera;
 use crate::config;
 use crate::gui::Gui;
-use crate::primitives::Primitives;
+use crate::primitives::primitives::PrimitiveCollection;
 use crate::shaders::shader_interfaces::CameraPushConstant;
 use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
@@ -58,7 +58,10 @@ pub struct RenderManager {
 
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
-    pub fn new(window: Arc<Window>, primitives: &Primitives) -> Result<Self, RenderManagerError> {
+    pub fn new(
+        window: Arc<Window>,
+        primitives: &PrimitiveCollection,
+    ) -> Result<Self, RenderManagerError> {
         let mut instance_extensions = vulkano_win::required_extensions();
         let mut instance_layers: Vec<String> = Vec::new();
 
@@ -225,7 +228,7 @@ impl RenderManager {
     pub fn render_frame(
         &mut self,
         window_resize: bool,
-        primitives: &Primitives,
+        primitives: &PrimitiveCollection,
         gui: &Gui,
         camera: Camera,
     ) -> Result<(), RenderManagerError> {
@@ -632,11 +635,11 @@ pub fn create_shader_module(
     device: Arc<Device>,
     spirv_path: &str,
 ) -> Result<Arc<ShaderModule>, RenderManagerError> {
-    let bytes = std::fs::read(spirv_path)
-        .to_renderer_err(["spirv read failed", spirv_path].concat().as_str())?;
+    let bytes =
+        std::fs::read(spirv_path).to_renderer_err(&["spirv read failed", spirv_path].concat())?;
     // todo conv to &[u32] and use from_words (guarentees 4 byte multiple)
     unsafe { ShaderModule::from_bytes(device.clone(), bytes.as_slice()) }
-        .to_renderer_err([spirv_path, "shader compile failed"].concat().as_str())
+        .to_renderer_err(&[spirv_path, "shader compile failed"].concat())
 }
 
 /// This mod just makes the module path unique for debug callbacks in the log

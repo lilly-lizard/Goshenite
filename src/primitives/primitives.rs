@@ -1,86 +1,68 @@
-use crate::shaders::shader_interfaces::{primitve_codes, PrimitiveDataUnit, PRIMITIVE_LEN};
-use glam::Vec3;
+use super::cube::Cube;
+use super::sphere::Sphere;
+use crate::shaders::shader_interfaces::{primitive_codes, PrimitiveDataSlice, PRIMITIVE_LEN};
 
-/// bruh
-type PrimitiveDataSlice = [PrimitiveDataUnit; PRIMITIVE_LEN];
-
-#[derive(Default, Debug, Clone, Copy)]
-pub struct Sphere {
-    pub center: Vec3,
-    pub radius: f32,
-}
-impl Sphere {
-    pub fn new(center: Vec3, radius: f32) -> Self {
-        Self { center, radius }
-    }
-
-    pub fn encode(&self) -> PrimitiveDataSlice {
-        [
-            primitve_codes::SPHERE,
-            self.center.x.to_bits(),
-            self.center.y.to_bits(),
-            self.center.z.to_bits(),
-            self.radius.to_bits(),
-            // padding
-            primitve_codes::NULL,
-            primitve_codes::NULL,
-            primitve_codes::NULL,
-        ]
-    }
+pub trait EncodablePrimitive {
+    fn encode(&self) -> PrimitiveDataSlice;
 }
 
-#[derive(Default, Debug, Clone, Copy)]
-pub struct Cube {
-    pub center: Vec3,
-    pub dimensions: Vec3,
+#[derive(Debug, Clone, Copy)]
+pub enum Primitive {
+    Null,
+    Sphere(Sphere),
+    Cube(Cube),
 }
-impl Cube {
-    pub fn new(center: Vec3, dimensions: Vec3) -> Self {
-        Self { center, dimensions }
+impl EncodablePrimitive for Primitive {
+    fn encode(&self) -> PrimitiveDataSlice {
+        match self {
+            Primitive::Null => [primitive_codes::NULL; PRIMITIVE_LEN],
+            Primitive::Sphere(s) => s.encode(),
+            Primitive::Cube(c) => c.encode(),
+        }
     }
-
-    pub fn encode(&self) -> PrimitiveDataSlice {
-        [
-            primitve_codes::CUBE,
-            self.center.x.to_bits(),
-            self.center.y.to_bits(),
-            self.center.z.to_bits(),
-            self.dimensions.x.to_bits(),
-            self.dimensions.y.to_bits(),
-            self.dimensions.z.to_bits(),
-            // padding
-            primitve_codes::NULL,
-        ]
+}
+impl Default for Primitive {
+    fn default() -> Self {
+        Self::Null
+    }
+}
+impl From<Sphere> for Primitive {
+    fn from(p: Sphere) -> Self {
+        Self::Sphere(p)
+    }
+}
+impl From<Cube> for Primitive {
+    fn from(p: Cube) -> Self {
+        Self::Cube(p)
     }
 }
 
 #[derive(Default, Debug, Clone)]
-pub struct Primitives {
+pub struct PrimitiveCollection {
     /// Encoded primitive data.
-    data: Vec<PrimitiveDataUnit>,
-    spheres: Vec<Sphere>,
+    data: Vec<PrimitiveDataSlice>,
+    primitives: Vec<Primitive>,
 }
-impl Primitives {
-    pub fn encoded_data(&self) -> &Vec<PrimitiveDataUnit> {
+impl PrimitiveCollection {
+    pub fn encoded_data(&self) -> &Vec<PrimitiveDataSlice> {
         &self.data
     }
 
-    pub fn add_sphere(&mut self, sphere: Sphere) {
-        self.spheres.push(sphere);
-        self.data.extend_from_slice(&sphere.encode());
+    pub fn add_primitive(&mut self, primitive: Primitive) {
+        self.primitives.push(primitive);
+        self.data.push(primitive.encode());
     }
 
-    pub fn spheres(&self) -> &Vec<Sphere> {
-        &self.spheres
+    pub fn primitives(&self) -> &Vec<Primitive> {
+        &self.primitives
     }
 
-    pub fn update_sphere(&mut self, index: usize, new_sphere: Sphere) {
-        if let Some(s_ref) = self.spheres.get_mut(index) {
-            let encoded = new_sphere.encode();
-            let data_start = index * PRIMITIVE_LEN;
-            let data_end = data_start + PRIMITIVE_LEN;
-            self.data.splice(data_start..data_end, encoded);
-            *s_ref = new_sphere;
+    pub fn update_primitive(&mut self, index: usize, new_primitive: Primitive) {
+        if let Some(s_ref) = self.primitives.get_mut(index) {
+            let data_ref = self.data.get_mut(index).expect("todo");
+            let encoded = new_primitive.encode();
+            *data_ref = encoded;
+            *s_ref = new_primitive;
         } else {
             todo!();
         }

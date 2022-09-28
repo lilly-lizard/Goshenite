@@ -1,6 +1,6 @@
 use super::render_manager::{create_shader_module, RenderManagerError, RenderManagerUnrecoverable};
 use crate::config;
-use crate::primitives::Primitives;
+use crate::primitives::primitives::PrimitiveCollection;
 use crate::shaders::shader_interfaces::{
     CameraPushConstant, ComputeSpecConstant, PrimitiveData, PrimitiveDataUnit,
 };
@@ -40,7 +40,7 @@ pub struct ScenePass {
 impl ScenePass {
     pub fn new(
         device: Arc<Device>,
-        primitives: &Primitives,
+        primitives: &PrimitiveCollection,
         render_image_size: [u32; 2],
         render_image: Arc<ImageView<StorageImage>>,
     ) -> Result<Self, RenderManagerError> {
@@ -154,7 +154,10 @@ impl ScenePass {
         .to_renderer_err("unable to create render compute shader descriptor set")
     }
 
-    pub fn update_frame(&mut self, primitives: &Primitives) -> Result<(), RenderManagerError> {
+    pub fn update_frame(
+        &mut self,
+        primitives: &PrimitiveCollection,
+    ) -> Result<(), RenderManagerError> {
         self.desc_set_primitives = ScenePass::create_desc_set_primitives(
             self.pipeline.clone(),
             primitives,
@@ -187,7 +190,7 @@ impl ScenePass {
 }
 impl ScenePass {
     fn new_primitives_buffer(
-        primitives: &Primitives,
+        primitives: &PrimitiveCollection,
         buffer_pool: &CpuBufferPool<PrimitiveDataUnit>,
     ) -> Result<Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StdMemoryPool>>>, RenderManagerError>
     {
@@ -200,7 +203,7 @@ impl ScenePass {
     /// todo shouldn't have to recreate buffer for each update...
     fn create_desc_set_primitives(
         scene_pipeline: Arc<ComputePipeline>,
-        primitives: &Primitives,
+        primitives: &PrimitiveCollection,
         primitive_buffer_pool: &CpuBufferPool<PrimitiveDataUnit>,
     ) -> Result<Arc<PersistentDescriptorSet>, RenderManagerError> {
         PersistentDescriptorSet::new(

@@ -60,15 +60,30 @@ float map(vec3 pos)
 	uint primitive_index = 0;
 	while (primitive_index < primitives.count) {
 		uint buffer_pos = primitive_index * PRIMITIVE_UNIT_LENGTH;
-		if (primitives.data[buffer_pos++] == SPHERE) {
-			float radius = uintBitsToFloat(primitives.data[buffer_pos++]);
+		uint primitive_type = primitives.data[buffer_pos++];
+
+		if (primitive_type == SPHERE) {
 			vec3 center = vec3(
 				uintBitsToFloat(primitives.data[buffer_pos++]),
 				uintBitsToFloat(primitives.data[buffer_pos++]),
 				uintBitsToFloat(primitives.data[buffer_pos++])
 			);
+			float radius = uintBitsToFloat(primitives.data[buffer_pos++]);
 			dist = min(dist, sdfSphere(pos, center, radius));
+		} else if (primitive_type == CUBE) {
+			vec3 center = vec3(
+				uintBitsToFloat(primitives.data[buffer_pos++]),
+				uintBitsToFloat(primitives.data[buffer_pos++]),
+				uintBitsToFloat(primitives.data[buffer_pos++])
+			);
+			vec3 dimensions = vec3(
+				uintBitsToFloat(primitives.data[buffer_pos++]),
+				uintBitsToFloat(primitives.data[buffer_pos++]),
+				uintBitsToFloat(primitives.data[buffer_pos++])
+			);
+			dist = min(dist, sdfBox(pos, center, dimensions));
 		}
+		
 		primitive_index++;
 	}
 

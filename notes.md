@@ -1,12 +1,16 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
-- cpu writes to buffer with spheres
-- have multiple spheres
-- render xyz arrows on selected object
+- multiple types of primitives
+- document/cleanup
 - interface to disable shader compilation in build.rs
 	- feature flag (disabled by default) https://doc.rust-lang.org/cargo/reference/features.html#command-line-feature-options
 	- environment variable checked in build.rs (still ends up compiling shaderc tho)
+- try compute shader with circle compiler. benifits:
+	- c interop with rust codebase
+	- primitive classes and shit
+- render xyz arrows on selected object
+- render outline on selected object
 - tests for Primitives data
 
 ## cleanup

@@ -1,5 +1,5 @@
 //! Contains structs and descriptor set indices/bindings matching the interfaces in shaders
-use crate::primitives::Primitives;
+use crate::primitives::primitives::PrimitiveCollection;
 use glam::{Mat4, Vec3, Vec4};
 use vulkano::shader::{SpecializationConstants, SpecializationMapEntry};
 
@@ -7,9 +7,12 @@ pub type PrimitiveDataUnit = u32;
 /// bruh
 pub const PRIMITIVE_LEN: usize = 8;
 /// bruh
-pub mod primitve_codes {
-    pub const NULL: u32 = 0xFFFFFFFF;
-    pub const SPHERE: u32 = 0x7FFFFFFF;
+pub type PrimitiveDataSlice = [PrimitiveDataUnit; PRIMITIVE_LEN];
+/// bruh
+pub mod primitive_codes {
+    pub const NULL: u32 = 0x00000000;
+    pub const SPHERE: u32 = 0x00000001;
+    pub const CUBE: u32 = 0x00000002;
 }
 
 /// todo doc
@@ -20,16 +23,18 @@ pub struct PrimitiveData {
 }
 impl PrimitiveData {
     // todo document code
-    pub fn combined_data(primitives: &Primitives) -> Vec<PrimitiveDataUnit> {
+    pub fn combined_data(primitives: &PrimitiveCollection) -> Vec<PrimitiveDataUnit> {
         let data = primitives.encoded_data();
         // todo return err instead of assert, also checked in buffer()??
-        let count = data.len() / PRIMITIVE_LEN;
+        let count = data.len();
         assert!(
             count < PrimitiveDataUnit::MAX as usize,
             "primitive count exceeded `PrimitiveDataUnit::MAX`! todo handle this..."
         );
-        let mut combined_data = data.clone();
-        combined_data.insert(0, count as PrimitiveDataUnit);
+        let mut combined_data = vec![count as PrimitiveDataUnit];
+        for p in data {
+            combined_data.extend_from_slice(p);
+        }
         combined_data
     }
 }

@@ -1,27 +1,14 @@
-use crate::primitives::{Primitives, Sphere};
-/// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
+use crate::primitives::primitives::{Primitive, PrimitiveCollection};
 use crate::renderer::gui_renderer::GuiRenderer;
 use egui::{Button, DragValue};
-use egui_winit::egui::Sense;
-use glam::Vec3;
 use std::sync::Arc;
 use winit::window::Window;
 
 // user input values...
-#[derive(Clone, Copy, Debug)]
+#[derive(Default, Clone, Copy, Debug)]
 struct InputState {
-    selected_sphere: Option<usize>,
-    sphere_radius: f32,
-    sphere_center: Vec3,
-}
-impl Default for InputState {
-    fn default() -> Self {
-        Self {
-            selected_sphere: None,
-            sphere_radius: 1.0,
-            sphere_center: Vec3::ZERO,
-        }
-    }
+    selected_primitive: Option<usize>,
+    primitive_input: Primitive,
 }
 
 /// Controller for an [`egui`] immediate-mode gui
@@ -78,12 +65,17 @@ impl Gui {
     }
 
     /// Updates the gui layout and tells the renderer to update any changed resources
-    pub fn update_frame(&mut self, gui_renderer: &mut GuiRenderer, primitives: &mut Primitives) {
+    pub fn update_frame(
+        &mut self,
+        gui_renderer: &mut GuiRenderer,
+        primitives: &mut PrimitiveCollection,
+    ) {
         // begin frame
         let raw_input = self.window_state.take_egui_input(self.window.as_ref());
         self.context.begin_frame(raw_input);
 
-        self.spheres_window(primitives);
+        // draw primitive editor window
+        self.primitives_window(primitives);
 
         // end frame
         let egui::FullOutput {
@@ -108,86 +100,104 @@ impl Gui {
 }
 // Private functions
 impl Gui {
-    fn spheres_window(&mut self, primitives: &mut Primitives) {
+    fn primitives_window(&mut self, primitives: &mut PrimitiveCollection) {
+        // ui layout closure
+        let add_contents = |ui: &mut egui::Ui| {
+            /// Ammount to incriment when modifying by dragging
+            const DRAG_INC: f64 = 0.1;
+
+            if let Some(primitive_index) = self.input_state.selected_primitive {
+                ui.label(format!("Primitive {}", primitive_index));
+            } else {
+                // add new primitive
+                ui.label("None selected...");
+            };
+
+            match self.input_state.primitive_input {
+                Primitive::Sphere(ref mut s) => {
+                    ui.horizontal(|ui| {
+                        ui.label("Center:");
+                        ui.add(DragValue::new(&mut s.center.x).speed(DRAG_INC));
+                        ui.add(DragValue::new(&mut s.center.y).speed(DRAG_INC));
+                        ui.add(DragValue::new(&mut s.center.z).speed(DRAG_INC));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Radius:");
+                        ui.add(
+                            DragValue::new(&mut s.radius)
+                                .speed(DRAG_INC)
+                                .clamp_range(0..=100),
+                        );
+                    });
+                }
+                Primitive::Cube(ref mut c) => {
+                    ui.horizontal(|ui| {
+                        ui.label("Center:");
+                        ui.add(DragValue::new(&mut c.center.x).speed(DRAG_INC));
+                        ui.add(DragValue::new(&mut c.center.y).speed(DRAG_INC));
+                        ui.add(DragValue::new(&mut c.center.z).speed(DRAG_INC));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Dimensions:");
+                        ui.add(DragValue::new(&mut c.dimensions.x).speed(DRAG_INC));
+                        ui.add(DragValue::new(&mut c.dimensions.y).speed(DRAG_INC));
+                        ui.add(DragValue::new(&mut c.dimensions.z).speed(DRAG_INC));
+                    });
+                }
+                Primitive::Null => (),
+            };
+
+            if let Some(primitive_index) = self.input_state.selected_primitive {
+                if ui.add(Button::new("Update")).clicked() {
+                    // overwrite selected primitive with user data
+                    primitives
+                        .update_primitive(primitive_index, self.input_state.primitive_input.into());
+                }
+            } else {
+                // todo add new primtive
+            }
+
+            ui.separator();
+            // TODO CLICKING LOGIC?? frame delay for stuff above to update :''''(
+
+            // if ui
+            //     .selectable_label(
+            //         self.input_state.selected_primitive.is_none(),
+            //         "New primitive",
+            //     )
+            //     .clicked()
+            // {
+            //     self.input_state.selected_primitive = None;
+            //     todo!("new primitive logic?");
+            // }
+            let primitives = primitives.primitives();
+            for i in 0..primitives.len() {
+                let is_selected = if let Some(pi) = self.input_state.selected_primitive {
+                    pi == i
+                } else {
+                    false
+                };
+                let label_text = match primitives[i] {
+                    Primitive::Sphere(s) => {
+                        format!("{} Sphere: center = {}, radius = {}", i, s.center, s.radius)
+                    }
+                    Primitive::Cube(c) => format!(
+                        "{} Cube: center = {}, radius = {}",
+                        i, c.center, c.dimensions
+                    ),
+                    Primitive::Null => format!("{} Null", 1),
+                };
+                if ui.selectable_label(is_selected, label_text).clicked() {
+                    self.input_state.selected_primitive = Some(i);
+                    self.input_state.primitive_input = primitives[i];
+                };
+            }
+        };
+        // add window to egui context
         egui::Window::new("Spheres")
             .resizable(true)
             .vscroll(true)
             .hscroll(true)
-            .show(&self.context, |ui| {
-                if let Some(sphere_index) = self.input_state.selected_sphere {
-                    ui.label(format!("Sphere {}", sphere_index));
-                } else {
-                    ui.label("New sphere");
-                };
-
-                /// Ammount to incriment when modifying by dragging
-                const DRAG_INC: f64 = 0.1;
-                ui.horizontal(|ui| {
-                    ui.label("Center:");
-                    ui.add(DragValue::new(&mut self.input_state.sphere_center.x).speed(DRAG_INC));
-                    ui.add(DragValue::new(&mut self.input_state.sphere_center.y).speed(DRAG_INC));
-                    ui.add(DragValue::new(&mut self.input_state.sphere_center.z).speed(DRAG_INC));
-                });
-                ui.horizontal(|ui| {
-                    ui.label("Radius:");
-                    ui.add(
-                        DragValue::new(&mut self.input_state.sphere_radius)
-                            .speed(DRAG_INC)
-                            .clamp_range(0..=100),
-                    );
-                });
-
-                if let Some(sphere_index) = self.input_state.selected_sphere {
-                    if ui
-                        .add(Button::new(format!("Update {}", sphere_index)))
-                        .clicked()
-                    {
-                        primitives.update_sphere(
-                            sphere_index,
-                            Sphere::new(
-                                self.input_state.sphere_radius,
-                                self.input_state.sphere_center,
-                            ),
-                        );
-                    }
-                } else {
-                    if ui.add(Button::new("Add")).clicked() {
-                        primitives.add_sphere(Sphere::new(
-                            self.input_state.sphere_radius,
-                            self.input_state.sphere_center,
-                        ));
-                    }
-                }
-
-                ui.separator();
-
-                // TODO CLICKING LOGIC?? frame delay for stuff above to update :''''(
-                if ui
-                    .selectable_label(self.input_state.selected_sphere.is_none(), "New sphere")
-                    .clicked()
-                {
-                    self.input_state.selected_sphere = None;
-                }
-                let spheres = primitives.spheres();
-                for i in 0..spheres.len() {
-                    let selected = if let Some(si) = self.input_state.selected_sphere {
-                        si == i
-                    } else {
-                        false
-                    };
-                    if ui
-                        .selectable_label(
-                            selected,
-                            format!(
-                                "{} Sphere: radius = {}, center = {}",
-                                i, spheres[i].radius, spheres[i].center
-                            ),
-                        )
-                        .clicked()
-                    {
-                        self.input_state.selected_sphere = Some(i);
-                    };
-                }
-            });
+            .show(&self.context, add_contents);
     }
 }

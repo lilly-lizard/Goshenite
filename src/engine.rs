@@ -2,7 +2,7 @@ use crate::camera::Camera;
 use crate::config;
 use crate::cursor_state::{CursorState, MouseButton};
 use crate::gui::Gui;
-use crate::primitives::{Primitives, Sphere};
+use crate::primitives::{cube::Cube, primitives::PrimitiveCollection, sphere::Sphere};
 use crate::renderer::render_manager::{RenderManager, RenderManagerError};
 use glam::Vec2;
 #[allow(unused_imports)]
@@ -37,7 +37,7 @@ pub struct Engine {
     scale_factor: f64,
 
     camera: Camera,
-    primitives: Primitives,
+    primitives: PrimitiveCollection,
     gui: Gui,
     renderer: RenderManager,
 }
@@ -63,8 +63,11 @@ impl Engine {
         let camera = Camera::new(window.inner_size().into());
 
         // init primitives
-        let mut primitives = Primitives::default();
-        primitives.add_sphere(Sphere::new(0.4, glam::Vec3::new(0.0, 0.0, 1.2)));
+        let mut primitives = PrimitiveCollection::default();
+        primitives.add_primitive(Sphere::new(glam::Vec3::new(0.0, 1.0, -0.4), 0.4).into());
+        primitives.add_primitive(
+            Cube::new(glam::Vec3::new(0.0, -1.0, 0.4), glam::Vec3::splat(0.4)).into(),
+        );
 
         // init renderer
         let renderer = RenderManager::new(window.clone(), &primitives).unwrap();
