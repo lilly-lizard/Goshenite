@@ -1,4 +1,4 @@
-use colored::{Color, Colorize};
+use colored::{Color, ColoredString, Colorize};
 use log::{Level, Metadata, Record};
 
 /// A simple [`log`] implimentation which I found easier to configure than using something
@@ -19,6 +19,12 @@ impl log::Log for ConsoleLogger {
                 Level::Debug => ("[D]", Color::Magenta),
                 Level::Trace => ("[T]", Color::Blue),
             };
+            let args = format!("{}", record.args());
+            let args = if record.level() == Level::Error {
+                args.color(color)
+            } else {
+                ColoredString::from(args.as_str())
+            };
             println!(
                 "{} {} {} {}",
                 level.color(color),
@@ -27,7 +33,7 @@ impl log::Log for ConsoleLogger {
                     .unwrap_or("(unknown module)")
                     .color(color),
                 ">".color(color),
-                record.args()
+                args,
             );
         }
     }
