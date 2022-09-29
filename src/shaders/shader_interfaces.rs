@@ -5,6 +5,9 @@ use crate::primitives::primitives::PrimitiveCollection;
 use glam::{Mat4, Vec3, Vec4};
 use vulkano::shader::{SpecializationConstants, SpecializationMapEntry};
 
+/// Function name of the entry point for shaders
+pub const SHADER_ENTRY_POINT: &str = "main";
+
 /// Shorthand for the data type in the primitive storage buffer defined in `scene.comp`.
 pub type PrimitiveDataUnit = u32;
 /// Each primitive is encoded into an array of length `PRIMITIVE_LEN`. This value should match the one defined in `primitives.glsl`.

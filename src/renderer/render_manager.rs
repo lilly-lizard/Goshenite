@@ -22,10 +22,9 @@ use vulkano::{
         DebugUtilsMessengerCreateInfo,
     },
     instance::{self, debug::DebugUtilsMessengerCreationError, Instance, LayersListError},
-    pipeline::{self, graphics::viewport::Viewport, Pipeline},
+    pipeline::graphics::viewport::Viewport,
     render_pass::{LoadOp, StoreOp},
-    sampler::{self, Sampler},
-    shader::ShaderModule,
+    sampler::{self, Sampler, SamplerAddressMode, SamplerMipmapMode},
     swapchain::{self, Surface, Swapchain, SwapchainCreationError},
     sync::{self, FlushError, GpuFuture},
 };
@@ -41,9 +40,7 @@ pub struct RenderManager {
     swapchain: Arc<Swapchain<Arc<Window>>>,
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
     viewport: Viewport,
-
     render_image: Arc<ImageView<StorageImage>>,
-    render_image_sampler: Arc<Sampler>,
 
     scene_pass: ScenePass,
     blit_pass: BlitPass,
@@ -168,7 +165,7 @@ impl RenderManager {
             queue.clone(),
             swapchain_images[0].dimensions().width_height(),
         )?;
-        let render_image_sampler = Self::create_render_image_sampler(device.clone())?;
+        let sampler = Self::create_sampler(device.clone())?;
 
         // init compute shader scene pass
         let scene_pass = ScenePass::new(
@@ -176,18 +173,21 @@ impl RenderManager {
             primitives,
             swapchain_images[0].dimensions().width_height(),
             render_image.clone(),
-        )?;
+        )
+        .to_renderer_err("failed to initialize scene pass")?;
 
         // init blit pass
         let blit_pass = BlitPass::new(
             device.clone(),
             swapchain.image_format(),
             render_image.clone(),
-            render_image_sampler.clone(),
-        )?;
+            sampler.clone(),
+        )
+        .to_renderer_err("failed to initialize blit pass")?;
 
         // init gui renderer
-        let gui_pass = GuiRenderer::new(device.clone(), queue.clone(), swapchain.image_format())?;
+        let gui_pass = GuiRenderer::new(device.clone(), queue.clone(), swapchain.image_format())
+            .to_renderer_err("failed to initialize gui pass")?;
 
         // create futures used for frame synchronization
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
@@ -202,7 +202,6 @@ impl RenderManager {
             swapchain_image_views,
             viewport,
             render_image,
-            render_image_sampler,
             scene_pass,
             blit_pass,
             gui_pass,
@@ -268,7 +267,9 @@ impl RenderManager {
         }
 
         // todo shouldn't need to recreate each frame??
-        self.scene_pass.update_primitives(primitives)?;
+        self.scene_pass
+            .update_primitives(primitives)
+            .to_renderer_err("failed to update primitives")?;
 
         let need_srgb_conv = false; // todo
 
@@ -306,15 +307,17 @@ impl RenderManager {
             .record_commands(&mut builder, self.viewport.clone())
             .to_renderer_err("failed to record blit pass draw commands")?;
         // render gui todo return error
-        self.gui_pass.record_commands(
-            &mut builder,
-            gui,
-            need_srgb_conv,
-            [
-                self.viewport.dimensions[0] as u32,
-                self.viewport.dimensions[1] as u32,
-            ],
-        );
+        self.gui_pass
+            .record_commands(
+                &mut builder,
+                gui,
+                need_srgb_conv,
+                [
+                    self.viewport.dimensions[0] as u32,
+                    self.viewport.dimensions[1] as u32,
+                ],
+            )
+            .to_renderer_err("failed to record gui commands")?;
         // end render pass
         builder
             .end_rendering()
@@ -562,15 +565,14 @@ impl RenderManager {
         .to_renderer_err("failed to create render image")
     }
 
-    fn create_render_image_sampler(
-        device: Arc<Device>,
-    ) -> Result<Arc<Sampler>, RenderManagerError> {
+    fn create_sampler(device: Arc<Device>) -> Result<Arc<Sampler>, RenderManagerError> {
         sampler::Sampler::new(
             device,
             sampler::SamplerCreateInfo {
                 mag_filter: sampler::Filter::Linear,
                 min_filter: sampler::Filter::Linear,
-                address_mode: [sampler::SamplerAddressMode::Repeat; 3],
+                address_mode: [SamplerAddressMode::ClampToEdge; 3],
+                mipmap_mode: SamplerMipmapMode::Linear,
                 ..Default::default()
             },
         )
@@ -607,31 +609,19 @@ impl RenderManager {
 
         // update scene pass
         self.scene_pass
-            .update_render_target(resolution, self.render_image.clone())?;
+            .update_render_target(resolution, self.render_image.clone())
+            .to_renderer_err("failed to update scene pass")?;
 
         // update blit pass
         self.blit_pass
-            .update_render_image(self.render_image.clone(), self.render_image_sampler.clone());
+            .update_render_image(self.render_image.clone())
+            .to_renderer_err("failed to update blit pass")?;
 
         // unset trigger
         self.recreate_swapchain = false;
 
         Ok(())
     }
-}
-
-// ~~~ Helper functions ~~~
-
-/// Creates a Vulkan shader module given a spirv path (relative to crate root)
-pub fn create_shader_module(
-    device: Arc<Device>,
-    spirv_path: &str,
-) -> Result<Arc<ShaderModule>, RenderManagerError> {
-    let bytes =
-        std::fs::read(spirv_path).to_renderer_err(&["spirv read failed", spirv_path].concat())?;
-    // todo conv to &[u32] and use from_words (guarentees 4 byte multiple)
-    unsafe { ShaderModule::from_bytes(device.clone(), bytes.as_slice()) }
-        .to_renderer_err(&[spirv_path, "shader compile failed"].concat())
 }
 
 /// This mod just makes the module path unique for debug callbacks in the log
@@ -714,9 +704,11 @@ impl RenderManagerError {
         self
     }
 }
-pub trait RenderManagerUnrecoverable<T> {
+trait RenderManagerUnrecoverable<T> {
     /// Shorthand for converting a general error to a RenderManagerError::InitFailed.
     /// Commonly used with error propogation `?` in RenderManager::new.
+    ///
+    /// Similar philosophy to `unwrap` in that these errors are just treated as 'unrecoverable'
     fn to_renderer_err(self, msg: &str) -> Result<T, RenderManagerError>;
 }
 impl<T, E> RenderManagerUnrecoverable<T> for std::result::Result<T, E>

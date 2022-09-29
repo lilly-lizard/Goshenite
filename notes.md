@@ -1,7 +1,7 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
-- multiple types of primitives
+- macro for error Froms (see blit_pass.rs)
 - document/cleanup
 - interface to disable shader compilation in build.rs
 	- feature flag (disabled by default) https://doc.rust-lang.org/cargo/reference/features.html#command-line-feature-options

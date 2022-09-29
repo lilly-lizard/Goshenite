@@ -1,47 +1,62 @@
 /// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
+use super::common::{CreateDescriptorSetError, CreatePipelineError, CreateShaderError};
 use crate::gui::Gui;
-use crate::renderer::render_manager::{create_shader_module, RenderManagerError};
-use crate::shaders::shader_interfaces;
+use crate::helper::from_err_impl::from_err_impl;
+use crate::renderer::common::create_shader_module;
+use crate::shaders::shader_interfaces::{self, SHADER_ENTRY_POINT};
 use ahash::AHashMap;
-use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect};
+use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId};
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
+use std::fmt::{self, Display};
 use std::sync::Arc;
+use vulkano::sampler::{self, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode};
 use vulkano::{
     buffer::{
         cpu_access::CpuAccessibleBuffer, cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool,
         TypedBufferAccess,
     },
     command_buffer::{
-        AutoCommandBufferBuilder, BlitImageInfo, CommandBufferUsage, CopyBufferToImageInfo,
-        ImageBlit, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
+        AutoCommandBufferBuilder, BlitImageInfo, BuildError, CommandBufferBeginError,
+        CommandBufferExecError, CommandBufferUsage, CopyBufferToImageInfo, CopyError,
+        DrawIndexedError, ImageBlit, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
     },
     descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet, WriteDescriptorSet},
     device::{Device, Queue},
     format::Format,
     image::{
-        view::ImageView, ImageAccess, ImageLayout, ImageUsage, ImageViewAbstract, ImmutableImage,
+        immutable::ImmutableImageCreationError, view::ImageView, view::ImageViewCreationError,
+        ImageAccess, ImageLayout, ImageUsage, ImageViewAbstract, ImmutableImage,
     },
-    memory::pool::StdMemoryPool,
+    memory::{pool::StdMemoryPool, DeviceMemoryAllocationError},
     pipeline::{
         graphics::{
             color_blend::{AttachmentBlend, BlendFactor, ColorBlendState},
             input_assembly::InputAssemblyState,
             rasterization::{CullMode, RasterizationState},
             render_pass::PipelineRenderingCreateInfo,
+            vertex_input::BuffersDefinition,
             viewport::{Scissor, Viewport, ViewportState},
+            GraphicsPipeline,
         },
-        graphics::{vertex_input::BuffersDefinition, GraphicsPipeline},
         Pipeline, PipelineBindPoint,
     },
-    sampler::{self, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
-    sync::GpuFuture,
+    sampler::Sampler,
+    sync::{FlushError, GpuFuture},
     DeviceSize,
 };
+
+const VERT_SHADER_PATH: &str = "assets/shader_binaries/gui.vert.spv";
+const FRAG_SHADER_PATH: &str = "assets/shader_binaries/gui.frag.spv";
 
 const VERTICES_PER_QUAD: DeviceSize = 4;
 const VERTEX_BUFFER_SIZE: DeviceSize = 1024 * 1024 * VERTICES_PER_QUAD;
 const INDEX_BUFFER_SIZE: DeviceSize = 1024 * 1024 * 2;
+
+mod descriptor {
+    pub const SET_FONT_TEXTURE: usize = 0;
+    pub const BINDING_FONT_TEXTURE: u32 = 0;
+}
 
 /// Should match vertex definition of egui (except color is `[f32; 4]`)
 #[repr(C)]
@@ -72,11 +87,10 @@ impl GuiRenderer {
         device: Arc<Device>,
         queue: Arc<Queue>,
         swapchain_image_format: Format,
-    ) -> Result<Self, RenderManagerError> {
+    ) -> Result<Self, GuiRendererError> {
         let pipeline = Self::create_pipeline(device.clone(), swapchain_image_format)?;
+        let (vertex_buffer_pool, index_buffer_pool) = Self::create_buffer_pools(device.clone())?;
         let sampler = Self::create_sampler(device.clone());
-        let (vertex_buffer_pool, index_buffer_pool) = Self::create_buffer_pools(device.clone());
-
         Ok(Self {
             device: device.clone(),
             queue: queue.clone(),
@@ -90,13 +104,17 @@ impl GuiRenderer {
     }
 
     /// Creates and/or removes texture resources for a [Gui](`crate::gui::Gui) frame.
-    pub fn update_textures(&mut self, textures_delta: &egui::TexturesDelta) {
+    pub fn update_textures(
+        &mut self,
+        textures_delta: &egui::TexturesDelta,
+    ) -> Result<(), GuiRendererError> {
         for &id in &textures_delta.free {
             self.unregister_image(id);
         }
         for (id, image_delta) in &textures_delta.set {
-            self.create_texture(*id, image_delta);
+            self.create_texture(*id, image_delta)?;
         }
+        Ok(())
     }
 
     /// Record gui rendering commands
@@ -112,7 +130,7 @@ impl GuiRenderer {
         gui: &Gui,
         need_srgb_conv: bool,
         framebuffer_dimensions: [u32; 2],
-    ) {
+    ) -> Result<(), GuiCommandRecordingError> {
         let scale_factor = gui.scale_factor();
         let primitives = gui.primitives();
 
@@ -134,14 +152,6 @@ impl GuiRenderer {
                     if mesh.vertices.is_empty() || mesh.indices.is_empty() {
                         continue;
                     }
-                    // indicates problem occurred with updating textures...
-                    if self.texture_desc_sets.get(&mesh.texture_id).is_none() {
-                        error!(
-                            "required gui texture no longer exists: {:?}",
-                            mesh.texture_id
-                        );
-                        continue;
-                    }
 
                     // get region of screen to render
                     let scissors = [get_rect_scissor(
@@ -149,13 +159,16 @@ impl GuiRenderer {
                         framebuffer_dimensions,
                         *clip_rect,
                     )];
-                    // todo description
-                    let (vertices, indices) = self.create_subbuffers(mesh);
+
+                    // create vertex and index buffers
+                    let (vertices, indices) = self.create_subbuffers(mesh)?;
 
                     let desc_set = self
                         .texture_desc_sets
                         .get(&mesh.texture_id)
-                        .unwrap()
+                        .ok_or(GuiCommandRecordingError::TextureDescSetMissing(
+                            mesh.texture_id,
+                        ))?
                         .clone();
                     command_buffer
                         .bind_pipeline_graphics(self.pipeline.clone())
@@ -180,71 +193,20 @@ impl GuiRenderer {
                         .push_constants(self.pipeline.layout().clone(), 0, push_constants)
                         .bind_vertex_buffers(0, vertices.clone())
                         .bind_index_buffer(indices.clone())
-                        .draw_indexed(indices.len() as u32, 1, 0, 0, 0)
-                        .unwrap();
+                        .draw_indexed(indices.len() as u32, 1, 0, 0, 0)?;
                 }
                 _ => continue, // don't need to support Primitive::Callback
             }
         }
+        Ok(())
     }
 }
 // Private functions
 impl GuiRenderer {
-    /// Builds the gui rendering graphics pipeline.
-    ///
-    /// Helper function for [`Self::new`]
-    fn create_pipeline(
-        device: Arc<Device>,
-        swapchain_image_format: Format,
-    ) -> Result<Arc<GraphicsPipeline>, RenderManagerError> {
-        let vert_shader =
-            create_shader_module(device.clone(), "assets/shader_binaries/gui.vert.spv")?;
-        let frag_shader =
-            create_shader_module(device.clone(), "assets/shader_binaries/gui.frag.spv")?;
-
-        let mut blend = AttachmentBlend::alpha();
-        blend.color_source = BlendFactor::One;
-        let blend_state = ColorBlendState::new(1).blend(blend);
-
-        Ok(GraphicsPipeline::start()
-            .vertex_input_state(BuffersDefinition::new().vertex::<EguiVertex>())
-            .vertex_shader(vert_shader.entry_point("main").unwrap(), ())
-            .input_assembly_state(InputAssemblyState::new())
-            .fragment_shader(frag_shader.entry_point("main").unwrap(), ())
-            .viewport_state(ViewportState::viewport_dynamic_scissor_dynamic(1))
-            .color_blend_state(blend_state)
-            .rasterization_state(RasterizationState::new().cull_mode(CullMode::None))
-            .render_pass(PipelineRenderingCreateInfo {
-                color_attachment_formats: vec![Some(swapchain_image_format)],
-                ..Default::default()
-            })
-            .build(device.clone())
-            .unwrap())
-    }
-
-    /// Creates vertex and index buffer pools.
-    ///
-    /// Helper function for [`Self::new`]
-    fn create_buffer_pools(device: Arc<Device>) -> (CpuBufferPool<EguiVertex>, CpuBufferPool<u32>) {
-        // Create vertex and index buffers
-        let vertex_buffer_pool = CpuBufferPool::vertex_buffer(device.clone());
-        vertex_buffer_pool
-            .reserve(VERTEX_BUFFER_SIZE)
-            .expect("Failed to reserve vertex buffer memory");
-        let index_buffer_pool = CpuBufferPool::new(device, BufferUsage::index_buffer());
-        index_buffer_pool
-            .reserve(INDEX_BUFFER_SIZE)
-            .expect("Failed to reserve index buffer memory");
-
-        (vertex_buffer_pool, index_buffer_pool)
-    }
-
-    /// Creates texture sampler.
-    ///
-    /// Helper function for [`Self::new`]
+    /// Create sampler for gui textures.
     fn create_sampler(device: Arc<Device>) -> Arc<Sampler> {
         Sampler::new(
-            device.clone(),
+            device,
             SamplerCreateInfo {
                 mag_filter: sampler::Filter::Linear,
                 min_filter: sampler::Filter::Linear,
@@ -253,13 +215,64 @@ impl GuiRenderer {
                 ..Default::default()
             },
         )
-        .unwrap()
+        .unwrap() // todo remove unwrap
+    }
+
+    /// Builds the gui rendering graphics pipeline.
+    ///
+    /// Helper function for [`Self::new`]
+    fn create_pipeline(
+        device: Arc<Device>,
+        swapchain_image_format: Format,
+    ) -> Result<Arc<GraphicsPipeline>, CreatePipelineError> {
+        let mut blend = AttachmentBlend::alpha();
+        blend.color_source = BlendFactor::One;
+        let blend_state = ColorBlendState::new(1).blend(blend);
+        let vert_module = create_shader_module(device.clone(), VERT_SHADER_PATH)?;
+        let vert_shader = vert_module.entry_point(SHADER_ENTRY_POINT).ok_or(
+            CreateShaderError::MissingEntryPoint(VERT_SHADER_PATH.to_string()),
+        )?;
+        let frag_module = create_shader_module(device.clone(), FRAG_SHADER_PATH)?;
+        let frag_shader = frag_module.entry_point(SHADER_ENTRY_POINT).ok_or(
+            CreateShaderError::MissingEntryPoint(FRAG_SHADER_PATH.to_string()),
+        )?;
+        Ok(GraphicsPipeline::start()
+            .vertex_input_state(BuffersDefinition::new().vertex::<EguiVertex>())
+            .vertex_shader(vert_shader, ())
+            .input_assembly_state(InputAssemblyState::new())
+            .fragment_shader(frag_shader, ())
+            .viewport_state(ViewportState::viewport_dynamic_scissor_dynamic(1))
+            .color_blend_state(blend_state)
+            .rasterization_state(RasterizationState::new().cull_mode(CullMode::None))
+            .render_pass(PipelineRenderingCreateInfo {
+                color_attachment_formats: vec![Some(swapchain_image_format)],
+                ..Default::default()
+            })
+            .build(device.clone())?)
+    }
+
+    /// Creates vertex and index buffer pools.
+    ///
+    /// Helper function for [`Self::new`]
+    fn create_buffer_pools(
+        device: Arc<Device>,
+    ) -> Result<(CpuBufferPool<EguiVertex>, CpuBufferPool<u32>), DeviceMemoryAllocationError> {
+        // Create vertex and index buffers
+        let vertex_buffer_pool = CpuBufferPool::vertex_buffer(device.clone());
+        vertex_buffer_pool.reserve(VERTEX_BUFFER_SIZE)?;
+        let index_buffer_pool = CpuBufferPool::new(device, BufferUsage::index_buffer());
+        index_buffer_pool.reserve(INDEX_BUFFER_SIZE)?;
+        Ok((vertex_buffer_pool, index_buffer_pool))
     }
 
     /// Creates a new texture needing to be added for the gui.
     ///
     /// Helper function for [`Self::update_textures`]
-    fn create_texture(&mut self, texture_id: egui::TextureId, delta: &egui::epaint::ImageDelta) {
+    fn create_texture(
+        &mut self,
+        texture_id: egui::TextureId,
+        delta: &egui::epaint::ImageDelta,
+    ) -> Result<(), GuiRendererError> {
         // Extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
             egui::ImageData::Color(image) => {
@@ -286,8 +299,7 @@ impl GuiRenderer {
             BufferUsage::transfer_src(),
             false,
             data,
-        )
-        .unwrap();
+        )?;
         // Create image
         let (img, init) = ImmutableImage::uninitialized(
             self.device.clone(),
@@ -307,24 +319,21 @@ impl GuiRenderer {
             Default::default(),
             ImageLayout::ShaderReadOnlyOptimal,
             Some(self.queue.family()),
-        )
-        .unwrap();
-        let font_image = ImageView::new_default(img).unwrap();
+        )?;
+        let font_image = ImageView::new_default(img)?;
 
         // Create command buffer builder
         let mut cbb = AutoCommandBufferBuilder::primary(
             self.device.clone(),
             self.queue.family(),
             CommandBufferUsage::OneTimeSubmit,
-        )
-        .unwrap();
+        )?;
 
         // Copy buffer to image
         cbb.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
             texture_data_buffer,
             init.clone(),
-        ))
-        .unwrap();
+        ))?;
 
         // Blit texture data to existing image if delta pos exists (e.g. font changed)
         if let Some(pos) = delta.pos {
@@ -356,20 +365,27 @@ impl GuiRenderer {
                         font_image.image().clone(),
                         existing_image.image().clone(),
                     )
-                })
-                .unwrap();
+                })?;
             }
             // Otherwise save the newly created image
         } else {
-            let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
-            let font_desc_set = self.sampled_image_desc_set(layout, font_image.clone());
+            let layout = self
+                .pipeline
+                .layout()
+                .set_layouts()
+                .get(descriptor::SET_FONT_TEXTURE)
+                .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex(
+                    descriptor::SET_FONT_TEXTURE,
+                ))?;
+            let font_desc_set = self.sampled_image_desc_set(layout, font_image.clone())?;
             self.texture_desc_sets.insert(texture_id, font_desc_set);
             self.texture_images.insert(texture_id, font_image);
         }
         // Execute command buffer
-        let command_buffer = cbb.build().unwrap();
-        let finished = command_buffer.execute(self.queue.clone()).unwrap();
-        let _fut = finished.then_signal_fence_and_flush().unwrap();
+        let command_buffer = cbb.build()?;
+        let finished = command_buffer.execute(self.queue.clone())?;
+        let _fut = finished.then_signal_fence_and_flush()?;
+        Ok(())
     }
 
     /// Unregister a texture that is no longer required by the gui.
@@ -383,48 +399,49 @@ impl GuiRenderer {
     fn create_subbuffers(
         &self,
         mesh: &Mesh,
-    ) -> (
-        Arc<CpuBufferPoolChunk<EguiVertex, Arc<StdMemoryPool>>>,
-        Arc<CpuBufferPoolChunk<u32, Arc<StdMemoryPool>>>,
-    ) {
+    ) -> Result<
+        (
+            Arc<CpuBufferPoolChunk<EguiVertex, Arc<StdMemoryPool>>>,
+            Arc<CpuBufferPoolChunk<u32, Arc<StdMemoryPool>>>,
+        ),
+        DeviceMemoryAllocationError,
+    > {
         // Copy vertices to buffer
         let v_slice = &mesh.vertices;
 
-        let vertex_chunk = self
-            .vertex_buffer_pool
-            .chunk(v_slice.into_iter().map(|v| EguiVertex {
-                position: [v.pos.x, v.pos.y],
-                tex_coords: [v.uv.x, v.uv.y],
-                color: [
-                    v.color.r() as f32 / 255.0,
-                    v.color.g() as f32 / 255.0,
-                    v.color.b() as f32 / 255.0,
-                    v.color.a() as f32 / 255.0,
-                ],
-            }))
-            .unwrap();
+        let vertex_chunk =
+            self.vertex_buffer_pool
+                .chunk(v_slice.into_iter().map(|v| EguiVertex {
+                    position: [v.pos.x, v.pos.y],
+                    tex_coords: [v.uv.x, v.uv.y],
+                    color: [
+                        v.color.r() as f32 / 255.0,
+                        v.color.g() as f32 / 255.0,
+                        v.color.b() as f32 / 255.0,
+                        v.color.a() as f32 / 255.0,
+                    ],
+                }))?;
 
         // Copy indices to buffer
         let i_slice = &mesh.indices;
-        let index_chunk = self.index_buffer_pool.chunk(i_slice.clone()).unwrap();
+        let index_chunk = self.index_buffer_pool.chunk(i_slice.clone())?;
 
-        (vertex_chunk, index_chunk)
+        Ok((vertex_chunk, index_chunk))
     }
     /// Creates a descriptor set for images
     fn sampled_image_desc_set(
         &self,
         layout: &Arc<DescriptorSetLayout>,
         image: Arc<dyn ImageViewAbstract + 'static>,
-    ) -> Arc<PersistentDescriptorSet> {
-        PersistentDescriptorSet::new(
+    ) -> Result<Arc<PersistentDescriptorSet>, CreateDescriptorSetError> {
+        Ok(PersistentDescriptorSet::new(
             layout.clone(),
             [WriteDescriptorSet::image_view_sampler(
-                0,
+                descriptor::BINDING_FONT_TEXTURE,
                 image.clone(),
                 self.sampler.clone(),
             )],
-        )
-        .unwrap()
+        )?)
     }
 }
 
@@ -458,3 +475,74 @@ fn get_rect_scissor(scale_factor: f32, framebuffer_dimensions: [u32; 2], rect: R
         ],
     }
 }
+
+// ~~~ Errors ~~~
+
+#[derive(Debug)]
+pub enum GuiRendererError {
+    /// Failed to allocate device memory for vulkan object
+    DeviceMemoryAllocationError(DeviceMemoryAllocationError),
+    /// Errors encountered when creating a pipeline
+    CreatePipelineError(CreatePipelineError),
+    /// Errors encountered when creating a descriptor set
+    CreateDescriptorSetError(CreateDescriptorSetError),
+    ImmutableImageCreationError(ImmutableImageCreationError),
+    ImageViewCreationError(ImageViewCreationError),
+    CommandBufferBeginError(CommandBufferBeginError),
+    /// Image copy command recording error
+    CopyError(CopyError),
+    /// Command buffer building error
+    BuildError(BuildError),
+    CommandBufferExecError(CommandBufferExecError),
+    FlushError(FlushError),
+}
+impl std::error::Error for GuiRendererError {}
+impl Display for GuiRendererError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            GuiRendererError::DeviceMemoryAllocationError(e) => e.fmt(f),
+            GuiRendererError::CreatePipelineError(e) => e.fmt(f),
+            GuiRendererError::CreateDescriptorSetError(e) => e.fmt(f),
+            GuiRendererError::ImmutableImageCreationError(e) => e.fmt(f),
+            GuiRendererError::ImageViewCreationError(e) => e.fmt(f),
+            GuiRendererError::CommandBufferBeginError(e) => e.fmt(f),
+            GuiRendererError::CopyError(e) => e.fmt(f),
+            GuiRendererError::BuildError(e) => e.fmt(f),
+            GuiRendererError::CommandBufferExecError(e) => e.fmt(f),
+            GuiRendererError::FlushError(e) => e.fmt(f),
+        }
+    }
+}
+from_err_impl!(GuiRendererError, DeviceMemoryAllocationError);
+from_err_impl!(GuiRendererError, CreatePipelineError);
+from_err_impl!(GuiRendererError, CreateDescriptorSetError);
+from_err_impl!(GuiRendererError, ImmutableImageCreationError);
+from_err_impl!(GuiRendererError, ImageViewCreationError);
+from_err_impl!(GuiRendererError, CommandBufferBeginError);
+from_err_impl!(GuiRendererError, CopyError);
+from_err_impl!(GuiRendererError, BuildError);
+from_err_impl!(GuiRendererError, CommandBufferExecError);
+from_err_impl!(GuiRendererError, FlushError);
+
+#[derive(Clone, Debug)]
+pub enum GuiCommandRecordingError {
+    /// Failed to allocate device memory for vulkan object
+    DeviceMemoryAllocationError(DeviceMemoryAllocationError),
+    /// Mesh requires a texture which doesn't exist (may have been prematurely destroyed or not yet created...)
+    TextureDescSetMissing(TextureId),
+    /// Cannot record draw command
+    DrawIndexedError(DrawIndexedError),
+}
+impl std::error::Error for GuiCommandRecordingError {}
+impl Display for GuiCommandRecordingError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            GuiCommandRecordingError::DeviceMemoryAllocationError(e) => e.fmt(f),
+            Self::TextureDescSetMissing(id) =>
+                write!(f, "Mesh requires texture [{:?}] which doesn't exist (may have been prematurely destroyed or not yet created...)", *id),
+            Self::DrawIndexedError(e) => write!(f, "Cannot record draw command: {}", *e),
+        }
+    }
+}
+from_err_impl!(GuiCommandRecordingError, DeviceMemoryAllocationError);
+from_err_impl!(GuiCommandRecordingError, DrawIndexedError);

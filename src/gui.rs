@@ -95,7 +95,7 @@ impl Gui {
 
         // add/free textures resources in the gui renderer. note this must happen here to be
         // certain that this frame's `textures_delta` is processed
-        gui_renderer.update_textures(&textures_delta);
+        gui_renderer.update_textures(&textures_delta).unwrap();
     }
 }
 // Private functions

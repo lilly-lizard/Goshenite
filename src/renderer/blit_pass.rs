@@ -1,4 +1,8 @@
-use super::render_manager::{create_shader_module, RenderManagerError, RenderManagerUnrecoverable};
+use super::common::{
+    create_shader_module, CreateDescriptorSetError, CreatePipelineError, CreateShaderError,
+};
+use crate::{helper::from_err_impl::from_err_impl, shaders::shader_interfaces::SHADER_ENTRY_POINT};
+use std::fmt;
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{AutoCommandBufferBuilder, DrawError, PrimaryAutoCommandBuffer},
@@ -16,8 +20,11 @@ use vulkano::{
     sampler::Sampler,
 };
 
+const VERT_SHADER_PATH: &str = "assets/shader_binaries/blit.vert.spv";
+const FRAG_SHADER_PATH: &str = "assets/shader_binaries/blit.frag.spv";
+
 /// Describes descriptor set indices
-pub mod descriptor {
+mod descriptor {
     /// descriptor set index in `post.frag`
     pub const SET_BLIT_FRAG: usize = 0;
     /// render image sampler binding in `post.frag`
@@ -28,31 +35,32 @@ pub mod descriptor {
 pub struct BlitPass {
     pipeline: Arc<GraphicsPipeline>,
     desc_set: Arc<PersistentDescriptorSet>,
+    sampler: Arc<Sampler>,
 }
 impl BlitPass {
     pub fn new(
         device: Arc<Device>,
         swapchain_image_format: Format,
         render_image: Arc<ImageView<StorageImage>>,
-        render_image_sampler: Arc<Sampler>,
-    ) -> Result<Self, RenderManagerError> {
+        sampler: Arc<Sampler>,
+    ) -> Result<Self, BlitPassError> {
         let pipeline = Self::create_pipeline(device.clone(), swapchain_image_format)?;
-        let desc_set = Self::create_desc_set(
-            pipeline.clone(),
-            render_image.clone(),
-            render_image_sampler.clone(),
-        )?;
-        Ok(Self { pipeline, desc_set })
+        let desc_set =
+            Self::create_desc_set(pipeline.clone(), render_image.clone(), sampler.clone())?;
+        Ok(Self {
+            pipeline,
+            desc_set,
+            sampler,
+        })
     }
 
     /// Updates render image data e.g. when it has been resized
     pub fn update_render_image(
         &mut self,
         render_image: Arc<ImageView<StorageImage>>,
-        render_image_sampler: Arc<Sampler>,
-    ) -> Result<(), RenderManagerError> {
+    ) -> Result<(), BlitPassError> {
         self.desc_set =
-            BlitPass::create_desc_set(self.pipeline.clone(), render_image, render_image_sampler)?;
+            Self::create_desc_set(self.pipeline.clone(), render_image, self.sampler.clone())?;
         Ok(())
     }
 
@@ -81,52 +89,67 @@ impl BlitPass {
     fn create_pipeline(
         device: Arc<Device>,
         swapchain_image_format: Format,
-    ) -> Result<Arc<GraphicsPipeline>, RenderManagerError> {
-        let blit_vert_shader =
-            create_shader_module(device.clone(), "assets/shader_binaries/blit.vert.spv")?;
-        let blit_frag_shader =
-            create_shader_module(device.clone(), "assets/shader_binaries/blit.frag.spv")?;
-
-        GraphicsPipeline::start()
+    ) -> Result<Arc<GraphicsPipeline>, CreatePipelineError> {
+        let vert_module = create_shader_module(device.clone(), VERT_SHADER_PATH)?;
+        let vert_shader = vert_module.entry_point(SHADER_ENTRY_POINT).ok_or(
+            CreateShaderError::MissingEntryPoint(VERT_SHADER_PATH.to_string()),
+        )?;
+        let frag_module = create_shader_module(device.clone(), FRAG_SHADER_PATH)?;
+        let frag_shader = frag_module.entry_point(SHADER_ENTRY_POINT).ok_or(
+            CreateShaderError::MissingEntryPoint(FRAG_SHADER_PATH.to_string()),
+        )?;
+        Ok(GraphicsPipeline::start()
             .render_pass(PipelineRenderingCreateInfo {
                 color_attachment_formats: vec![Some(swapchain_image_format)],
                 ..Default::default()
             })
             .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
-            .vertex_shader(
-                blit_vert_shader
-                    .entry_point("main")
-                    .to_renderer_err("no main in blit.vert")?,
-                (),
-            )
-            .fragment_shader(
-                blit_frag_shader
-                    .entry_point("main")
-                    .to_renderer_err("no main in blit.frag")?,
-                (),
-            )
-            .build(device.clone())
-            .to_renderer_err("failed to create blit graphics pipeline")
+            .vertex_shader(vert_shader, ())
+            .fragment_shader(frag_shader, ())
+            .build(device.clone())?)
     }
 
     fn create_desc_set(
         blit_pipeline: Arc<GraphicsPipeline>,
         render_image: Arc<ImageView<StorageImage>>,
         render_image_sampler: Arc<Sampler>,
-    ) -> Result<Arc<PersistentDescriptorSet>, RenderManagerError> {
-        PersistentDescriptorSet::new(
+    ) -> Result<Arc<PersistentDescriptorSet>, CreateDescriptorSetError> {
+        Ok(PersistentDescriptorSet::new(
             blit_pipeline
                 .layout()
                 .set_layouts()
                 .get(descriptor::SET_BLIT_FRAG)
-                .unwrap()
+                .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex(
+                    descriptor::SET_BLIT_FRAG,
+                ))?
                 .to_owned(),
             [WriteDescriptorSet::image_view_sampler(
                 descriptor::BINDING_SAMPLER,
                 render_image,
                 render_image_sampler,
             )],
-        )
-        .to_renderer_err("unable to create blit pass descriptor set")
+        )?)
     }
 }
+
+// ~~~ Errors ~~~
+
+/// Errors encountered when creating a new `BlitPass`
+#[derive(Debug)]
+pub enum BlitPassError {
+    /// Errors encountered when creating a pipeline
+    CreatePipelineError(CreatePipelineError),
+    /// Errors encountered when creating a descriptor set
+    CreateDescriptorSetError(CreateDescriptorSetError),
+}
+impl std::error::Error for BlitPassError {}
+impl fmt::Display for BlitPassError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            BlitPassError::CreatePipelineError(e) => e.fmt(f),
+            BlitPassError::CreateDescriptorSetError(e) => e.fmt(f),
+        }
+    }
+}
+from_err_impl!(BlitPassError, CreatePipelineError);
+from_err_impl!(BlitPassError, CreateDescriptorSetError);
