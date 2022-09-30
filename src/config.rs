@@ -40,4 +40,4 @@ pub const DEFAULT_WORK_GROUP_SIZE: [u32; 2] = [16, 16];
 pub const ENABLE_VULKAN_VALIDATION: bool = true;
 /// If true, any calls to [`RenderManagerUnrecoverable::to_renderer_err`](crate::renderer::render_manager::RenderManagerUnrecoverable::to_renderer_err) will panic
 /// rather than propogating [`RenderManagerError::Unrecoverable`](crate::renderer::render_manager::RenderManagerError::Unrecoverable) cases.
-pub const PANIC_ON_RENDERER_UNRECOVERABLE: bool = cfg!(debug_assertions);
+pub const PANIC_ON_RENDERER_UNRECOVERABLE: bool = false; // cfg!(debug_assertions);

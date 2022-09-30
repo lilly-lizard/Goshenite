@@ -7,6 +7,7 @@
 /// Will expand to something like this:
 /// ```
 /// impl From<NestedError> for ParentError {
+///     #[inline]
 ///     fn from(e: NestedError) -> Self {
 ///         Self::NestedError(e)
 ///     }
@@ -15,6 +16,7 @@
 macro_rules! from_err_impl {
     ($en:ty, $er:ident) => {
         impl From<$er> for $en {
+            #[inline]
             fn from(e: $er) -> Self {
                 Self::$er(e)
             }

@@ -374,9 +374,9 @@ impl GuiRenderer {
                 .layout()
                 .set_layouts()
                 .get(descriptor::SET_FONT_TEXTURE)
-                .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex(
-                    descriptor::SET_FONT_TEXTURE,
-                ))?;
+                .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+                    index: descriptor::SET_FONT_TEXTURE,
+                })?;
             let font_desc_set = self.sampled_image_desc_set(layout, font_image.clone())?;
             self.texture_desc_sets.insert(texture_id, font_desc_set);
             self.texture_images.insert(texture_id, font_image);

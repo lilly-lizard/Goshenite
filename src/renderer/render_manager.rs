@@ -1,11 +1,11 @@
 use super::blit_pass::BlitPass;
 use super::gui_renderer::GuiRenderer;
 use super::scene_pass::ScenePass;
-use crate::camera::Camera;
 use crate::config;
 use crate::gui::Gui;
 use crate::primitives::primitives::PrimitiveCollection;
 use crate::shaders::shader_interfaces::CameraPushConstant;
+use crate::{camera::Camera, helper::from_err_impl::from_err_impl};
 use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
 use vulkano::{
@@ -231,8 +231,6 @@ impl RenderManager {
         gui: &Gui,
         camera: Camera,
     ) -> Result<(), RenderManagerError> {
-        use RenderManagerError::Unrecoverable;
-
         // checks for submission finish and free locks on gpu resources
         self.future_previous_frame
             .as_mut()
@@ -256,10 +254,10 @@ impl RenderManager {
                 }
                 Err(e) => {
                     // todo other error handling
-                    return Err(Unrecoverable(format!(
-                        "Failed to acquire next image: {:?}",
-                        e
-                    )));
+                    return Err(RenderManagerError::Unrecoverable(
+                        "Failed to acquire next image".to_string(),
+                        Some(e.into()),
+                    ));
                 }
             };
         if suboptimal {
@@ -346,7 +344,7 @@ impl RenderManager {
                 self.future_previous_frame = Some(sync::now(self.device.clone()).boxed());
             }
             Err(e) => {
-                error!("Failed to flush future: {:?}", e);
+                error!("Failed to flush future: {}", e);
                 self.future_previous_frame = Some(sync::now(self.device.clone()).boxed());
             }
         }
@@ -469,8 +467,6 @@ impl RenderManager {
         ),
         RenderManagerError,
     > {
-        use RenderManagerError::Unrecoverable;
-
         // todo prefer sRGB (linux sRGB)
         let image_format = match physical_device.surface_formats(&surface, Default::default()) {
             Ok(x) => x,
@@ -478,7 +474,11 @@ impl RenderManager {
                 return Err(RenderManagerError::SurfaceLost.log())
             }
             Err(e) => {
-                return Err(Unrecoverable(format!("failed to get surface format: {:?}", e)).log())
+                return Err(RenderManagerError::Unrecoverable(
+                    "failed to get surface format".to_owned(),
+                    Some(e.into()),
+                )
+                .log())
             }
         }
         .get(0)
@@ -486,19 +486,20 @@ impl RenderManager {
         .0;
         debug!("swapchain image format = {:?}", image_format);
 
-        let surface_capabilities = match physical_device
-            .surface_capabilities(&surface, Default::default())
-        {
-            Ok(x) => x,
-            Err(SurfacePropertiesError::SurfaceLost) => {
-                return Err(RenderManagerError::SurfaceLost.log())
-            }
-            Err(e) => {
-                return Err(
-                    Unrecoverable(format!("failed to get surface capabilities: {:?}", e,)).log(),
-                )
-            }
-        };
+        let surface_capabilities =
+            match physical_device.surface_capabilities(&surface, Default::default()) {
+                Ok(x) => x,
+                Err(SurfacePropertiesError::SurfaceLost) => {
+                    return Err(RenderManagerError::SurfaceLost.log())
+                }
+                Err(e) => {
+                    return Err(RenderManagerError::Unrecoverable(
+                        "failed to get surface capabilities".to_owned(),
+                        Some(e.into()),
+                    )
+                    .log())
+                }
+            };
         let composite_alpha = surface_capabilities
             .supported_composite_alpha
             .iter()
@@ -518,9 +519,11 @@ impl RenderManager {
                 return Err(RenderManagerError::SurfaceLost.log())
             }
             Err(e) => {
-                return Err(
-                    Unrecoverable(format!("failed to get surface capabilities: {:?}", e,)).log(),
+                return Err(RenderManagerError::Unrecoverable(
+                    "failed to get surface capabilities".to_owned(),
+                    Some(e.into()),
                 )
+                .log())
             }
         };
         let present_mode = present_modes
@@ -660,11 +663,11 @@ mod vulkan_callback {
 // ~~~ Errors ~~~
 
 /// Describes the types of errors encountered by the renderer
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub enum RenderManagerError {
     /// An unrecoverable/unexpected error has prevented the RenderManager from initializing or rendering.
     /// Contains an string explaining the cause.
-    Unrecoverable(String),
+    Unrecoverable(String, Option<Box<dyn error::Error>>),
 
     /// The window surface is no longer accessible and must be recreated.
     /// Invalidates the RenderManger and requires re-initialization.
@@ -685,13 +688,19 @@ pub enum RenderManagerError {
 }
 impl error::Error for RenderManagerError {}
 impl fmt::Display for RenderManagerError {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            RenderManagerError::Unrecoverable(msg) => write!(fmt, "{}", msg),
+            RenderManagerError::Unrecoverable(msg, e) => {
+                if let Some(error) = e {
+                    write!(f, "{}: {}", msg, error)
+                } else {
+                    write!(f, "{}", msg)
+                }
+            }
             RenderManagerError::SurfaceLost =>
-                write!(fmt, "the Vulkan surface is no longer accessible, thus invalidating this RenderManager instance"),
+                write!(f, "the Vulkan surface is no longer accessible, thus invalidating this RenderManager instance"),
             RenderManagerError::SurfaceSizeUnsupported{ provided, min_supported, max_supported } =>
-                write!(fmt, "cannot create render target with requested dimensions = {:?}. min size = {:?}, max size = {:?}",
+                write!(f, "cannot create render target with requested dimensions = {:?}. min size = {:?}, max size = {:?}",
                     provided, min_supported, max_supported),
         }
     }
@@ -700,7 +709,7 @@ impl RenderManagerError {
     /// Passes the error through the `error!` log and returns self
     #[inline]
     pub fn log(self) -> Self {
-        error!("{:?}", self);
+        error!("{}", self);
         self
     }
 }
@@ -713,7 +722,7 @@ trait RenderManagerUnrecoverable<T> {
 }
 impl<T, E> RenderManagerUnrecoverable<T> for std::result::Result<T, E>
 where
-    E: fmt::Debug,
+    E: error::Error + 'static,
 {
     #[inline]
     #[track_caller]
@@ -722,9 +731,10 @@ where
             Ok(x) => Ok(x),
             Err(e) => {
                 if config::PANIC_ON_RENDERER_UNRECOVERABLE {
-                    panic!("{:?}", e);
+                    error!("{}", e);
+                    panic!("{}", e);
                 } else {
-                    Err(RenderManagerError::Unrecoverable(format!("{}: {:?}", msg, e)).log())
+                    Err(RenderManagerError::Unrecoverable(msg.to_string(), Some(e.into())).log())
                 }
             }
         }
@@ -740,7 +750,7 @@ impl<T> RenderManagerUnrecoverable<T> for std::option::Option<T> {
                 if config::PANIC_ON_RENDERER_UNRECOVERABLE {
                     panic!();
                 } else {
-                    Err(RenderManagerError::Unrecoverable(msg.to_owned()).log())
+                    Err(RenderManagerError::Unrecoverable(msg.to_owned(), None).log())
                 }
             }
         }
@@ -762,10 +772,10 @@ impl From<SwapchainCreationError> for RenderManagerError {
                     min_supported,
                     max_supported,
                 };
-                debug!("cannot create swapchain: {:?}", err);
+                debug!("cannot create swapchain: {}", err);
                 err
             }
-            e => Unrecoverable(format!("Failed to recreate swapchain: {:?}", e)).log(),
+            e => Unrecoverable("Failed to recreate swapchain".to_string(), Some(e.into())).log(),
         }
     }
 }
@@ -778,11 +788,6 @@ enum InstanceSupportError {
     /// Requested Vulkan layer is not found (may not be installed)
     LayerNotFound,
     /// Failed to load the Vulkan shared library.
-    LayersListError(instance::LayersListError),
+    LayersListError(LayersListError),
 }
-impl From<instance::LayersListError> for InstanceSupportError {
-    #[inline]
-    fn from(err: LayersListError) -> Self {
-        Self::LayersListError(err)
-    }
-}
+from_err_impl!(InstanceSupportError, LayersListError);

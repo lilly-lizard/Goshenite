@@ -10,6 +10,7 @@ use crate::shaders::shader_interfaces::{
 };
 use std::fmt;
 use std::sync::Arc;
+use vulkano::pipeline::compute::ComputePipelineCreationError; // todo error propogation testing (see return below)
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
     command_buffer::{AutoCommandBufferBuilder, DispatchError, PrimaryAutoCommandBuffer},
@@ -168,25 +169,24 @@ impl ScenePass {
             group_count_y += 1;
         }
         // check that work group count is within physical device limits
-        // todo this can be handled more elegently by doing multiple dispatches...
         let group_count_limit: [u32; 2] = [
             physical_device.properties().max_compute_work_group_count[0],
             physical_device.properties().max_compute_work_group_count[1],
         ];
         if group_count_x > group_count_limit[0] || group_count_y > group_count_limit[1] {
-            return Err(ScenePassError::UnsupportedWorkGroupCount(
-                [group_count_x, group_count_y],
+            return Err(ScenePassError::UnsupportedWorkGroupCount {
+                group_count: [group_count_x, group_count_y],
                 group_count_limit,
-            ));
+            });
         }
         return Ok([group_count_x, group_count_y, 1]);
-        todo!("hard code group_count to test process of hunting error causes");
     }
 
     fn create_pipeline(
         device: Arc<Device>,
         work_group_size: [u32; 2],
     ) -> Result<Arc<ComputePipeline>, CreatePipelineError> {
+        //return Err(ComputePipelineCreationError::IncompatibleSpecializationConstants.into());
         let comp_module = create_shader_module(device.clone(), COMP_SHADER_PATH)?;
         let comp_shader = comp_module.entry_point(SHADER_ENTRY_POINT).ok_or(
             CreateShaderError::MissingEntryPoint(COMP_SHADER_PATH.to_string()),
@@ -214,9 +214,9 @@ impl ScenePass {
                 .layout()
                 .set_layouts()
                 .get(descriptor::SET_IMAGE)
-                .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex(
-                    descriptor::SET_IMAGE,
-                ))?
+                .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+                    index: descriptor::SET_IMAGE,
+                })?
                 .to_owned(),
             [WriteDescriptorSet::image_view(
                 descriptor::BINDING_IMAGE,
@@ -234,9 +234,9 @@ impl ScenePass {
                 .layout()
                 .set_layouts()
                 .get(descriptor::SET_PRIMITVES)
-                .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex(
-                    descriptor::SET_PRIMITVES,
-                ))?
+                .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+                    index: descriptor::SET_PRIMITVES,
+                })?
                 .to_owned(),
             [WriteDescriptorSet::buffer(
                 descriptor::BINDING_PRIMITVES,
@@ -260,11 +260,12 @@ impl ScenePass {
 // todo duplicated stuff with other passes?
 #[derive(Debug)]
 pub enum ScenePassError {
-    /// Compute shader work group count exceeds physical device limits.
-    /// The first u32 pair should contain the calculated work group count and
-    /// the second pair should contain the physical device limits (ignoring z).
+    /// The calculated compute shader work group count exceeds physical device limits.
     /// todo this could be handled more elegently by doing multiple dispatches...
-    UnsupportedWorkGroupCount([u32; 2], [u32; 2]),
+    UnsupportedWorkGroupCount {
+        group_count: [u32; 2],
+        group_count_limit: [u32; 2],
+    },
     /// Failed to allocate device memory for vulkan object
     DeviceMemoryAllocationError(DeviceMemoryAllocationError),
     /// Failed to combine primitive data
@@ -274,14 +275,16 @@ pub enum ScenePassError {
     /// Errors encountered when creating a descriptor set
     CreateDescriptorSetError(CreateDescriptorSetError),
 }
-impl std::error::Error for ScenePassError {}
 impl fmt::Display for ScenePassError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ScenePassError::UnsupportedWorkGroupCount(wg_count, wg_limit) => write!(
+            ScenePassError::UnsupportedWorkGroupCount {
+                group_count,
+                group_count_limit,
+            } => write!(
                 f,
                 "compute shader work group count {:?} exceeds driver limits {:?}",
-                wg_count, wg_limit
+                group_count, group_count_limit
             ),
             ScenePassError::DeviceMemoryAllocationError(e) => {
                 write!(f, "failed to allocate primitive buffer: {}", e)
@@ -292,6 +295,7 @@ impl fmt::Display for ScenePassError {
         }
     }
 }
+impl std::error::Error for ScenePassError {}
 from_err_impl!(ScenePassError, DeviceMemoryAllocationError);
 from_err_impl!(ScenePassError, PrimitiveDataError);
 from_err_impl!(ScenePassError, CreatePipelineError);

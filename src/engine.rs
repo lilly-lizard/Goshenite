@@ -7,28 +7,12 @@ use crate::renderer::render_manager::{RenderManager, RenderManagerError};
 use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
-use std::{error, fmt, sync::Arc};
+use std::sync::Arc;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
-
-/// Describes different errors encounted by the engine
-#[derive(Clone, Debug, PartialEq, Eq)]
-enum EngineError {
-    /// The renderer has entered or detected an unrecoverable state. Attempting to re-initialize the
-    /// render manager may restore funtionality.
-    RendererInvalidated(String),
-}
-impl error::Error for EngineError {}
-impl fmt::Display for EngineError {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            EngineError::RendererInvalidated(msg) => write!(fmt, "{}", msg),
-        }
-    }
-}
 
 pub struct Engine {
     _window: Arc<Window>,
@@ -100,7 +84,7 @@ impl Engine {
             // process window events and update state
             Event::WindowEvent { event, .. } => self.process_input(event),
             // per frame logic todo is this called at screen refresh rate?
-            Event::MainEventsCleared => self.process_frame().unwrap(), // todo use RedrawRequested?
+            Event::MainEventsCleared => self.process_frame(),
             _ => (),
         }
     }
@@ -147,8 +131,7 @@ impl Engine {
     }
 
     /// Per frame engine logic and rendering
-    fn process_frame(&mut self) -> Result<(), EngineError> {
-        use EngineError::RendererInvalidated;
+    fn process_frame(&mut self) {
         use RenderManagerError::{SurfaceSizeUnsupported, Unrecoverable};
 
         // update cursor state
@@ -174,11 +157,16 @@ impl Engine {
             self.camera,
         ) {
             Err(SurfaceSizeUnsupported { .. }) => (), // todo clamp window inner size
-            Err(Unrecoverable(s)) => return Err(RendererInvalidated(s)),
+            Err(Unrecoverable(s, e)) => {
+                if let Some(error) = e {
+                    error!("{}: {}", s, error);
+                } else {
+                    error!("{}", s);
+                }
+                panic!();
+            }
             _ => (),
         };
         self.window_resize = false;
-
-        Ok(())
     }
 }

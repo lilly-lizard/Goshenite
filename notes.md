@@ -1,8 +1,8 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
-- macro for error Froms (see blit_pass.rs)
-- document/cleanup
+- error sources and backtraces: https://github.com/dtolnay/anyhow
+- colorize feature flag
 - interface to disable shader compilation in build.rs
 	- feature flag (disabled by default) https://doc.rust-lang.org/cargo/reference/features.html#command-line-feature-options
 	- environment variable checked in build.rs (still ends up compiling shaderc tho)

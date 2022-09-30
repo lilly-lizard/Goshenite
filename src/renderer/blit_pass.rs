@@ -119,9 +119,9 @@ impl BlitPass {
                 .layout()
                 .set_layouts()
                 .get(descriptor::SET_BLIT_FRAG)
-                .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex(
-                    descriptor::SET_BLIT_FRAG,
-                ))?
+                .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+                    index: descriptor::SET_BLIT_FRAG,
+                })?
                 .to_owned(),
             [WriteDescriptorSet::image_view_sampler(
                 descriptor::BINDING_SAMPLER,
