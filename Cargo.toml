@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["colored-term", "shader-compile"]
+default = ["colored-term"]
 # enables colored terminal log messages
 colored-term = ["colored"]
 # enables a build script to compile spirv binaries when shader source is changed

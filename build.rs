@@ -23,10 +23,8 @@ fn gen_shader_spirv() {
     // shader source directory
     let shader_dir = get_shader_dir();
 
-    // output spirv directory
-    let mut spirv_dir = std::env::current_dir().expect("cannot access pwd");
-    spirv_dir.push("assets");
-    spirv_dir.push("shader_binaries");
+    // output spirv directory {source_root}/assets/shader_binaries
+    let spirv_dir = get_spirv_dir();
     assert!(spirv_dir.is_dir(), "invalid spirv destination path");
 
     // spirv compiler
@@ -159,6 +157,15 @@ fn get_shader_dir() -> PathBuf {
     shader_dir.push("src");
     shader_dir.push("shaders");
     shader_dir
+}
+
+/// Returns the directory to output spirv binaries
+#[cfg(feature = "shader-compile")]
+fn get_spirv_dir() -> PathBuf {
+    let mut spirv_dir = std::env::current_dir().expect("cannot access pwd");
+    spirv_dir.push("assets");
+    spirv_dir.push("shader_binaries");
+    spirv_dir
 }
 
 fn main() {
