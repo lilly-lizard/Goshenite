@@ -1,8 +1,9 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
-- error sources and backtraces: https://github.com/dtolnay/anyhow
 - colorize feature flag
+- update vulkano and related crates
+- error sources and backtraces: https://github.com/dtolnay/anyhow
 - interface to disable shader compilation in build.rs
 	- feature flag (disabled by default) https://doc.rust-lang.org/cargo/reference/features.html#command-line-feature-options
 	- environment variable checked in build.rs (still ends up compiling shaderc tho)

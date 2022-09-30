@@ -3,11 +3,16 @@ name = "goshenite"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = ["colored-term"]
+# enables colored terminal log messages
+colored-term = ["colored"]
+
 [dependencies]
 # logging
 log = "0.4"
 # terminal output formatting
-colored = "2.0"
+colored = { version = "2.0", optional = true }
 # glam is a vector and math library well suited for 3D graphics (noticeably more lightweight than cgmath)
 glam = "0.21"
 # winit is a cross-platform window creation and management library (version must match vulkano-win support)
@@ -20,18 +25,19 @@ bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
 egui = "0.18.1"
 egui-winit = "0.18.0"
-# hash library used by egui (im fast af boii)
+# hash library used by egui (fast af boii)
 ahash = "0.7.6"
 
 # slotmap
 # specs: ECS
 # rayon: parallelize iterators etc
-# ahash: im fast af boiii
 
 [build-dependencies]
+# used to automate spirv binary generation
+# note that if you have shaderc libraries already installedd, this crate will detect and use them
 shaderc = "0.8"
 
-# i.e. cargo build --profile=release-with-debug-info
+# use by doing `cargo build --profile=release-with-debug-info`
 [profile.release-with-debug-info]
 inherits = "release"
 debug = true

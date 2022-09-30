@@ -1,3 +1,4 @@
+#[cfg(feature = "colored-term")]
 use colored::{Color, ColoredString, Colorize};
 use log::{Level, Metadata, Record};
 
@@ -10,24 +11,28 @@ impl log::Log for ConsoleLogger {
         metadata.level() <= Level::Trace
     }
 
+    #[cfg(feature = "colored-term")]
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
-            let (level, color) = match record.level() {
-                Level::Error => ("[E]", Color::Red),
-                Level::Warn => ("[W]", Color::Yellow),
-                Level::Info => ("[I]", Color::Cyan),
-                Level::Debug => ("[D]", Color::Magenta),
-                Level::Trace => ("[T]", Color::Blue),
+            // level color
+            let color = match record.level() {
+                Level::Error => Color::Red,
+                Level::Warn => Color::Yellow,
+                Level::Info => Color::Cyan,
+                Level::Debug => Color::Magenta,
+                Level::Trace => Color::Blue,
             };
+            // log message
             let args = format!("{}", record.args());
             let args = if record.level() == Level::Error {
-                args.color(color)
+                // only color message for errors to make them stand out
+                args.color(Color::BrightRed)
             } else {
                 ColoredString::from(args.as_str())
             };
             println!(
                 "{} {} {} {}",
-                level.color(color),
+                level_str(record.level()).color(color),
                 record
                     .module_path()
                     .unwrap_or("(unknown module)")
@@ -38,5 +43,28 @@ impl log::Log for ConsoleLogger {
         }
     }
 
+    #[cfg(not(feature = "colored-term"))]
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            println!(
+                "{} {} {} {}",
+                level_str(record.level()),
+                record.module_path().unwrap_or("(unknown module)"),
+                ">",
+                record.args(),
+            );
+        }
+    }
+
     fn flush(&self) {}
+}
+
+fn level_str(level: Level) -> &'static str {
+    match level {
+        Level::Error => "[E]",
+        Level::Warn => "[W]",
+        Level::Info => "[I]",
+        Level::Debug => "[D]",
+        Level::Trace => "[T]",
+    }
 }
