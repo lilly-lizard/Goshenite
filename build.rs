@@ -1,7 +1,11 @@
+#[cfg(feature = "shader-compile")]
 use shaderc::{CompileOptions, Compiler, IncludeType, ResolvedInclude, ShaderKind};
-use std::fs::File;
-use std::io::{Read, Write};
-use std::path::PathBuf;
+#[cfg(feature = "shader-compile")]
+use std::{
+    fs::File,
+    io::{Read, Write},
+    path::PathBuf,
+};
 
 /// Compile glsl shaders in src/shaders and output spirv binaries to assets/shader_binares.
 /// Requirements:
@@ -9,7 +13,11 @@ use std::path::PathBuf;
 /// - File extensions must be in the format FILE_NAME.SHADER_STAGE
 /// If you install the shaderc libraries on your system you can avoid compiling them in
 /// your rust builds. See https://github.com/google/shaderc-rs#setup for more info.
+#[cfg(feature = "shader-compile")]
 fn gen_shader_spirv() {
+    // rerun when shaders change
+    println!("cargo:rerun-if-changed=src/shaders/*");
+
     println!("Generating spirv shaders...");
 
     // shader source directory
@@ -136,6 +144,7 @@ fn gen_shader_spirv() {
 }
 
 /// Attempts to read the source file at `shader_path` and returns its contents as a String
+#[cfg(feature = "shader-compile")]
 fn read_shader(shader_path: &PathBuf) -> std::io::Result<String> {
     let mut shader_text = String::new();
     let mut shader_file = File::open(shader_path)?;
@@ -144,6 +153,7 @@ fn read_shader(shader_path: &PathBuf) -> std::io::Result<String> {
 }
 
 /// Returns the directory containing the shader source files
+#[cfg(feature = "shader-compile")]
 fn get_shader_dir() -> PathBuf {
     let mut shader_dir = std::env::current_dir().expect("cannot access pwd");
     shader_dir.push("src");
@@ -152,8 +162,6 @@ fn get_shader_dir() -> PathBuf {
 }
 
 fn main() {
+    #[cfg(feature = "shader-compile")]
     gen_shader_spirv();
-
-    // rerun when shaders change
-    println!("cargo:rerun-if-changed=src/shaders/*");
 }

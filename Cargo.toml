@@ -4,9 +4,12 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-default = ["colored-term"]
+default = ["colored-term", "shader-compile"]
 # enables colored terminal log messages
 colored-term = ["colored"]
+# enables a build script to compile spirv binaries when shader source is changed
+# NOTE: will add a notable increase to build times if you don't have shaderc libraries installed on your system
+shader-compile = ["shaderc"]
 
 [dependencies]
 # logging
@@ -33,9 +36,9 @@ ahash = "0.7.6"
 # rayon: parallelize iterators etc
 
 [build-dependencies]
-# used to automate spirv binary generation
-# note that if you have shaderc libraries already installedd, this crate will detect and use them
-shaderc = "0.8"
+# used to compile spirv binaries
+# NOTE: if you have shaderc libraries installed on your system, this crate will detect and use them. otherwise shaderc will be compiled.
+shaderc = { version = "0.8", optional = true }
 
 # use by doing `cargo build --profile=release-with-debug-info`
 [profile.release-with-debug-info]

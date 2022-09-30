@@ -629,7 +629,6 @@ impl RenderManager {
 
 /// This mod just makes the module path unique for debug callbacks in the log
 mod vulkan_callback {
-    use colored::Colorize;
     use log::{debug, error, info, warn};
     use vulkano::instance::debug::Message;
     /// Prints/logs a Vulkan validation layer message
@@ -644,7 +643,7 @@ mod vulkan_callback {
             "TYPE-UNKNOWN"
         };
         if msg.severity.error {
-            error!("Vulkan [{}]:\n{}", ty, msg.description.bright_red());
+            error!("Vulkan [{}]:\n{}", ty, msg.description);
         } else if msg.severity.warning {
             warn!("Vulkan [{}]:\n{}", ty, msg.description);
         } else if msg.severity.information {
