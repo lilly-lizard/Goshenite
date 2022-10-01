@@ -8,6 +8,7 @@ use crate::shaders::shader_interfaces::CameraPushConstant;
 use crate::{camera::Camera, helper::from_err_impl::from_err_impl};
 use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
+use vulkano::device::QueueCreateInfo;
 use vulkano::swapchain::PresentInfo;
 use vulkano::{
     command_buffer,
@@ -34,7 +35,8 @@ use winit::window::Window;
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
     device: Arc<Device>,
-    queue: Arc<Queue>,
+    render_queue: Arc<Queue>,
+    transfer_queue: Arc<Queue>,
     _debug_callback: Option<DebugUtilsMessenger>,
 
     surface: Arc<Surface<Arc<Window>>>,
@@ -128,16 +130,46 @@ impl RenderManager {
         {
             debug!("\t{}", pd.properties().device_name);
         }
-        // choose physical device and queue family
-        let (physical_device, queue_family_index) =
-            Self::choose_physical_device(instance.clone(), &device_extensions, &surface)?;
+        // choose physical device and queue families
+        let ChoosePhysicalDeviceReturn {
+            physical_device,
+            render_queue_family,
+            transfer_queue_family,
+        } = Self::choose_physical_device(instance.clone(), &device_extensions, &surface)?;
         info!(
             "Using Vulkan device: {} (type: {:?})",
             physical_device.properties().device_name,
             physical_device.properties().device_type,
         );
 
-        // create device and queue
+        // queue create info(s) for creating render and transfer queues
+        let single_queue = (render_queue_family == transfer_queue_family)
+            && (physical_device.queue_family_properties()[render_queue_family as usize]
+                .queue_count
+                == 1);
+        let queue_create_infos = if render_queue_family == transfer_queue_family {
+            vec![QueueCreateInfo {
+                queue_family_index: render_queue_family,
+                queues: if single_queue {
+                    vec![0.5]
+                } else {
+                    vec![0.5; 2]
+                },
+                ..Default::default()
+            }]
+        } else {
+            vec![
+                QueueCreateInfo {
+                    queue_family_index: render_queue_family,
+                    ..Default::default()
+                },
+                QueueCreateInfo {
+                    queue_family_index: transfer_queue_family,
+                    ..Default::default()
+                },
+            ]
+        };
+        // create device and queues
         let (device, mut queues) = device::Device::new(
             physical_device.clone(),
             device::DeviceCreateInfo {
@@ -146,17 +178,19 @@ impl RenderManager {
                     dynamic_rendering: true,
                     ..device::Features::empty()
                 },
-                queue_create_infos: vec![device::QueueCreateInfo {
-                    queue_family_index,
-                    ..Default::default()
-                }],
+                queue_create_infos,
                 ..Default::default()
             },
         )
-        .to_renderer_err("failed to create vulkan device")?;
-        let queue = queues.next().expect(
-            "vulkano::device::Device::new has an assert to ensure at least 1 queue gets created",
-        );
+        .to_renderer_err("failed to create vulkan device and queues")?;
+        let render_queue = queues
+            .next()
+            .expect("requested 1 queue from render_queue_family");
+        let transfer_queue = if single_queue {
+            render_queue.clone()
+        } else {
+            queues.next().expect("requested 1 unique transfer queue")
+        };
 
         // create swapchain and images
         let (swapchain, swapchain_images) =
@@ -186,7 +220,7 @@ impl RenderManager {
 
         // scene render target
         let render_image = Self::create_render_image(
-            queue.clone(),
+            render_queue.clone(),
             swapchain_images[0].dimensions().width_height(),
         )?;
 
@@ -208,8 +242,12 @@ impl RenderManager {
         .to_renderer_err("failed to initialize blit pass")?;
 
         // init gui renderer
-        let gui_pass = GuiRenderer::new(device.clone(), queue.clone(), swapchain.image_format())
-            .to_renderer_err("failed to initialize gui pass")?;
+        let gui_pass = GuiRenderer::new(
+            device.clone(),
+            transfer_queue.clone(),
+            swapchain.image_format(),
+        )
+        .to_renderer_err("failed to initialize gui pass")?;
 
         // create futures used for frame synchronization
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
@@ -218,7 +256,8 @@ impl RenderManager {
         Ok(RenderManager {
             _debug_callback: debug_callback,
             device,
-            queue,
+            render_queue,
+            transfer_queue,
             surface,
             swapchain,
             swapchain_image_views,
@@ -288,7 +327,7 @@ impl RenderManager {
         // record command buffer
         let mut builder = command_buffer::AutoCommandBufferBuilder::primary(
             self.device.clone(),
-            self.queue.queue_family_index(),
+            self.render_queue.queue_family_index(),
             command_buffer::CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
@@ -344,10 +383,10 @@ impl RenderManager {
             .take()
             .unwrap()
             .join(acquire_future)
-            .then_execute(self.queue.clone(), command_buffer)
+            .then_execute(self.render_queue.clone(), command_buffer)
             .unwrap()
             .then_swapchain_present(
-                self.queue.clone(),
+                self.render_queue.clone(),
                 PresentInfo {
                     index: image_index,
                     ..PresentInfo::swapchain(self.swapchain.clone())
@@ -447,7 +486,7 @@ impl RenderManager {
         instance: Arc<Instance>,
         device_extensions: &DeviceExtensions,
         surface: &Arc<Surface<Arc<Window>>>,
-    ) -> Result<(Arc<PhysicalDevice>, QueueFamilyIndex), RenderManagerError> {
+    ) -> Result<ChoosePhysicalDeviceReturn, RenderManagerError> {
         instance
             .enumerate_physical_devices()
             .to_renderer_err("failed to enumerate physical devices")?
@@ -469,17 +508,25 @@ impl RenderManager {
                             && q.queue_flags.transfer
                             && p.surface_support(i as u32, surface).unwrap_or(false)
                     })
-                    .map(|i| (p, i as QueueFamilyIndex))
+                    .map(|i| ChoosePhysicalDeviceReturn {
+                        physical_device: p,
+                        render_queue_family: i as QueueFamilyIndex,
+                        transfer_queue_family: i as QueueFamilyIndex, //todo...
+                    })
             })
             // preference of device type
-            .max_by_key(|(p, _)| match p.properties().device_type {
-                PhysicalDeviceType::DiscreteGpu => 4,
-                PhysicalDeviceType::IntegratedGpu => 3,
-                PhysicalDeviceType::VirtualGpu => 2,
-                PhysicalDeviceType::Cpu => 1,
-                PhysicalDeviceType::Other => 0,
-                _ne => 0,
-            })
+            .max_by_key(
+                |ChoosePhysicalDeviceReturn {
+                     physical_device, ..
+                 }| match physical_device.properties().device_type {
+                    PhysicalDeviceType::DiscreteGpu => 4,
+                    PhysicalDeviceType::IntegratedGpu => 3,
+                    PhysicalDeviceType::VirtualGpu => 2,
+                    PhysicalDeviceType::Cpu => 1,
+                    PhysicalDeviceType::Other => 0,
+                    _ne => 0,
+                },
+            )
             .to_renderer_err("no suitable physical device available")
     }
 
@@ -549,13 +596,13 @@ impl RenderManager {
     }
 
     fn create_render_image(
-        queue: Arc<Queue>,
+        access_queue: Arc<Queue>,
         size: [u32; 2],
     ) -> Result<Arc<ImageView<StorageImage>>, RenderManagerError> {
         // format must match what's specified in the compute shader layout
         let render_image_format = Format::R8G8B8A8_UNORM;
         StorageImage::general_purpose_image_view(
-            queue,
+            access_queue,
             size,
             render_image_format,
             ImageUsage {
@@ -591,7 +638,7 @@ impl RenderManager {
         self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
 
         self.render_image = Self::create_render_image(
-            self.queue.clone(),
+            self.render_queue.clone(),
             swapchain_images[0].dimensions().width_height(),
         )?;
 
@@ -610,6 +657,13 @@ impl RenderManager {
 
         Ok(())
     }
+}
+
+/// Physical device and queue family indices returned by [`RenderManager::choose_physical_device`]
+struct ChoosePhysicalDeviceReturn {
+    pub physical_device: Arc<PhysicalDevice>,
+    pub render_queue_family: QueueFamilyIndex,
+    pub transfer_queue_family: QueueFamilyIndex,
 }
 
 /// This mod just makes the module path unique for debug callbacks in the log

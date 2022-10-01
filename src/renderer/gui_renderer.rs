@@ -63,7 +63,7 @@ mod descriptor {
 /// Should match vertex definition of egui (except color is `[f32; 4]`)
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
-pub struct EguiVertex {
+struct EguiVertex {
     pub position: [f32; 2],
     pub tex_coords: [f32; 2],
     pub color: [f32; 4],
@@ -72,7 +72,7 @@ vulkano::impl_vertex!(EguiVertex, position, tex_coords, color);
 
 pub struct GuiRenderer {
     device: Arc<Device>,
-    queue: Arc<Queue>,
+    transfer_queue: Arc<Queue>,
 
     pipeline: Arc<GraphicsPipeline>,
     sampler: Arc<Sampler>,
@@ -85,17 +85,17 @@ pub struct GuiRenderer {
 // Public functions
 impl GuiRenderer {
     /// Initializes the gui renderer
-    pub fn new(
+    pub(super) fn new(
         device: Arc<Device>,
-        queue: Arc<Queue>,
+        transfer_queue: Arc<Queue>,
         swapchain_image_format: Format,
     ) -> Result<Self, GuiRendererError> {
         let pipeline = Self::create_pipeline(device.clone(), swapchain_image_format)?;
         let (vertex_buffer_pool, index_buffer_pool) = Self::create_buffer_pools(device.clone())?;
         let sampler = Self::create_sampler(device.clone())?;
         Ok(Self {
-            device: device.clone(),
-            queue: queue.clone(),
+            device,
+            transfer_queue,
             pipeline,
             sampler,
             vertex_buffer_pool,
@@ -118,7 +118,7 @@ impl GuiRenderer {
         // create command buffer builder
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
             self.device.clone(),
-            self.queue.queue_family_index(),
+            self.transfer_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )?;
 
@@ -129,7 +129,7 @@ impl GuiRenderer {
 
         // execute command buffer
         let command_buffer = command_buffer_builder.build()?;
-        let finished = command_buffer.execute(self.queue.clone())?;
+        let finished = command_buffer.execute(self.transfer_queue.clone())?;
         let _future = finished.then_signal_fence_and_flush()?;
 
         Ok(())
@@ -142,7 +142,7 @@ impl GuiRenderer {
     /// * `need_srgb_conv`: Set to true if rendering to an SRGB framebuffer.
     /// * `framebuffer_dimensions`: Framebuffer dimensions.
     /// todo return REsult
-    pub fn record_commands<L>(
+    pub(super) fn record_commands<L>(
         &mut self,
         command_buffer: &mut AutoCommandBufferBuilder<L>,
         gui: &Gui,
@@ -373,7 +373,7 @@ impl GuiRenderer {
                 },
                 Default::default(),
                 ImageLayout::ShaderReadOnlyOptimal,
-                Some(self.queue.queue_family_index()),
+                None,
             )?;
             let font_image = ImageView::new_default(image)?;
 
