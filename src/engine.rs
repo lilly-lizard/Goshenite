@@ -57,7 +57,7 @@ impl Engine {
         let renderer = RenderManager::new(window.clone(), &primitives).unwrap();
 
         // init gui
-        let gui = Gui::new(window.clone(), renderer.max_image_array_layers() as usize);
+        let gui = Gui::new(&event_loop, window.clone());
 
         Engine {
             _window: window,
@@ -132,8 +132,6 @@ impl Engine {
 
     /// Per frame engine logic and rendering
     fn process_frame(&mut self) {
-        use RenderManagerError::{SurfaceSizeUnsupported, Unrecoverable};
-
         // update cursor state
         self.cursor_state.process_frame();
 
@@ -156,8 +154,8 @@ impl Engine {
             &self.gui,
             self.camera,
         ) {
-            Err(SurfaceSizeUnsupported { .. }) => (), // todo clamp window inner size?
-            Err(Unrecoverable { message, source }) => {
+            Err(RenderManagerError::SurfaceSizeUnsupported { .. }) => (), // todo clamp window inner size?
+            Err(RenderManagerError::Unrecoverable { message, source }) => {
                 if let Some(error) = source {
                     error!("{}: {}", message, error);
                 } else {

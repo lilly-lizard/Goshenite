@@ -8,11 +8,12 @@ use crate::shaders::shader_interfaces::CameraPushConstant;
 use crate::{camera::Camera, helper::from_err_impl::from_err_impl};
 use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
+use vulkano::swapchain::PresentInfo;
 use vulkano::{
     command_buffer,
     device::{self, Device, Queue},
     device::{
-        physical::{PhysicalDevice, PhysicalDeviceType, QueueFamily, SurfacePropertiesError},
+        physical::{PhysicalDevice, PhysicalDeviceType},
         DeviceExtensions,
     },
     format::Format,
@@ -21,12 +22,13 @@ use vulkano::{
         DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
         DebugUtilsMessengerCreateInfo,
     },
-    instance::{self, debug::DebugUtilsMessengerCreationError, Instance, LayersListError},
+    instance::{self, Instance},
     pipeline::graphics::viewport::Viewport,
     render_pass::{LoadOp, StoreOp},
     swapchain::{self, Surface, Swapchain, SwapchainCreationError},
     sync::{self, FlushError, GpuFuture},
 };
+use vulkano::{OomError, VulkanLibrary};
 use winit::window::Window;
 
 /// Contains Vulkan resources and methods to manage rendering
@@ -50,6 +52,9 @@ pub struct RenderManager {
     recreate_swapchain: bool,
 }
 
+/// Indicates a queue family index
+pub type QueueFamilyIndex = u32;
+
 // ~~~ Public functions ~~~
 
 impl RenderManager {
@@ -58,12 +63,23 @@ impl RenderManager {
         window: Arc<Window>,
         primitives: &PrimitiveCollection,
     ) -> Result<Self, RenderManagerError> {
-        let mut instance_extensions = vulkano_win::required_extensions();
+        // load vulkan library
+        let vulkan_library =
+            VulkanLibrary::new().to_renderer_err("failed to load vulkan library")?;
+
+        // required instance extensions for platform surface rendering
+        let mut instance_extensions = vulkano_win::required_extensions(&vulkan_library);
         let mut instance_layers: Vec<String> = Vec::new();
 
         // check for validation layer/debug callback support
         let enable_debug_callback = if config::ENABLE_VULKAN_VALIDATION {
-            if Self::add_debug_validation(&mut instance_extensions, &mut instance_layers).is_ok() {
+            if Self::add_debug_validation(
+                vulkan_library.clone(),
+                &mut instance_extensions,
+                &mut instance_layers,
+            )
+            .is_ok()
+            {
                 info!("enabling Vulkan validation layers and debug callback");
                 true
             } else {
@@ -76,12 +92,15 @@ impl RenderManager {
         };
 
         // create instance
-        let instance = Instance::new(instance::InstanceCreateInfo {
-            enabled_extensions: instance_extensions,
-            enumerate_portability: true, // enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
-            enabled_layers: instance_layers,
-            ..Default::default()
-        })
+        let instance = Instance::new(
+            vulkan_library.clone(),
+            instance::InstanceCreateInfo {
+                enabled_extensions: instance_extensions,
+                enumerate_portability: true, // enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
+                enabled_layers: instance_layers,
+                ..Default::default()
+            },
+        )
         .to_renderer_err("Failed to create vulkan instance")?;
 
         // setup debug callback
@@ -98,17 +117,20 @@ impl RenderManager {
         // required device extensions
         let device_extensions = device::DeviceExtensions {
             khr_swapchain: true,
-            ..device::DeviceExtensions::none()
+            ..device::DeviceExtensions::empty()
         };
 
         // print available physical devices
         debug!("Available Vulkan physical devices:");
-        for pd in PhysicalDevice::enumerate(&instance) {
+        for pd in instance
+            .enumerate_physical_devices()
+            .to_renderer_err("failed to enumerate physical devices")?
+        {
             debug!("\t{}", pd.properties().device_name);
         }
         // choose physical device and queue family
-        let (physical_device, queue_family) =
-            Self::choose_physical_device(&instance, &device_extensions, &surface)?;
+        let (physical_device, queue_family_index) =
+            Self::choose_physical_device(instance.clone(), &device_extensions, &surface)?;
         info!(
             "Using Vulkan device: {} (type: {:?})",
             physical_device.properties().device_name,
@@ -117,14 +139,17 @@ impl RenderManager {
 
         // create device and queue
         let (device, mut queues) = device::Device::new(
-            physical_device,
+            physical_device.clone(),
             device::DeviceCreateInfo {
                 enabled_extensions: device_extensions,
                 enabled_features: device::Features {
                     dynamic_rendering: true,
-                    ..device::Features::none()
+                    ..device::Features::empty()
                 },
-                queue_create_infos: vec![device::QueueCreateInfo::family(queue_family)],
+                queue_create_infos: vec![device::QueueCreateInfo {
+                    queue_family_index,
+                    ..Default::default()
+                }],
                 ..Default::default()
             },
         )
@@ -135,7 +160,7 @@ impl RenderManager {
 
         // create swapchain and images
         let (swapchain, swapchain_images) =
-            Self::create_swapchain(device.clone(), physical_device, surface.clone())?;
+            Self::create_swapchain(device.clone(), physical_device.clone(), surface.clone())?;
         debug!(
             "initial swapchain image size = {:?}",
             swapchain_images[0].dimensions()
@@ -207,14 +232,6 @@ impl RenderManager {
         })
     }
 
-    /// bruh
-    pub fn max_image_array_layers(&self) -> u32 {
-        self.device
-            .physical_device()
-            .properties()
-            .max_image_array_layers
-    }
-
     /// Returns a mutable reference to the gui renderer so its resources can be updated by the gui
     pub fn gui_renderer(&mut self) -> &mut GuiRenderer {
         &mut self.gui_pass
@@ -271,7 +288,7 @@ impl RenderManager {
         // record command buffer
         let mut builder = command_buffer::AutoCommandBufferBuilder::primary(
             self.device.clone(),
-            self.queue.family(),
+            self.queue.queue_family_index(),
             command_buffer::CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
@@ -329,7 +346,13 @@ impl RenderManager {
             .join(acquire_future)
             .then_execute(self.queue.clone(), command_buffer)
             .unwrap()
-            .then_swapchain_present(self.queue.clone(), self.swapchain.clone(), image_num)
+            .then_swapchain_present(
+                self.queue.clone(),
+                PresentInfo {
+                    index: image_num,
+                    ..PresentInfo::swapchain(self.swapchain.clone())
+                },
+            )
             .then_signal_fence_and_flush();
 
         match future {
@@ -355,23 +378,24 @@ impl RenderManager {
     /// Checks for VK_EXT_debug_utils support and presence khronos validation layers
     /// If both can be enabled, adds them to provided extension and layer lists
     fn add_debug_validation(
+        vulkan_library: Arc<VulkanLibrary>,
         instance_extensions: &mut instance::InstanceExtensions,
         instance_layers: &mut Vec<String>,
     ) -> Result<(), InstanceSupportError> {
         // check debug utils extension support
-        if match instance::InstanceExtensions::supported_by_core() {
-            Ok(supported) => supported.ext_debug_utils,
-            Err(_) => false,
-        } {
+        if vulkan_library.supported_extensions().ext_debug_utils {
             info!("VK_EXT_debug_utils was requested and is supported");
         } else {
             warn!("VK_EXT_debug_utils was requested but is unsupported");
-            return Err(InstanceSupportError::ExtensionUnsupported);
+            return Err(InstanceSupportError::ExtensionUnsupported {
+                extension: "VK_EXT_debug_utils",
+            });
         }
 
         // check validation layers are present
         let validation_layer = "VK_LAYER_KHRONOS_validation";
-        if instance::layers_list()?
+        if vulkan_library
+            .layer_properties()?
             .find(|l| l.name() == validation_layer)
             .is_some()
         {
@@ -397,50 +421,55 @@ impl RenderManager {
                         warning: true,
                         information: true,
                         verbose: false,
+                        ..DebugUtilsMessageSeverity::empty()
                     },
-                    message_type: DebugUtilsMessageType::all(),
+                    message_type: DebugUtilsMessageType {
+                        general: true,
+                        validation: true,
+                        performance: true,
+                        ..DebugUtilsMessageType::empty()
+                    },
                     ..DebugUtilsMessengerCreateInfo::user_callback(Arc::new(|msg| {
                         vulkan_callback::process_debug_callback(msg)
                     }))
                 },
             ) {
                 Ok(x) => Some(x),
-                Err(DebugUtilsMessengerCreationError::ExtensionNotEnabled {
-                    extension,
-                    reason,
-                }) => {
-                    warn!(
-                        "failed to setup vulkan debug callback. extension: {}, reason: {}",
-                        extension, reason,
-                    );
+                Err(e) => {
+                    warn!("failed to setup vulkan debug callback: {}", e,);
                     None
                 }
             }
         }
     }
 
-    fn choose_physical_device<'a>(
-        instance: &'a Arc<Instance>,
+    fn choose_physical_device(
+        instance: Arc<Instance>,
         device_extensions: &DeviceExtensions,
         surface: &Arc<Surface<Arc<Window>>>,
-    ) -> Result<(PhysicalDevice<'a>, QueueFamily<'a>), RenderManagerError> {
-        PhysicalDevice::enumerate(instance)
+    ) -> Result<(Arc<PhysicalDevice>, QueueFamilyIndex), RenderManagerError> {
+        instance
+            .enumerate_physical_devices()
+            .to_renderer_err("failed to enumerate physical devices")?
             // filter for vulkan version support
-            .filter(|&p| {
+            .filter(|p| {
                 p.api_version()
                     >= vulkano::Version::major_minor(config::VULKAN_VER_MAJ, config::VULKAN_VER_MIN)
             })
             // filter for required device extensions
-            .filter(|&p| p.supported_extensions().is_superset_of(device_extensions))
+            .filter(|p| p.supported_extensions().contains(device_extensions))
             // filter for queue support
             .filter_map(|p| {
-                p.queue_families()
-                    .find(|&q| {
-                        q.supports_compute()
-                            && q.supports_graphics()
-                            && q.supports_surface(surface).unwrap_or(false)
+                p.queue_family_properties()
+                    .iter()
+                    .enumerate()
+                    .position(|(i, q)| {
+                        q.queue_flags.graphics
+                            && q.queue_flags.compute
+                            && q.queue_flags.transfer
+                            && p.surface_support(i as u32, surface).unwrap_or(false)
                     })
-                    .map(|q| (p, q))
+                    .map(|i| (p, i as QueueFamilyIndex))
             })
             // preference of device type
             .max_by_key(|(p, _)| match p.properties().device_type {
@@ -449,13 +478,14 @@ impl RenderManager {
                 PhysicalDeviceType::VirtualGpu => 2,
                 PhysicalDeviceType::Cpu => 1,
                 PhysicalDeviceType::Other => 0,
+                _ne => 0,
             })
             .to_renderer_err("no suitable physical device available")
     }
 
     fn create_swapchain(
         device: Arc<Device>,
-        physical_device: PhysicalDevice,
+        physical_device: Arc<PhysicalDevice>,
         surface: Arc<Surface<Arc<Window>>>,
     ) -> Result<
         (
@@ -465,38 +495,17 @@ impl RenderManager {
         RenderManagerError,
     > {
         // todo prefer sRGB (linux sRGB)
-        let image_format = match physical_device.surface_formats(&surface, Default::default()) {
-            Ok(x) => x,
-            Err(SurfacePropertiesError::SurfaceLost) => {
-                return Err(RenderManagerError::SurfaceLost.log())
-            }
-            Err(e) => {
-                return Err(RenderManagerError::Unrecoverable {
-                    message: "failed to get surface format".to_owned(),
-                    source: Some(e.into()),
-                }
-                .log())
-            }
-        }
-        .get(0)
-        .expect("vulkan driver should support at least 1 surface format... right?")
-        .0;
+        let image_format = physical_device
+            .surface_formats(&surface, Default::default())
+            .to_renderer_err("failed to get surface formats")?
+            .get(0)
+            .expect("vulkan driver should support at least 1 surface format... right?")
+            .0;
         debug!("swapchain image format = {:?}", image_format);
 
-        let surface_capabilities =
-            match physical_device.surface_capabilities(&surface, Default::default()) {
-                Ok(x) => x,
-                Err(SurfacePropertiesError::SurfaceLost) => {
-                    return Err(RenderManagerError::SurfaceLost.log())
-                }
-                Err(e) => {
-                    return Err(RenderManagerError::Unrecoverable {
-                        message: "failed to get surface capabilities".to_owned(),
-                        source: Some(e.into()),
-                    }
-                    .log())
-                }
-            };
+        let surface_capabilities = physical_device
+            .surface_capabilities(&surface, Default::default())
+            .to_renderer_err("failed to get surface capabilities")?;
         let composite_alpha = surface_capabilities
             .supported_composite_alpha
             .iter()
@@ -510,19 +519,9 @@ impl RenderManager {
             .expect("surface should support at least 1 composite mode... right?");
         debug!("swapchain composite alpha = {:?}", composite_alpha);
 
-        let mut present_modes = match physical_device.surface_present_modes(&surface) {
-            Ok(x) => x,
-            Err(SurfacePropertiesError::SurfaceLost) => {
-                return Err(RenderManagerError::SurfaceLost.log())
-            }
-            Err(e) => {
-                return Err(RenderManagerError::Unrecoverable {
-                    message: "failed to get surface capabilities".to_owned(),
-                    source: Some(e.into()),
-                }
-                .log())
-            }
-        };
+        let mut present_modes = physical_device
+            .surface_present_modes(&surface)
+            .to_renderer_err("failed to get surface present modes")?;
         let present_mode = present_modes
             .find(|&pm| pm == swapchain::PresentMode::Mailbox)
             .unwrap_or(swapchain::PresentMode::Fifo);
@@ -534,7 +533,10 @@ impl RenderManager {
             swapchain::SwapchainCreateInfo {
                 min_image_count: surface_capabilities.min_image_count,
                 image_extent: surface.window().inner_size().into(),
-                image_usage: ImageUsage::color_attachment(),
+                image_usage: ImageUsage {
+                    color_attachment: true,
+                    ..ImageUsage::empty()
+                },
                 image_format: Some(image_format),
                 composite_alpha,
                 present_mode,
@@ -559,7 +561,7 @@ impl RenderManager {
             ImageUsage {
                 storage: true,
                 sampled: true,
-                ..ImageUsage::none()
+                ..ImageUsage::empty()
             },
         )
         .to_renderer_err("failed to create render image")
@@ -653,13 +655,6 @@ pub enum RenderManagerError {
         message: String,
         source: Option<Box<dyn error::Error>>,
     },
-
-    /// The window surface is no longer accessible and must be recreated.
-    /// Invalidates the RenderManger and requires re-initialization.
-    ///
-    /// Equivalent to vulkano [SurfacePropertiesError::SurfaceLost](`vulkano::device::physical::SurfacePropertiesError::SurfaceLost`)
-    SurfaceLost,
-
     /// Requested dimensions are not within supported range when attempting to create a render target (swapchain)
     /// This error tends to happen when the user is manually resizing the window.
     /// Simply restarting the loop is the easiest way to fix this issue.
@@ -670,6 +665,12 @@ pub enum RenderManagerError {
         min_supported: [u32; 2],
         max_supported: [u32; 2],
     },
+    // todo VulkanError recoverable case handling...
+    // The window surface is no longer accessible and must be recreated.
+    // Invalidates the RenderManger and requires re-initialization.
+    //
+    // Equivalent to vulkano [SurfacePropertiesError::SurfaceLost](`vulkano::device::physical::SurfacePropertiesError::SurfaceLost`)
+    //SurfaceLost,
 }
 impl fmt::Display for RenderManagerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -681,8 +682,8 @@ impl fmt::Display for RenderManagerError {
                     write!(f, "{}", message)
                 }
             }
-            RenderManagerError::SurfaceLost =>
-                write!(f, "the Vulkan surface is no longer accessible, thus invalidating this RenderManager instance"),
+            //RenderManagerError::SurfaceLost =>
+            //    write!(f, "the Vulkan surface is no longer accessible, thus invalidating this RenderManager instance"),
             RenderManagerError::SurfaceSizeUnsupported{ provided, min_supported, max_supported } =>
                 write!(f, "cannot create render target with requested dimensions = {:?}. min size = {:?}, max size = {:?}",
                     provided, min_supported, max_supported),
@@ -781,26 +782,27 @@ impl From<SwapchainCreationError> for RenderManagerError {
 #[derive(Clone, Debug)]
 pub enum InstanceSupportError {
     /// Requested instance extension is not supported by this vulkan driver
-    ExtensionUnsupported,
+    ExtensionUnsupported { extension: &'static str },
     /// Requested Vulkan layer is not found (may not be installed)
     LayerNotFound,
-    /// Failed to load the Vulkan shared library.
-    LayersListError(LayersListError),
+    /// Out of memory
+    OomError(OomError),
 }
 impl fmt::Display for InstanceSupportError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            InstanceSupportError::ExtensionUnsupported => write!(
+            InstanceSupportError::ExtensionUnsupported { extension } => write!(
                 f,
-                "Requested instance extension is not supported by this vulkan driver"
+                "Requested instance extension {} is not supported by this vulkan driver",
+                extension
             ),
             InstanceSupportError::LayerNotFound => write!(
                 f,
                 "Requested Vulkan layer is not found (may not be installed)"
             ),
-            InstanceSupportError::LayersListError(e) => write!(f, "{}", e),
+            InstanceSupportError::OomError(e) => write!(f, "{}", e),
         }
     }
 }
 impl error::Error for InstanceSupportError {}
-from_err_impl!(InstanceSupportError, LayersListError);
+from_err_impl!(InstanceSupportError, OomError);

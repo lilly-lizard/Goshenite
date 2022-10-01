@@ -10,14 +10,16 @@ use crate::shaders::shader_interfaces::{
 };
 use std::fmt;
 use std::sync::Arc;
+use vulkano::command_buffer::PipelineExecutionError;
+use vulkano::memory::pool::StandardMemoryPool;
+use vulkano::memory::DeviceMemoryError;
 use vulkano::pipeline::compute::ComputePipelineCreationError; // todo error propogation testing (see return below)
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
-    command_buffer::{AutoCommandBufferBuilder, DispatchError, PrimaryAutoCommandBuffer},
+    command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{physical::PhysicalDevice, Device},
     image::{view::ImageView, StorageImage},
-    memory::{pool::StdMemoryPool, DeviceMemoryAllocationError},
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     DeviceSize,
 };
@@ -70,14 +72,19 @@ impl ScenePass {
             ),
         ];
         let work_group_count = Self::calc_work_group_count(
-            device.physical_device(),
+            device.physical_device().clone(),
             render_image_size,
             work_group_size,
         )?;
 
         // init primitive buffer pool
-        let primitive_buffer_pool =
-            CpuBufferPool::new(device.clone(), BufferUsage::storage_buffer());
+        let primitive_buffer_pool = CpuBufferPool::new(
+            device.clone(),
+            BufferUsage {
+                storage_buffer: true,
+                ..BufferUsage::empty()
+            },
+        );
         primitive_buffer_pool.reserve(RESERVED_PRIMITIVE_BUFFER_POOL)?;
 
         // init compute pipeline and descriptor sets
@@ -120,7 +127,7 @@ impl ScenePass {
         render_image: Arc<ImageView<StorageImage>>,
     ) -> Result<(), ScenePassError> {
         self.work_group_count = Self::calc_work_group_count(
-            self.device.physical_device(),
+            self.device.physical_device().clone(),
             resolution,
             self.work_group_size,
         )?;
@@ -134,7 +141,7 @@ impl ScenePass {
         &self,
         command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         camera_push_constant: CameraPushConstant,
-    ) -> Result<(), DispatchError> {
+    ) -> Result<(), PipelineExecutionError> {
         let mut desc_sets: Vec<Arc<PersistentDescriptorSet>> = Vec::default();
         desc_sets.insert(descriptor::SET_IMAGE, self.desc_set_render_image.clone());
         desc_sets.insert(descriptor::SET_PRIMITVES, self.desc_set_primitives.clone());
@@ -156,7 +163,7 @@ impl ScenePass {
     /// Calculate required work group count for a given render resolution,
     /// and checks that the work group count is within the physical device limits
     fn calc_work_group_count(
-        physical_device: PhysicalDevice,
+        physical_device: Arc<PhysicalDevice>,
         resolution: [u32; 2],
         work_group_size: [u32; 2],
     ) -> Result<[u32; 3], ScenePassError> {
@@ -227,7 +234,7 @@ impl ScenePass {
 
     fn create_desc_set_primitives(
         scene_pipeline: Arc<ComputePipeline>,
-        primitive_buffer: Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StdMemoryPool>>>,
+        primitive_buffer: Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StandardMemoryPool>>>,
     ) -> Result<Arc<PersistentDescriptorSet>, CreateDescriptorSetError> {
         Ok(PersistentDescriptorSet::new(
             scene_pipeline
@@ -248,10 +255,10 @@ impl ScenePass {
     fn create_primitives_buffer(
         primitives: &PrimitiveCollection,
         buffer_pool: &CpuBufferPool<PrimitiveDataUnit>,
-    ) -> Result<Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StdMemoryPool>>>, ScenePassError>
+    ) -> Result<Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StandardMemoryPool>>>, ScenePassError>
     {
         // todo should be able to update buffer wihtout recreating?
-        Ok(buffer_pool.chunk(PrimitiveData::combined_data(primitives)?)?)
+        Ok(buffer_pool.from_iter(PrimitiveData::combined_data(primitives)?)?)
     }
 }
 
@@ -267,7 +274,7 @@ pub enum ScenePassError {
         group_count_limit: [u32; 2],
     },
     /// Failed to allocate device memory for vulkan object
-    DeviceMemoryAllocationError(DeviceMemoryAllocationError),
+    DeviceMemoryError(DeviceMemoryError),
     /// Failed to combine primitive data
     PrimitiveDataError(PrimitiveDataError),
     /// Errors encountered when creating a pipeline
@@ -286,7 +293,7 @@ impl fmt::Display for ScenePassError {
                 "compute shader work group count {:?} exceeds driver limits {:?}",
                 group_count, group_count_limit
             ),
-            ScenePassError::DeviceMemoryAllocationError(e) => {
+            ScenePassError::DeviceMemoryError(e) => {
                 write!(f, "failed to allocate primitive buffer: {}", e)
             }
             ScenePassError::PrimitiveDataError(e) => e.fmt(f),
@@ -296,7 +303,7 @@ impl fmt::Display for ScenePassError {
     }
 }
 impl std::error::Error for ScenePassError {}
-from_err_impl!(ScenePassError, DeviceMemoryAllocationError);
+from_err_impl!(ScenePassError, DeviceMemoryError);
 from_err_impl!(ScenePassError, PrimitiveDataError);
 from_err_impl!(ScenePassError, CreatePipelineError);
 from_err_impl!(ScenePassError, CreateDescriptorSetError);

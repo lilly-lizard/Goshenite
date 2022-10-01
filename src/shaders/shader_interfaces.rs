@@ -2,11 +2,14 @@
 use std::fmt::{self, Display};
 
 use crate::primitives::primitives::PrimitiveCollection;
+use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3, Vec4};
 use vulkano::shader::{SpecializationConstants, SpecializationMapEntry};
 
 /// Function name of the entry point for shaders
 pub const SHADER_ENTRY_POINT: &str = "main";
+
+// ~~~ Primitive Data ~~~
 
 /// Shorthand for the data type in the primitive storage buffer defined in `scene.comp`.
 pub type PrimitiveDataUnit = u32;
@@ -61,26 +64,10 @@ impl Display for PrimitiveDataError {
     }
 }
 
-/// Render compute shader push constant struct. Size should be no more than 128 bytes for full vulkan coverage
-#[derive(Clone, Copy, Default, Debug)]
-#[repr(C)]
-pub struct CameraPushConstant {
-    /// Inverse of projection matrix multiplied by view matrix. Converts clip space coordinates to world space
-    pub proj_view_inverse: [f32; 16],
-    /// Camera position in world space (w component unused)
-    pub position: [f32; 4],
-}
-impl CameraPushConstant {
-    pub fn new(proj_view_inverse: Mat4, position: Vec3) -> Self {
-        Self {
-            proj_view_inverse: proj_view_inverse.to_cols_array(),
-            position: Vec4::from((position, 0.)).to_array(),
-        }
-    }
-}
+// ~~~ Specialization Constants ~~~
 
 /// Scene render compute shader specialization constants. Used for setting the local work group size
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
 #[repr(C)]
 pub struct ComputeSpecConstant {
     /// Local work group size x value
@@ -107,9 +94,33 @@ unsafe impl SpecializationConstants for ComputeSpecConstant {
         ]
     }
 }
+unsafe impl Send for ComputeSpecConstant {}
+unsafe impl Sync for ComputeSpecConstant {}
+
+// ~~~ Push Constants ~~~
+
+/// Render compute shader push constant struct. Size should be no more than 128 bytes for full vulkan coverage
+#[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
+#[repr(C)]
+pub struct CameraPushConstant {
+    /// Inverse of projection matrix multiplied by view matrix. Converts clip space coordinates to world space
+    pub proj_view_inverse: [f32; 16],
+    /// Camera position in world space (w component unused)
+    pub position: [f32; 4],
+}
+impl CameraPushConstant {
+    pub fn new(proj_view_inverse: Mat4, position: Vec3) -> Self {
+        Self {
+            proj_view_inverse: proj_view_inverse.to_cols_array(),
+            position: Vec4::from((position, 0.)).to_array(),
+        }
+    }
+}
+unsafe impl Send for CameraPushConstant {}
+unsafe impl Sync for CameraPushConstant {}
 
 /// Gui shader push constants. Should match definitions in `gui.vert` and `gui.frag`.
-#[derive(Clone, Copy, Default, Debug)]
+#[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
 #[repr(C)]
 pub struct GuiPushConstant {
     /// Framebuffer dimensions.
@@ -125,3 +136,5 @@ impl GuiPushConstant {
         }
     }
 }
+unsafe impl Send for GuiPushConstant {}
+unsafe impl Sync for GuiPushConstant {}

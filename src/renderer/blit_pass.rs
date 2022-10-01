@@ -5,7 +5,7 @@ use crate::{helper::from_err_impl::from_err_impl, shaders::shader_interfaces::SH
 use std::fmt;
 use std::sync::Arc;
 use vulkano::{
-    command_buffer::{AutoCommandBufferBuilder, DrawError, PrimaryAutoCommandBuffer},
+    command_buffer::{AutoCommandBufferBuilder, PipelineExecutionError, PrimaryAutoCommandBuffer},
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::Device,
     format::Format,
@@ -73,7 +73,7 @@ impl BlitPass {
         &self,
         command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
         viewport: Viewport,
-    ) -> Result<(), DrawError> {
+    ) -> Result<(), PipelineExecutionError> {
         command_buffer
             .set_viewport(0, [viewport])
             .bind_pipeline_graphics(self.pipeline.clone())

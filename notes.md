@@ -3,6 +3,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - transfer queue
 	- requires removing blit from update_textures in gui_renderer
+- support/handle VulkanError cases...
 - batch texture creation commands in gui_renderer
 - update vulkano and related crates
 - error sources and backtraces: https://github.com/dtolnay/anyhow

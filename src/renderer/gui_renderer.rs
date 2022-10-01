@@ -10,6 +10,9 @@ use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId};
 use log::{debug, error, info, warn};
 use std::fmt::{self, Display};
 use std::sync::Arc;
+use vulkano::command_buffer::{ImageBlit, PipelineExecutionError};
+use vulkano::memory::pool::StandardMemoryPool;
+use vulkano::memory::DeviceMemoryError;
 use vulkano::sampler::{
     self, SamplerAddressMode, SamplerCreateInfo, SamplerCreationError, SamplerMipmapMode,
 };
@@ -21,7 +24,7 @@ use vulkano::{
     command_buffer::{
         AutoCommandBufferBuilder, BlitImageInfo, BuildError, CommandBufferBeginError,
         CommandBufferExecError, CommandBufferUsage, CopyBufferToImageInfo, CopyError,
-        DrawIndexedError, ImageBlit, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
+        PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
     },
     descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet, WriteDescriptorSet},
     device::{Device, Queue},
@@ -30,7 +33,6 @@ use vulkano::{
         immutable::ImmutableImageCreationError, view::ImageView, view::ImageViewCreationError,
         ImageAccess, ImageLayout, ImageUsage, ImageViewAbstract, ImmutableImage,
     },
-    memory::{pool::StdMemoryPool, DeviceMemoryAllocationError},
     pipeline::{
         graphics::{
             color_blend::{AttachmentBlend, BlendFactor, ColorBlendState},
@@ -257,11 +259,17 @@ impl GuiRenderer {
     /// Helper function for [`Self::new`]
     fn create_buffer_pools(
         device: Arc<Device>,
-    ) -> Result<(CpuBufferPool<EguiVertex>, CpuBufferPool<u32>), DeviceMemoryAllocationError> {
+    ) -> Result<(CpuBufferPool<EguiVertex>, CpuBufferPool<u32>), DeviceMemoryError> {
         // Create vertex and index buffers
         let vertex_buffer_pool = CpuBufferPool::vertex_buffer(device.clone());
         vertex_buffer_pool.reserve(VERTEX_BUFFER_SIZE)?;
-        let index_buffer_pool = CpuBufferPool::new(device, BufferUsage::index_buffer());
+        let index_buffer_pool = CpuBufferPool::new(
+            device,
+            BufferUsage {
+                index_buffer: true,
+                ..BufferUsage::empty()
+            },
+        );
         index_buffer_pool.reserve(INDEX_BUFFER_SIZE)?;
         Ok((vertex_buffer_pool, index_buffer_pool))
     }
@@ -297,7 +305,10 @@ impl GuiRenderer {
         // Create buffer to be copied to the image
         let texture_data_buffer = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
-            BufferUsage::transfer_src(),
+            BufferUsage {
+                transfer_src: true,
+                ..BufferUsage::empty()
+            },
             false,
             data,
         )?;
@@ -315,18 +326,18 @@ impl GuiRenderer {
                 transfer_dst: true,
                 transfer_src: true,
                 sampled: true,
-                ..ImageUsage::none()
+                ..ImageUsage::empty()
             },
             Default::default(),
             ImageLayout::ShaderReadOnlyOptimal,
-            Some(self.queue.family()),
+            Some(self.queue.queue_family_index()),
         )?;
         let font_image = ImageView::new_default(img)?;
 
         // Create command buffer builder
         let mut cbb = AutoCommandBufferBuilder::primary(
             self.device.clone(),
-            self.queue.family(),
+            self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )?;
 
@@ -404,30 +415,30 @@ impl GuiRenderer {
         mesh: &Mesh,
     ) -> Result<
         (
-            Arc<CpuBufferPoolChunk<EguiVertex, Arc<StdMemoryPool>>>,
-            Arc<CpuBufferPoolChunk<u32, Arc<StdMemoryPool>>>,
+            Arc<CpuBufferPoolChunk<EguiVertex, Arc<StandardMemoryPool>>>,
+            Arc<CpuBufferPoolChunk<u32, Arc<StandardMemoryPool>>>,
         ),
-        DeviceMemoryAllocationError,
+        DeviceMemoryError,
     > {
         // Copy vertices to buffer
         let v_slice = &mesh.vertices;
 
-        let vertex_chunk =
-            self.vertex_buffer_pool
-                .chunk(v_slice.into_iter().map(|v| EguiVertex {
-                    position: [v.pos.x, v.pos.y],
-                    tex_coords: [v.uv.x, v.uv.y],
-                    color: [
-                        v.color.r() as f32 / 255.0,
-                        v.color.g() as f32 / 255.0,
-                        v.color.b() as f32 / 255.0,
-                        v.color.a() as f32 / 255.0,
-                    ],
-                }))?;
+        let vertex_chunk = self
+            .vertex_buffer_pool
+            .from_iter(v_slice.into_iter().map(|v| EguiVertex {
+                position: [v.pos.x, v.pos.y],
+                tex_coords: [v.uv.x, v.uv.y],
+                color: [
+                    v.color.r() as f32 / 255.0,
+                    v.color.g() as f32 / 255.0,
+                    v.color.b() as f32 / 255.0,
+                    v.color.a() as f32 / 255.0,
+                ],
+            }))?;
 
         // Copy indices to buffer
         let i_slice = &mesh.indices;
-        let index_chunk = self.index_buffer_pool.chunk(i_slice.clone())?;
+        let index_chunk = self.index_buffer_pool.from_iter(i_slice.clone())?;
 
         Ok((vertex_chunk, index_chunk))
     }
@@ -484,7 +495,7 @@ fn get_rect_scissor(scale_factor: f32, framebuffer_dimensions: [u32; 2], rect: R
 #[derive(Debug)]
 pub enum GuiRendererError {
     /// Failed to allocate device memory for vulkan object
-    DeviceMemoryAllocationError(DeviceMemoryAllocationError),
+    DeviceMemoryError(DeviceMemoryError),
     /// Failed to create texture sampler
     SamplerCreationError(SamplerCreationError),
     /// Errors encountered when creating a pipeline
@@ -505,7 +516,7 @@ impl std::error::Error for GuiRendererError {}
 impl Display for GuiRendererError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            GuiRendererError::DeviceMemoryAllocationError(e) => e.fmt(f),
+            GuiRendererError::DeviceMemoryError(e) => e.fmt(f),
             GuiRendererError::SamplerCreationError(e) => e.fmt(f),
             GuiRendererError::CreatePipelineError(e) => e.fmt(f),
             GuiRendererError::CreateDescriptorSetError(e) => e.fmt(f),
@@ -519,7 +530,7 @@ impl Display for GuiRendererError {
         }
     }
 }
-from_err_impl!(GuiRendererError, DeviceMemoryAllocationError);
+from_err_impl!(GuiRendererError, DeviceMemoryError);
 from_err_impl!(GuiRendererError, SamplerCreationError);
 from_err_impl!(GuiRendererError, CreatePipelineError);
 from_err_impl!(GuiRendererError, CreateDescriptorSetError);
@@ -534,22 +545,22 @@ from_err_impl!(GuiRendererError, FlushError);
 #[derive(Debug)]
 pub enum GuiCommandRecordingError {
     /// Failed to allocate device memory for vulkan object
-    DeviceMemoryAllocationError(DeviceMemoryAllocationError),
+    DeviceMemoryError(DeviceMemoryError),
     /// Mesh requires a texture which doesn't exist (may have been prematurely destroyed or not yet created...)
     TextureDescSetMissing { id: TextureId },
-    /// Cannot record draw command
-    DrawIndexedError(DrawIndexedError),
+    /// Failed to record draw command
+    PipelineExecutionError(PipelineExecutionError),
 }
 impl std::error::Error for GuiCommandRecordingError {}
 impl Display for GuiCommandRecordingError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            GuiCommandRecordingError::DeviceMemoryAllocationError(e) => e.fmt(f),
+            GuiCommandRecordingError::DeviceMemoryError(e) => e.fmt(f),
             Self::TextureDescSetMissing{id} =>
-                write!(f, "Mesh requires texture [{:?}] which doesn't exist (may have been prematurely destroyed or not yet created...)", *id),
-            Self::DrawIndexedError(e) => write!(f, "Cannot record draw command: {}", *e),
+            write!(f, "Mesh requires texture [{:?}] which doesn't exist (may have been prematurely destroyed or not yet created...)", *id),
+            GuiCommandRecordingError::PipelineExecutionError(e) => e.fmt(f),
         }
     }
 }
-from_err_impl!(GuiCommandRecordingError, DeviceMemoryAllocationError);
-from_err_impl!(GuiCommandRecordingError, DrawIndexedError);
+from_err_impl!(GuiCommandRecordingError, DeviceMemoryError);
+from_err_impl!(GuiCommandRecordingError, PipelineExecutionError);

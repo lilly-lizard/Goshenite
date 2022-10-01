@@ -3,6 +3,7 @@ use crate::renderer::gui_renderer::GuiRenderer;
 use egui::FontFamily::Proportional;
 use egui::{Button, DragValue, FontId};
 use std::sync::Arc;
+use winit::event_loop::EventLoopWindowTarget;
 use winit::window::Window;
 
 // user input values...
@@ -26,7 +27,10 @@ impl Gui {
     /// * `window`: [`winit`] window
     /// * `max_texture_side`: maximum size of a texture. Query from graphics driver using
     /// [`crate::renderer::render_manager::RenderManager::max_image_array_layers`]
-    pub fn new(window: Arc<winit::window::Window>, max_texture_side: usize) -> Self {
+    pub fn new<T>(
+        event_loop: &EventLoopWindowTarget<T>,
+        window: Arc<winit::window::Window>,
+    ) -> Self {
         let context = egui::Context::default();
         context.set_style(egui::Style {
             // disable sentance wrap by default (horizontal scroll instead)
@@ -36,7 +40,7 @@ impl Gui {
         Self {
             window: window.clone(),
             context,
-            window_state: egui_winit::State::new(max_texture_side, window.as_ref()),
+            window_state: egui_winit::State::new(event_loop),
             primitives: vec![],
             input_state: Default::default(),
         }
@@ -81,7 +85,7 @@ impl Gui {
         // end frame
         let egui::FullOutput {
             platform_output,
-            needs_repaint: _r,
+            repaint_after: _r,
             textures_delta,
             shapes,
         } = self.context.end_frame();
