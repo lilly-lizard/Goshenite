@@ -17,7 +17,10 @@ use vulkano::{
         },
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
-    sampler::Sampler,
+    sampler::{
+        self, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerCreationError,
+        SamplerMipmapMode,
+    },
 };
 
 const VERT_SHADER_PATH: &str = "assets/shader_binaries/blit.vert.spv";
@@ -42,8 +45,8 @@ impl BlitPass {
         device: Arc<Device>,
         swapchain_image_format: Format,
         render_image: Arc<ImageView<StorageImage>>,
-        sampler: Arc<Sampler>,
     ) -> Result<Self, BlitPassError> {
+        let sampler = Self::create_sampler(device.clone())?;
         let pipeline = Self::create_pipeline(device.clone(), swapchain_image_format)?;
         let desc_set =
             Self::create_desc_set(pipeline.clone(), render_image.clone(), sampler.clone())?;
@@ -86,6 +89,19 @@ impl BlitPass {
 }
 // Private functions
 impl BlitPass {
+    fn create_sampler(device: Arc<Device>) -> Result<Arc<Sampler>, SamplerCreationError> {
+        sampler::Sampler::new(
+            device,
+            SamplerCreateInfo {
+                mag_filter: sampler::Filter::Linear,
+                min_filter: sampler::Filter::Linear,
+                address_mode: [SamplerAddressMode::ClampToEdge; 3],
+                mipmap_mode: SamplerMipmapMode::Linear,
+                ..Default::default()
+            },
+        )
+    }
+
     fn create_pipeline(
         device: Arc<Device>,
         swapchain_image_format: Format,
@@ -137,6 +153,8 @@ impl BlitPass {
 /// Errors encountered when creating a new `BlitPass`
 #[derive(Debug)]
 pub enum BlitPassError {
+    /// Failed to create render image sampler
+    SamplerCreationError(SamplerCreationError),
     /// Errors encountered when creating a pipeline
     CreatePipelineError(CreatePipelineError),
     /// Errors encountered when creating a descriptor set
@@ -146,10 +164,12 @@ impl std::error::Error for BlitPassError {}
 impl fmt::Display for BlitPassError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
+            BlitPassError::SamplerCreationError(e) => e.fmt(f),
             BlitPassError::CreatePipelineError(e) => e.fmt(f),
             BlitPassError::CreateDescriptorSetError(e) => e.fmt(f),
         }
     }
 }
+from_err_impl!(BlitPassError, SamplerCreationError);
 from_err_impl!(BlitPassError, CreatePipelineError);
 from_err_impl!(BlitPassError, CreateDescriptorSetError);

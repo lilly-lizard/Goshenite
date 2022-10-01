@@ -24,7 +24,6 @@ use vulkano::{
     instance::{self, debug::DebugUtilsMessengerCreationError, Instance, LayersListError},
     pipeline::graphics::viewport::Viewport,
     render_pass::{LoadOp, StoreOp},
-    sampler::{self, Sampler, SamplerAddressMode, SamplerMipmapMode},
     swapchain::{self, Surface, Swapchain, SwapchainCreationError},
     sync::{self, FlushError, GpuFuture},
 };
@@ -165,7 +164,6 @@ impl RenderManager {
             queue.clone(),
             swapchain_images[0].dimensions().width_height(),
         )?;
-        let sampler = Self::create_sampler(device.clone())?;
 
         // init compute shader scene pass
         let scene_pass = ScenePass::new(
@@ -181,7 +179,6 @@ impl RenderManager {
             device.clone(),
             swapchain.image_format(),
             render_image.clone(),
-            sampler.clone(),
         )
         .to_renderer_err("failed to initialize blit pass")?;
 
@@ -254,10 +251,10 @@ impl RenderManager {
                 }
                 Err(e) => {
                     // todo other error handling
-                    return Err(RenderManagerError::Unrecoverable(
-                        "Failed to acquire next image".to_string(),
-                        Some(e.into()),
-                    ));
+                    return Err(RenderManagerError::Unrecoverable {
+                        message: "Failed to acquire next image".to_owned(),
+                        source: Some(e.into()),
+                    });
                 }
             };
         if suboptimal {
@@ -474,10 +471,10 @@ impl RenderManager {
                 return Err(RenderManagerError::SurfaceLost.log())
             }
             Err(e) => {
-                return Err(RenderManagerError::Unrecoverable(
-                    "failed to get surface format".to_owned(),
-                    Some(e.into()),
-                )
+                return Err(RenderManagerError::Unrecoverable {
+                    message: "failed to get surface format".to_owned(),
+                    source: Some(e.into()),
+                }
                 .log())
             }
         }
@@ -493,10 +490,10 @@ impl RenderManager {
                     return Err(RenderManagerError::SurfaceLost.log())
                 }
                 Err(e) => {
-                    return Err(RenderManagerError::Unrecoverable(
-                        "failed to get surface capabilities".to_owned(),
-                        Some(e.into()),
-                    )
+                    return Err(RenderManagerError::Unrecoverable {
+                        message: "failed to get surface capabilities".to_owned(),
+                        source: Some(e.into()),
+                    }
                     .log())
                 }
             };
@@ -519,10 +516,10 @@ impl RenderManager {
                 return Err(RenderManagerError::SurfaceLost.log())
             }
             Err(e) => {
-                return Err(RenderManagerError::Unrecoverable(
-                    "failed to get surface capabilities".to_owned(),
-                    Some(e.into()),
-                )
+                return Err(RenderManagerError::Unrecoverable {
+                    message: "failed to get surface capabilities".to_owned(),
+                    source: Some(e.into()),
+                }
                 .log())
             }
         };
@@ -566,20 +563,6 @@ impl RenderManager {
             },
         )
         .to_renderer_err("failed to create render image")
-    }
-
-    fn create_sampler(device: Arc<Device>) -> Result<Arc<Sampler>, RenderManagerError> {
-        sampler::Sampler::new(
-            device,
-            sampler::SamplerCreateInfo {
-                mag_filter: sampler::Filter::Linear,
-                min_filter: sampler::Filter::Linear,
-                address_mode: [SamplerAddressMode::ClampToEdge; 3],
-                mipmap_mode: SamplerMipmapMode::Linear,
-                ..Default::default()
-            },
-        )
-        .to_renderer_err("failed to create sampler")
     }
 
     /// Recreates the swapchain, render image and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
@@ -666,7 +649,10 @@ mod vulkan_callback {
 pub enum RenderManagerError {
     /// An unrecoverable/unexpected error has prevented the RenderManager from initializing or rendering.
     /// Contains an string explaining the cause.
-    Unrecoverable(String, Option<Box<dyn error::Error>>),
+    Unrecoverable {
+        message: String,
+        source: Option<Box<dyn error::Error>>,
+    },
 
     /// The window surface is no longer accessible and must be recreated.
     /// Invalidates the RenderManger and requires re-initialization.
@@ -685,15 +671,14 @@ pub enum RenderManagerError {
         max_supported: [u32; 2],
     },
 }
-impl error::Error for RenderManagerError {}
 impl fmt::Display for RenderManagerError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            RenderManagerError::Unrecoverable(msg, e) => {
-                if let Some(error) = e {
-                    write!(f, "{}: {}", msg, error)
+            RenderManagerError::Unrecoverable{message, source} => {
+                if let Some(error) = source {
+                    write!(f, "{}: {}", message, error)
                 } else {
-                    write!(f, "{}", msg)
+                    write!(f, "{}", message)
                 }
             }
             RenderManagerError::SurfaceLost =>
@@ -704,6 +689,7 @@ impl fmt::Display for RenderManagerError {
         }
     }
 }
+impl error::Error for RenderManagerError {}
 impl RenderManagerError {
     /// Passes the error through the `error!` log and returns self
     #[inline]
@@ -733,7 +719,11 @@ where
                     error!("{}", e);
                     panic!("{}", e);
                 } else {
-                    Err(RenderManagerError::Unrecoverable(msg.to_string(), Some(e.into())).log())
+                    Err(RenderManagerError::Unrecoverable {
+                        message: msg.to_string(),
+                        source: Some(e.into()),
+                    }
+                    .log())
                 }
             }
         }
@@ -749,7 +739,11 @@ impl<T> RenderManagerUnrecoverable<T> for std::option::Option<T> {
                 if config::PANIC_ON_RENDERER_UNRECOVERABLE {
                     panic!();
                 } else {
-                    Err(RenderManagerError::Unrecoverable(msg.to_owned(), None).log())
+                    Err(RenderManagerError::Unrecoverable {
+                        message: msg.to_owned(),
+                        source: None,
+                    }
+                    .log())
                 }
             }
         }
@@ -774,14 +768,18 @@ impl From<SwapchainCreationError> for RenderManagerError {
                 debug!("cannot create swapchain: {}", err);
                 err
             }
-            e => Unrecoverable("Failed to recreate swapchain".to_string(), Some(e.into())).log(),
+            e => Unrecoverable {
+                message: "Failed to recreate swapchain".to_string(),
+                source: Some(e.into()),
+            }
+            .log(),
         }
     }
 }
 
 /// Describes issues with enabling instance extensions/layers
 #[derive(Clone, Debug)]
-enum InstanceSupportError {
+pub enum InstanceSupportError {
     /// Requested instance extension is not supported by this vulkan driver
     ExtensionUnsupported,
     /// Requested Vulkan layer is not found (may not be installed)
@@ -789,4 +787,20 @@ enum InstanceSupportError {
     /// Failed to load the Vulkan shared library.
     LayersListError(LayersListError),
 }
+impl fmt::Display for InstanceSupportError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            InstanceSupportError::ExtensionUnsupported => write!(
+                f,
+                "Requested instance extension is not supported by this vulkan driver"
+            ),
+            InstanceSupportError::LayerNotFound => write!(
+                f,
+                "Requested Vulkan layer is not found (may not be installed)"
+            ),
+            InstanceSupportError::LayersListError(e) => write!(f, "{}", e),
+        }
+    }
+}
+impl error::Error for InstanceSupportError {}
 from_err_impl!(InstanceSupportError, LayersListError);

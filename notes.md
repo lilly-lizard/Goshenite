@@ -1,6 +1,9 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
+- transfer queue
+	- requires removing blit from update_textures in gui_renderer
+- batch texture creation commands in gui_renderer
 - update vulkano and related crates
 - error sources and backtraces: https://github.com/dtolnay/anyhow
 - try compute shader with circle compiler. benifits:

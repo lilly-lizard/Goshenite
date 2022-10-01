@@ -156,12 +156,12 @@ impl Engine {
             &self.gui,
             self.camera,
         ) {
-            Err(SurfaceSizeUnsupported { .. }) => (), // todo clamp window inner size
-            Err(Unrecoverable(s, e)) => {
-                if let Some(error) = e {
-                    error!("{}: {}", s, error);
+            Err(SurfaceSizeUnsupported { .. }) => (), // todo clamp window inner size?
+            Err(Unrecoverable { message, source }) => {
+                if let Some(error) = source {
+                    error!("{}: {}", message, error);
                 } else {
-                    error!("{}", s);
+                    error!("{}", message);
                 }
                 panic!();
             }

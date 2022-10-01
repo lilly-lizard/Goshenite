@@ -10,7 +10,9 @@ use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId};
 use log::{debug, error, info, warn};
 use std::fmt::{self, Display};
 use std::sync::Arc;
-use vulkano::sampler::{self, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode};
+use vulkano::sampler::{
+    self, SamplerAddressMode, SamplerCreateInfo, SamplerCreationError, SamplerMipmapMode,
+};
 use vulkano::{
     buffer::{
         cpu_access::CpuAccessibleBuffer, cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool,
@@ -90,7 +92,7 @@ impl GuiRenderer {
     ) -> Result<Self, GuiRendererError> {
         let pipeline = Self::create_pipeline(device.clone(), swapchain_image_format)?;
         let (vertex_buffer_pool, index_buffer_pool) = Self::create_buffer_pools(device.clone())?;
-        let sampler = Self::create_sampler(device.clone());
+        let sampler = Self::create_sampler(device.clone())?;
         Ok(Self {
             device: device.clone(),
             queue: queue.clone(),
@@ -106,13 +108,13 @@ impl GuiRenderer {
     /// Creates and/or removes texture resources for a [Gui](`crate::gui::Gui) frame.
     pub fn update_textures(
         &mut self,
-        textures_delta: &egui::TexturesDelta,
+        textures_delta: egui::TexturesDelta,
     ) -> Result<(), GuiRendererError> {
         for &id in &textures_delta.free {
             self.unregister_image(id);
         }
-        for (id, image_delta) in &textures_delta.set {
-            self.create_texture(*id, image_delta)?;
+        for (id, image_delta) in textures_delta.set {
+            self.create_texture(id, image_delta)?;
         }
         Ok(())
     }
@@ -166,9 +168,9 @@ impl GuiRenderer {
                     let desc_set = self
                         .texture_desc_sets
                         .get(&mesh.texture_id)
-                        .ok_or(GuiCommandRecordingError::TextureDescSetMissing(
-                            mesh.texture_id,
-                        ))?
+                        .ok_or(GuiCommandRecordingError::TextureDescSetMissing {
+                            id: mesh.texture_id,
+                        })?
                         .clone();
                     command_buffer
                         .bind_pipeline_graphics(self.pipeline.clone())
@@ -204,7 +206,7 @@ impl GuiRenderer {
 // Private functions
 impl GuiRenderer {
     /// Create sampler for gui textures.
-    fn create_sampler(device: Arc<Device>) -> Arc<Sampler> {
+    fn create_sampler(device: Arc<Device>) -> Result<Arc<Sampler>, SamplerCreationError> {
         Sampler::new(
             device,
             SamplerCreateInfo {
@@ -215,7 +217,6 @@ impl GuiRenderer {
                 ..Default::default()
             },
         )
-        .unwrap() // todo remove unwrap
     }
 
     /// Builds the gui rendering graphics pipeline.
@@ -271,7 +272,7 @@ impl GuiRenderer {
     fn create_texture(
         &mut self,
         texture_id: egui::TextureId,
-        delta: &egui::epaint::ImageDelta,
+        delta: egui::epaint::ImageDelta,
     ) -> Result<(), GuiRendererError> {
         // Extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
@@ -335,8 +336,11 @@ impl GuiRenderer {
             init.clone(),
         ))?;
 
-        // Blit texture data to existing image if delta pos exists (e.g. font changed)
         if let Some(pos) = delta.pos {
+            // Blit texture data to existing image if delta pos exists (e.g. font changed)
+            // todo remove blit? then we can use transfer queue for all this. should use copy_buffer_to_image instead (see above) without creating new image
+            // todo sync issue!
+            // CommandBufferExecError(AccessError { error: AlreadyInUse, command_name: "blit_image", command_param: "dst_image", command_offset: 1 })
             if let Some(existing_image) = self.texture_images.get(&texture_id) {
                 let src_dims = font_image.image().dimensions();
                 let top_left = [pos[0] as u32, pos[1] as u32, 0];
@@ -345,7 +349,6 @@ impl GuiRenderer {
                     pos[1] as u32 + src_dims.height() as u32,
                     1,
                 ];
-
                 cbb.blit_image(BlitImageInfo {
                     src_image_layout: ImageLayout::General,
                     dst_image_layout: ImageLayout::General,
@@ -367,8 +370,8 @@ impl GuiRenderer {
                     )
                 })?;
             }
-            // Otherwise save the newly created image
         } else {
+            // Otherwise save the newly created image
             let layout = self
                 .pipeline
                 .layout()
@@ -482,6 +485,8 @@ fn get_rect_scissor(scale_factor: f32, framebuffer_dimensions: [u32; 2], rect: R
 pub enum GuiRendererError {
     /// Failed to allocate device memory for vulkan object
     DeviceMemoryAllocationError(DeviceMemoryAllocationError),
+    /// Failed to create texture sampler
+    SamplerCreationError(SamplerCreationError),
     /// Errors encountered when creating a pipeline
     CreatePipelineError(CreatePipelineError),
     /// Errors encountered when creating a descriptor set
@@ -501,6 +506,7 @@ impl Display for GuiRendererError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             GuiRendererError::DeviceMemoryAllocationError(e) => e.fmt(f),
+            GuiRendererError::SamplerCreationError(e) => e.fmt(f),
             GuiRendererError::CreatePipelineError(e) => e.fmt(f),
             GuiRendererError::CreateDescriptorSetError(e) => e.fmt(f),
             GuiRendererError::ImmutableImageCreationError(e) => e.fmt(f),
@@ -514,6 +520,7 @@ impl Display for GuiRendererError {
     }
 }
 from_err_impl!(GuiRendererError, DeviceMemoryAllocationError);
+from_err_impl!(GuiRendererError, SamplerCreationError);
 from_err_impl!(GuiRendererError, CreatePipelineError);
 from_err_impl!(GuiRendererError, CreateDescriptorSetError);
 from_err_impl!(GuiRendererError, ImmutableImageCreationError);
@@ -524,12 +531,12 @@ from_err_impl!(GuiRendererError, BuildError);
 from_err_impl!(GuiRendererError, CommandBufferExecError);
 from_err_impl!(GuiRendererError, FlushError);
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum GuiCommandRecordingError {
     /// Failed to allocate device memory for vulkan object
     DeviceMemoryAllocationError(DeviceMemoryAllocationError),
     /// Mesh requires a texture which doesn't exist (may have been prematurely destroyed or not yet created...)
-    TextureDescSetMissing(TextureId),
+    TextureDescSetMissing { id: TextureId },
     /// Cannot record draw command
     DrawIndexedError(DrawIndexedError),
 }
@@ -538,7 +545,7 @@ impl Display for GuiCommandRecordingError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             GuiCommandRecordingError::DeviceMemoryAllocationError(e) => e.fmt(f),
-            Self::TextureDescSetMissing(id) =>
+            Self::TextureDescSetMissing{id} =>
                 write!(f, "Mesh requires texture [{:?}] which doesn't exist (may have been prematurely destroyed or not yet created...)", *id),
             Self::DrawIndexedError(e) => write!(f, "Cannot record draw command: {}", *e),
         }

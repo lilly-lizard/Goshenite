@@ -261,7 +261,7 @@ impl ScenePass {
 #[derive(Debug)]
 pub enum ScenePassError {
     /// The calculated compute shader work group count exceeds physical device limits.
-    /// todo this could be handled more elegently by doing multiple dispatches...
+    /// todo this could be handled more elegently by doing multiple dispatches?
     UnsupportedWorkGroupCount {
         group_count: [u32; 2],
         group_count_limit: [u32; 2],

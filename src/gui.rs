@@ -1,6 +1,7 @@
 use crate::primitives::primitives::{Primitive, PrimitiveCollection};
 use crate::renderer::gui_renderer::GuiRenderer;
-use egui::{Button, DragValue};
+use egui::FontFamily::Proportional;
+use egui::{Button, DragValue, FontId};
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -95,7 +96,7 @@ impl Gui {
 
         // add/free textures resources in the gui renderer. note this must happen here to be
         // certain that this frame's `textures_delta` is processed
-        gui_renderer.update_textures(&textures_delta).unwrap();
+        gui_renderer.update_textures(textures_delta).unwrap(); //todo unwrap
     }
 }
 // Private functions
@@ -105,6 +106,22 @@ impl Gui {
         let add_contents = |ui: &mut egui::Ui| {
             /// Ammount to incriment when modifying by dragging
             const DRAG_INC: f64 = 0.1;
+
+            // TODO [TESTING] tests GuiRenderer create_texture() functionality for when ImageDelta.pos != None
+            // todo write actual test? or at least document for later testing suite?
+            if ui.add(Button::new("gui renderer test")).clicked() {
+                let style = &*self.context.style();
+                let mut style = style.clone();
+                style.text_styles = [
+                    (egui::TextStyle::Heading, FontId::new(20.0, Proportional)),
+                    (egui::TextStyle::Body, FontId::new(18.0, Proportional)),
+                    (egui::TextStyle::Monospace, FontId::new(14.0, Proportional)),
+                    (egui::TextStyle::Button, FontId::new(14.0, Proportional)),
+                    (egui::TextStyle::Small, FontId::new(10.0, Proportional)),
+                ]
+                .into();
+                self.context.set_style(style);
+            }
 
             if let Some(primitive_index) = self.input_state.selected_primitive {
                 ui.label(format!("Primitive {}", primitive_index));
