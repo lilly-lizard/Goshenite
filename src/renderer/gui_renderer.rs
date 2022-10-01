@@ -110,12 +110,28 @@ impl GuiRenderer {
         &mut self,
         textures_delta: egui::TexturesDelta,
     ) -> Result<(), GuiRendererError> {
+        // release unused texture resources
         for &id in &textures_delta.free {
             self.unregister_image(id);
         }
+
+        // create command buffer builder
+        let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
+            self.device.clone(),
+            self.queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )?;
+
+        // create new images and record upload commands
         for (id, image_delta) in textures_delta.set {
-            self.create_texture(id, image_delta)?;
+            self.create_texture(id, image_delta, &mut command_buffer_builder)?;
         }
+
+        // execute command buffer
+        let command_buffer = command_buffer_builder.build()?;
+        let finished = command_buffer.execute(self.queue.clone())?;
+        let _future = finished.then_signal_fence_and_flush()?;
+
         Ok(())
     }
 
@@ -279,6 +295,7 @@ impl GuiRenderer {
         &mut self,
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
+        command_buffer_builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
     ) -> Result<(), GuiRendererError> {
         // extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
@@ -310,13 +327,6 @@ impl GuiRenderer {
             },
             false,
             data,
-        )?;
-
-        // create command buffer builder
-        let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            self.device.clone(),
-            self.queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit,
         )?;
 
         if let Some(update_pos) = delta.pos {
@@ -388,11 +398,6 @@ impl GuiRenderer {
             self.texture_desc_sets.insert(texture_id, font_desc_set);
             self.texture_images.insert(texture_id, font_image);
         }
-
-        // execute command buffer
-        let command_buffer = command_buffer_builder.build()?;
-        let finished = command_buffer.execute(self.queue.clone())?;
-        let _fut = finished.then_signal_fence_and_flush()?;
         Ok(())
     }
 

@@ -1,7 +1,6 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
-- batch texture creation commands in gui_renderer
 - transfer queue
 	- requires removing blit from update_textures in gui_renderer
 - frame future for update_textures
