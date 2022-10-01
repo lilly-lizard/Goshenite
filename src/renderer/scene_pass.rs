@@ -16,7 +16,7 @@ use vulkano::memory::DeviceMemoryError;
 use vulkano::pipeline::compute::ComputePipelineCreationError; // todo error propogation testing (see return below)
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
-    command_buffer::{AutoCommandBufferBuilder, PrimaryAutoCommandBuffer},
+    command_buffer::AutoCommandBufferBuilder,
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{physical::PhysicalDevice, Device},
     image::{view::ImageView, StorageImage},
@@ -137,9 +137,9 @@ impl ScenePass {
     }
 
     /// Records rendering commands to a command buffer
-    pub fn record_commands(
+    pub fn record_commands<L>(
         &self,
-        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        command_buffer: &mut AutoCommandBufferBuilder<L>,
         camera_push_constant: CameraPushConstant,
     ) -> Result<(), PipelineExecutionError> {
         let mut desc_sets: Vec<Arc<PersistentDescriptorSet>> = Vec::default();

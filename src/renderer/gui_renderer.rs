@@ -18,7 +18,7 @@ use vulkano::{
     command_buffer::{
         AutoCommandBufferBuilder, BufferImageCopy, BuildError, CommandBufferBeginError,
         CommandBufferExecError, CommandBufferUsage, CopyBufferToImageInfo, CopyError,
-        PipelineExecutionError, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
+        PipelineExecutionError, PrimaryCommandBuffer,
     },
     descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet, WriteDescriptorSet},
     device::{Device, Queue},
@@ -142,9 +142,9 @@ impl GuiRenderer {
     /// * `need_srgb_conv`: Set to true if rendering to an SRGB framebuffer.
     /// * `framebuffer_dimensions`: Framebuffer dimensions.
     /// todo return REsult
-    pub fn record_commands(
+    pub fn record_commands<L>(
         &mut self,
-        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        command_buffer: &mut AutoCommandBufferBuilder<L>,
         gui: &Gui,
         need_srgb_conv: bool,
         framebuffer_dimensions: [u32; 2],
@@ -291,11 +291,11 @@ impl GuiRenderer {
     /// Creates a new texture needing to be added for the gui.
     ///
     /// Helper function for [`GuiRenderer::update_textures`]
-    fn create_texture(
+    fn create_texture<L>(
         &mut self,
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
-        command_buffer_builder: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        command_buffer_builder: &mut AutoCommandBufferBuilder<L>,
     ) -> Result<(), GuiRendererError> {
         // extract pixel data from egui
         let data: Vec<u8> = match &delta.image {

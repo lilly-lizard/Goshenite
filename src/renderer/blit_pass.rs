@@ -5,7 +5,7 @@ use crate::{helper::from_err_impl::from_err_impl, shaders::shader_interfaces::SH
 use std::fmt;
 use std::sync::Arc;
 use vulkano::{
-    command_buffer::{AutoCommandBufferBuilder, PipelineExecutionError, PrimaryAutoCommandBuffer},
+    command_buffer::{AutoCommandBufferBuilder, PipelineExecutionError},
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::Device,
     format::Format,
@@ -69,9 +69,9 @@ impl BlitPass {
 
     /// Records draw commands to a command buffer. Assumes that the command buffer is
     /// already in a render pass state, otherwise an error will be returned.
-    pub fn record_commands(
+    pub fn record_commands<L>(
         &self,
-        command_buffer: &mut AutoCommandBufferBuilder<PrimaryAutoCommandBuffer>,
+        command_buffer: &mut AutoCommandBufferBuilder<L>,
         viewport: Viewport,
     ) -> Result<(), PipelineExecutionError> {
         command_buffer
