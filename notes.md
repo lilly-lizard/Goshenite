@@ -20,6 +20,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - update gui buffers pub fn
 - GuiRenderer::create_texture -> create_textures batch texture creation
 - gui_renderer unwraps/error handling
+- for loops to map
 
 ## always
 

@@ -36,7 +36,7 @@ use winit::window::Window;
 pub struct RenderManager {
     device: Arc<Device>,
     render_queue: Arc<Queue>,
-    transfer_queue: Arc<Queue>,
+    _transfer_queue: Arc<Queue>,
     _debug_callback: Option<DebugUtilsMessenger>,
 
     surface: Arc<Surface<Arc<Window>>>,
@@ -257,7 +257,7 @@ impl RenderManager {
             _debug_callback: debug_callback,
             device,
             render_queue,
-            transfer_queue,
+            _transfer_queue: transfer_queue,
             surface,
             swapchain,
             swapchain_image_views,
@@ -499,20 +499,49 @@ impl RenderManager {
             .filter(|p| p.supported_extensions().contains(device_extensions))
             // filter for queue support
             .filter_map(|p| {
-                p.queue_family_properties()
+                // get queue family index for main queue used for rendering
+                let render_family = p
+                    .queue_family_properties()
                     .iter()
+                    // because we want the queue family index
                     .enumerate()
                     .position(|(i, q)| {
+                        // must support our surface and essential operations
                         q.queue_flags.graphics
                             && q.queue_flags.compute
                             && q.queue_flags.transfer
                             && p.surface_support(i as u32, surface).unwrap_or(false)
-                    })
-                    .map(|i| ChoosePhysicalDeviceReturn {
+                    });
+                if let Some(render_index) = render_family {
+                    // attempt to find a different queue family that we can use for asynchronous transfer operations
+                    // e.g. uploading image/buffer data while rendering
+                    let transfer_family = p
+                        .queue_family_properties()
+                        .iter()
+                        // because we want the queue family index
+                        .enumerate()
+                        // exclude the queue family we've already found and filter by transfer operation support
+                        .filter(|(i, q)| *i != render_index && q.queue_flags.transfer)
+                        // some drivers expose a queue that only supports transfer operations (for this very purpose) which is preferable
+                        .max_by_key(|(_, q)| {
+                            if !q.queue_flags.compute && !q.queue_flags.graphics {
+                                1
+                            } else {
+                                0
+                            }
+                        })
+                        .map(|(i, _)| i);
+                    Some(ChoosePhysicalDeviceReturn {
                         physical_device: p,
-                        render_queue_family: i as QueueFamilyIndex,
-                        transfer_queue_family: i as QueueFamilyIndex, //todo...
+                        render_queue_family: render_index as QueueFamilyIndex,
+                        transfer_queue_family: transfer_family.unwrap_or(render_index)
+                            as QueueFamilyIndex,
                     })
+                } else {
+                    // failed to find main queue
+                    todo!("anyhow error context messages...");
+                    None
+                }
             })
             // preference of device type
             .max_by_key(
@@ -595,6 +624,8 @@ impl RenderManager {
         }
     }
 
+    /// Creates the render target for the scene render. _Note that the value of `access_queue` isn't actually used
+    /// in the vulkan image creation create info._
     fn create_render_image(
         access_queue: Arc<Queue>,
         size: [u32; 2],
@@ -690,10 +721,7 @@ mod vulkan_callback {
         } else if msg.severity.verbose {
             debug!("Vulkan [{}]:\n{}", ty, msg.description);
         } else {
-            info!(
-                "Vulkan [{}] [{}]:\n{}",
-                "SEVERITY-UNKONWN", ty, msg.description
-            );
+            info!("Vulkan [{}] (SEVERITY-UNKONWN):\n{}", ty, msg.description);
         };
     }
 }
@@ -833,7 +861,7 @@ impl From<SwapchainCreationError> for RenderManagerError {
 }
 
 /// Describes issues with enabling instance extensions/layers
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum InstanceSupportError {
     /// Requested instance extension is not supported by this vulkan driver
     ExtensionUnsupported { extension: &'static str },
