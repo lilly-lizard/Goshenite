@@ -8,7 +8,7 @@ use crate::shaders::shader_interfaces::CameraPushConstant;
 use crate::{camera::Camera, helper::from_err_impl::from_err_impl};
 use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
-use vulkano::swapchain::PresentInfo;
+use vulkano::swapchain::{SwapchainAbstract, SwapchainPresentInfo};
 use vulkano::{
     command_buffer,
     device::{self, Device, Queue},
@@ -258,7 +258,7 @@ impl RenderManager {
         }
 
         // blocks when no images currently available (all have been submitted already)
-        let (image_num, suboptimal, acquire_future) =
+        let (image_index, suboptimal, acquire_future) =
             match swapchain::acquire_next_image(self.swapchain.clone(), None) {
                 Ok(r) => r,
                 Err(swapchain::AcquireError::OutOfDate) => {
@@ -308,7 +308,7 @@ impl RenderManager {
                     store_op: StoreOp::Store,
                     clear_value: Some([0.0, 1.0, 0.0, 1.0].into()),
                     ..command_buffer::RenderingAttachmentInfo::image_view(
-                        self.swapchain_image_views[image_num].clone(),
+                        self.swapchain_image_views[image_index as usize].clone(),
                     )
                 })],
                 ..Default::default()
@@ -348,9 +348,11 @@ impl RenderManager {
             .unwrap()
             .then_swapchain_present(
                 self.queue.clone(),
-                PresentInfo {
-                    index: image_num,
-                    ..PresentInfo::swapchain(self.swapchain.clone())
+                SwapchainPresentInfo {
+                    ..SwapchainPresentInfo::swapchain_image_index(
+                        self.swapchain.clone(),
+                        image_index,
+                    )
                 },
             )
             .then_signal_fence_and_flush();

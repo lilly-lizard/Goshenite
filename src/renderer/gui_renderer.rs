@@ -10,21 +10,15 @@ use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId};
 use log::{debug, error, info, warn};
 use std::fmt::{self, Display};
 use std::sync::Arc;
-use vulkano::command_buffer::{ImageBlit, PipelineExecutionError};
-use vulkano::memory::pool::StandardMemoryPool;
-use vulkano::memory::DeviceMemoryError;
-use vulkano::sampler::{
-    self, SamplerAddressMode, SamplerCreateInfo, SamplerCreationError, SamplerMipmapMode,
-};
 use vulkano::{
     buffer::{
         cpu_access::CpuAccessibleBuffer, cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool,
         TypedBufferAccess,
     },
     command_buffer::{
-        AutoCommandBufferBuilder, BlitImageInfo, BuildError, CommandBufferBeginError,
+        AutoCommandBufferBuilder, BufferImageCopy, BuildError, CommandBufferBeginError,
         CommandBufferExecError, CommandBufferUsage, CopyBufferToImageInfo, CopyError,
-        PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
+        PipelineExecutionError, PrimaryAutoCommandBuffer, PrimaryCommandBuffer,
     },
     descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet, WriteDescriptorSet},
     device::{Device, Queue},
@@ -33,6 +27,7 @@ use vulkano::{
         immutable::ImmutableImageCreationError, view::ImageView, view::ImageViewCreationError,
         ImageAccess, ImageLayout, ImageUsage, ImageViewAbstract, ImmutableImage,
     },
+    memory::{pool::StandardMemoryPool, DeviceMemoryError},
     pipeline::{
         graphics::{
             color_blend::{AttachmentBlend, BlendFactor, ColorBlendState},
@@ -45,7 +40,10 @@ use vulkano::{
         },
         Pipeline, PipelineBindPoint,
     },
-    sampler::Sampler,
+    sampler::{
+        self, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerCreationError,
+        SamplerMipmapMode,
+    },
     sync::{FlushError, GpuFuture},
     DeviceSize,
 };
@@ -276,13 +274,13 @@ impl GuiRenderer {
 
     /// Creates a new texture needing to be added for the gui.
     ///
-    /// Helper function for [`Self::update_textures`]
+    /// Helper function for [`GuiRenderer::update_textures`]
     fn create_texture(
         &mut self,
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
     ) -> Result<(), GuiRendererError> {
-        // Extract pixel data from egui
+        // extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
             egui::ImageData::Color(image) => {
                 if image.width() * image.height() != image.pixels.len() {
@@ -302,7 +300,8 @@ impl GuiRenderer {
                     .collect()
             }
         };
-        // Create buffer to be copied to the image
+
+        // create buffer to be copied to the image
         let texture_data_buffer = CpuAccessibleBuffer::from_iter(
             self.device.clone(),
             BufferUsage {
@@ -312,77 +311,69 @@ impl GuiRenderer {
             false,
             data,
         )?;
-        // Create image
-        let (img, init) = ImmutableImage::uninitialized(
-            self.device.clone(),
-            vulkano::image::ImageDimensions::Dim2d {
-                width: delta.image.width() as u32,
-                height: delta.image.height() as u32,
-                array_layers: 1,
-            },
-            Format::R8G8B8A8_SRGB,
-            vulkano::image::MipmapsCount::One,
-            ImageUsage {
-                transfer_dst: true,
-                transfer_src: true,
-                sampled: true,
-                ..ImageUsage::empty()
-            },
-            Default::default(),
-            ImageLayout::ShaderReadOnlyOptimal,
-            Some(self.queue.queue_family_index()),
-        )?;
-        let font_image = ImageView::new_default(img)?;
 
-        // Create command buffer builder
-        let mut cbb = AutoCommandBufferBuilder::primary(
+        // create command buffer builder
+        let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
             self.device.clone(),
             self.queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )?;
 
-        // Copy buffer to image
-        cbb.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
-            texture_data_buffer,
-            init.clone(),
-        ))?;
-
-        if let Some(pos) = delta.pos {
-            // Blit texture data to existing image if delta pos exists (e.g. font changed)
-            // todo remove blit? then we can use transfer queue for all this. should use copy_buffer_to_image instead (see above) without creating new image
+        if let Some(update_pos) = delta.pos {
+            // sometimes a subregion of an already allocated texture needs to be updated e.g. when a font size is changed
             // todo sync issue!
-            // CommandBufferExecError(AccessError { error: AlreadyInUse, command_name: "blit_image", command_param: "dst_image", command_offset: 1 })
+            // CommandBufferExecError(AccessError { error: AlreadyInUse, command_name: "copy_buffer_to_image", command_param: "dst_image", command_offset: 0 })
+            // pass future to update_textures and this funtion sets a bool to indicate wherver an existing will be modified...
             if let Some(existing_image) = self.texture_images.get(&texture_id) {
-                let src_dims = font_image.image().dimensions();
-                let top_left = [pos[0] as u32, pos[1] as u32, 0];
-                let bottom_right = [
-                    pos[0] as u32 + src_dims.width() as u32,
-                    pos[1] as u32 + src_dims.height() as u32,
-                    1,
-                ];
-                cbb.blit_image(BlitImageInfo {
-                    src_image_layout: ImageLayout::General,
-                    dst_image_layout: ImageLayout::General,
-                    regions: [ImageBlit {
-                        src_subresource: font_image.image().subresource_layers(),
-                        src_offsets: [
-                            [0, 0, 0],
-                            [src_dims.width() as u32, src_dims.height() as u32, 1],
-                        ],
-                        dst_subresource: existing_image.image().subresource_layers(),
-                        dst_offsets: [top_left, bottom_right],
-                        ..Default::default()
-                    }]
-                    .into(),
-                    filter: vulkano::sampler::Filter::Nearest,
-                    ..BlitImageInfo::images(
-                        font_image.image().clone(),
+                // define copy region
+                let copy_region = BufferImageCopy {
+                    image_subresource: existing_image.image().subresource_layers(),
+                    image_offset: [update_pos[0] as u32, update_pos[1] as u32, 0],
+                    image_extent: [delta.image.width() as u32, delta.image.height() as u32, 1],
+                    ..Default::default()
+                };
+
+                // copy buffer to image
+                command_buffer_builder.copy_buffer_to_image(
+                    CopyBufferToImageInfo::buffer_image_regions(
+                        texture_data_buffer,
                         existing_image.image().clone(),
-                    )
-                })?;
+                        [copy_region].into(),
+                    ),
+                )?;
             }
         } else {
-            // Otherwise save the newly created image
+            // usually ImageDelta.pos == None meaning a new image needs to be created
+
+            // create image
+            let (image, init_access) = ImmutableImage::uninitialized(
+                self.device.clone(),
+                vulkano::image::ImageDimensions::Dim2d {
+                    width: delta.image.width() as u32,
+                    height: delta.image.height() as u32,
+                    array_layers: 1,
+                },
+                Format::R8G8B8A8_SRGB,
+                vulkano::image::MipmapsCount::One,
+                ImageUsage {
+                    transfer_dst: true,
+                    transfer_src: true, // todo needed? try without
+                    sampled: true,
+                    ..ImageUsage::empty()
+                },
+                Default::default(),
+                ImageLayout::ShaderReadOnlyOptimal,
+                Some(self.queue.queue_family_index()),
+            )?;
+            let font_image = ImageView::new_default(image)?;
+
+            // copy buffer to image
+            command_buffer_builder.copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
+                texture_data_buffer,
+                init_access.clone(),
+            ))?;
+
+            // create new descriptor set
             let layout = self
                 .pipeline
                 .layout()
@@ -392,11 +383,14 @@ impl GuiRenderer {
                     index: descriptor::SET_FONT_TEXTURE,
                 })?;
             let font_desc_set = self.sampled_image_desc_set(layout, font_image.clone())?;
+
+            // store new texture
             self.texture_desc_sets.insert(texture_id, font_desc_set);
             self.texture_images.insert(texture_id, font_image);
         }
-        // Execute command buffer
-        let command_buffer = cbb.build()?;
+
+        // execute command buffer
+        let command_buffer = command_buffer_builder.build()?;
         let finished = command_buffer.execute(self.queue.clone())?;
         let _fut = finished.then_signal_fence_and_flush()?;
         Ok(())

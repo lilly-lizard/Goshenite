@@ -112,7 +112,7 @@ impl Gui {
             const DRAG_INC: f64 = 0.1;
 
             // TODO [TESTING] tests GuiRenderer create_texture() functionality for when ImageDelta.pos != None
-            // todo write actual test? or at least document for later testing suite?
+            // todo add to testing window function and document
             if ui.add(Button::new("gui renderer test")).clicked() {
                 let style = &*self.context.style();
                 let mut style = style.clone();
