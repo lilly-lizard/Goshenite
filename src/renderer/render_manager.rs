@@ -8,7 +8,7 @@ use crate::shaders::shader_interfaces::CameraPushConstant;
 use crate::{camera::Camera, helper::from_err_impl::from_err_impl};
 use log::{debug, error, info, warn};
 use std::{error, fmt, sync::Arc};
-use vulkano::swapchain::{SwapchainAbstract, SwapchainPresentInfo};
+use vulkano::swapchain::PresentInfo;
 use vulkano::{
     command_buffer,
     device::{self, Device, Queue},
@@ -348,11 +348,9 @@ impl RenderManager {
             .unwrap()
             .then_swapchain_present(
                 self.queue.clone(),
-                SwapchainPresentInfo {
-                    ..SwapchainPresentInfo::swapchain_image_index(
-                        self.swapchain.clone(),
-                        image_index,
-                    )
+                PresentInfo {
+                    index: image_index,
+                    ..PresentInfo::swapchain(self.swapchain.clone())
                 },
             )
             .then_signal_fence_and_flush();

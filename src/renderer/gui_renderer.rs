@@ -334,13 +334,13 @@ impl GuiRenderer {
                 };
 
                 // copy buffer to image
-                command_buffer_builder.copy_buffer_to_image(
-                    CopyBufferToImageInfo::buffer_image_regions(
+                command_buffer_builder.copy_buffer_to_image(CopyBufferToImageInfo {
+                    regions: [copy_region].into(),
+                    ..CopyBufferToImageInfo::buffer_image(
                         texture_data_buffer,
                         existing_image.image().clone(),
-                        [copy_region].into(),
-                    ),
-                )?;
+                    )
+                })?;
             }
         } else {
             // usually ImageDelta.pos == None meaning a new image needs to be created

@@ -5,7 +5,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - transfer queue
 	- requires removing blit from update_textures in gui_renderer
 - frame future for update_textures
-- vulkano CopyBufferToImageInfo::buffer_image_regions (and more) branch and pr
+- debug egui font size/dpi regression (after 01/10/22 crate version update)
 - support/handle VulkanError cases...
 - update vulkano and related crates
 - error sources and backtraces: https://github.com/dtolnay/anyhow
