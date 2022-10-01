@@ -1,19 +1,16 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
-- transfer queue
-	- requires removing blit from update_textures in gui_renderer
 - frame future for update_textures
 - debug egui font size/dpi regression (after 01/10/22 crate version update)
 - support/handle VulkanError cases...
-- update vulkano and related crates
 - error sources and backtraces: https://github.com/dtolnay/anyhow
+
 - try compute shader with circle compiler. benifits:
 	- c interop with rust codebase
 	- primitive classes and shit
 - render xyz arrows on selected object
 - render outline on selected object
-- tests for Primitives data
 
 ## cleanup
 
@@ -46,8 +43,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 	- https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#features-required-format-support
 	- VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_B10G11R11_UFLOAT_PACK32
 	- https://stackoverflow.com/questions/72548476/whats-the-best-practice-for-handling-format-qualifiers-for-images-in-compute-sh
-- pipeline cache (and write)
-- colored log output feature
+- tests for Primitives data
 
 - Bang Wong color palette
 - curl noise field
