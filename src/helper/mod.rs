@@ -1,7 +1,5 @@
-// note some of these should have their own crates really...
-
 pub mod angle;
-pub mod from_err_impl;
+pub mod anyhow_panic;
 #[allow(dead_code)]
 pub mod immutable;
 pub mod logger;

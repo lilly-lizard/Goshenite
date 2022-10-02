@@ -1,9 +1,8 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
-- get error source in engine.rs unwraps e.g. gui_renderer sync bug
+- handle vulkano::swapchain::SwapchainCreationError::ImageExtentNotSupported (see bottom of render_manager.rs)
 - test anyhow dereferencing e.g. SurfaceSizeUnsupported (see bottom of render_manager.rs)
-- error sources and backtraces: https://github.com/dtolnay/anyhow
 - frame future for update_textures
 - debug egui font size/dpi regression (after 01/10/22 crate version update)
 - support/handle VulkanError cases...

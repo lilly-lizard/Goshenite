@@ -710,7 +710,7 @@ mod vulkan_callback {
 
 /*
 /// Describes the types of errors encountered by the renderer
-// todo rename?
+// todo handle this stuff
 #[derive(Debug)]
 pub enum RenderManagerError {
     /// Requested dimensions are not within supported range when attempting to create a render target (swapchain)

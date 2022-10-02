@@ -2,6 +2,7 @@ use crate::camera::Camera;
 use crate::config;
 use crate::cursor_state::{CursorState, MouseButton};
 use crate::gui::Gui;
+use crate::helper::anyhow_panic::{anyhow_panic, anyhow_unwrap};
 use crate::primitives::{cube::Cube, primitives::PrimitiveCollection, sphere::Sphere};
 use crate::renderer::render_manager::RenderManager;
 use glam::Vec2;
@@ -38,7 +39,7 @@ impl Engine {
                     f64::from(default_resolution[1]),
                 ))
                 .build(event_loop)
-                .unwrap(),
+                .expect("failed to instanciate window due to os error"),
         );
         let scale_factor = window.scale_factor();
         let cursor_state = CursorState::new(window.clone());
@@ -54,7 +55,10 @@ impl Engine {
         );
 
         // init renderer
-        let renderer = RenderManager::new(window.clone(), &primitives).unwrap();
+        let renderer = anyhow_unwrap(
+            RenderManager::new(window.clone(), &primitives),
+            "initialize error",
+        );
 
         // init gui
         let gui = Gui::new(&event_loop, window.clone());
@@ -136,9 +140,12 @@ impl Engine {
         self.cursor_state.process_frame();
 
         // update gui
-        self.gui
+        if let Err(e) = self
+            .gui
             .update_frame(&mut self.renderer.gui_renderer_mut(), &mut self.primitives)
-            .unwrap();
+        {
+            anyhow_panic(&e, "update gui");
+        }
 
         // update camera
         if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
@@ -149,9 +156,12 @@ impl Engine {
         }
 
         // submit rendering commands
-        self.renderer
-            .render_frame(self.window_resize, &self.primitives, &self.gui, self.camera)
-            .unwrap();
+        if let Err(e) =
+            self.renderer
+                .render_frame(self.window_resize, &self.primitives, &self.gui, self.camera)
+        {
+            anyhow_panic(&e, "render frame");
+        }
         self.window_resize = false;
     }
 }
