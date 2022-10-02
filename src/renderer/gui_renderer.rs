@@ -10,6 +10,7 @@ use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId};
 use log::{debug, error, info, warn};
 use std::fmt::{self, Display};
 use std::sync::Arc;
+use vulkano::render_pass::Subpass;
 use vulkano::{
     buffer::{
         cpu_access::CpuAccessibleBuffer, cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool,
@@ -31,7 +32,6 @@ use vulkano::{
             color_blend::{AttachmentBlend, BlendFactor, ColorBlendState},
             input_assembly::InputAssemblyState,
             rasterization::{CullMode, RasterizationState},
-            render_pass::PipelineRenderingCreateInfo,
             vertex_input::BuffersDefinition,
             viewport::{Scissor, Viewport, ViewportState},
             GraphicsPipeline,
@@ -86,9 +86,9 @@ impl GuiRenderer {
     pub(super) fn new(
         device: Arc<Device>,
         transfer_queue: Arc<Queue>,
-        swapchain_image_format: Format,
+        subpass: Subpass,
     ) -> anyhow::Result<Self> {
-        let pipeline = create_pipeline(device.clone(), swapchain_image_format)?;
+        let pipeline = create_pipeline(device.clone(), subpass)?;
         let (vertex_buffer_pool, index_buffer_pool) = create_buffer_pools(device.clone())?;
         let sampler = Self::create_sampler(device.clone())?;
         Ok(Self {
@@ -440,10 +440,7 @@ impl GuiRenderer {
 /// Builds the gui rendering graphics pipeline.
 ///
 /// Helper function for [`Self::new`]
-fn create_pipeline(
-    device: Arc<Device>,
-    swapchain_image_format: Format,
-) -> anyhow::Result<Arc<GraphicsPipeline>> {
+fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<GraphicsPipeline>> {
     let mut blend = AttachmentBlend::alpha();
     blend.color_source = BlendFactor::One;
     let blend_state = ColorBlendState::new(1).blend(blend);
@@ -469,10 +466,7 @@ fn create_pipeline(
         .viewport_state(ViewportState::viewport_dynamic_scissor_dynamic(1))
         .color_blend_state(blend_state)
         .rasterization_state(RasterizationState::new().cull_mode(CullMode::None))
-        .render_pass(PipelineRenderingCreateInfo {
-            color_attachment_formats: vec![Some(swapchain_image_format)],
-            ..Default::default()
-        })
+        .render_pass(subpass)
         .build(device.clone())
         .context("gui pipeline")?)
 }

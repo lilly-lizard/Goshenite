@@ -57,7 +57,7 @@ impl Engine {
         // init renderer
         let renderer = anyhow_unwrap(
             RenderManager::new(window.clone(), &primitives),
-            "initialize error",
+            "initialize renderer",
         );
 
         // init gui

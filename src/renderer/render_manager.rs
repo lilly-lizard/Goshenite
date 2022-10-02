@@ -6,30 +6,45 @@ use crate::config;
 use crate::gui::Gui;
 use crate::primitives::primitives::PrimitiveCollection;
 use crate::shaders::shader_interfaces::CameraPushConstant;
-use anyhow::{anyhow, bail, Context};
+use anyhow::{anyhow, bail, ensure, Context};
 use log::{debug, error, info, warn};
 use std::sync::Arc;
 use vulkano::{
-    command_buffer,
+    command_buffer::{self, RenderPassBeginInfo, SubpassContents},
     device::{
         self,
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo,
     },
-    format::Format,
-    image::{view::ImageView, ImageAccess, ImageUsage, StorageImage, SwapchainImage},
+    format::{ClearValue, Format},
+    image::{
+        view::ImageView, ImageAccess, ImageLayout, ImageUsage, SampleCount, StorageImage,
+        SwapchainImage,
+    },
     instance::debug::{
         DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
         DebugUtilsMessengerCreateInfo,
     },
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
     pipeline::graphics::viewport::Viewport,
-    render_pass::{LoadOp, StoreOp},
+    render_pass::{
+        AttachmentDescription, AttachmentReference, Framebuffer, FramebufferCreateInfo, LoadOp,
+        RenderPass, RenderPassCreateInfo, StoreOp, Subpass, SubpassDependency, SubpassDescription,
+    },
     swapchain::{self, PresentInfo, Surface, Swapchain},
-    sync::{self, FlushError, GpuFuture},
+    sync::{self, AccessFlags, FlushError, GpuFuture, PipelineStages},
     VulkanLibrary,
 };
 use winit::window::Window;
+
+/// Indices for render pass attachments and subpasses
+mod render_pass_indices {
+    pub const ATTACHMENT_SWAPCHAIN: u32 = 0;
+    pub const SUBPASS_SWAPCHAIN: u32 = 0;
+}
+
+/// Indicates a queue family index
+pub type QueueFamilyIndex = u32;
 
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
@@ -41,8 +56,11 @@ pub struct RenderManager {
     surface: Arc<Surface<Arc<Window>>>,
     swapchain: Arc<Swapchain<Arc<Window>>>,
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
+
     viewport: Viewport,
     render_image: Arc<ImageView<StorageImage>>,
+    render_pass: Arc<RenderPass>,
+    framebuffers: Vec<Arc<Framebuffer>>,
 
     scene_pass: ScenePass,
     blit_pass: BlitPass,
@@ -52,9 +70,6 @@ pub struct RenderManager {
     /// indicates that the swapchain needs to be recreated next frame
     recreate_swapchain: bool,
 }
-
-/// Indicates a queue family index
-pub type QueueFamilyIndex = u32;
 
 // ~~~ Public functions ~~~
 
@@ -228,6 +243,13 @@ impl RenderManager {
             swapchain_images[0].dimensions().width_height(),
         )?;
 
+        // create render_pass
+        let multisample = SampleCount::Sample1;
+        let render_pass = create_render_pass(device.clone(), &swapchain_image_views, multisample)?;
+
+        // create framebuffers
+        let framebuffers = create_framebuffers(render_pass.clone(), &swapchain_image_views)?;
+
         // init compute shader scene pass
         let scene_pass = ScenePass::new(
             device.clone(),
@@ -239,15 +261,25 @@ impl RenderManager {
         // init blit pass
         let blit_pass = BlitPass::new(
             device.clone(),
-            swapchain.image_format(),
             render_image.clone(),
+            Subpass::from(render_pass.clone(), render_pass_indices::SUBPASS_SWAPCHAIN).ok_or(
+                anyhow!(
+                    "render pass does not contain subpass at index {}",
+                    render_pass_indices::SUBPASS_SWAPCHAIN
+                ),
+            )?,
         )?;
 
         // init gui renderer
         let gui_pass = GuiRenderer::new(
             device.clone(),
             transfer_queue.clone(),
-            swapchain.image_format(),
+            Subpass::from(render_pass.clone(), render_pass_indices::SUBPASS_SWAPCHAIN).ok_or(
+                anyhow!(
+                    "render pass does not contain subpass at index {}",
+                    render_pass_indices::SUBPASS_SWAPCHAIN
+                ),
+            )?,
         )?;
 
         // create futures used for frame synchronization
@@ -264,6 +296,8 @@ impl RenderManager {
             swapchain_image_views,
             viewport,
             render_image,
+            render_pass,
+            framebuffers,
             scene_pass,
             blit_pass,
             gui_pass,
@@ -298,7 +332,7 @@ impl RenderManager {
         }
 
         // blocks when no images currently available (all have been submitted already)
-        let (image_index, suboptimal, acquire_future) =
+        let (swapchain_index, suboptimal, acquire_future) =
             match swapchain::acquire_next_image(self.swapchain.clone(), None) {
                 Ok(r) => r,
                 Err(swapchain::AcquireError::OutOfDate) => {
@@ -327,6 +361,7 @@ impl RenderManager {
             command_buffer::CommandBufferUsage::OneTimeSubmit,
         )
         .unwrap();
+
         // compute shader scene render
         let camera_push_constant = CameraPushConstant::new(
             glam::Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
@@ -334,24 +369,26 @@ impl RenderManager {
         );
         self.scene_pass
             .record_commands(&mut builder, camera_push_constant)?;
+
         // begin render pass
+        let clear_values: Vec<Option<ClearValue>> = vec![Some([0.0, 0.0, 0.0, 1.0].into())];
         builder
-            .begin_rendering(command_buffer::RenderingInfo {
-                color_attachments: vec![Some(command_buffer::RenderingAttachmentInfo {
-                    load_op: LoadOp::Clear,
-                    store_op: StoreOp::Store,
-                    clear_value: Some([0.0, 1.0, 0.0, 1.0].into()),
-                    ..command_buffer::RenderingAttachmentInfo::image_view(
-                        self.swapchain_image_views[image_index as usize].clone(),
+            .begin_render_pass(
+                RenderPassBeginInfo {
+                    clear_values,
+                    ..RenderPassBeginInfo::framebuffer(
+                        self.framebuffers[swapchain_index as usize].clone(),
                     )
-                })],
-                ..Default::default()
-            })
-            .context("recording vkCmdBeginRendering")?;
+                },
+                SubpassContents::Inline,
+            )
+            .context("recording begin render pass command")?;
+
         // draw render image to screen
         self.blit_pass
             .record_commands(&mut builder, self.viewport.clone())?;
-        // render gui todo return error
+
+        // render gui
         self.gui_pass.record_commands(
             &mut builder,
             gui,
@@ -361,10 +398,11 @@ impl RenderManager {
                 self.viewport.dimensions[1] as u32,
             ],
         )?;
+
         // end render pass
         builder
-            .end_rendering()
-            .context("recording vkCmdEndRendering")?;
+            .end_render_pass()
+            .context("recording end render pass command")?;
         let command_buffer = builder.build().context("building frame command buffer")?;
 
         // submit
@@ -378,7 +416,7 @@ impl RenderManager {
             .then_swapchain_present(
                 self.render_queue.clone(),
                 PresentInfo {
-                    index: image_index,
+                    index: swapchain_index,
                     ..PresentInfo::swapchain(self.swapchain.clone())
                 },
             )
@@ -425,10 +463,15 @@ impl RenderManager {
         let resolution = swapchain_images[0].dimensions().width_height();
         self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
 
+        // recreate render image with new dimensions
         self.render_image = create_render_image(
             self.render_queue.clone(),
             swapchain_images[0].dimensions().width_height(),
         )?;
+
+        // recreate render pass and framebuffers for new swapchain images
+        self.framebuffers =
+            create_framebuffers(self.render_pass.clone(), &self.swapchain_image_views)?;
 
         // update scene pass
         self.scene_pass
@@ -520,88 +563,6 @@ fn setup_debug_callback(instance: Arc<Instance>) -> Option<DebugUtilsMessenger> 
     }
 }
 
-/// Create swapchain and swapchain images
-fn create_swapchain(
-    device: Arc<Device>,
-    physical_device: Arc<PhysicalDevice>,
-    surface: Arc<Surface<Arc<Window>>>,
-) -> anyhow::Result<(
-    Arc<Swapchain<Arc<Window>>>,
-    Vec<Arc<SwapchainImage<Arc<Window>>>>,
-)> {
-    // todo prefer sRGB (linux sRGB)
-    let image_format = physical_device
-        .surface_formats(&surface, Default::default())
-        .context("querying surface formats")?
-        .get(0)
-        .expect("vulkan driver should support at least 1 surface format... right?")
-        .0;
-    debug!("swapchain image format = {:?}", image_format);
-
-    let surface_capabilities = physical_device
-        .surface_capabilities(&surface, Default::default())
-        .context("querying surface capabilities")?;
-    let composite_alpha = surface_capabilities
-        .supported_composite_alpha
-        .iter()
-        .max_by_key(|c| match c {
-            swapchain::CompositeAlpha::PostMultiplied => 4,
-            swapchain::CompositeAlpha::Inherit => 3,
-            swapchain::CompositeAlpha::Opaque => 2,
-            swapchain::CompositeAlpha::PreMultiplied => 1, // because cbf implimenting this logic
-            _ => 0,
-        })
-        .expect("surface should support at least 1 composite mode... right?");
-    debug!("swapchain composite alpha = {:?}", composite_alpha);
-
-    let mut present_modes = physical_device
-        .surface_present_modes(&surface)
-        .context("querying surface present modes")?;
-    let present_mode = present_modes
-        .find(|&pm| pm == swapchain::PresentMode::Mailbox)
-        .unwrap_or(swapchain::PresentMode::Fifo);
-    debug!("swapchain present mode = {:?}", present_mode);
-
-    swapchain::Swapchain::new(
-        device.clone(),
-        surface.clone(),
-        swapchain::SwapchainCreateInfo {
-            min_image_count: surface_capabilities.min_image_count,
-            image_extent: surface.window().inner_size().into(),
-            image_usage: ImageUsage {
-                color_attachment: true,
-                ..ImageUsage::empty()
-            },
-            image_format: Some(image_format),
-            composite_alpha,
-            present_mode,
-            ..Default::default()
-        },
-    )
-    .context("creating swapchain")
-}
-
-/// Creates the render target for the scene render. _Note that the value of `access_queue` isn't actually used
-/// in the vulkan image creation create info._
-fn create_render_image(
-    access_queue: Arc<Queue>,
-    size: [u32; 2],
-) -> anyhow::Result<Arc<ImageView<StorageImage>>> {
-    // format must match what's specified in the compute shader layout
-    let render_image_format = Format::R8G8B8A8_UNORM;
-    StorageImage::general_purpose_image_view(
-        access_queue,
-        size,
-        render_image_format,
-        ImageUsage {
-            storage: true,
-            sampled: true,
-            ..ImageUsage::empty()
-        },
-    )
-    .context("creating render image")
-}
-
 /// Choose physical device and queue families
 fn choose_physical_device(
     instance: Arc<Instance>,
@@ -687,6 +648,179 @@ struct ChoosePhysicalDeviceReturn {
     pub physical_device: Arc<PhysicalDevice>,
     pub render_queue_family: QueueFamilyIndex,
     pub transfer_queue_family: QueueFamilyIndex,
+}
+
+/// Create swapchain and swapchain images
+fn create_swapchain(
+    device: Arc<Device>,
+    physical_device: Arc<PhysicalDevice>,
+    surface: Arc<Surface<Arc<Window>>>,
+) -> anyhow::Result<(
+    Arc<Swapchain<Arc<Window>>>,
+    Vec<Arc<SwapchainImage<Arc<Window>>>>,
+)> {
+    // todo prefer sRGB (linux sRGB)
+    let image_format = physical_device
+        .surface_formats(&surface, Default::default())
+        .context("querying surface formats")?
+        .get(0)
+        .expect("vulkan driver should support at least 1 surface format... right?")
+        .0;
+    debug!("swapchain image format = {:?}", image_format);
+
+    let surface_capabilities = physical_device
+        .surface_capabilities(&surface, Default::default())
+        .context("querying surface capabilities")?;
+    let composite_alpha = surface_capabilities
+        .supported_composite_alpha
+        .iter()
+        .max_by_key(|c| match c {
+            swapchain::CompositeAlpha::PostMultiplied => 4,
+            swapchain::CompositeAlpha::Inherit => 3,
+            swapchain::CompositeAlpha::Opaque => 2,
+            swapchain::CompositeAlpha::PreMultiplied => 1, // because cbf implimenting this logic
+            _ => 0,
+        })
+        .expect("surface should support at least 1 composite mode... right?");
+    debug!("swapchain composite alpha = {:?}", composite_alpha);
+
+    let mut present_modes = physical_device
+        .surface_present_modes(&surface)
+        .context("querying surface present modes")?;
+    let present_mode = present_modes
+        .find(|&pm| pm == swapchain::PresentMode::Mailbox)
+        .unwrap_or(swapchain::PresentMode::Fifo);
+    debug!("swapchain present mode = {:?}", present_mode);
+
+    swapchain::Swapchain::new(
+        device.clone(),
+        surface.clone(),
+        swapchain::SwapchainCreateInfo {
+            min_image_count: surface_capabilities.min_image_count,
+            image_extent: surface.window().inner_size().into(),
+            image_usage: ImageUsage {
+                color_attachment: true,
+                ..ImageUsage::empty()
+            },
+            image_format: Some(image_format),
+            composite_alpha,
+            present_mode,
+            ..Default::default()
+        },
+    )
+    .context("creating swapchain")
+}
+
+/// Creates the render target for the scene render. _Note that the value of `access_queue` isn't actually used
+/// in the vulkan image creation create info._
+fn create_render_image(
+    access_queue: Arc<Queue>,
+    size: [u32; 2],
+) -> anyhow::Result<Arc<ImageView<StorageImage>>> {
+    // format must match what's specified in the compute shader layout
+    let render_image_format = Format::R8G8B8A8_UNORM;
+    StorageImage::general_purpose_image_view(
+        access_queue,
+        size,
+        render_image_format,
+        ImageUsage {
+            storage: true,
+            sampled: true,
+            ..ImageUsage::empty()
+        },
+    )
+    .context("creating render image")
+}
+
+/// Create render pass
+fn create_render_pass(
+    device: Arc<Device>,
+    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
+    swapchain_sample_count: SampleCount,
+) -> anyhow::Result<Arc<RenderPass>> {
+    ensure!(
+        swapchain_image_views.len() >= 1,
+        "no swapchain images provided to create render pass"
+    );
+    let swapchain_image = &swapchain_image_views[0].image();
+
+    let attachments: Vec<AttachmentDescription> = vec![
+        // swapchain image
+        AttachmentDescription {
+            format: Some(swapchain_image.format()),
+            samples: swapchain_sample_count,
+            load_op: LoadOp::Clear,
+            store_op: StoreOp::Store,
+            initial_layout: ImageLayout::PresentSrc,
+            final_layout: ImageLayout::PresentSrc,
+            ..Default::default()
+        },
+    ];
+
+    let subpasses = vec![
+        // blit + gui passes
+        SubpassDescription {
+            color_attachments: vec![Some(AttachmentReference {
+                attachment: render_pass_indices::ATTACHMENT_SWAPCHAIN,
+                layout: ImageLayout::ColorAttachmentOptimal,
+                ..Default::default()
+            })],
+            ..Default::default()
+        },
+    ];
+
+    let dependencies = vec![
+        // wait for swapchain to finish reading from image before rendering (vulkano probably adds some conservative sync anyway tho...)
+        SubpassDependency {
+            source_subpass: None, // = VK_SUBPASS_EXTERNAL
+            destination_subpass: Some(render_pass_indices::SUBPASS_SWAPCHAIN),
+            source_stages: PipelineStages {
+                color_attachment_output: true,
+                ..Default::default()
+            },
+            source_access: AccessFlags::empty(),
+            destination_stages: PipelineStages {
+                color_attachment_output: true,
+                ..Default::default()
+            },
+            destination_access: AccessFlags {
+                color_attachment_write: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        },
+    ];
+
+    RenderPass::new(
+        device,
+        RenderPassCreateInfo {
+            attachments,
+            subpasses,
+            dependencies,
+            ..Default::default()
+        },
+    )
+    .context("creating vulkan render pass")
+}
+
+/// Create swapchain image framebuffers
+fn create_framebuffers(
+    render_pass: Arc<RenderPass>,
+    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
+) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
+    swapchain_image_views
+        .iter()
+        .map(|image_view| {
+            Framebuffer::new(
+                render_pass.clone(),
+                FramebufferCreateInfo {
+                    attachments: vec![image_view.clone()],
+                    ..Default::default()
+                },
+            )
+            .context("creating vulkan framebuffer")
+        })
+        .collect::<anyhow::Result<Vec<_>>>()
 }
 
 /// This mod just makes the module path unique for debug callbacks in the log

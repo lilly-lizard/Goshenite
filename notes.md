@@ -1,13 +1,13 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
-- debug egui font size/dpi regression (after 01/10/22 crate version update)
+- handle SUBOPTIMAL_KHR
+- renderdoc see vulkano command output e.g. pipeline barriers, semaphores...
+- render xyz arrows on selected object
 - frame future for update_textures
-
 - try compute shader with circle compiler. benifits:
 	- c interop with rust codebase
 	- primitive classes and shit
-- render xyz arrows on selected object
 - render outline on selected object
 
 ## cleanup

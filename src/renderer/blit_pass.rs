@@ -8,15 +8,12 @@ use vulkano::{
     command_buffer::AutoCommandBufferBuilder,
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::Device,
-    format::Format,
     image::{view::ImageView, StorageImage},
     pipeline::{
-        graphics::{
-            render_pass::PipelineRenderingCreateInfo,
-            viewport::{Viewport, ViewportState},
-        },
+        graphics::viewport::{Viewport, ViewportState},
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
+    render_pass::Subpass,
     sampler::{self, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
 };
 
@@ -41,11 +38,11 @@ pub struct BlitPass {
 impl BlitPass {
     pub fn new(
         device: Arc<Device>,
-        swapchain_image_format: Format,
         render_image: Arc<ImageView<StorageImage>>,
+        subpass: Subpass,
     ) -> anyhow::Result<Self> {
         let sampler = create_sampler(device.clone())?;
-        let pipeline = create_pipeline(device.clone(), swapchain_image_format)?;
+        let pipeline = create_pipeline(device.clone(), subpass)?;
         let desc_set = create_desc_set(pipeline.clone(), render_image.clone(), sampler.clone())?;
         Ok(Self {
             pipeline,
@@ -99,10 +96,7 @@ fn create_sampler(device: Arc<Device>) -> anyhow::Result<Arc<Sampler>> {
     .context("creating blit pass sampler")
 }
 
-fn create_pipeline(
-    device: Arc<Device>,
-    swapchain_image_format: Format,
-) -> anyhow::Result<Arc<GraphicsPipeline>> {
+fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<GraphicsPipeline>> {
     let vert_module = create_shader_module(device.clone(), VERT_SHADER_PATH)?;
     let vert_shader =
         vert_module
@@ -118,10 +112,7 @@ fn create_pipeline(
                 FRAG_SHADER_PATH.to_string(),
             ))?;
     Ok(GraphicsPipeline::start()
-        .render_pass(PipelineRenderingCreateInfo {
-            color_attachment_formats: vec![Some(swapchain_image_format)],
-            ..Default::default()
-        })
+        .render_pass(subpass)
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .vertex_shader(vert_shader, ())
         .fragment_shader(frag_shader, ())

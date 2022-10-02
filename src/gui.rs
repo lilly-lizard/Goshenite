@@ -273,7 +273,7 @@ impl Gui {
             // TODO [TESTING] tests GuiRenderer create_texture() functionality for when ImageDelta.pos != None
             // todo add to testing window function and document
             ui.separator();
-            if ui.add(Button::new("gui renderer test")).clicked() {
+            if ui.add(Button::new("gui bug test")).clicked() {
                 let style = &*self.context.style();
                 let mut style = style.clone();
                 style.text_styles = [
