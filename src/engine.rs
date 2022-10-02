@@ -51,7 +51,7 @@ impl Engine {
         let mut primitives = PrimitiveCollection::default();
         primitives.add_primitive(Sphere::new(glam::Vec3::new(0.0, 1.0, -0.4), 0.4).into());
         primitives.add_primitive(
-            Cube::new(glam::Vec3::new(0.0, -1.0, 0.4), glam::Vec3::splat(0.4)).into(),
+            Cube::new(glam::Vec3::new(0.0, -1.0, 0.4), glam::Vec3::splat(0.8)).into(),
         );
 
         // init renderer

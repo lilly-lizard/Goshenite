@@ -1,10 +1,10 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
+- debug egui font size/dpi regression (after 01/10/22 crate version update)
 - handle vulkano::swapchain::SwapchainCreationError::ImageExtentNotSupported (see bottom of render_manager.rs)
 - test anyhow dereferencing e.g. SurfaceSizeUnsupported (see bottom of render_manager.rs)
 - frame future for update_textures
-- debug egui font size/dpi regression (after 01/10/22 crate version update)
 - support/handle VulkanError cases...
 
 - try compute shader with circle compiler. benifits:
@@ -37,6 +37,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## low priority
 
+- highlight changed primitive values in gui (to indicate what hasn't been updated)
 - error and warn log messages in gui (popups?)
 - draw sdf sphere with AABB
 - double buffering (2 frames in flight) -> double up futures/per-frame resources, reduce cpu-gpu sync blocking

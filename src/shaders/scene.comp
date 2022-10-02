@@ -41,8 +41,8 @@ float sdfSphere(vec3 point, vec3 center, float radius)
 /// * `dimensions` - width, length and height of the box
 float sdfBox(vec3 point, vec3 center, vec3 dimensions)
 {
-    vec3 d = abs(point - center) - dimensions;
-    return min(max(d.x, max(d.y, d.z)), 0.0) + length(max(d, 0.0));
+    vec3 d = abs(point - center) - dimensions / 2.;
+    return min(max(d.x, max(d.y, d.z)), 0.) + length(max(d, 0.));
 }
 
 /// Returns a sky color for a ray miss

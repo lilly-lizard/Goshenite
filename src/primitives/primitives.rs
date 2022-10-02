@@ -8,7 +8,7 @@ use glam::Vec3;
 use std::fmt;
 
 /// Required functions for a usable primitive.
-pub trait EncodablePrimitive {
+pub trait PrimitiveTrait {
     /// Returns the primitive data encoded as a [`PrimitiveDataSlice`].
     ///
     /// _Note: must match the decode process in `scene.comp`_
@@ -18,13 +18,13 @@ pub trait EncodablePrimitive {
 }
 
 /// Enum of all the supported primitive types.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Primitive {
     Null,
     Sphere(Sphere),
     Cube(Cube),
 }
-impl EncodablePrimitive for Primitive {
+impl PrimitiveTrait for Primitive {
     fn encode(&self) -> PrimitiveDataSlice {
         match self {
             Primitive::Null => [primitive_codes::NULL; PRIMITIVE_LEN],
@@ -43,6 +43,16 @@ impl EncodablePrimitive for Primitive {
 impl Default for Primitive {
     fn default() -> Self {
         Self::Null
+    }
+}
+impl Primitive {
+    /// Returns the name of the enum primitive type
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Self::Null => "Null",
+            Self::Sphere(_) => "Sphere",
+            Self::Cube(_) => "Cube",
+        }
     }
 }
 from_enum_impl!(Primitive, Sphere);

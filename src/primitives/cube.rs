@@ -1,8 +1,8 @@
-use super::primitives::EncodablePrimitive;
+use super::primitives::PrimitiveTrait;
 use crate::shaders::shader_interfaces::{primitive_codes, PrimitiveDataSlice};
 use glam::Vec3;
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Cube {
     pub center: Vec3,
     pub dimensions: Vec3,
@@ -12,7 +12,7 @@ impl Cube {
         Self { center, dimensions }
     }
 }
-impl EncodablePrimitive for Cube {
+impl PrimitiveTrait for Cube {
     fn encode(&self) -> PrimitiveDataSlice {
         [
             primitive_codes::CUBE,
@@ -45,5 +45,13 @@ impl EncodablePrimitive for Cube {
 
     fn center(&self) -> Vec3 {
         self.center
+    }
+}
+impl Default for Cube {
+    fn default() -> Self {
+        Self {
+            center: Vec3::ZERO,
+            dimensions: Vec3::ONE,
+        }
     }
 }

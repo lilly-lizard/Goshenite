@@ -1,7 +1,7 @@
 use crate::primitives::primitives::{Primitive, PrimitiveCollection};
 use crate::renderer::gui_renderer::GuiRenderer;
 use egui::FontFamily::Proportional;
-use egui::{Button, Checkbox, DragValue, FontId, Sense};
+use egui::{Button, Checkbox, ComboBox, DragValue, FontId, Sense};
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 use std::sync::Arc;
@@ -126,31 +126,79 @@ impl Gui {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
             /// Ammount to incriment when modifying by dragging
-            const DRAG_INC: f64 = 0.1;
-
-            // TODO [TESTING] tests GuiRenderer create_texture() functionality for when ImageDelta.pos != None
-            // todo add to testing window function and document
-            if ui.add(Button::new("gui renderer test")).clicked() {
-                let style = &*self.context.style();
-                let mut style = style.clone();
-                style.text_styles = [
-                    (egui::TextStyle::Heading, FontId::new(20.0, Proportional)),
-                    (egui::TextStyle::Body, FontId::new(18.0, Proportional)),
-                    (egui::TextStyle::Monospace, FontId::new(14.0, Proportional)),
-                    (egui::TextStyle::Button, FontId::new(14.0, Proportional)),
-                    (egui::TextStyle::Small, FontId::new(10.0, Proportional)),
-                ]
-                .into();
-                self.context.set_style(style);
-            }
+            const DRAG_INC: f64 = 0.02;
 
             if let Some(primitive_index) = self.input_state.selected_primitive {
-                ui.label(format!("Primitive {}", primitive_index));
+                // status
+                ui.heading(format!("Modify primitive {}", primitive_index));
+
+                // update primitive buttons
+                let mut update_primitive = self.input_state.live_update;
+                ui.horizontal(|ui| {
+                    // 'Update' button (disabled in 'Live update' mode)
+                    update_primitive |= ui
+                        .add(
+                            Button::new("Update").sense(if self.input_state.live_update {
+                                // disable if 'Live update' mode is on
+                                Sense::hover()
+                            } else {
+                                Sense::click()
+                            }),
+                        )
+                        .clicked();
+                    // 'Live update' checkbox means the primitive data gets constantly updated
+                    ui.add(Checkbox::new(
+                        &mut self.input_state.live_update,
+                        "Live update",
+                    ));
+                });
+                if update_primitive {
+                    // overwrite selected primitive with user data
+                    if let Err(e) = primitives
+                        .update_primitive(primitive_index, self.input_state.primitive_input.into())
+                    {
+                        warn!("could not update primitive due to: {}", e);
+                    }
+                }
             } else {
-                // add new primitive
-                ui.label("None selected...");
+                // status
+                ui.heading("New primitive");
+
+                ui.horizontal(|ui| {
+                    // new primitive button
+                    if ui
+                        .add(Button::new("Add").sense(
+                            if self.input_state.primitive_input == Primitive::Null {
+                                // disable if primitive type == Null
+                                Sense::hover()
+                            } else {
+                                Sense::click()
+                            },
+                        ))
+                        .clicked()
+                    {
+                        primitives.add_primitive(self.input_state.primitive_input);
+                    }
+
+                    // dropdown menu to select primitive type
+                    ComboBox::from_label("Primitive type")
+                        .selected_text(self.input_state.primitive_input.type_name())
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut self.input_state.primitive_input,
+                                Primitive::Sphere(Default::default()),
+                                "Sphere",
+                            );
+                            ui.selectable_value(
+                                &mut self.input_state.primitive_input,
+                                Primitive::Cube(Default::default()),
+                                "Cube",
+                            );
+                        });
+                });
             };
 
+            // user data input
             match self.input_state.primitive_input {
                 Primitive::Sphere(ref mut s) => {
                     ui.horizontal(|ui| {
@@ -185,48 +233,20 @@ impl Gui {
                 Primitive::Null => (),
             };
 
-            if let Some(primitive_index) = self.input_state.selected_primitive {
-                let mut update_primitive = self.input_state.live_update;
-                ui.horizontal(|ui| {
-                    update_primitive |= ui
-                        .add(
-                            Button::new("Update").sense(if self.input_state.live_update {
-                                Sense::hover()
-                            } else {
-                                Sense::click()
-                            }),
-                        )
-                        .clicked();
-                    ui.add(Checkbox::new(
-                        &mut self.input_state.live_update,
-                        "Live update",
-                    ));
-                });
-                if update_primitive {
-                    // overwrite selected primitive with user data
-                    if let Err(e) = primitives
-                        .update_primitive(primitive_index, self.input_state.primitive_input.into())
-                    {
-                        warn!("could not update primitive due to: {}", e);
-                    }
-                }
-            } else {
-                // todo add new primtive
-            }
-
             ui.separator();
             // TODO CLICKING LOGIC?? frame delay for stuff above to update :''''(
 
-            // if ui
-            //     .selectable_label(
-            //         self.input_state.selected_primitive.is_none(),
-            //         "New primitive",
-            //     )
-            //     .clicked()
-            // {
-            //     self.input_state.selected_primitive = None;
-            //     todo!("new primitive logic?");
-            // }
+            // primitive list
+            if ui
+                .selectable_label(
+                    self.input_state.selected_primitive.is_none(),
+                    "New primitive",
+                )
+                .clicked()
+            {
+                self.input_state.selected_primitive = None;
+                self.input_state.primitive_input = Primitive::Null;
+            }
             let primitives = primitives.primitives();
             for i in 0..primitives.len() {
                 let is_selected = if let Some(pi) = self.input_state.selected_primitive {
@@ -249,9 +269,26 @@ impl Gui {
                     self.input_state.primitive_input = primitives[i];
                 };
             }
+
+            // TODO [TESTING] tests GuiRenderer create_texture() functionality for when ImageDelta.pos != None
+            // todo add to testing window function and document
+            ui.separator();
+            if ui.add(Button::new("gui renderer test")).clicked() {
+                let style = &*self.context.style();
+                let mut style = style.clone();
+                style.text_styles = [
+                    (egui::TextStyle::Heading, FontId::new(20.0, Proportional)),
+                    (egui::TextStyle::Body, FontId::new(18.0, Proportional)),
+                    (egui::TextStyle::Monospace, FontId::new(14.0, Proportional)),
+                    (egui::TextStyle::Button, FontId::new(14.0, Proportional)),
+                    (egui::TextStyle::Small, FontId::new(10.0, Proportional)),
+                ]
+                .into();
+                self.context.set_style(style);
+            }
         };
         // add window to egui context
-        egui::Window::new("Spheres")
+        egui::Window::new("Primitive Editor")
             .resizable(true)
             .vscroll(true)
             .hscroll(true)

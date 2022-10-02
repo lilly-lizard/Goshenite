@@ -1,8 +1,8 @@
-use super::primitives::EncodablePrimitive;
+use super::primitives::PrimitiveTrait;
 use crate::shaders::shader_interfaces::{primitive_codes, PrimitiveDataSlice};
 use glam::Vec3;
 
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sphere {
     pub center: Vec3,
     pub radius: f32,
@@ -12,7 +12,7 @@ impl Sphere {
         Self { center, radius }
     }
 }
-impl EncodablePrimitive for Sphere {
+impl PrimitiveTrait for Sphere {
     fn encode(&self) -> PrimitiveDataSlice {
         [
             primitive_codes::SPHERE,
@@ -41,5 +41,13 @@ impl EncodablePrimitive for Sphere {
 
     fn center(&self) -> Vec3 {
         self.center
+    }
+}
+impl Default for Sphere {
+    fn default() -> Self {
+        Self {
+            center: Vec3::ZERO,
+            radius: 1.0,
+        }
     }
 }
