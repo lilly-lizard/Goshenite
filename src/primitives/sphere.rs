@@ -38,4 +38,8 @@ impl EncodablePrimitive for Sphere {
         let radius = f32::from_bits(data[4]);
         Some(Self { center, radius })
     }*/
+
+    fn center(&self) -> Vec3 {
+        self.center
+    }
 }

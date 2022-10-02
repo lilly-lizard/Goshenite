@@ -37,6 +37,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## low priority
 
+- error and warn log messages in gui (popups?)
 - draw sdf sphere with AABB
 - double buffering (2 frames in flight) -> double up futures/per-frame resources, reduce cpu-gpu sync blocking
 - Camera::rotate quaternions https://www.3dgep.com/understanding-quaternions/

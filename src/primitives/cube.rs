@@ -42,4 +42,8 @@ impl EncodablePrimitive for Cube {
         );
         Some(Self { center, dimensions })
     }*/
+
+    fn center(&self) -> Vec3 {
+        self.center
+    }
 }
