@@ -95,7 +95,7 @@ impl Engine {
 
     /// Process window events and update state
     fn process_input(&mut self, event: WindowEvent) {
-        debug!("winit event: {:?}", event);
+        //debug!("winit event: {:?}", event);
 
         // egui event handling
         let captured_by_gui = self.gui.process_event(&event);

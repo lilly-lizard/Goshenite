@@ -280,14 +280,18 @@ fn create_primitives_buffer(
     buffer_pool: &CpuBufferPool<PrimitiveDataUnit>,
 ) -> anyhow::Result<Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StandardMemoryPool>>>> {
     // todo should be able to update buffer wihtout recreating?
+    let combined_data = PrimitiveData::combined_data(primitives)?;
+    //debug!(
+    //    "creating new primitives buffer slice for {} primitives",
+    //    combined_data.len()
+    //);
     buffer_pool
-        .from_iter(PrimitiveData::combined_data(primitives)?)
+        .from_iter(combined_data)
         .context("creating primitives buffer")
 }
 
 // ~~~ Errors ~~~
 
-// todo replace with anyhow!()
 #[derive(Debug)]
 pub enum ScenePassError {
     /// The calculated compute shader work group count exceeds physical device limits.

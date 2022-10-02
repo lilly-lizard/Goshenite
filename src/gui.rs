@@ -8,17 +8,17 @@ use std::sync::Arc;
 use winit::event_loop::EventLoopWindowTarget;
 use winit::window::Window;
 
-// user input values...
+/// Primitive editor window state e.g. user input
 #[derive(Clone, Copy, Debug)]
-struct InputState {
+struct PrimitiveEditorState {
     /// `PrimitiveCollection` index of selected primitive
     selected_primitive: Option<usize>,
     /// Contains user input data for primitive editor
     primitive_input: Primitive,
-    /// todo
+    /// Live update mode means user input primitive data is continuously updated
     live_update: bool,
 }
-impl Default for InputState {
+impl Default for PrimitiveEditorState {
     fn default() -> Self {
         Self {
             selected_primitive: None,
@@ -33,8 +33,8 @@ pub struct Gui {
     window: Arc<Window>,
     context: egui::Context,
     window_state: egui_winit::State,
-    primitives: Vec<egui::ClippedPrimitive>,
-    input_state: InputState,
+    mesh_primitives: Vec<egui::ClippedPrimitive>,
+    primitive_editor_state: PrimitiveEditorState,
 }
 // Public functions
 impl Gui {
@@ -56,8 +56,8 @@ impl Gui {
             window: window.clone(),
             context,
             window_state: egui_winit::State::new(event_loop),
-            primitives: vec![],
-            input_state: Default::default(),
+            mesh_primitives: vec![],
+            primitive_editor_state: Default::default(),
         }
     }
 
@@ -73,8 +73,8 @@ impl Gui {
     }
 
     /// Get a reference to the clipped meshes required for rendering
-    pub fn primitives(&self) -> &Vec<egui::ClippedPrimitive> {
-        &self.primitives
+    pub fn mesh_primitives(&self) -> &Vec<egui::ClippedPrimitive> {
+        &self.mesh_primitives
     }
 
     /// Returns the scale factor (i.e. window dpi) currently configured for the egui context.
@@ -111,7 +111,7 @@ impl Gui {
         );
 
         // store clipped primitive data for use by the renderer
-        self.primitives = self.context.tessellate(shapes);
+        self.mesh_primitives = self.context.tessellate(shapes);
 
         // add/free textures resources in the gui renderer. note this must happen here to be
         // certain that this frame's `textures_delta` is processed
@@ -128,35 +128,35 @@ impl Gui {
             /// Ammount to incriment when modifying by dragging
             const DRAG_INC: f64 = 0.02;
 
-            if let Some(primitive_index) = self.input_state.selected_primitive {
+            // persistent state
+            let PrimitiveEditorState {
+                selected_primitive,
+                primitive_input,
+                live_update,
+            } = &mut self.primitive_editor_state;
+
+            if let Some(primitive_index) = *selected_primitive {
                 // status
                 ui.heading(format!("Modify primitive {}", primitive_index));
 
                 // update primitive buttons
-                let mut update_primitive = self.input_state.live_update;
+                let mut update_primitive = *live_update;
                 ui.horizontal(|ui| {
                     // 'Update' button (disabled in 'Live update' mode)
                     update_primitive |= ui
-                        .add(
-                            Button::new("Update").sense(if self.input_state.live_update {
-                                // disable if 'Live update' mode is on
-                                Sense::hover()
-                            } else {
-                                Sense::click()
-                            }),
-                        )
+                        .add(Button::new("Update").sense(if *live_update {
+                            // disable if 'Live update' mode is on
+                            Sense::hover()
+                        } else {
+                            Sense::click()
+                        }))
                         .clicked();
                     // 'Live update' checkbox means the primitive data gets constantly updated
-                    ui.add(Checkbox::new(
-                        &mut self.input_state.live_update,
-                        "Live update",
-                    ));
+                    ui.add(Checkbox::new(&mut *live_update, "Live update"));
                 });
                 if update_primitive {
                     // overwrite selected primitive with user data
-                    if let Err(e) = primitives
-                        .update_primitive(primitive_index, self.input_state.primitive_input.into())
-                    {
+                    if let Err(e) = primitives.update_primitive(primitive_index, *primitive_input) {
                         warn!("could not update primitive due to: {}", e);
                     }
                 }
@@ -167,30 +167,30 @@ impl Gui {
                 ui.horizontal(|ui| {
                     // new primitive button
                     if ui
-                        .add(Button::new("Add").sense(
-                            if self.input_state.primitive_input == Primitive::Null {
+                        .add(
+                            Button::new("Add").sense(if *primitive_input == Primitive::Null {
                                 // disable if primitive type == Null
                                 Sense::hover()
                             } else {
                                 Sense::click()
-                            },
-                        ))
+                            }),
+                        )
                         .clicked()
                     {
-                        primitives.add_primitive(self.input_state.primitive_input);
+                        primitives.add_primitive(*primitive_input);
                     }
 
                     // dropdown menu to select primitive type
                     ComboBox::from_label("Primitive type")
-                        .selected_text(self.input_state.primitive_input.type_name())
+                        .selected_text(primitive_input.type_name())
                         .show_ui(ui, |ui| {
                             ui.selectable_value(
-                                &mut self.input_state.primitive_input,
+                                &mut *primitive_input,
                                 Primitive::Sphere(Default::default()),
                                 "Sphere",
                             );
                             ui.selectable_value(
-                                &mut self.input_state.primitive_input,
+                                &mut *primitive_input,
                                 Primitive::Cube(Default::default()),
                                 "Cube",
                             );
@@ -199,7 +199,7 @@ impl Gui {
             };
 
             // user data input
-            match self.input_state.primitive_input {
+            match *primitive_input {
                 Primitive::Sphere(ref mut s) => {
                     ui.horizontal(|ui| {
                         ui.label("Center:");
@@ -238,18 +238,15 @@ impl Gui {
 
             // primitive list
             if ui
-                .selectable_label(
-                    self.input_state.selected_primitive.is_none(),
-                    "New primitive",
-                )
+                .selectable_label(selected_primitive.is_none(), "New primitive")
                 .clicked()
             {
-                self.input_state.selected_primitive = None;
-                self.input_state.primitive_input = Primitive::Null;
+                *selected_primitive = None;
+                *primitive_input = Primitive::Null;
             }
             let primitives = primitives.primitives();
             for i in 0..primitives.len() {
-                let is_selected = if let Some(pi) = self.input_state.selected_primitive {
+                let is_selected = if let Some(pi) = *selected_primitive {
                     pi == i
                 } else {
                     false
@@ -265,8 +262,8 @@ impl Gui {
                     Primitive::Null => format!("{} Null", 1),
                 };
                 if ui.selectable_label(is_selected, label_text).clicked() {
-                    self.input_state.selected_primitive = Some(i);
-                    self.input_state.primitive_input = primitives[i];
+                    *selected_primitive = Some(i);
+                    *primitive_input = primitives[i];
                 };
             }
 

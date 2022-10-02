@@ -63,6 +63,10 @@ impl RenderManager {
     pub fn new(window: Arc<Window>, primitives: &PrimitiveCollection) -> anyhow::Result<Self> {
         // load vulkan library
         let vulkan_library = VulkanLibrary::new().context("loading vulkan library")?;
+        info!(
+            "loaded vulkan library, api version = {}",
+            vulkan_library.api_version()
+        );
 
         // required instance extensions for platform surface rendering
         let mut instance_extensions = vulkano_win::required_extensions(&vulkan_library);
@@ -89,6 +93,8 @@ impl RenderManager {
         };
 
         // create instance
+        debug!("enabling instance extensions: {:?}", instance_extensions);
+        debug!("enabling vulkan layers: {:?}", instance_layers);
         let instance = Instance::new(
             vulkan_library.clone(),
             InstanceCreateInfo {
@@ -116,6 +122,7 @@ impl RenderManager {
             khr_swapchain: true,
             ..DeviceExtensions::empty()
         };
+        debug!("required vulkan device extensions: {:?}", device_extensions);
 
         // print available physical devices
         debug!("Available Vulkan physical devices:");
@@ -136,6 +143,8 @@ impl RenderManager {
             physical_device.properties().device_name,
             physical_device.properties().device_type,
         );
+        debug!("render queue family index = {}", render_queue_family);
+        debug!("transfer queue family index = {}", transfer_queue_family);
 
         // queue create info(s) for creating render and transfer queues
         let single_queue = (render_queue_family == transfer_queue_family)
@@ -164,6 +173,7 @@ impl RenderManager {
                 },
             ]
         };
+
         // create device and queues
         let (device, mut queues) = Device::new(
             physical_device.clone(),

@@ -37,6 +37,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## low priority
 
+- preview new primitive, greyed out/transparent until add?
 - highlight changed primitive values in gui (to indicate what hasn't been updated)
 - error and warn log messages in gui (popups?)
 - draw sdf sphere with AABB

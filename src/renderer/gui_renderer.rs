@@ -151,7 +151,7 @@ impl GuiRenderer {
         framebuffer_dimensions: [u32; 2],
     ) -> anyhow::Result<()> {
         let scale_factor = gui.scale_factor();
-        let primitives = gui.primitives();
+        let primitives = gui.mesh_primitives();
 
         let push_constants = shader_interfaces::GuiPushConstant::new(
             [
@@ -305,6 +305,8 @@ impl GuiRenderer {
                     image_extent: [delta.image.width() as u32, delta.image.height() as u32, 1],
                     ..Default::default()
                 };
+                debug!("updating existing gui texture id = {:?}, region offset = {:?}, region extent = {:?}",
+                    texture_id, copy_region.image_offset, copy_region.image_extent);
 
                 // copy buffer to image
                 command_buffer_builder
@@ -319,6 +321,7 @@ impl GuiRenderer {
             }
         } else {
             // usually ImageDelta.pos == None meaning a new image needs to be created
+            debug!("creating new gui texture id = {:?}", texture_id);
 
             // create image
             let (image, init_access) = ImmutableImage::uninitialized(
@@ -332,7 +335,6 @@ impl GuiRenderer {
                 vulkano::image::MipmapsCount::One,
                 ImageUsage {
                     transfer_dst: true,
-                    //transfer_src: true, // todo needed? try without
                     sampled: true,
                     ..ImageUsage::empty()
                 },
@@ -377,6 +379,7 @@ impl GuiRenderer {
     ///
     /// Helper function for [`Self::update_textures`]
     fn unregister_image(&mut self, texture_id: egui::TextureId) {
+        debug!("removing unneeded gui texture id = {:?}", texture_id);
         self.texture_desc_sets.remove(&texture_id);
         self.texture_images.remove(&texture_id);
     }
