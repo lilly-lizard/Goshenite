@@ -1,9 +1,7 @@
-use crate::{helper::from_err_impl::from_err_impl, shaders::shader_interfaces::SHADER_ENTRY_POINT};
+use crate::shaders::shader_interfaces::SHADER_ENTRY_POINT;
 use std::{fmt, sync::Arc};
 use vulkano::{
-    descriptor_set::DescriptorSetCreationError,
     device::Device,
-    pipeline::{compute::ComputePipelineCreationError, graphics::GraphicsPipelineCreationError},
     shader::{ShaderCreationError, ShaderModule},
 };
 
@@ -67,50 +65,18 @@ impl fmt::Display for CreateShaderError {
         }
     }
 }
-
-/// Errors encountered when creating a pipeline
-#[derive(Debug)]
-pub enum CreatePipelineError {
-    /// Failed to create shader
-    CreateShaderError(CreateShaderError),
-    /// Failed to create graphics pipeline
-    GraphicsPipelineCreationError(GraphicsPipelineCreationError),
-    /// Failed to create compute pipeline
-    ComputePipelineCreationError(ComputePipelineCreationError),
-}
-impl std::error::Error for CreatePipelineError {}
-impl fmt::Display for CreatePipelineError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::CreateShaderError(e) => e.fmt(f),
-            Self::GraphicsPipelineCreationError(e) => {
-                write!(f, "failed to create graphics pipeline: {}", e)
-            }
-            Self::ComputePipelineCreationError(e) => {
-                write!(f, "failed to create compute pipeline: {}", e)
-            }
-        }
-    }
-}
-from_err_impl!(CreatePipelineError, CreateShaderError);
-from_err_impl!(CreatePipelineError, GraphicsPipelineCreationError);
-from_err_impl!(CreatePipelineError, ComputePipelineCreationError);
+impl std::error::Error for CreateShaderError {}
 
 /// Errors encountered when creating a descriptor set
 #[derive(Debug)]
 pub enum CreateDescriptorSetError {
     /// Descriptor set index not found in the pipeline layout
     InvalidDescriptorSetIndex { index: usize },
-    /// Failed to create descriptor set
-    DescriptorSetCreationError(DescriptorSetCreationError),
 }
 impl std::error::Error for CreateDescriptorSetError {}
 impl fmt::Display for CreateDescriptorSetError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::DescriptorSetCreationError(e) => {
-                write!(f, "failed to create blit pass descriptor set: {}", e)
-            }
             Self::InvalidDescriptorSetIndex { index } => {
                 write!(
                     f,
@@ -121,4 +87,3 @@ impl fmt::Display for CreateDescriptorSetError {
         }
     }
 }
-from_err_impl!(CreateDescriptorSetError, DescriptorSetCreationError);

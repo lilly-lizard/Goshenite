@@ -1,10 +1,12 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
+- get error source in engine.rs unwraps e.g. gui_renderer sync bug
+- test anyhow dereferencing e.g. SurfaceSizeUnsupported (see bottom of render_manager.rs)
+- error sources and backtraces: https://github.com/dtolnay/anyhow
 - frame future for update_textures
 - debug egui font size/dpi regression (after 01/10/22 crate version update)
 - support/handle VulkanError cases...
-- error sources and backtraces: https://github.com/dtolnay/anyhow
 
 - try compute shader with circle compiler. benifits:
 	- c interop with rust codebase

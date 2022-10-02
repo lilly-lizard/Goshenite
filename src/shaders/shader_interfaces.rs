@@ -1,9 +1,8 @@
 //! Contains structs and descriptor set indices/bindings matching the interfaces in shaders.
-use std::fmt::{self, Display};
-
 use crate::primitives::primitives::PrimitiveCollection;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3, Vec4};
+use std::fmt::{self, Display};
 use vulkano::shader::{SpecializationConstants, SpecializationMapEntry};
 
 /// Function name of the entry point for shaders
@@ -49,6 +48,8 @@ impl PrimitiveData {
         Ok(combined_data)
     }
 }
+impl std::error::Error for PrimitiveDataError {}
+
 #[derive(Clone, Copy, Debug)]
 pub enum PrimitiveDataError {
     /// The number of primitives passed to [`PrimitiveData::combined_data`] exceeds u32::MAX meaning the count cannot

@@ -74,7 +74,7 @@ impl Gui {
         &mut self,
         gui_renderer: &mut GuiRenderer,
         primitives: &mut PrimitiveCollection,
-    ) {
+    ) -> anyhow::Result<()> {
         // begin frame
         let raw_input = self.window_state.take_egui_input(self.window.as_ref());
         self.context.begin_frame(raw_input);
@@ -100,7 +100,9 @@ impl Gui {
 
         // add/free textures resources in the gui renderer. note this must happen here to be
         // certain that this frame's `textures_delta` is processed
-        gui_renderer.update_textures(textures_delta).unwrap(); //todo unwrap
+        gui_renderer.update_textures(textures_delta)?;
+
+        Ok(())
     }
 }
 // Private functions

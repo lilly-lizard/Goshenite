@@ -15,7 +15,7 @@ shader-compile = ["shaderc"]
 # logging
 log = "0.4"
 # todo
-anyhow = "1.0"
+anyhow = { version = "1.0", features = ["backtrace"] }
 # terminal output formatting
 colored = { version = "2.0", optional = true }
 # glam is a vector and math library well suited for 3D graphics (noticeably more lightweight than cgmath)

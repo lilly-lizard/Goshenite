@@ -3,7 +3,7 @@ use crate::config;
 use crate::cursor_state::{CursorState, MouseButton};
 use crate::gui::Gui;
 use crate::primitives::{cube::Cube, primitives::PrimitiveCollection, sphere::Sphere};
-use crate::renderer::render_manager::{RenderManager, RenderManagerError};
+use crate::renderer::render_manager::RenderManager;
 use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -137,7 +137,8 @@ impl Engine {
 
         // update gui
         self.gui
-            .update_frame(&mut self.renderer.gui_renderer(), &mut self.primitives);
+            .update_frame(&mut self.renderer.gui_renderer_mut(), &mut self.primitives)
+            .unwrap();
 
         // update camera
         if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
@@ -148,23 +149,9 @@ impl Engine {
         }
 
         // submit rendering commands
-        match self.renderer.render_frame(
-            self.window_resize,
-            &self.primitives,
-            &self.gui,
-            self.camera,
-        ) {
-            Err(RenderManagerError::SurfaceSizeUnsupported { .. }) => (), // todo clamp window inner size?
-            Err(RenderManagerError::Unrecoverable { message, source }) => {
-                if let Some(error) = source {
-                    error!("{}: {}", message, error);
-                } else {
-                    error!("{}", message);
-                }
-                panic!();
-            }
-            _ => (),
-        };
+        self.renderer
+            .render_frame(self.window_resize, &self.primitives, &self.gui, self.camera)
+            .unwrap();
         self.window_resize = false;
     }
 }

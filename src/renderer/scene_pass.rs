@@ -1,25 +1,21 @@
-use super::common::{
-    create_shader_module, CreateDescriptorSetError, CreatePipelineError, CreateShaderError,
-};
+use super::common::{create_shader_module, CreateDescriptorSetError, CreateShaderError};
 use crate::config;
-use crate::helper::from_err_impl::from_err_impl;
 use crate::primitives::primitives::PrimitiveCollection;
 use crate::shaders::shader_interfaces::{
-    CameraPushConstant, ComputeSpecConstant, PrimitiveData, PrimitiveDataError, PrimitiveDataUnit,
-    SHADER_ENTRY_POINT,
+    CameraPushConstant, ComputeSpecConstant, PrimitiveData, PrimitiveDataUnit, SHADER_ENTRY_POINT,
 };
+use anyhow::Context;
+#[allow(unused_imports)]
+use log::{debug, error, info, warn};
 use std::fmt;
 use std::sync::Arc;
-use vulkano::command_buffer::PipelineExecutionError;
-use vulkano::memory::pool::StandardMemoryPool;
-use vulkano::memory::DeviceMemoryError;
-use vulkano::pipeline::compute::ComputePipelineCreationError; // todo error propogation testing (see return below)
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
     command_buffer::AutoCommandBufferBuilder,
     descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
     device::{physical::PhysicalDevice, Device},
     image::{view::ImageView, StorageImage},
+    memory::pool::StandardMemoryPool,
     pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
     DeviceSize,
 };
@@ -57,7 +53,7 @@ impl ScenePass {
         primitives: &PrimitiveCollection,
         render_image_size: [u32; 2],
         render_image: Arc<ImageView<StorageImage>>,
-    ) -> Result<Self, ScenePassError> {
+    ) -> anyhow::Result<Self> {
         let physical_device = device.physical_device();
 
         // calculate work group size and count for scene compute shader
@@ -71,11 +67,20 @@ impl ScenePass {
                 physical_device.properties().max_compute_work_group_size[1],
             ),
         ];
-        let work_group_count = Self::calc_work_group_count(
+        let work_group_count = calc_work_group_count(
             device.physical_device().clone(),
             render_image_size,
             work_group_size,
-        )?;
+        )
+        .context("initializing scene pass")?;
+        debug!(
+            "calulated scene render work group size: {:?}",
+            work_group_size
+        );
+        debug!(
+            "calulated scene render work group count: {:?}",
+            work_group_count
+        );
 
         // init primitive buffer pool
         let primitive_buffer_pool = CpuBufferPool::new(
@@ -85,15 +90,19 @@ impl ScenePass {
                 ..BufferUsage::empty()
             },
         );
-        primitive_buffer_pool.reserve(RESERVED_PRIMITIVE_BUFFER_POOL)?;
+        primitive_buffer_pool
+            .reserve(RESERVED_PRIMITIVE_BUFFER_POOL)
+            .context("reserving primitive buffer pool")?;
+        debug!(
+            "reserving {} bytes for primitives buffer pool",
+            RESERVED_PRIMITIVE_BUFFER_POOL
+        );
 
         // init compute pipeline and descriptor sets
-        let pipeline = Self::create_pipeline(device.clone(), work_group_size)?;
-        let desc_set_render_image =
-            Self::create_desc_set_render_image(pipeline.clone(), render_image)?;
-        let primitive_buffer = Self::create_primitives_buffer(primitives, &primitive_buffer_pool)?;
-        let desc_set_primitives =
-            Self::create_desc_set_primitives(pipeline.clone(), primitive_buffer)?;
+        let pipeline = create_pipeline(device.clone(), work_group_size)?;
+        let desc_set_render_image = create_desc_set_render_image(pipeline.clone(), render_image)?;
+        let primitive_buffer = create_primitives_buffer(primitives, &primitive_buffer_pool)?;
+        let desc_set_primitives = create_desc_set_primitives(pipeline.clone(), primitive_buffer)?;
 
         Ok(Self {
             device,
@@ -109,14 +118,10 @@ impl ScenePass {
     /// Update the primitives storage buffer.
     ///
     /// todo shoul be optimized to not create a new buffer each time...
-    pub fn update_primitives(
-        &mut self,
-        primitives: &PrimitiveCollection,
-    ) -> Result<(), ScenePassError> {
-        let primitive_buffer =
-            Self::create_primitives_buffer(primitives, &self.primitive_buffer_pool)?;
+    pub fn update_primitives(&mut self, primitives: &PrimitiveCollection) -> anyhow::Result<()> {
+        let primitive_buffer = create_primitives_buffer(primitives, &self.primitive_buffer_pool)?;
         self.desc_set_primitives =
-            Self::create_desc_set_primitives(self.pipeline.clone(), primitive_buffer)?;
+            create_desc_set_primitives(self.pipeline.clone(), primitive_buffer)?;
         Ok(())
     }
 
@@ -125,14 +130,24 @@ impl ScenePass {
         &mut self,
         resolution: [u32; 2],
         render_image: Arc<ImageView<StorageImage>>,
-    ) -> Result<(), ScenePassError> {
-        self.work_group_count = Self::calc_work_group_count(
+    ) -> anyhow::Result<()> {
+        self.work_group_count = calc_work_group_count(
             self.device.physical_device().clone(),
             resolution,
             self.work_group_size,
-        )?;
+        )
+        .context("updating scene pass render target")?;
+        debug!(
+            "calulated scene render work group size: {:?}",
+            self.work_group_size
+        );
+        debug!(
+            "calulated scene render work group count: {:?}",
+            self.work_group_count
+        );
         self.desc_set_render_image =
-            ScenePass::create_desc_set_render_image(self.pipeline.clone(), render_image.clone())?;
+            create_desc_set_render_image(self.pipeline.clone(), render_image.clone())
+                .context("updating scene pass render target")?;
         Ok(())
     }
 
@@ -141,7 +156,7 @@ impl ScenePass {
         &self,
         command_buffer: &mut AutoCommandBufferBuilder<L>,
         camera_push_constant: CameraPushConstant,
-    ) -> Result<(), PipelineExecutionError> {
+    ) -> anyhow::Result<()> {
         let mut desc_sets: Vec<Arc<PersistentDescriptorSet>> = Vec::default();
         desc_sets.insert(descriptor::SET_IMAGE, self.desc_set_render_image.clone());
         desc_sets.insert(descriptor::SET_PRIMITVES, self.desc_set_primitives.clone());
@@ -154,117 +169,125 @@ impl ScenePass {
                 desc_sets,
             )
             .push_constants(self.pipeline.layout().clone(), 0, camera_push_constant)
-            .dispatch(self.work_group_count)?;
+            .dispatch(self.work_group_count)
+            .context("recording scene pass commands")?;
         Ok(())
     }
 }
-// Private functions
-impl ScenePass {
-    /// Calculate required work group count for a given render resolution,
-    /// and checks that the work group count is within the physical device limits
-    fn calc_work_group_count(
-        physical_device: Arc<PhysicalDevice>,
-        resolution: [u32; 2],
-        work_group_size: [u32; 2],
-    ) -> Result<[u32; 3], ScenePassError> {
-        let mut group_count_x = resolution[0] / work_group_size[0];
-        if (resolution[0] % work_group_size[0]) != 0 {
-            group_count_x += 1;
-        }
-        let mut group_count_y = resolution[1] / work_group_size[1];
-        if (resolution[1] % work_group_size[1]) != 0 {
-            group_count_y += 1;
-        }
-        // check that work group count is within physical device limits
-        let group_count_limit: [u32; 2] = [
-            physical_device.properties().max_compute_work_group_count[0],
-            physical_device.properties().max_compute_work_group_count[1],
-        ];
-        if group_count_x > group_count_limit[0] || group_count_y > group_count_limit[1] {
-            return Err(ScenePassError::UnsupportedWorkGroupCount {
-                group_count: [group_count_x, group_count_y],
-                group_count_limit,
-            });
-        }
-        return Ok([group_count_x, group_count_y, 1]);
-    }
 
-    fn create_pipeline(
-        device: Arc<Device>,
-        work_group_size: [u32; 2],
-    ) -> Result<Arc<ComputePipeline>, CreatePipelineError> {
-        //return Err(ComputePipelineCreationError::IncompatibleSpecializationConstants.into());
-        let comp_module = create_shader_module(device.clone(), COMP_SHADER_PATH)?;
-        let comp_shader = comp_module.entry_point(SHADER_ENTRY_POINT).ok_or(
-            CreateShaderError::MissingEntryPoint(COMP_SHADER_PATH.to_string()),
-        )?;
-
-        let compute_spec_constant = ComputeSpecConstant {
-            local_size_x: work_group_size[0],
-            local_size_y: work_group_size[1],
-        };
-        Ok(ComputePipeline::new(
-            device.clone(),
-            comp_shader,
-            &compute_spec_constant,
-            None,
-            |_| {},
-        )?)
+/// Calculate required work group count for a given render resolution,
+/// and checks that the work group count is within the physical device limits
+fn calc_work_group_count(
+    physical_device: Arc<PhysicalDevice>,
+    resolution: [u32; 2],
+    work_group_size: [u32; 2],
+) -> Result<[u32; 3], ScenePassError> {
+    let mut group_count_x = resolution[0] / work_group_size[0];
+    if (resolution[0] % work_group_size[0]) != 0 {
+        group_count_x += 1;
     }
-
-    fn create_desc_set_render_image(
-        scene_pipeline: Arc<ComputePipeline>,
-        render_image: Arc<ImageView<StorageImage>>,
-    ) -> Result<Arc<PersistentDescriptorSet>, CreateDescriptorSetError> {
-        Ok(PersistentDescriptorSet::new(
-            scene_pipeline
-                .layout()
-                .set_layouts()
-                .get(descriptor::SET_IMAGE)
-                .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
-                    index: descriptor::SET_IMAGE,
-                })?
-                .to_owned(),
-            [WriteDescriptorSet::image_view(
-                descriptor::BINDING_IMAGE,
-                render_image,
-            )],
-        )?)
+    let mut group_count_y = resolution[1] / work_group_size[1];
+    if (resolution[1] % work_group_size[1]) != 0 {
+        group_count_y += 1;
     }
-
-    fn create_desc_set_primitives(
-        scene_pipeline: Arc<ComputePipeline>,
-        primitive_buffer: Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StandardMemoryPool>>>,
-    ) -> Result<Arc<PersistentDescriptorSet>, CreateDescriptorSetError> {
-        Ok(PersistentDescriptorSet::new(
-            scene_pipeline
-                .layout()
-                .set_layouts()
-                .get(descriptor::SET_PRIMITVES)
-                .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
-                    index: descriptor::SET_PRIMITVES,
-                })?
-                .to_owned(),
-            [WriteDescriptorSet::buffer(
-                descriptor::BINDING_PRIMITVES,
-                primitive_buffer,
-            )],
-        )?)
+    // check that work group count is within physical device limits
+    let group_count_limit: [u32; 2] = [
+        physical_device.properties().max_compute_work_group_count[0],
+        physical_device.properties().max_compute_work_group_count[1],
+    ];
+    if group_count_x > group_count_limit[0] || group_count_y > group_count_limit[1] {
+        return Err(ScenePassError::UnsupportedWorkGroupCount {
+            group_count: [group_count_x, group_count_y],
+            group_count_limit,
+        });
     }
+    return Ok([group_count_x, group_count_y, 1]);
+}
 
-    fn create_primitives_buffer(
-        primitives: &PrimitiveCollection,
-        buffer_pool: &CpuBufferPool<PrimitiveDataUnit>,
-    ) -> Result<Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StandardMemoryPool>>>, ScenePassError>
-    {
-        // todo should be able to update buffer wihtout recreating?
-        Ok(buffer_pool.from_iter(PrimitiveData::combined_data(primitives)?)?)
-    }
+fn create_pipeline(
+    device: Arc<Device>,
+    work_group_size: [u32; 2],
+) -> anyhow::Result<Arc<ComputePipeline>> {
+    //return Err(ComputePipelineCreationError::IncompatibleSpecializationConstants.into());
+    let comp_module = create_shader_module(device.clone(), COMP_SHADER_PATH)?;
+    let comp_shader =
+        comp_module
+            .entry_point(SHADER_ENTRY_POINT)
+            .ok_or(CreateShaderError::MissingEntryPoint(
+                COMP_SHADER_PATH.to_string(),
+            ))?;
+
+    let compute_spec_constant = ComputeSpecConstant {
+        local_size_x: work_group_size[0],
+        local_size_y: work_group_size[1],
+    };
+    ComputePipeline::new(
+        device.clone(),
+        comp_shader,
+        &compute_spec_constant,
+        None,
+        |_| {},
+    )
+    .context("creating scene pass pipeline")
+}
+
+fn create_desc_set_render_image(
+    scene_pipeline: Arc<ComputePipeline>,
+    render_image: Arc<ImageView<StorageImage>>,
+) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
+    PersistentDescriptorSet::new(
+        scene_pipeline
+            .layout()
+            .set_layouts()
+            .get(descriptor::SET_IMAGE)
+            .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+                index: descriptor::SET_IMAGE,
+            })
+            .context("creating render image desc set")?
+            .to_owned(),
+        [WriteDescriptorSet::image_view(
+            descriptor::BINDING_IMAGE,
+            render_image,
+        )],
+    )
+    .context("creating render image desc set")
+}
+
+fn create_desc_set_primitives(
+    scene_pipeline: Arc<ComputePipeline>,
+    primitive_buffer: Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StandardMemoryPool>>>,
+) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
+    PersistentDescriptorSet::new(
+        scene_pipeline
+            .layout()
+            .set_layouts()
+            .get(descriptor::SET_PRIMITVES)
+            .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+                index: descriptor::SET_PRIMITVES,
+            })
+            .context("creating primitives desc set")?
+            .to_owned(),
+        [WriteDescriptorSet::buffer(
+            descriptor::BINDING_PRIMITVES,
+            primitive_buffer,
+        )],
+    )
+    .context("creating primitives desc set")
+}
+
+fn create_primitives_buffer(
+    primitives: &PrimitiveCollection,
+    buffer_pool: &CpuBufferPool<PrimitiveDataUnit>,
+) -> anyhow::Result<Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StandardMemoryPool>>>> {
+    // todo should be able to update buffer wihtout recreating?
+    buffer_pool
+        .from_iter(PrimitiveData::combined_data(primitives)?)
+        .context("creating primitives buffer")
 }
 
 // ~~~ Errors ~~~
 
-// todo duplicated stuff with other passes?
+// todo replace with anyhow!()
 #[derive(Debug)]
 pub enum ScenePassError {
     /// The calculated compute shader work group count exceeds physical device limits.
@@ -273,14 +296,6 @@ pub enum ScenePassError {
         group_count: [u32; 2],
         group_count_limit: [u32; 2],
     },
-    /// Failed to allocate device memory for vulkan object
-    DeviceMemoryError(DeviceMemoryError),
-    /// Failed to combine primitive data
-    PrimitiveDataError(PrimitiveDataError),
-    /// Errors encountered when creating a pipeline
-    CreatePipelineError(CreatePipelineError),
-    /// Errors encountered when creating a descriptor set
-    CreateDescriptorSetError(CreateDescriptorSetError),
 }
 impl fmt::Display for ScenePassError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -293,17 +308,7 @@ impl fmt::Display for ScenePassError {
                 "compute shader work group count {:?} exceeds driver limits {:?}",
                 group_count, group_count_limit
             ),
-            ScenePassError::DeviceMemoryError(e) => {
-                write!(f, "failed to allocate primitive buffer: {}", e)
-            }
-            ScenePassError::PrimitiveDataError(e) => e.fmt(f),
-            ScenePassError::CreatePipelineError(e) => e.fmt(f),
-            ScenePassError::CreateDescriptorSetError(e) => e.fmt(f),
         }
     }
 }
 impl std::error::Error for ScenePassError {}
-from_err_impl!(ScenePassError, DeviceMemoryError);
-from_err_impl!(ScenePassError, PrimitiveDataError);
-from_err_impl!(ScenePassError, CreatePipelineError);
-from_err_impl!(ScenePassError, CreateDescriptorSetError);
