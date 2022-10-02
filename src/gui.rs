@@ -1,16 +1,31 @@
 use crate::primitives::primitives::{Primitive, PrimitiveCollection};
 use crate::renderer::gui_renderer::GuiRenderer;
 use egui::FontFamily::Proportional;
-use egui::{Button, DragValue, FontId};
+use egui::{Button, Checkbox, DragValue, FontId, Sense};
+#[allow(unused_imports)]
+use log::{debug, error, info, warn};
 use std::sync::Arc;
 use winit::event_loop::EventLoopWindowTarget;
 use winit::window::Window;
 
 // user input values...
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 struct InputState {
+    /// `PrimitiveCollection` index of selected primitive
     selected_primitive: Option<usize>,
+    /// Contains user input data for primitive editor
     primitive_input: Primitive,
+    /// todo
+    live_update: bool,
+}
+impl Default for InputState {
+    fn default() -> Self {
+        Self {
+            selected_primitive: None,
+            primitive_input: Primitive::Null,
+            live_update: false,
+        }
+    }
 }
 
 /// Controller for an [`egui`] immediate-mode gui
@@ -171,10 +186,29 @@ impl Gui {
             };
 
             if let Some(primitive_index) = self.input_state.selected_primitive {
-                if ui.add(Button::new("Update")).clicked() {
+                let mut update_primitive = self.input_state.live_update;
+                ui.horizontal(|ui| {
+                    update_primitive |= ui
+                        .add(
+                            Button::new("Update").sense(if self.input_state.live_update {
+                                Sense::hover()
+                            } else {
+                                Sense::click()
+                            }),
+                        )
+                        .clicked();
+                    ui.add(Checkbox::new(
+                        &mut self.input_state.live_update,
+                        "Live update",
+                    ));
+                });
+                if update_primitive {
                     // overwrite selected primitive with user data
-                    primitives
-                        .update_primitive(primitive_index, self.input_state.primitive_input.into());
+                    if let Err(e) = primitives
+                        .update_primitive(primitive_index, self.input_state.primitive_input.into())
+                    {
+                        warn!("could not update primitive due to: {}", e);
+                    }
                 }
             } else {
                 // todo add new primtive

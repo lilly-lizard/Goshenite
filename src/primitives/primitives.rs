@@ -1,5 +1,3 @@
-use std::fmt;
-
 use super::cube::Cube;
 use super::sphere::Sphere;
 use crate::{
@@ -7,6 +5,7 @@ use crate::{
     shaders::shader_interfaces::{primitive_codes, PrimitiveDataSlice, PRIMITIVE_LEN},
 };
 use glam::Vec3;
+use std::fmt;
 
 /// Required functions for a usable primitive.
 pub trait EncodablePrimitive {
