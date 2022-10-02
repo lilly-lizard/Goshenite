@@ -95,8 +95,6 @@ unsafe impl SpecializationConstants for ComputeSpecConstant {
         ]
     }
 }
-unsafe impl Send for ComputeSpecConstant {}
-unsafe impl Sync for ComputeSpecConstant {}
 
 // ~~~ Push Constants ~~~
 
@@ -117,8 +115,6 @@ impl CameraPushConstant {
         }
     }
 }
-unsafe impl Send for CameraPushConstant {}
-unsafe impl Sync for CameraPushConstant {}
 
 /// Gui shader push constants. Should match definitions in `gui.vert` and `gui.frag`.
 #[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
@@ -137,5 +133,3 @@ impl GuiPushConstant {
         }
     }
 }
-unsafe impl Send for GuiPushConstant {}
-unsafe impl Sync for GuiPushConstant {}

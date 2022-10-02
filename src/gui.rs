@@ -12,11 +12,11 @@ use winit::window::Window;
 #[derive(Clone, Copy, Debug)]
 struct PrimitiveEditorState {
     /// `PrimitiveCollection` index of selected primitive
-    selected_primitive: Option<usize>,
+    pub selected_primitive: Option<usize>,
     /// Contains user input data for primitive editor
-    primitive_input: Primitive,
+    pub primitive_input: Primitive,
     /// Live update mode means user input primitive data is continuously updated
-    live_update: bool,
+    pub live_update: bool,
 }
 impl Default for PrimitiveEditorState {
     fn default() -> Self {
@@ -52,10 +52,13 @@ impl Gui {
             wrap: Some(false),
             ..Default::default()
         });
+        let mut window_state = egui_winit::State::new(event_loop);
+        // set egui scale factor to platform dpi (by default)
+        window_state.set_pixels_per_point(window.scale_factor() as f32);
         Self {
             window: window.clone(),
             context,
-            window_state: egui_winit::State::new(event_loop),
+            window_state,
             mesh_primitives: vec![],
             primitive_editor_state: Default::default(),
         }

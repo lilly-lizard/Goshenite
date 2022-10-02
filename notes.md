@@ -2,10 +2,7 @@
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - debug egui font size/dpi regression (after 01/10/22 crate version update)
-- handle vulkano::swapchain::SwapchainCreationError::ImageExtentNotSupported (see bottom of render_manager.rs)
-- test anyhow dereferencing e.g. SurfaceSizeUnsupported (see bottom of render_manager.rs)
 - frame future for update_textures
-- support/handle VulkanError cases...
 
 - try compute shader with circle compiler. benifits:
 	- c interop with rust codebase
@@ -19,6 +16,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - GuiRenderer::create_texture -> create_textures batch texture creation
 - gui_renderer unwraps/error handling
 - for loops to map
+- support/handle VulkanError cases...
 
 ## always
 
@@ -37,6 +35,8 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## low priority
 
+- handle vulkano::swapchain::SwapchainCreationError::ImageExtentNotSupported (see bottom of render_manager.rs)
+- test anyhow dereferencing e.g. SurfaceSizeUnsupported (see bottom of render_manager.rs)
 - preview new primitive, greyed out/transparent until add?
 - highlight changed primitive values in gui (to indicate what hasn't been updated)
 - error and warn log messages in gui (popups?)

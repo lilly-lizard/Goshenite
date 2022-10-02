@@ -8,7 +8,7 @@ use glam::Vec3;
 use std::fmt;
 
 /// Required functions for a usable primitive.
-pub trait PrimitiveTrait {
+pub trait PrimitiveTrait: Default + PartialEq {
     /// Returns the primitive data encoded as a [`PrimitiveDataSlice`].
     ///
     /// _Note: must match the decode process in `scene.comp`_
