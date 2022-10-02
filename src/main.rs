@@ -10,7 +10,7 @@ mod shaders;
 
 use engine::Engine;
 use helper::logger::ConsoleLogger;
-use log::LevelFilter;
+use log::{info, LevelFilter};
 use winit::{event_loop::EventLoop, platform::run_return::EventLoopExtRunReturn};
 
 /// spooky symbols, what could it mean...
@@ -37,6 +37,10 @@ fn main() {
         println!("Goshenite ERROR - Failed to initialize logger: {:?}", e);
     };
     log::set_max_level(LevelFilter::Info);
+
+    info!(
+        "if debugging, set environment variable `RUST_BACKTRACE=1` to see anyhow error backtrace"
+    );
 
     // init engine
     let mut event_loop = EventLoop::new();
