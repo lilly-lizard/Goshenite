@@ -31,7 +31,7 @@ use vulkano::{
         AttachmentDescription, AttachmentReference, Framebuffer, FramebufferCreateInfo, LoadOp,
         RenderPass, RenderPassCreateInfo, StoreOp, Subpass, SubpassDependency, SubpassDescription,
     },
-    swapchain::{self, PresentInfo, Surface, Swapchain},
+    swapchain::{self, PresentInfo, Surface, Swapchain, SwapchainCreationError},
     sync::{self, AccessFlags, FlushError, GpuFuture, PipelineStages},
     VulkanLibrary,
 };
@@ -327,8 +327,8 @@ impl RenderManager {
 
         self.recreate_swapchain = self.recreate_swapchain || window_resize;
         if self.recreate_swapchain {
-            // recreate swapchain and skip frame render
-            return self.recreate_swapchain();
+            // recreate swapchain
+            self.recreate_swapchain()?;
         }
 
         // blocks when no images currently available (all have been submitted already)
@@ -336,7 +336,6 @@ impl RenderManager {
             match swapchain::acquire_next_image(self.swapchain.clone(), None) {
                 Ok(r) => r,
                 Err(swapchain::AcquireError::OutOfDate) => {
-                    self.recreate_swapchain = true;
                     // recreate swapchain and skip frame render
                     return self.recreate_swapchain();
                 }
@@ -344,6 +343,8 @@ impl RenderManager {
                     return Err(anyhow!(e)).context("aquiring swapchain image");
                 }
             };
+        // `suboptimal` indicates that the swapchain image will still work but may not be displayed correctly
+        // we'll render the frame anyway because we're cheeky
         if suboptimal {
             self.recreate_swapchain = true;
         }
@@ -450,7 +451,10 @@ impl RenderManager {
                 ..self.swapchain.create_info()
             }) {
                 Ok(r) => r,
-                Err(e) => return Err(e.into()),
+                // This error tends to happen when the user is manually resizing the window.
+                // Simply restarting the loop is the easiest way to fix this issue.
+                Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return Ok(()),
+                Err(e) => return Err(e).context("recreating swapchain"),
             };
 
         self.swapchain = new_swapchain;

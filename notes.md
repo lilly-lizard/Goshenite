@@ -1,7 +1,7 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
-- handle SUBOPTIMAL_KHR
+- handle SUBOPTIMAL_KHR at vulkano/src/command_buffer/submit/queue_present.rs:315:1
 - renderdoc see vulkano command output e.g. pipeline barriers, semaphores...
 - render xyz arrows on selected object
 - frame future for update_textures
