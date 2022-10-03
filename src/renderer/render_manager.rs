@@ -453,7 +453,10 @@ impl RenderManager {
                 Ok(r) => r,
                 // This error tends to happen when the user is manually resizing the window.
                 // Simply restarting the loop is the easiest way to fix this issue.
-                Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return Ok(()),
+                Err(e @ SwapchainCreationError::ImageExtentNotSupported { .. }) => {
+                    debug!("failed to recreate swapchain due to {}", e);
+                    return Ok(());
+                }
                 Err(e) => return Err(e).context("recreating swapchain"),
             };
 
