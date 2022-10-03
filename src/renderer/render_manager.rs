@@ -31,7 +31,7 @@ use vulkano::{
         AttachmentDescription, AttachmentReference, Framebuffer, FramebufferCreateInfo, LoadOp,
         RenderPass, RenderPassCreateInfo, StoreOp, Subpass, SubpassDependency, SubpassDescription,
     },
-    swapchain::{self, PresentInfo, Surface, Swapchain, SwapchainCreationError},
+    swapchain::{self, Surface, Swapchain, SwapchainCreationError, SwapchainPresentInfo},
     sync::{self, AccessFlags, FlushError, GpuFuture, PipelineStages},
     VulkanLibrary,
 };
@@ -416,10 +416,10 @@ impl RenderManager {
             .unwrap()
             .then_swapchain_present(
                 self.render_queue.clone(),
-                PresentInfo {
-                    index: swapchain_index,
-                    ..PresentInfo::swapchain(self.swapchain.clone())
-                },
+                SwapchainPresentInfo::swapchain_image_index(
+                    self.swapchain.clone(),
+                    swapchain_index,
+                ),
             )
             .then_signal_fence_and_flush();
 
@@ -453,7 +453,10 @@ impl RenderManager {
                 Ok(r) => r,
                 // This error tends to happen when the user is manually resizing the window.
                 // Simply restarting the loop is the easiest way to fix this issue.
-                Err(SwapchainCreationError::ImageExtentNotSupported { .. }) => return Ok(()),
+                Err(e @ SwapchainCreationError::ImageExtentNotSupported { .. }) => {
+                    debug!("failed to recreate swapchain due to {}", e);
+                    return Ok(());
+                }
                 Err(e) => return Err(e).context("recreating swapchain"),
             };
 

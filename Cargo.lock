@@ -1610,8 +1610,6 @@ dependencies = [
 [[package]]
 name = "vulkano"
 version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "617cd0984a92f4839e58e1ae7c94e6f7e0b79695ec8f2c516cfbcdaaa4a9f921"
 dependencies = [
  "ash",
  "bytemuck",
@@ -1636,8 +1634,6 @@ dependencies = [
 [[package]]
 name = "vulkano-win"
 version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eaebf8b56eccf018695c0252a5c8ddda3d49e5484d25c337e167ef06a7f5d737"
 dependencies = [
  "core-graphics-types",
  "objc",

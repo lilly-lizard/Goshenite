@@ -36,7 +36,7 @@ fn main() {
     if let Err(e) = log::set_logger(&CONSOLE_LOGGER) {
         println!("Goshenite ERROR - Failed to initialize logger: {:?}", e);
     };
-    log::set_max_level(LevelFilter::Info);
+    log::set_max_level(LevelFilter::Debug);
 
     info!(
         "if debugging, set environment variable `RUST_BACKTRACE=1` to see anyhow error backtrace"
