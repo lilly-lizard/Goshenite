@@ -320,10 +320,9 @@ impl RenderManager {
         camera: Camera,
     ) -> anyhow::Result<()> {
         // checks for submission finish and free locks on gpu resources
-        self.future_previous_frame
-            .as_mut()
-            .unwrap()
-            .cleanup_finished();
+        if let Some(future_previous_frame) = self.future_previous_frame.as_mut() {
+            future_previous_frame.cleanup_finished();
+        }
 
         self.recreate_swapchain = self.recreate_swapchain || window_resize;
         if self.recreate_swapchain {
@@ -344,8 +343,12 @@ impl RenderManager {
                 }
             };
         // `suboptimal` indicates that the swapchain image will still work but may not be displayed correctly
-        // we'll render the frame anyway because we're cheeky
+        // we'll render the frame anyway hehe
         if suboptimal {
+            debug!(
+                "suboptimal swapchain image {}, rendering anyway...",
+                swapchain_index
+            );
             self.recreate_swapchain = true;
         }
 
@@ -361,7 +364,7 @@ impl RenderManager {
             self.render_queue.queue_family_index(),
             command_buffer::CommandBufferUsage::OneTimeSubmit,
         )
-        .unwrap();
+        .context("beginning primary command buffer")?;
 
         // compute shader scene render
         let camera_push_constant = CameraPushConstant::new(
@@ -410,16 +413,21 @@ impl RenderManager {
         let future = self
             .future_previous_frame
             .take()
-            .unwrap()
+            .unwrap_or(sync::now(self.device.clone()).boxed()) // should never be None anyway...
             .join(acquire_future)
             .then_execute(self.render_queue.clone(), command_buffer)
-            .unwrap()
+            .context("executing vulkan primary command buffer")?
             .then_swapchain_present(
                 self.render_queue.clone(),
                 SwapchainPresentInfo::swapchain_image_index(
                     self.swapchain.clone(),
                     swapchain_index,
                 ),
+                // todo remove
+                // PresentInfo {
+                //     index: swapchain_index,
+                //     ..PresentInfo::swapchain(self.swapchain.clone())
+                // },
             )
             .then_signal_fence_and_flush();
 
@@ -443,16 +451,21 @@ impl RenderManager {
 impl RenderManager {
     /// Recreates the swapchain, render image and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
-        debug!("recreating swapchain and render targets...");
+        // determine suitable new size
+        let new_size: [u32; 2] = self.surface.window().inner_size().into();
 
+        debug!(
+            "recreating swapchain and render targets to size: {:?}",
+            new_size
+        );
         let (new_swapchain, swapchain_images) =
             match self.swapchain.recreate(swapchain::SwapchainCreateInfo {
-                image_extent: self.surface.window().inner_size().into(),
+                image_extent: new_size,
                 ..self.swapchain.create_info()
             }) {
                 Ok(r) => r,
-                // This error tends to happen when the user is manually resizing the window.
-                // Simply restarting the loop is the easiest way to fix this issue.
+                // this error tends to happen when the user is manually resizing the window.
+                // simply restarting the loop is the easiest way to fix this issue.
                 Err(e @ SwapchainCreationError::ImageExtentNotSupported { .. }) => {
                     debug!("failed to recreate swapchain due to {}", e);
                     return Ok(());
@@ -463,8 +476,10 @@ impl RenderManager {
         self.swapchain = new_swapchain;
         self.swapchain_image_views = swapchain_images
             .iter()
-            .map(|image| ImageView::new_default(image.clone()).unwrap())
-            .collect::<Vec<_>>();
+            .map(|image| {
+                ImageView::new_default(image.clone()).context("recreating swapchaing image view")
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         // set parameters for new resolution
         let resolution = swapchain_images[0].dimensions().width_height();
@@ -858,59 +873,3 @@ mod vulkan_callback {
         };
     }
 }
-
-/*
-/// Describes the types of errors encountered by the renderer
-// todo handle this stuff
-#[derive(Debug)]
-pub enum RenderManagerError {
-    /// Requested dimensions are not within supported range when attempting to create a render target (swapchain)
-    /// This error tends to happen when the user is manually resizing the window.
-    /// Simply restarting the loop is the easiest way to fix this issue.
-    ///
-    /// Equivalent to vulkano [SwapchainCreationError::ImageExtentNotSupported](`vulkano::swapchain::SwapchainCreationError::ImageExtentNotSupported`)
-    SurfaceSizeUnsupported {
-        provided: [u32; 2],
-        min_supported: [u32; 2],
-        max_supported: [u32; 2],
-    },
-    // todo VulkanError recoverable case handling... clamp inner window size in Engine::process_frame()?
-    // The window surface is no longer accessible and must be recreated.
-    // Invalidates the RenderManger and requires re-initialization.
-    //
-    // Equivalent to vulkano [SurfacePropertiesError::SurfaceLost](`vulkano::device::physical::SurfacePropertiesError::SurfaceLost`)
-    //SurfaceLost,
-}
-impl fmt::Display for RenderManagerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            //RenderManagerError::SurfaceLost =>
-            //    write!(f, "the Vulkan surface is no longer accessible, thus invalidating this RenderManager instance"),
-            RenderManagerError::SurfaceSizeUnsupported{ provided, min_supported, max_supported } =>
-                write!(f, "cannot create render target with requested dimensions = {:?}. min size = {:?}, max size = {:?}",
-                    provided, min_supported, max_supported),
-        }
-    }
-}
-impl From<SwapchainCreationError> for RenderManagerError {
-    fn from(error: SwapchainCreationError) -> Self {
-        match error {
-            // this error tends to happen when the user is manually resizing the window.
-            // simply restarting the loop is the easiest way to fix this issue.
-            SwapchainCreationError::ImageExtentNotSupported {
-                provided,
-                min_supported,
-                max_supported,
-            } => {
-                let err = RenderManagerError::SurfaceSizeUnsupported {
-                    provided,
-                    min_supported,
-                    max_supported,
-                };
-                debug!("cannot create swapchain: {}", err);
-                err
-            }
-        }
-    }
-}
-*/

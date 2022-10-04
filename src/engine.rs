@@ -28,16 +28,18 @@ pub struct Engine {
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
-        let default_resolution = [1000, 700];
-
         // init window
+        let mut window_builder = WindowBuilder::new().with_title(config::ENGINE_NAME);
+        if config::START_MAXIMIZED {
+            window_builder = window_builder.with_maximized(true);
+        } else {
+            window_builder = window_builder.with_inner_size(winit::dpi::LogicalSize::new(
+                config::DEFAULT_WINDOW_SIZE[0],
+                config::DEFAULT_WINDOW_SIZE[1],
+            ));
+        }
         let window = Arc::new(
-            WindowBuilder::new()
-                .with_title(config::ENGINE_NAME)
-                .with_inner_size(winit::dpi::LogicalSize::new(
-                    f64::from(default_resolution[0]),
-                    f64::from(default_resolution[1]),
-                ))
+            window_builder
                 .build(event_loop)
                 .expect("failed to instanciate window due to os error"),
         );
@@ -87,7 +89,7 @@ impl Engine {
             } => *control_flow = ControlFlow::Exit,
             // process window events and update state
             Event::WindowEvent { event, .. } => self.process_input(event),
-            // per frame logic todo is this called at screen refresh rate?
+            // per frame logic
             Event::MainEventsCleared => self.process_frame(),
             _ => (),
         }
@@ -116,7 +118,6 @@ impl Engine {
             WindowEvent::CursorLeft { .. } => self.cursor_state.set_in_window_state(false),
             // window resize
             WindowEvent::Resized(new_inner_size) => {
-                // todo instant renderer resize?
                 self.window_resize = true;
                 self.camera.set_aspect_ratio(new_inner_size.into())
             }
@@ -125,7 +126,6 @@ impl Engine {
                 scale_factor,
                 new_inner_size,
             } => {
-                // todo instant renderer resize?
                 self.scale_factor = scale_factor;
                 self.window_resize = true;
                 self.camera.set_aspect_ratio((*new_inner_size).into())
