@@ -117,52 +117,142 @@ fn create_vertex_buffer(
 
 /// Color of the x axis indicator
 const X_COLOR: Vec3 = Vec3::new(0.8, 0.0, 0.0);
+const Y_COLOR: Vec3 = Vec3::new(0.0, 0.8, 0.0);
+const Z_COLOR: Vec3 = Vec3::new(0.0, 0.0, 0.8);
 /// Line length
 const L_LEN: f32 = 0.5;
 /// Line thickness
 const L_THI: f32 = 0.05;
-const VERTEX_COUNT: usize = 30;
+const VERTEX_COUNT: usize = 90;
 // counter-clockwise front face
+#[rustfmt::skip]
 const VERTICES: [OverlayVertex; VERTEX_COUNT] = [
     // x axis indicator (red)
+    
     // face x t1
-    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, -L_THI), Vec3::X, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, L_THI, -L_THI), Vec3::X, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, L_THI), Vec3::X, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN, -L_THI, -L_THI), Vec3::X, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN,  L_THI, -L_THI), Vec3::X, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN, -L_THI,  L_THI), Vec3::X, X_COLOR),
     // face x t2
-    OverlayVertex::new(Vec3::new(L_LEN, L_THI, L_THI), Vec3::X, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, L_THI), Vec3::X, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, L_THI, -L_THI), Vec3::X, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN,  L_THI,  L_THI), Vec3::X, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN, -L_THI,  L_THI), Vec3::X, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN,  L_THI, -L_THI), Vec3::X, X_COLOR),
     // face ny t1
     OverlayVertex::new(Vec3::new(-L_THI, -L_THI, -L_THI), Vec3::NEG_Y, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, -L_THI), Vec3::NEG_Y, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_THI, -L_THI, L_THI), Vec3::NEG_Y, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN, -L_THI, -L_THI), Vec3::NEG_Y, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI, -L_THI,  L_THI), Vec3::NEG_Y, X_COLOR),
     // face ny t2
-    OverlayVertex::new(Vec3::new(L_THI, -L_THI, L_THI), Vec3::NEG_Y, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, -L_THI), Vec3::NEG_Y, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, L_THI), Vec3::NEG_Y, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI, -L_THI,  L_THI), Vec3::NEG_Y, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN, -L_THI, -L_THI), Vec3::NEG_Y, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN, -L_THI,  L_THI), Vec3::NEG_Y, X_COLOR),
     // face nz t1
     OverlayVertex::new(Vec3::new(-L_THI, -L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_THI, L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN, -L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
     // face nz t2
-    OverlayVertex::new(Vec3::new(L_THI, L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN,  L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN, -L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
     // face y t1
-    OverlayVertex::new(Vec3::new(L_THI, L_THI, L_THI), Vec3::Y, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, L_THI, L_THI), Vec3::Y, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, L_THI, -L_THI), Vec3::Y, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI,  L_THI), Vec3::Y, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN,  L_THI,  L_THI), Vec3::Y, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN,  L_THI, -L_THI), Vec3::Y, X_COLOR),
     // face y t2
-    OverlayVertex::new(Vec3::new(L_LEN, L_THI, -L_THI), Vec3::Y, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_THI, L_THI, -L_THI), Vec3::Y, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_THI, L_THI, L_THI), Vec3::Y, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN,  L_THI, -L_THI), Vec3::Y, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI, -L_THI), Vec3::Y, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI,  L_THI), Vec3::Y, X_COLOR),
     // face z t1
-    OverlayVertex::new(Vec3::new(L_THI, -L_THI, L_THI), Vec3::Z, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, L_THI), Vec3::Z, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_LEN, L_THI, L_THI), Vec3::Z, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI, -L_THI,  L_THI), Vec3::Z, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN, -L_THI,  L_THI), Vec3::Z, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN,  L_THI,  L_THI), Vec3::Z, X_COLOR),
     // face z t2
-    OverlayVertex::new(Vec3::new(L_LEN, L_THI, L_THI), Vec3::Z, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_THI, L_THI, L_THI), Vec3::Z, X_COLOR),
-    OverlayVertex::new(Vec3::new(L_THI, -L_THI, L_THI), Vec3::Z, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_LEN,  L_THI,  L_THI), Vec3::Z, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI,  L_THI), Vec3::Z, X_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI, -L_THI,  L_THI), Vec3::Z, X_COLOR),
+
+    // y axis indicator (green)
+    
+    // face z t1
+    OverlayVertex::new(Vec3::new(-L_THI,  L_LEN, -L_THI), Vec3::Z, Y_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_LEN,  L_THI), Vec3::Z, Y_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_LEN, -L_THI), Vec3::Z, Y_COLOR),
+    // face z t2
+    OverlayVertex::new(Vec3::new( L_THI,  L_LEN,  L_THI), Vec3::Z, Y_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_LEN, -L_THI), Vec3::Z, Y_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_LEN,  L_THI), Vec3::Z, Y_COLOR),
+    // face nx t1
+    OverlayVertex::new(Vec3::new(-L_THI, -L_THI, -L_THI), Vec3::NEG_X, Y_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_LEN, -L_THI), Vec3::NEG_X, Y_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI, -L_THI), Vec3::NEG_X, Y_COLOR),
+    // face nx t2
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI, -L_THI), Vec3::NEG_X, Y_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_LEN, -L_THI), Vec3::NEG_X, Y_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_LEN, -L_THI), Vec3::NEG_X, Y_COLOR),
+    // face ny t1
+    OverlayVertex::new(Vec3::new(-L_THI, -L_THI, -L_THI), Vec3::NEG_Y, Y_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_THI,  L_THI), Vec3::NEG_Y, Y_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_LEN, -L_THI), Vec3::NEG_Y, Y_COLOR),
+    // face ny t2
+    OverlayVertex::new(Vec3::new(-L_THI,  L_THI,  L_THI), Vec3::NEG_Y, Y_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_LEN,  L_THI), Vec3::NEG_Y, Y_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_LEN, -L_THI), Vec3::NEG_Y, Y_COLOR),
+    // face x t1
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI,  L_THI), Vec3::X, Y_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_LEN,  L_THI), Vec3::X, Y_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_LEN,  L_THI), Vec3::X, Y_COLOR),
+    // face x t2
+    OverlayVertex::new(Vec3::new(-L_THI,  L_LEN,  L_THI), Vec3::X, Y_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_THI,  L_THI), Vec3::X, Y_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI,  L_THI), Vec3::X, Y_COLOR),
+    // face y t1
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI, -L_THI), Vec3::Y, Y_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_LEN, -L_THI), Vec3::Y, Y_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_LEN,  L_THI), Vec3::Y, Y_COLOR),
+    // face y t2
+    OverlayVertex::new(Vec3::new( L_THI,  L_LEN,  L_THI), Vec3::Y, Y_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI,  L_THI), Vec3::Y, Y_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI, -L_THI), Vec3::Y, Y_COLOR),
+
+    // z axis indicator (blue)
+    
+    // face z t1
+    OverlayVertex::new(Vec3::new(-L_THI, -L_THI,  L_LEN), Vec3::Z, Z_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI, -L_THI,  L_LEN), Vec3::Z, Z_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_THI,  L_LEN), Vec3::Z, Z_COLOR),
+    // face z t2
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI,  L_LEN), Vec3::Z, Z_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_THI,  L_LEN), Vec3::Z, Z_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI, -L_THI,  L_LEN), Vec3::Z, Z_COLOR),
+    // face nx t1
+    OverlayVertex::new(Vec3::new(-L_THI, -L_THI, -L_THI), Vec3::NEG_X, Z_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI, -L_THI,  L_LEN), Vec3::NEG_X, Z_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_THI,  L_THI), Vec3::NEG_X, Z_COLOR),
+    // face nx t2
+    OverlayVertex::new(Vec3::new(-L_THI,  L_THI,  L_THI), Vec3::NEG_X, Z_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI, -L_THI,  L_LEN), Vec3::NEG_X, Z_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_THI,  L_LEN), Vec3::NEG_X, Z_COLOR),
+    // face ny t1
+    OverlayVertex::new(Vec3::new(-L_THI, -L_THI, -L_THI), Vec3::NEG_Y, Z_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI, -L_THI,  L_THI), Vec3::NEG_Y, Z_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI, -L_THI,  L_LEN), Vec3::NEG_Y, Z_COLOR),
+    // face ny t2
+    OverlayVertex::new(Vec3::new( L_THI, -L_THI,  L_THI), Vec3::NEG_Y, Z_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI, -L_THI,  L_LEN), Vec3::NEG_Y, Z_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI, -L_THI,  L_LEN), Vec3::NEG_Y, Z_COLOR),
+    // face x t1
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI,  L_THI), Vec3::X, Z_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI,  L_LEN), Vec3::X, Z_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI, -L_THI,  L_LEN), Vec3::X, Z_COLOR),
+    // face x t2
+    OverlayVertex::new(Vec3::new( L_THI, -L_THI,  L_LEN), Vec3::X, Z_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI, -L_THI,  L_THI), Vec3::X, Z_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI,  L_THI), Vec3::X, Z_COLOR),
+    // face y t1
+    OverlayVertex::new(Vec3::new(-L_THI,  L_THI,  L_THI), Vec3::Y, Z_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_THI,  L_LEN), Vec3::Y, Z_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI,  L_LEN), Vec3::Y, Z_COLOR),
+    // face y t2
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI,  L_LEN), Vec3::Y, Z_COLOR),
+    OverlayVertex::new(Vec3::new( L_THI,  L_THI,  L_THI), Vec3::Y, Z_COLOR),
+    OverlayVertex::new(Vec3::new(-L_THI,  L_THI,  L_THI), Vec3::Y, Z_COLOR),
 ];

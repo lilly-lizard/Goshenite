@@ -1,7 +1,9 @@
-use crate::config;
-use crate::helper::angle::Radians;
+use crate::cursor_state::MouseButton;
+use crate::helper::angle::Angle;
+use crate::{config, cursor_state::CursorState};
 use anyhow::ensure;
-use glam::{Mat3, Mat4, Vec3};
+use egui::epaint::text::cursor::Cursor;
+use glam::{DVec2, Mat3, Mat4, Vec3};
 
 const NEAR_PLANE: f32 = 0.01;
 const FAR_PLANE: f32 = 100.;
@@ -27,7 +29,7 @@ pub struct Camera {
     /// Cross product of the looking direction and configured world space up
     normal: Vec3,
     /// Field of View
-    fov: Radians,
+    fov: Angle,
     /// Aspect ratio
     aspect_ratio: f32,
 }
@@ -49,24 +51,32 @@ impl Camera {
         })
     }
 
-    /// Changes the viewing direction by todo optimise? todo desc
-    pub fn rotate(&mut self, horizontal: Radians, vertical: Radians) {
-        match self.look_mode {
-            LookMode::Direction(direction) => {
-                let rotation_matrix = Mat3::from_axis_angle(self.normal.normalize(), -vertical.val)
-                    * Mat3::from_rotation_z(horizontal.val);
-                // no lock-on target so maintain position and arcball direction
-                self.look_mode = LookMode::Direction(rotation_matrix * direction);
-            }
-            LookMode::Target(target) => {
-                let rotation_matrix = Mat3::from_axis_angle(self.normal.normalize(), vertical.val)
-                    * Mat3::from_rotation_z(-horizontal.val);
-                // lock on target stays the same but camera position rotates around it
-                self.position = rotation_matrix * (self.position - target) + target;
-            }
+    /// Update camera based on user input
+    pub fn process_frame(&mut self, cursor: &CursorState) {
+        // left mouse button dragging changes camera orientation
+        if cursor.which_dragging() == Some(MouseButton::Left) {
+            self.rotate(cursor.position_frame_change());
         }
-        self.update_normal();
     }
+
+    // Setters
+    // todo docs
+
+    pub fn set_aspect_ratio(&mut self, resolution: [i32; 2]) {
+        self.aspect_ratio = calc_aspect_ratio(resolution);
+    }
+
+    pub fn set_lock_on_target(&mut self, target: Vec3) {
+        self.look_mode = LookMode::Target(target);
+    }
+
+    pub fn unset_lock_on_target(&mut self) {
+        if let LookMode::Target(target) = self.look_mode {
+            self.look_mode = LookMode::Direction((target - self.position).normalize());
+        }
+    }
+
+    // Getters
 
     /// Retrurns the view transform matrix
     pub fn view_matrix(&self) -> Mat4 {
@@ -80,41 +90,19 @@ impl Camera {
 
     /// Returns the projection transfor matrix
     pub fn proj_matrix(&self) -> Mat4 {
-        Mat4::perspective_rh(*self.fov, self.aspect_ratio, NEAR_PLANE, FAR_PLANE)
+        Mat4::perspective_rh(
+            self.fov.radians() as f32,
+            self.aspect_ratio,
+            NEAR_PLANE,
+            FAR_PLANE,
+        )
     }
 
-    // Setters
-    pub fn set_aspect_ratio(&mut self, resolution: [i32; 2]) {
-        self.aspect_ratio = calc_aspect_ratio(resolution);
-    }
-    // todo doc
-    pub fn set_lock_on_target(&mut self, target: Vec3) {
-        self.look_mode = LookMode::Target(target);
-    }
-    // todo doc
-    pub fn unset_lock_on_target(&mut self) {
-        if let LookMode::Target(target) = self.look_mode {
-            self.look_mode = LookMode::Direction((target - self.position).normalize());
-        }
-    }
-
-    // Getters
     /// Position in world space
     pub fn position(&self) -> Vec3 {
         self.position
     }
-    /*
-    /// View direction in world space
-    pub fn direction(&self) -> Vec3 {
-        self.direction
-    /// Field of View in radians
-    pub fn fov(&self) -> f32 {
-        self.fov
-    }
-    /// Aspect ratio
-    pub fn aspect_ratio(&self) -> f32 {
-        self.aspect_ratio
-    }
+
     /// If lock on is set, returns the world space position the camera is locked on to.
     pub fn lock_on_target(&self) -> Option<Vec3> {
         if let LookMode::Target(target) = self.look_mode {
@@ -123,10 +111,32 @@ impl Camera {
             None
         }
     }
-    */
 }
 // Private functions
 impl Camera {
+    /// Changes the viewing direction based on the pixel amount the cursor has moved
+    fn rotate(&mut self, delta_cursor_position: DVec2) {
+        let delta_angle = self.delta_cursor_to_angle(delta_cursor_position.into());
+        let [horizontal, vertical] = delta_angle.map(|a| a.radians() as f32);
+        let normal = self.normal.normalize();
+        match self.look_mode {
+            LookMode::Direction(direction) => {
+                // no lock-on target so maintain position and arcball direction
+                let rotation_matrix =
+                    Mat3::from_axis_angle(normal, -vertical) * Mat3::from_rotation_z(horizontal);
+                self.look_mode = LookMode::Direction(rotation_matrix * direction);
+            }
+            LookMode::Target(target) => {
+                // lock on target stays the same but camera position rotates around it
+                let rotation_matrix =
+                    Mat3::from_axis_angle(normal, vertical) * Mat3::from_rotation_z(-horizontal);
+                self.position = rotation_matrix * (self.position - target) + target;
+            }
+        }
+        // update normal now that camera orientation has changed
+        self.update_normal();
+    }
+
     /// Sets direction and calculates normal
     fn update_normal(&mut self) {
         // only set normal if cross product won't be zero i.e. normal doesn't change if facing up
@@ -138,6 +148,18 @@ impl Camera {
         if direction != up {
             self.normal = up.cross(direction);
         }
+    }
+
+    /// Converts cursor position vector to an angle vector. Sensitivity depends on the current look-mode
+    fn delta_cursor_to_angle(&self, delta_cursor_position: [f64; 2]) -> [Angle; 2] {
+        delta_cursor_position.map(|delta| match self.look_mode {
+            LookMode::Direction(_) => {
+                Angle::new_radians(delta * config::LOOK_SENSITIVITY.radians())
+            }
+            LookMode::Target(_) => {
+                Angle::new_radians(delta * config::ARC_BALL_SENSITIVITY.radians())
+            }
+        })
     }
 }
 

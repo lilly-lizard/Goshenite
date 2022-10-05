@@ -1,6 +1,6 @@
 use glam::Vec3;
 
-use crate::helper::angle::Radians;
+use crate::helper::angle::Angle;
 
 pub const ENGINE_NAME: &str = "Goshenite";
 
@@ -37,10 +37,11 @@ impl WorldSpaceUp {
     }
 }
 
-/// Field of view in radians
-pub const FIELD_OF_VIEW: Radians = Radians::new(std::f32::consts::FRAC_PI_4);
-/// Sensitivity for changing the view direction with the cursor = radians / pixels
-pub const LOOK_SENSITIVITY: f64 = 0.001;
+/// Field of view
+pub const FIELD_OF_VIEW: Angle = Angle::new_radians(std::f64::consts::FRAC_PI_4);
+/// Sensitivity for changing the view direction with the cursor = angle / pixels
+pub const LOOK_SENSITIVITY: Angle = Angle::new_radians(0.001);
+pub const ARC_BALL_SENSITIVITY: Angle = Angle::new_radians(0.005);
 
 // renderer settings
 pub const VULKAN_VER_MAJ: u32 = 1;

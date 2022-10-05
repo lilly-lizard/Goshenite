@@ -32,7 +32,8 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## low priority
 
-- attempt to restart renderer on error: e.g. SurfaceLost attempt reinitialization
+- hemisphere (circle) clamps on looking too far up/down
+- attempt to restart renderer on error: e.g. SurfaceLost attempt reinitialization. pop-up dialogue "renderer has crashes. attempt re-initialization? report bug here..."
 - test anyhow dereferencing e.g. SurfaceSizeUnsupported (see bottom of render_manager.rs)
 - preview new primitive, greyed out/transparent until add?
 - highlight changed primitive values in gui (to indicate what hasn't been updated)

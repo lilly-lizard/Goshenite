@@ -51,10 +51,9 @@ impl Engine {
 
         // init primitives
         let mut primitive_collection = PrimitiveCollection::default();
-        primitive_collection
-            .add_primitive(Sphere::new(glam::Vec3::new(0.0, 1.0, -0.4), 0.4).into());
+        primitive_collection.add_primitive(Sphere::new(glam::Vec3::new(0.0, 0.0, 0.0), 0.4).into());
         primitive_collection.add_primitive(
-            Cube::new(glam::Vec3::new(0.0, -1.0, 0.4), glam::Vec3::splat(0.8)).into(),
+            Cube::new(glam::Vec3::new(0.0, -1.5, 0.5), glam::Vec3::splat(0.8)).into(),
         );
 
         // init renderer
@@ -139,11 +138,13 @@ impl Engine {
 
     /// Per frame engine logic and rendering
     fn process_frame(&mut self) {
+        // input processing...
+
         // update cursor state
         self.cursor_state.process_frame();
 
-        // update gui
-        if let Err(e) = self.gui.update_frame(
+        // process gui state and update layout
+        if let Err(e) = self.gui.update_gui_layout(
             &mut self.renderer.gui_renderer_mut(),
             &mut self.primitive_collection,
             &mut self.camera,
@@ -151,13 +152,10 @@ impl Engine {
             anyhow_panic(&e, "update gui");
         }
 
+        // engine processing...
+
         // update camera
-        if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
-            let delta_cursor: Vec2 =
-                (self.cursor_state.position_frame_change() * config::LOOK_SENSITIVITY).as_vec2();
-            self.camera
-                .rotate(delta_cursor.x.into(), delta_cursor.y.into());
-        }
+        self.camera.process_frame(&self.cursor_state);
 
         // submit rendering commands
         if let Err(e) = self.renderer.render_frame(

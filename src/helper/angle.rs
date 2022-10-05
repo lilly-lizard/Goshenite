@@ -1,88 +1,106 @@
 /// Shout out to cgmath for the idea https://github.com/rustgd/cgmath
-use std::ops::Deref;
 
-/// Represents an angle in f32 radians
-#[derive(Copy, Clone, PartialEq, PartialOrd, Default, Debug)]
-pub struct Radians {
-    pub val: f32,
-}
-
-/// Represents an angle in f32 degrees
-#[derive(Copy, Clone, PartialEq, PartialOrd, Default, Debug)]
-pub struct Degrees {
-    pub val: f32,
+/// Represents a f64 angle in radians or degrees
+#[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
+pub enum Angle {
+    Radians(f64),
+    Degrees(f64),
 }
 
-// From impls
-impl From<f32> for Radians {
+impl Angle {
     #[inline]
-    fn from(val: f32) -> Radians {
-        Radians { val }
+    pub const fn new_radians(radians: f64) -> Self {
+        Self::Radians(radians)
     }
-}
-impl From<f32> for Degrees {
     #[inline]
-    fn from(val: f32) -> Degrees {
-        Degrees { val }
+    pub const fn new_degrees(degrees: f64) -> Self {
+        Self::Degrees(degrees)
     }
-}
-impl From<Radians> for f32 {
+
     #[inline]
-    fn from(rad: Radians) -> f32 {
-        *rad
-    }
-}
-impl From<Degrees> for f32 {
-    #[inline]
-    fn from(deg: Degrees) -> f32 {
-        *deg
-    }
-}
-impl From<Radians> for Degrees {
-    #[inline]
-    fn from(rad: Radians) -> Degrees {
-        Degrees {
-            val: rad.val * 180.0 / std::f32::consts::PI, // same as f32::to_degrees()
+    pub fn radians(&self) -> f64 {
+        match *self {
+            Self::Radians(r) => r,
+            Self::Degrees(d) => degrees_to_radians(d),
         }
     }
-}
-impl From<Degrees> for Radians {
     #[inline]
-    fn from(deg: Degrees) -> Radians {
-        Radians {
-            val: deg.val * std::f32::consts::PI / 180., // same as f32::to_radians()
+    pub fn degrees(&self) -> f64 {
+        match *self {
+            Self::Radians(r) => radians_to_degrees(r),
+            Self::Degrees(d) => d,
         }
     }
 }
 
-// To conversions
-impl Radians {
-    pub const fn new(val: f32) -> Self {
-        Self { val }
-    }
-    pub fn to_degrees(self) -> Degrees {
-        self.into()
-    }
-}
-impl Degrees {
-    pub const fn new(val: f32) -> Self {
-        Self { val }
-    }
-    pub fn to_radians(self) -> Radians {
-        self.into()
+impl Default for Angle {
+    fn default() -> Self {
+        Self::Radians(Default::default())
     }
 }
 
-// Deref impls
-impl Deref for Radians {
-    type Target = f32;
-    fn deref(&self) -> &Self::Target {
-        &self.val
-    }
+#[inline]
+fn degrees_to_radians(degrees: f64) -> f64 {
+    degrees * std::f64::consts::PI / 180.
 }
-impl Deref for Degrees {
-    type Target = f32;
-    fn deref(&self) -> &Self::Target {
-        &self.val
-    }
+
+#[inline]
+fn radians_to_degrees(radians: f64) -> f64 {
+    radians * 180.0 / std::f64::consts::PI
 }
+
+// // convert between floats and angles
+// impl From<f32> for Radians {
+//     #[inline]
+//     fn from(val: f32) -> Radians {
+//         Radians { val }
+//     }
+// }
+// impl From<f32> for Degrees {
+//     #[inline]
+//     fn from(val: f32) -> Degrees {
+//         Degrees { val }
+//     }
+// }
+
+// // convert between radians and degrees
+// impl From<Radians> for Degrees {
+//     #[inline]
+//     fn from(rad: Radians) -> Degrees {
+//         Degrees {
+//             val: rad.val * 180.0 / std::f32::consts::PI, // same as f32::to_degrees()
+//         }
+//     }
+// }
+// impl From<Degrees> for Radians {
+//     #[inline]
+//     fn from(deg: Degrees) -> Radians {
+//         Radians {
+//             val: deg.val * std::f32::consts::PI / 180., // same as f32::to_radians()
+//         }
+//     }
+// }
+// impl Radians {
+//     pub fn to_degrees(self) -> Degrees {
+//         self.into()
+//     }
+// }
+// impl Degrees {
+//     pub fn to_radians(self) -> Radians {
+//         self.into()
+//     }
+// }
+
+// // Deref impls
+// impl Deref for Radians {
+//     type Target = f32;
+//     fn deref(&self) -> &Self::Target {
+//         &self.val
+//     }
+// }
+// impl Deref for Degrees {
+//     type Target = f32;
+//     fn deref(&self) -> &Self::Target {
+//         &self.val
+//     }
+// }

@@ -87,7 +87,7 @@ impl Gui {
     }
 
     /// Updates the gui layout and tells the renderer to update any changed resources
-    pub fn update_frame(
+    pub fn update_gui_layout(
         &mut self,
         gui_renderer: &mut GuiRenderer,
         primitive_collection: &mut PrimitiveCollection,
@@ -243,7 +243,6 @@ impl Gui {
             };
 
             ui.separator();
-            // TODO CLICKING LOGIC?? frame delay for stuff above to update :''''(
 
             // new primitive button
             if ui
@@ -254,6 +253,7 @@ impl Gui {
                 *primitive_input = Primitive::Null;
             }
             // primitive list
+            // todo performance hit when list becomes too big (https://github.com/emilk/egui#cpu-usage) try only laying out part in view
             let primitives = primitive_collection.primitives();
             let mut new_selected_primitive: Option<usize> = None;
             for i in 0..primitives.len() {
