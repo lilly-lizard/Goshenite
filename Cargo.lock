@@ -1611,6 +1611,7 @@ dependencies = [
 name = "vulkano"
 version = "0.31.0"
 dependencies = [
+ "ahash",
  "ash",
  "bytemuck",
  "core-graphics-types",

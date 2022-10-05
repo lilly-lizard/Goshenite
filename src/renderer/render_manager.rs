@@ -1,11 +1,10 @@
-use super::blit_pass::BlitPass;
-use super::gui_renderer::GuiRenderer;
-use super::scene_pass::ScenePass;
-use crate::camera::Camera;
-use crate::config;
-use crate::gui::Gui;
-use crate::primitives::primitives::PrimitiveCollection;
-use crate::shaders::shader_interfaces::CameraPushConstant;
+use super::{
+    blit_pass::BlitPass, gui_renderer::GuiRenderer, overlay_pass::OverlayPass,
+    scene_pass::ScenePass,
+};
+use crate::{
+    camera::Camera, config, gui::Gui, primitives::primitive_collection::PrimitiveCollection,
+};
 use anyhow::{anyhow, bail, ensure, Context};
 use log::{debug, error, info, warn};
 use std::sync::Arc;
@@ -64,6 +63,7 @@ pub struct RenderManager {
 
     scene_pass: ScenePass,
     blit_pass: BlitPass,
+    overlay_pass: OverlayPass,
     gui_pass: GuiRenderer,
 
     future_previous_frame: Option<Box<dyn GpuFuture>>, // todo description
@@ -75,7 +75,10 @@ pub struct RenderManager {
 
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
-    pub fn new(window: Arc<Window>, primitives: &PrimitiveCollection) -> anyhow::Result<Self> {
+    pub fn new(
+        window: Arc<Window>,
+        primitive_collection: &PrimitiveCollection,
+    ) -> anyhow::Result<Self> {
         // load vulkan library
         let vulkan_library = VulkanLibrary::new().context("loading vulkan library")?;
         info!(
@@ -253,34 +256,26 @@ impl RenderManager {
         // init compute shader scene pass
         let scene_pass = ScenePass::new(
             device.clone(),
-            primitives,
+            primitive_collection,
             swapchain_images[0].dimensions().width_height(),
             render_image.clone(),
         )?;
 
+        // describe swapchain subpass
+        let subpass = Subpass::from(render_pass.clone(), render_pass_indices::SUBPASS_SWAPCHAIN)
+            .ok_or(anyhow!(
+                "render pass does not contain subpass at index {}",
+                render_pass_indices::SUBPASS_SWAPCHAIN
+            ))?;
+
         // init blit pass
-        let blit_pass = BlitPass::new(
-            device.clone(),
-            render_image.clone(),
-            Subpass::from(render_pass.clone(), render_pass_indices::SUBPASS_SWAPCHAIN).ok_or(
-                anyhow!(
-                    "render pass does not contain subpass at index {}",
-                    render_pass_indices::SUBPASS_SWAPCHAIN
-                ),
-            )?,
-        )?;
+        let blit_pass = BlitPass::new(device.clone(), render_image.clone(), subpass.clone())?;
+
+        // init overlay pass
+        let overlay_pass = OverlayPass::new(device.clone(), subpass.clone())?;
 
         // init gui renderer
-        let gui_pass = GuiRenderer::new(
-            device.clone(),
-            transfer_queue.clone(),
-            Subpass::from(render_pass.clone(), render_pass_indices::SUBPASS_SWAPCHAIN).ok_or(
-                anyhow!(
-                    "render pass does not contain subpass at index {}",
-                    render_pass_indices::SUBPASS_SWAPCHAIN
-                ),
-            )?,
-        )?;
+        let gui_pass = GuiRenderer::new(device.clone(), transfer_queue.clone(), subpass.clone())?;
 
         // create futures used for frame synchronization
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
@@ -300,6 +295,7 @@ impl RenderManager {
             framebuffers,
             scene_pass,
             blit_pass,
+            overlay_pass,
             gui_pass,
             future_previous_frame,
             recreate_swapchain,
@@ -315,9 +311,9 @@ impl RenderManager {
     pub fn render_frame(
         &mut self,
         window_resize: bool,
-        primitives: &PrimitiveCollection,
+        camera: &Camera,
+        primitive_collection: &PrimitiveCollection,
         gui: &Gui,
-        camera: Camera,
     ) -> anyhow::Result<()> {
         // checks for submission finish and free locks on gpu resources
         if let Some(future_previous_frame) = self.future_previous_frame.as_mut() {
@@ -353,7 +349,7 @@ impl RenderManager {
         }
 
         // todo shouldn't need to recreate each frame?
-        self.scene_pass.update_primitives(primitives)?;
+        self.scene_pass.update_primitives(primitive_collection)?;
 
         // todo actually set this
         let need_srgb_conv = false;
@@ -367,12 +363,7 @@ impl RenderManager {
         .context("beginning primary command buffer")?;
 
         // compute shader scene render
-        let camera_push_constant = CameraPushConstant::new(
-            glam::Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
-            camera.position(),
-        );
-        self.scene_pass
-            .record_commands(&mut builder, camera_push_constant)?;
+        self.scene_pass.record_commands(&mut builder, camera)?;
 
         // begin render pass
         let clear_values: Vec<Option<ClearValue>> = vec![Some([0.0, 0.0, 0.0, 1.0].into())];
@@ -392,15 +383,20 @@ impl RenderManager {
         self.blit_pass
             .record_commands(&mut builder, self.viewport.clone())?;
 
+        // draw editor overlay
+        self.overlay_pass.record_commands(
+            &mut builder,
+            camera,
+            primitive_collection,
+            self.viewport.clone(),
+        )?;
+
         // render gui
         self.gui_pass.record_commands(
             &mut builder,
             gui,
             need_srgb_conv,
-            [
-                self.viewport.dimensions[0] as u32,
-                self.viewport.dimensions[1] as u32,
-            ],
+            self.viewport.dimensions,
         )?;
 
         // end render pass

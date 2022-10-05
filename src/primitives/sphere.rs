@@ -1,4 +1,4 @@
-use super::primitives::PrimitiveTrait;
+use super::primitive::PrimitiveTrait;
 use crate::shaders::shader_interfaces::{primitive_codes, PrimitiveDataSlice};
 use glam::Vec3;
 
@@ -26,19 +26,6 @@ impl PrimitiveTrait for Sphere {
             primitive_codes::NULL,
         ]
     }
-    /*fn decode(data: PrimitiveDataSlice) -> Option<Self> {
-        if data[0] != primitive_codes::SPHERE {
-            return None;
-        }
-        let center = Vec3::new(
-            f32::from_bits(data[1]),
-            f32::from_bits(data[2]),
-            f32::from_bits(data[3]),
-        );
-        let radius = f32::from_bits(data[4]);
-        Some(Self { center, radius })
-    }*/
-
     fn center(&self) -> Vec3 {
         self.center
     }

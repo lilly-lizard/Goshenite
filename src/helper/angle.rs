@@ -57,11 +57,17 @@ impl From<Degrees> for Radians {
 
 // To conversions
 impl Radians {
+    pub const fn new_const(val: f32) -> Self {
+        Self { val }
+    }
     pub fn to_degrees(self) -> Degrees {
         self.into()
     }
 }
 impl Degrees {
+    pub const fn new_const(val: f32) -> Self {
+        Self { val }
+    }
     pub fn to_radians(self) -> Radians {
         self.into()
     }

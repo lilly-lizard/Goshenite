@@ -32,7 +32,7 @@ impl Camera {
             position: Vec3::new(-5., 0., 0.),
             direction,
             normal: normal.normalize(),
-            fov: std::f32::consts::FRAC_PI_2.into(),
+            fov: config::FIELD_OF_VIEW,
             aspect_ratio: Self::calc_aspect_ratio(resolution),
         }
     }

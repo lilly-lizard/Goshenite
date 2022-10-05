@@ -1,4 +1,4 @@
-use super::primitives::PrimitiveTrait;
+use super::primitive::PrimitiveTrait;
 use crate::shaders::shader_interfaces::{primitive_codes, PrimitiveDataSlice};
 use glam::Vec3;
 
@@ -26,23 +26,6 @@ impl PrimitiveTrait for Cube {
             primitive_codes::NULL,
         ]
     }
-    /*fn decode(data: PrimitiveDataSlice) -> Option<Self> {
-        if data[0] != primitive_codes::CUBE {
-            return None;
-        }
-        let center = Vec3::new(
-            f32::from_bits(data[1]),
-            f32::from_bits(data[2]),
-            f32::from_bits(data[3]),
-        );
-        let dimensions = Vec3::new(
-            f32::from_bits(data[4]),
-            f32::from_bits(data[5]),
-            f32::from_bits(data[6]),
-        );
-        Some(Self { center, dimensions })
-    }*/
-
     fn center(&self) -> Vec3 {
         self.center
     }

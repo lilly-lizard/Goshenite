@@ -1,14 +1,17 @@
 use super::common::{create_shader_module, CreateDescriptorSetError, CreateShaderError};
-use crate::config;
-use crate::primitives::primitives::PrimitiveCollection;
-use crate::shaders::shader_interfaces::{
-    CameraPushConstant, ComputeSpecConstant, PrimitiveData, PrimitiveDataUnit, SHADER_ENTRY_POINT,
+use crate::{
+    camera::Camera,
+    config,
+    primitives::primitive_collection::PrimitiveCollection,
+    shaders::shader_interfaces::{
+        CameraPushConstants, ComputeSpecConstant, PrimitiveData, PrimitiveDataUnit,
+        SHADER_ENTRY_POINT,
+    },
 };
 use anyhow::Context;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
-use std::fmt;
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
     command_buffer::AutoCommandBufferBuilder,
@@ -50,7 +53,7 @@ pub struct ScenePass {
 impl ScenePass {
     pub fn new(
         device: Arc<Device>,
-        primitives: &PrimitiveCollection,
+        primitive_collection: &PrimitiveCollection,
         render_image_size: [u32; 2],
         render_image: Arc<ImageView<StorageImage>>,
     ) -> anyhow::Result<Self> {
@@ -101,7 +104,8 @@ impl ScenePass {
         // init compute pipeline and descriptor sets
         let pipeline = create_pipeline(device.clone(), work_group_size)?;
         let desc_set_render_image = create_desc_set_render_image(pipeline.clone(), render_image)?;
-        let primitive_buffer = create_primitives_buffer(primitives, &primitive_buffer_pool)?;
+        let primitive_buffer =
+            create_primitives_buffer(primitive_collection, &primitive_buffer_pool)?;
         let desc_set_primitives = create_desc_set_primitives(pipeline.clone(), primitive_buffer)?;
 
         Ok(Self {
@@ -116,10 +120,13 @@ impl ScenePass {
     }
 
     /// Update the primitives storage buffer.
-    ///
-    /// todo shoul be optimized to not create a new buffer each time...
-    pub fn update_primitives(&mut self, primitives: &PrimitiveCollection) -> anyhow::Result<()> {
-        let primitive_buffer = create_primitives_buffer(primitives, &self.primitive_buffer_pool)?;
+    //todo shoul be optimized to not create a new buffer each time...
+    pub fn update_primitives(
+        &mut self,
+        primitive_collection: &PrimitiveCollection,
+    ) -> anyhow::Result<()> {
+        let primitive_buffer =
+            create_primitives_buffer(primitive_collection, &self.primitive_buffer_pool)?;
         self.desc_set_primitives =
             create_desc_set_primitives(self.pipeline.clone(), primitive_buffer)?;
         Ok(())
@@ -155,8 +162,12 @@ impl ScenePass {
     pub fn record_commands<L>(
         &self,
         command_buffer: &mut AutoCommandBufferBuilder<L>,
-        camera_push_constant: CameraPushConstant,
+        camera: &Camera,
     ) -> anyhow::Result<()> {
+        let camera_push_constant = CameraPushConstants::new(
+            glam::Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
+            camera.position(),
+        );
         let mut desc_sets: Vec<Arc<PersistentDescriptorSet>> = Vec::default();
         desc_sets.insert(descriptor::SET_IMAGE, self.desc_set_render_image.clone());
         desc_sets.insert(descriptor::SET_PRIMITVES, self.desc_set_primitives.clone());
@@ -276,15 +287,17 @@ fn create_desc_set_primitives(
 }
 
 fn create_primitives_buffer(
-    primitives: &PrimitiveCollection,
+    primitive_collection: &PrimitiveCollection,
     buffer_pool: &CpuBufferPool<PrimitiveDataUnit>,
 ) -> anyhow::Result<Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StandardMemoryPool>>>> {
     // todo should be able to update buffer wihtout recreating?
-    let combined_data = PrimitiveData::combined_data(primitives)?;
-    //debug!(
-    //    "creating new primitives buffer slice for {} primitives",
-    //    combined_data.len()
-    //);
+    let combined_data = PrimitiveData::combined_data(primitive_collection)?;
+    if config::PER_FRAME_DEBUG_LOGS {
+        debug!(
+            "creating new primitives buffer slice for {} primitives",
+            combined_data.len()
+        );
+    }
     buffer_pool
         .from_iter(combined_data)
         .context("creating primitives buffer")

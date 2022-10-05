@@ -1,6 +1,11 @@
 use glam::Vec3;
 
+use crate::helper::angle::Radians;
+
 pub const ENGINE_NAME: &str = "Goshenite";
+
+/// If true, enables spammy debug log messages that happen every frame
+pub const PER_FRAME_DEBUG_LOGS: bool = false;
 
 /// Wherever the app window starts maximized
 pub const START_MAXIMIZED: bool = false;
@@ -32,8 +37,10 @@ impl WorldSpaceUp {
     }
 }
 
+/// Field of view in radians
+pub const FIELD_OF_VIEW: Radians = Radians::new_const(std::f32::consts::FRAC_PI_4);
 /// Sensitivity for changing the view direction with the cursor = radians / pixels
-pub const SENSITIVITY_LOOK: f64 = 0.001;
+pub const LOOK_SENSITIVITY: f64 = 0.001;
 
 // renderer settings
 pub const VULKAN_VER_MAJ: u32 = 1;

@@ -1,3 +1,4 @@
 pub mod cube;
-pub mod primitives;
+pub mod primitive;
+pub mod primitive_collection;
 pub mod sphere;

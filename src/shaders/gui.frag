@@ -1,9 +1,9 @@
 #version 450
 
-layout(location = 0) in vec4 v_color;
-layout(location = 1) in vec2 v_tex_coords;
+layout(location = 0) in vec4 in_color;
+layout(location = 1) in vec2 in_tex_coords;
 
-layout(location = 0) out vec4 f_color;
+layout(location = 0) out vec4 out_color;
 
 layout(binding = 0, set = 0) uniform sampler2D font_texture;
 layout(push_constant) uniform PushConstants {
@@ -24,12 +24,12 @@ vec4 srgba_from_linear(vec4 rgba) {
 }
 
 void main() {
-    vec4 texture_color = texture(font_texture, v_tex_coords);
+    vec4 texture_color = texture(font_texture, in_tex_coords);
 
     if (push_constants.need_srgb_conv == 0) {
-        f_color = v_color * texture_color;
+        out_color = in_color * texture_color;
     } else {
-        f_color = srgba_from_linear(v_color * texture_color) / 255.0;
-        f_color.a = pow(f_color.a, 1.6);
+        out_color = srgba_from_linear(in_color * texture_color) / 255.0;
+        out_color.a = pow(out_color.a, 1.6);
     }
 }

@@ -128,7 +128,7 @@ void main()
 	if (dim.x <= gl_GlobalInvocationID.x || dim.y <= gl_GlobalInvocationID.y)
 		return; // don't bother rendering outside of image bounds
 
-	vec2 pos_uv = (vec2(gl_GlobalInvocationID.xy) + vec2(0.5) - vec2(dim) / 2.) / dim; // clip space position in frame
+	vec2 pos_uv = (vec2(gl_GlobalInvocationID.xy) + vec2(0.5) - vec2(dim) / 2.) * 2. / dim; // clip space position in frame (between -0.5 and 0.5)
 	vec3 ray_d = normalize((cam.proj_view_inverse * vec4(pos_uv, 1., 1.)).xyz); // ray direction in world space
 
 	// render scene
