@@ -8,7 +8,7 @@ pub struct Cube {
     pub dimensions: Vec3,
 }
 impl Cube {
-    pub fn new(center: Vec3, dimensions: Vec3) -> Self {
+    pub const fn new(center: Vec3, dimensions: Vec3) -> Self {
         Self { center, dimensions }
     }
 }

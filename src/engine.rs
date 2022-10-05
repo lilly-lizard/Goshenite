@@ -47,7 +47,7 @@ impl Engine {
         let cursor_state = CursorState::new(window.clone());
 
         // init camera
-        let camera = Camera::new(window.inner_size().into());
+        let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
         // init primitives
         let mut primitive_collection = PrimitiveCollection::default();
@@ -146,6 +146,7 @@ impl Engine {
         if let Err(e) = self.gui.update_frame(
             &mut self.renderer.gui_renderer_mut(),
             &mut self.primitive_collection,
+            &mut self.camera,
         ) {
             anyhow_panic(&e, "update gui");
         }
@@ -155,7 +156,7 @@ impl Engine {
             let delta_cursor: Vec2 =
                 (self.cursor_state.position_frame_change() * config::LOOK_SENSITIVITY).as_vec2();
             self.camera
-                .rotate(delta_cursor.x.into(), (-delta_cursor.y).into());
+                .rotate(delta_cursor.x.into(), delta_cursor.y.into());
         }
 
         // submit rendering commands

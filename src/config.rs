@@ -38,7 +38,7 @@ impl WorldSpaceUp {
 }
 
 /// Field of view in radians
-pub const FIELD_OF_VIEW: Radians = Radians::new_const(std::f32::consts::FRAC_PI_4);
+pub const FIELD_OF_VIEW: Radians = Radians::new(std::f32::consts::FRAC_PI_4);
 /// Sensitivity for changing the view direction with the cursor = radians / pixels
 pub const LOOK_SENSITIVITY: f64 = 0.001;
 

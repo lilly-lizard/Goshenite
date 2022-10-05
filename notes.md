@@ -1,6 +1,7 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
+- live update primitive lock-on target. Arcs for primitive collection?
 - renderdoc see vulkano command output e.g. pipeline barriers, semaphores...
 - render xyz arrows on selected object
 - frame future for update_textures
@@ -8,6 +9,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 	- c interop with rust codebase
 	- primitive classes and shit
 - render outline on selected object
+- output render png (write tests using this?)
 
 ## cleanup
 

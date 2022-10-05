@@ -15,7 +15,7 @@ use vulkano::{
         graphics::{
             color_blend::ColorBlendState,
             input_assembly::{InputAssemblyState, PrimitiveTopology},
-            rasterization::{CullMode, RasterizationState},
+            rasterization::{CullMode, FrontFace, RasterizationState},
             vertex_input::BuffersDefinition,
             viewport::{Viewport, ViewportState},
         },
@@ -26,19 +26,6 @@ use vulkano::{
 
 const VERT_SHADER_PATH: &str = "assets/shader_binaries/overlay.vert.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/overlay.frag.spv";
-
-const VERTEX_COUNT: usize = 6;
-const VERTICES: [OverlayVertex; VERTEX_COUNT] = [
-    // x axis indicator (red)
-    OverlayVertex::new_const(Vec3::ZERO, Vec3::X),
-    OverlayVertex::new_const(Vec3::X, Vec3::X),
-    // y axis indicator (green)
-    OverlayVertex::new_const(Vec3::ZERO, Vec3::Y),
-    OverlayVertex::new_const(Vec3::Y, Vec3::Y),
-    // z axis indicator (blue)
-    OverlayVertex::new_const(Vec3::ZERO, Vec3::Z),
-    OverlayVertex::new_const(Vec3::Z, Vec3::Z),
-];
 
 pub struct OverlayPass {
     pipeline: Arc<GraphicsPipeline>,
@@ -99,11 +86,15 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
     GraphicsPipeline::start()
         .vertex_input_state(BuffersDefinition::new().vertex::<OverlayVertex>())
         .vertex_shader(vert_shader, ())
-        .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::LineList)) // todo LineList
+        .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::TriangleList))
         .fragment_shader(frag_shader, ())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .color_blend_state(ColorBlendState::new(1))
-        .rasterization_state(RasterizationState::new().cull_mode(CullMode::None))
+        .rasterization_state(
+            RasterizationState::new()
+                .cull_mode(CullMode::Back)
+                .front_face(FrontFace::CounterClockwise),
+        )
         .render_pass(subpass)
         .build(device.clone())
         .context("creating overlay pipeline")
@@ -123,3 +114,55 @@ fn create_vertex_buffer(
     )
     .context("creating overlay vertex buffer")
 }
+
+/// Color of the x axis indicator
+const X_COLOR: Vec3 = Vec3::new(0.8, 0.0, 0.0);
+/// Line length
+const L_LEN: f32 = 0.5;
+/// Line thickness
+const L_THI: f32 = 0.05;
+const VERTEX_COUNT: usize = 30;
+// counter-clockwise front face
+const VERTICES: [OverlayVertex; VERTEX_COUNT] = [
+    // x axis indicator (red)
+    // face x t1
+    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, -L_THI), Vec3::X, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, L_THI, -L_THI), Vec3::X, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, L_THI), Vec3::X, X_COLOR),
+    // face x t2
+    OverlayVertex::new(Vec3::new(L_LEN, L_THI, L_THI), Vec3::X, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, L_THI), Vec3::X, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, L_THI, -L_THI), Vec3::X, X_COLOR),
+    // face ny t1
+    OverlayVertex::new(Vec3::new(-L_THI, -L_THI, -L_THI), Vec3::NEG_Y, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, -L_THI), Vec3::NEG_Y, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_THI, -L_THI, L_THI), Vec3::NEG_Y, X_COLOR),
+    // face ny t2
+    OverlayVertex::new(Vec3::new(L_THI, -L_THI, L_THI), Vec3::NEG_Y, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, -L_THI), Vec3::NEG_Y, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, L_THI), Vec3::NEG_Y, X_COLOR),
+    // face nz t1
+    OverlayVertex::new(Vec3::new(-L_THI, -L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_THI, L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
+    // face nz t2
+    OverlayVertex::new(Vec3::new(L_THI, L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, -L_THI), Vec3::NEG_Z, X_COLOR),
+    // face y t1
+    OverlayVertex::new(Vec3::new(L_THI, L_THI, L_THI), Vec3::Y, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, L_THI, L_THI), Vec3::Y, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, L_THI, -L_THI), Vec3::Y, X_COLOR),
+    // face y t2
+    OverlayVertex::new(Vec3::new(L_LEN, L_THI, -L_THI), Vec3::Y, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_THI, L_THI, -L_THI), Vec3::Y, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_THI, L_THI, L_THI), Vec3::Y, X_COLOR),
+    // face z t1
+    OverlayVertex::new(Vec3::new(L_THI, -L_THI, L_THI), Vec3::Z, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, -L_THI, L_THI), Vec3::Z, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_LEN, L_THI, L_THI), Vec3::Z, X_COLOR),
+    // face z t2
+    OverlayVertex::new(Vec3::new(L_LEN, L_THI, L_THI), Vec3::Z, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_THI, L_THI, L_THI), Vec3::Z, X_COLOR),
+    OverlayVertex::new(Vec3::new(L_THI, -L_THI, L_THI), Vec3::Z, X_COLOR),
+];

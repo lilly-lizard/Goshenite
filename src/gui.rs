@@ -1,3 +1,4 @@
+use crate::camera::Camera;
 use crate::primitives::primitive::Primitive;
 use crate::primitives::primitive_collection::PrimitiveCollection;
 use crate::renderer::gui_renderer::GuiRenderer;
@@ -90,13 +91,14 @@ impl Gui {
         &mut self,
         gui_renderer: &mut GuiRenderer,
         primitive_collection: &mut PrimitiveCollection,
+        camera: &mut Camera,
     ) -> anyhow::Result<()> {
         // begin frame
         let raw_input = self.window_state.take_egui_input(self.window.as_ref());
         self.context.begin_frame(raw_input);
 
         // draw primitive editor window
-        self.primitives_window(primitive_collection);
+        self.primitives_window(primitive_collection, camera);
 
         // end frame
         let egui::FullOutput {
@@ -123,7 +125,11 @@ impl Gui {
 }
 // Private functions
 impl Gui {
-    fn primitives_window(&mut self, primitive_collection: &mut PrimitiveCollection) {
+    fn primitives_window(
+        &mut self,
+        primitive_collection: &mut PrimitiveCollection,
+        camera: &mut Camera,
+    ) {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
             /// Ammount to incriment when modifying by dragging
@@ -244,7 +250,7 @@ impl Gui {
                 .selectable_label(selected_primitive.is_none(), "New primitive")
                 .clicked()
             {
-                primitive_collection.unset_selected_primitive();
+                primitive_collection.unset_selected_primitive(camera);
                 *primitive_input = Primitive::Null;
             }
             // primitive list
@@ -277,7 +283,7 @@ impl Gui {
             // if a primitive from the list was selected, tell primitive_collection
             if let Some(index) = new_selected_primitive {
                 // if index is invalid, no harm done
-                let _err = primitive_collection.set_selected_primitive(index);
+                let _err = primitive_collection.set_selected_primitive(index, camera);
             }
 
             // TODO [TESTING] tests GuiRenderer create_texture() functionality for when ImageDelta.pos != None
