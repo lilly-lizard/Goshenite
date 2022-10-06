@@ -23,8 +23,8 @@ glam = { version = "0.21", features = ["debug-glam-assert"] }
 # winit is a cross-platform window creation and management library (version must match vulkano-win support)
 winit = "0.27"
 # vulkano is a safe and convenient vulkan (ash) wrapper
-vulkano = { version = "0.31.0", git = "https://github.com/vulkano-rs/vulkano", rev = "9f0fd9df63dc5e2ac240bf9ea28bb9d46c975f00" }
-vulkano-win = { version = "0.31.0", git = "https://github.com/vulkano-rs/vulkano", rev = "9f0fd9df63dc5e2ac240bf9ea28bb9d46c975f00" } # winit interop boilerplate
+vulkano = { version = "0.31.0", path = "../vulkano-fork/vulkano" }
+vulkano-win = { version = "0.31.0", path = "../vulkano-fork/vulkano-win" } # winit interop boilerplate
 # bit-casting crate (for cpu<->gpu buffers)
 bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
