@@ -20,10 +20,13 @@ use vulkano::{
         TypedBufferAccess,
     },
     command_buffer::{
-        AutoCommandBufferBuilder, BufferImageCopy, CommandBufferUsage, CopyBufferToImageInfo,
-        PrimaryCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
+        CommandBufferUsage, CopyBufferToImageInfo, PrimaryCommandBuffer,
     },
-    descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet, WriteDescriptorSet},
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, layout::DescriptorSetLayout,
+        PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::{Device, Queue},
     format::Format,
     image::{
@@ -98,7 +101,12 @@ impl GuiRenderer {
     }
 
     /// Creates and/or removes texture resources for a [`Gui`](crate::gui::Gui) frame.
-    pub fn update_textures(&mut self, textures_delta: egui::TexturesDelta) -> anyhow::Result<()> {
+    pub fn update_textures(
+        &mut self,
+        command_buffer_allocator: &StandardCommandBufferAllocator,
+        descriptor_allocator: &StandardDescriptorSetAllocator,
+        textures_delta: egui::TexturesDelta,
+    ) -> anyhow::Result<()> {
         // release unused texture resources
         for &id in &textures_delta.free {
             self.unregister_image(id);
@@ -106,7 +114,7 @@ impl GuiRenderer {
 
         // create command buffer builder
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            self.device.clone(),
+            command_buffer_allocator,
             self.transfer_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -114,7 +122,12 @@ impl GuiRenderer {
 
         // create new images and record upload commands
         for (id, image_delta) in textures_delta.set {
-            self.create_texture(id, image_delta, &mut command_buffer_builder)?;
+            self.create_texture(
+                descriptor_allocator,
+                id,
+                image_delta,
+                &mut command_buffer_builder,
+            )?;
         }
 
         // execute command buffer
@@ -235,6 +248,7 @@ impl GuiRenderer {
     /// Helper function for [`GuiRenderer::update_textures`]
     fn create_texture<L>(
         &mut self,
+        descriptor_allocator: &StandardDescriptorSetAllocator,
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
         command_buffer_builder: &mut AutoCommandBufferBuilder<L>,
@@ -356,7 +370,7 @@ impl GuiRenderer {
                 })
                 .context("creating new gui texture desc set")?;
             let font_desc_set = self
-                .sampled_image_desc_set(layout, font_image.clone())
+                .sampled_image_desc_set(descriptor_allocator, layout, font_image.clone())
                 .context("creating new gui texture desc set")?;
 
             // store new texture
@@ -413,10 +427,12 @@ impl GuiRenderer {
     /// Creates a descriptor set for images
     fn sampled_image_desc_set(
         &self,
+        descriptor_allocator: &StandardDescriptorSetAllocator,
         layout: &Arc<DescriptorSetLayout>,
         image: Arc<dyn ImageViewAbstract + 'static>,
     ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
         PersistentDescriptorSet::new(
+            descriptor_allocator,
             layout.clone(),
             [WriteDescriptorSet::image_view_sampler(
                 descriptor::BINDING_FONT_TEXTURE,

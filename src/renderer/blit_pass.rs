@@ -6,7 +6,9 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;
 use vulkano::{
     command_buffer::AutoCommandBufferBuilder,
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::Device,
     image::{view::ImageView, StorageImage},
     pipeline::{
@@ -38,12 +40,18 @@ pub struct BlitPass {
 impl BlitPass {
     pub fn new(
         device: Arc<Device>,
+        descriptor_allocator: &StandardDescriptorSetAllocator,
         render_image: Arc<ImageView<StorageImage>>,
         subpass: Subpass,
     ) -> anyhow::Result<Self> {
         let sampler = create_sampler(device.clone())?;
         let pipeline = create_pipeline(device.clone(), subpass)?;
-        let desc_set = create_desc_set(pipeline.clone(), render_image.clone(), sampler.clone())?;
+        let desc_set = create_desc_set(
+            descriptor_allocator,
+            pipeline.clone(),
+            render_image.clone(),
+            sampler.clone(),
+        )?;
         Ok(Self {
             pipeline,
             desc_set,
@@ -54,9 +62,15 @@ impl BlitPass {
     /// Updates render image data e.g. when it has been resized
     pub fn update_render_image(
         &mut self,
+        descriptor_allocator: &StandardDescriptorSetAllocator,
         render_image: Arc<ImageView<StorageImage>>,
     ) -> anyhow::Result<()> {
-        self.desc_set = create_desc_set(self.pipeline.clone(), render_image, self.sampler.clone())?;
+        self.desc_set = create_desc_set(
+            descriptor_allocator,
+            self.pipeline.clone(),
+            render_image,
+            self.sampler.clone(),
+        )?;
         Ok(())
     }
 
@@ -121,11 +135,13 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
 }
 
 fn create_desc_set(
+    descriptor_allocator: &StandardDescriptorSetAllocator,
     blit_pipeline: Arc<GraphicsPipeline>,
     render_image: Arc<ImageView<StorageImage>>,
     render_image_sampler: Arc<Sampler>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
-    Ok(PersistentDescriptorSet::new(
+    PersistentDescriptorSet::new(
+        descriptor_allocator,
         blit_pipeline
             .layout()
             .set_layouts()
@@ -140,5 +156,5 @@ fn create_desc_set(
             render_image_sampler,
         )],
     )
-    .context("creating blit pass desc set")?)
+    .context("creating blit pass desc set")
 }

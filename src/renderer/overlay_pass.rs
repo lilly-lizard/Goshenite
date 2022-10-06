@@ -51,10 +51,10 @@ impl OverlayPass {
         viewport: Viewport,
     ) -> anyhow::Result<()> {
         // if a primitive is selected, render the xyz coordinate indicator at its center
-        if let Some(primitive) = primitive_collection.selected_primitive() {
+        if let Some(selected_primitive) = primitive_collection.selected_primitive() {
             let push_constants = OverlayPushConstants::new(
                 camera.proj_matrix() * camera.view_matrix(),
-                Vec4::from((primitive.center(), 0.0)),
+                Vec4::from((selected_primitive.center(), 0.0)),
             );
             command_buffer
                 .bind_pipeline_graphics(self.pipeline.clone())
@@ -120,9 +120,9 @@ const X_COLOR: Vec3 = Vec3::new(0.8, 0.0, 0.0);
 const Y_COLOR: Vec3 = Vec3::new(0.0, 0.8, 0.0);
 const Z_COLOR: Vec3 = Vec3::new(0.0, 0.0, 0.8);
 /// Line length
-const L_LEN: f32 = 0.5;
+const L_LEN: f32 = 0.3;
 /// Line thickness
-const L_THI: f32 = 0.05;
+const L_THI: f32 = 0.006;
 const VERTEX_COUNT: usize = 90;
 // counter-clockwise front face
 #[rustfmt::skip]

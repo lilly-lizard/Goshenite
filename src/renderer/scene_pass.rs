@@ -15,7 +15,9 @@ use std::{fmt, sync::Arc};
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
     command_buffer::AutoCommandBufferBuilder,
-    descriptor_set::{PersistentDescriptorSet, WriteDescriptorSet},
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::{physical::PhysicalDevice, Device},
     image::{view::ImageView, StorageImage},
     memory::pool::StandardMemoryPool,
@@ -53,6 +55,7 @@ pub struct ScenePass {
 impl ScenePass {
     pub fn new(
         device: Arc<Device>,
+        descriptor_allocator: &StandardDescriptorSetAllocator,
         primitive_collection: &PrimitiveCollection,
         render_image_size: [u32; 2],
         render_image: Arc<ImageView<StorageImage>>,
@@ -103,10 +106,12 @@ impl ScenePass {
 
         // init compute pipeline and descriptor sets
         let pipeline = create_pipeline(device.clone(), work_group_size)?;
-        let desc_set_render_image = create_desc_set_render_image(pipeline.clone(), render_image)?;
+        let desc_set_render_image =
+            create_desc_set_render_image(descriptor_allocator, pipeline.clone(), render_image)?;
         let primitive_buffer =
             create_primitives_buffer(primitive_collection, &primitive_buffer_pool)?;
-        let desc_set_primitives = create_desc_set_primitives(pipeline.clone(), primitive_buffer)?;
+        let desc_set_primitives =
+            create_desc_set_primitives(descriptor_allocator, pipeline.clone(), primitive_buffer)?;
 
         Ok(Self {
             device,
@@ -123,18 +128,23 @@ impl ScenePass {
     //todo shoul be optimized to not create a new buffer each time...
     pub fn update_primitives(
         &mut self,
+        descriptor_allocator: &StandardDescriptorSetAllocator,
         primitive_collection: &PrimitiveCollection,
     ) -> anyhow::Result<()> {
         let primitive_buffer =
             create_primitives_buffer(primitive_collection, &self.primitive_buffer_pool)?;
-        self.desc_set_primitives =
-            create_desc_set_primitives(self.pipeline.clone(), primitive_buffer)?;
+        self.desc_set_primitives = create_desc_set_primitives(
+            descriptor_allocator,
+            self.pipeline.clone(),
+            primitive_buffer,
+        )?;
         Ok(())
     }
 
     /// Updates render target data e.g. when it has been resized
     pub fn update_render_target(
         &mut self,
+        descriptor_allocator: &StandardDescriptorSetAllocator,
         resolution: [u32; 2],
         render_image: Arc<ImageView<StorageImage>>,
     ) -> anyhow::Result<()> {
@@ -152,9 +162,12 @@ impl ScenePass {
             "calulated scene render work group count: {:?}",
             self.work_group_count
         );
-        self.desc_set_render_image =
-            create_desc_set_render_image(self.pipeline.clone(), render_image.clone())
-                .context("updating scene pass render target")?;
+        self.desc_set_render_image = create_desc_set_render_image(
+            descriptor_allocator,
+            self.pipeline.clone(),
+            render_image.clone(),
+        )
+        .context("updating scene pass render target")?;
         Ok(())
     }
 
@@ -243,10 +256,12 @@ fn create_pipeline(
 }
 
 fn create_desc_set_render_image(
+    descriptor_allocator: &StandardDescriptorSetAllocator,
     scene_pipeline: Arc<ComputePipeline>,
     render_image: Arc<ImageView<StorageImage>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
     PersistentDescriptorSet::new(
+        descriptor_allocator,
         scene_pipeline
             .layout()
             .set_layouts()
@@ -265,10 +280,12 @@ fn create_desc_set_render_image(
 }
 
 fn create_desc_set_primitives(
+    descriptor_allocator: &StandardDescriptorSetAllocator,
     scene_pipeline: Arc<ComputePipeline>,
     primitive_buffer: Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StandardMemoryPool>>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
     PersistentDescriptorSet::new(
+        descriptor_allocator,
         scene_pipeline
             .layout()
             .set_layouts()

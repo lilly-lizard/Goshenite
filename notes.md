@@ -1,8 +1,10 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
+- coordinate overlay z-buffer
+- primitive id/normal g-buffer
 - scroll zoom
-- live update primitive lock-on target. Arcs for primitive collection?
+- live update primitive lock-on target. Arcs/weak pointers for primitive collection?
 - renderdoc see vulkano command output e.g. pipeline barriers, semaphores...
 - render xyz arrows on selected object
 - frame future for update_textures

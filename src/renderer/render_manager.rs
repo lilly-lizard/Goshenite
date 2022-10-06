@@ -9,7 +9,10 @@ use anyhow::{anyhow, bail, ensure, Context};
 use log::{debug, error, info, warn};
 use std::sync::Arc;
 use vulkano::{
-    command_buffer::{self, RenderPassBeginInfo, SubpassContents},
+    command_buffer::{
+        self, allocator::StandardCommandBufferAllocator, RenderPassBeginInfo, SubpassContents,
+    },
+    descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::{
         self,
         physical::{PhysicalDevice, PhysicalDeviceType},
@@ -60,6 +63,9 @@ pub struct RenderManager {
     render_image: Arc<ImageView<StorageImage>>,
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
+
+    command_buffer_allocator: StandardCommandBufferAllocator,
+    descriptor_allocator: StandardDescriptorSetAllocator,
 
     scene_pass: ScenePass,
     blit_pass: BlitPass,
@@ -250,17 +256,6 @@ impl RenderManager {
         let multisample = SampleCount::Sample1;
         let render_pass = create_render_pass(device.clone(), &swapchain_image_views, multisample)?;
 
-        // create framebuffers
-        let framebuffers = create_framebuffers(render_pass.clone(), &swapchain_image_views)?;
-
-        // init compute shader scene pass
-        let scene_pass = ScenePass::new(
-            device.clone(),
-            primitive_collection,
-            swapchain_images[0].dimensions().width_height(),
-            render_image.clone(),
-        )?;
-
         // describe swapchain subpass
         let subpass = Subpass::from(render_pass.clone(), render_pass_indices::SUBPASS_SWAPCHAIN)
             .ok_or(anyhow!(
@@ -268,8 +263,29 @@ impl RenderManager {
                 render_pass_indices::SUBPASS_SWAPCHAIN
             ))?;
 
+        // create framebuffers
+        let framebuffers = create_framebuffers(render_pass.clone(), &swapchain_image_views)?;
+
+        // command buffer and descriptor allocators
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+        let descriptor_allocator = StandardDescriptorSetAllocator::new(device.clone());
+
+        // init compute shader scene pass
+        let scene_pass = ScenePass::new(
+            device.clone(),
+            &descriptor_allocator,
+            primitive_collection,
+            swapchain_images[0].dimensions().width_height(),
+            render_image.clone(),
+        )?;
+
         // init blit pass
-        let blit_pass = BlitPass::new(device.clone(), render_image.clone(), subpass.clone())?;
+        let blit_pass = BlitPass::new(
+            device.clone(),
+            &descriptor_allocator,
+            render_image.clone(),
+            subpass.clone(),
+        )?;
 
         // init overlay pass
         let overlay_pass = OverlayPass::new(device.clone(), subpass.clone())?;
@@ -279,45 +295,54 @@ impl RenderManager {
 
         // create futures used for frame synchronization
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
-        let recreate_swapchain = false;
 
         Ok(RenderManager {
-            _debug_callback: debug_callback,
             device,
             render_queue,
             _transfer_queue: transfer_queue,
+            _debug_callback: debug_callback,
+
             surface,
             swapchain,
             swapchain_image_views,
+
             viewport,
             render_image,
             render_pass,
             framebuffers,
+
             scene_pass,
             blit_pass,
             overlay_pass,
             gui_pass,
-            future_previous_frame,
-            recreate_swapchain,
-        })
-    }
 
-    /// Returns a mutable reference to the gui renderer so its resources can be updated by the gui
-    pub fn gui_renderer_mut(&mut self) -> &mut GuiRenderer {
-        &mut self.gui_pass
+            command_buffer_allocator,
+            descriptor_allocator,
+            future_previous_frame,
+            recreate_swapchain: false,
+        })
     }
 
     /// Submits Vulkan commands for rendering a frame.
     pub fn render_frame(
         &mut self,
         window_resize: bool,
+        gui: &mut Gui,
         camera: &Camera,
         primitive_collection: &PrimitiveCollection,
-        gui: &Gui,
     ) -> anyhow::Result<()> {
         // checks for submission finish and free locks on gpu resources
         if let Some(future_previous_frame) = self.future_previous_frame.as_mut() {
             future_previous_frame.cleanup_finished();
+        }
+
+        // update gui textures
+        for textures_delta in gui.textures_delta() {
+            self.gui_pass.update_textures(
+                &self.command_buffer_allocator,
+                &self.descriptor_allocator,
+                textures_delta,
+            )?;
         }
 
         self.recreate_swapchain = self.recreate_swapchain || window_resize;
@@ -349,14 +374,15 @@ impl RenderManager {
         }
 
         // todo shouldn't need to recreate each frame?
-        self.scene_pass.update_primitives(primitive_collection)?;
+        self.scene_pass
+            .update_primitives(&self.descriptor_allocator, primitive_collection)?;
 
         // todo actually set this
         let need_srgb_conv = false;
 
         // record command buffer
         let mut builder = command_buffer::AutoCommandBufferBuilder::primary(
-            self.device.clone(),
+            &self.command_buffer_allocator,
             self.render_queue.queue_family_index(),
             command_buffer::CommandBufferUsage::OneTimeSubmit,
         )
@@ -419,11 +445,6 @@ impl RenderManager {
                     self.swapchain.clone(),
                     swapchain_index,
                 ),
-                // todo remove
-                // PresentInfo {
-                //     index: swapchain_index,
-                //     ..PresentInfo::swapchain(self.swapchain.clone())
-                // },
             )
             .then_signal_fence_and_flush();
 
@@ -492,12 +513,15 @@ impl RenderManager {
             create_framebuffers(self.render_pass.clone(), &self.swapchain_image_views)?;
 
         // update scene pass
-        self.scene_pass
-            .update_render_target(resolution, self.render_image.clone())?;
+        self.scene_pass.update_render_target(
+            &self.descriptor_allocator,
+            resolution,
+            self.render_image.clone(),
+        )?;
 
         // update blit pass
         self.blit_pass
-            .update_render_image(self.render_image.clone())?;
+            .update_render_image(&self.descriptor_allocator, self.render_image.clone())?;
 
         // unset trigger
         self.recreate_swapchain = false;

@@ -1,14 +1,11 @@
-use crate::camera::Camera;
-use crate::primitives::primitive::Primitive;
-use crate::primitives::primitive_collection::PrimitiveCollection;
-use crate::renderer::gui_renderer::GuiRenderer;
-use egui::FontFamily::Proportional;
-use egui::{Button, Checkbox, ComboBox, DragValue, FontId, Sense};
+use crate::primitives::{primitive::Primitive, primitive_collection::PrimitiveCollection};
+use egui::{
+    Button, Checkbox, ComboBox, DragValue, FontFamily::Proportional, FontId, Sense, TexturesDelta,
+};
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 use std::sync::Arc;
-use winit::event_loop::EventLoopWindowTarget;
-use winit::window::Window;
+use winit::{event_loop::EventLoopWindowTarget, window::Window};
 
 /// Primitive editor window state e.g. user input
 #[derive(Clone, Copy, Debug)]
@@ -34,6 +31,7 @@ pub struct Gui {
     window_state: egui_winit::State,
     mesh_primitives: Vec<egui::ClippedPrimitive>,
     primitive_editor_state: PrimitiveEditorState,
+    textures_delta: Vec<TexturesDelta>,
 }
 // Public functions
 impl Gui {
@@ -60,6 +58,7 @@ impl Gui {
             window_state,
             mesh_primitives: vec![],
             primitive_editor_state: Default::default(),
+            textures_delta: Default::default(),
         }
     }
 
@@ -87,18 +86,19 @@ impl Gui {
     }
 
     /// Updates the gui layout and tells the renderer to update any changed resources
-    pub fn update_gui_layout(
+    /// * `primitive_collection` - collection for the 'Primitive Editor' window to edit
+    /// * `primitive_lock_on` - value that the lock-on setting will be written to
+    pub fn update_gui(
         &mut self,
-        gui_renderer: &mut GuiRenderer,
         primitive_collection: &mut PrimitiveCollection,
-        camera: &mut Camera,
+        primitive_lock_on: &mut bool,
     ) -> anyhow::Result<()> {
         // begin frame
         let raw_input = self.window_state.take_egui_input(self.window.as_ref());
         self.context.begin_frame(raw_input);
 
         // draw primitive editor window
-        self.primitives_window(primitive_collection, camera);
+        self.primitives_window(primitive_collection, primitive_lock_on);
 
         // end frame
         let egui::FullOutput {
@@ -116,11 +116,14 @@ impl Gui {
         // store clipped primitive data for use by the renderer
         self.mesh_primitives = self.context.tessellate(shapes);
 
-        // add/free textures resources in the gui renderer. note this must happen here to be
-        // certain that this frame's `textures_delta` is processed
-        gui_renderer.update_textures(textures_delta)?;
+        // store required texture changes for the renderer to apply updates
+        self.textures_delta.push(textures_delta);
 
         Ok(())
+    }
+
+    pub fn textures_delta(&mut self) -> Vec<TexturesDelta> {
+        std::mem::take(&mut self.textures_delta)
     }
 }
 // Private functions
@@ -128,7 +131,7 @@ impl Gui {
     fn primitives_window(
         &mut self,
         primitive_collection: &mut PrimitiveCollection,
-        camera: &mut Camera,
+        primitive_lock_on: &mut bool,
     ) {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
@@ -145,6 +148,9 @@ impl Gui {
             if let Some(primitive_index) = selected_primitive {
                 // status
                 ui.heading(format!("Modify primitive {}", primitive_index));
+
+                // lock-on tick-box
+                ui.add(Checkbox::new(primitive_lock_on, "Enable lock-on"));
 
                 // update primitive buttons
                 let mut update_primitive = *live_update;
@@ -249,7 +255,7 @@ impl Gui {
                 .selectable_label(selected_primitive.is_none(), "New primitive")
                 .clicked()
             {
-                primitive_collection.unset_selected_primitive(camera);
+                primitive_collection.unset_selected_primitive();
                 *primitive_input = Primitive::Null;
             }
             // primitive list
@@ -283,7 +289,7 @@ impl Gui {
             // if a primitive from the list was selected, tell primitive_collection
             if let Some(index) = new_selected_primitive {
                 // if index is invalid, no harm done
-                let _err = primitive_collection.set_selected_primitive(index, camera);
+                let _err = primitive_collection.set_selected_primitive(index);
             }
 
             // TODO [TESTING] tests GuiRenderer create_texture() functionality for when ImageDelta.pos != None

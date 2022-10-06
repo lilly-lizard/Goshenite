@@ -3,9 +3,9 @@ use crate::config;
 use crate::cursor_state::{CursorState, MouseButton};
 use crate::gui::Gui;
 use crate::helper::anyhow_panic::{anyhow_panic, anyhow_unwrap};
+use crate::primitives::primitive::PrimitiveTrait;
 use crate::primitives::{cube::Cube, primitive_collection::PrimitiveCollection, sphere::Sphere};
 use crate::renderer::render_manager::RenderManager;
-use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 use std::sync::Arc;
@@ -15,16 +15,23 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
+/// Goshenite engine logic
 pub struct Engine {
     _window: Arc<Window>,
-    cursor_state: CursorState,
+
+    // state
     window_resize: bool,
     scale_factor: f64,
+    cursor_state: CursorState,
+    primitive_lock_on: bool,
 
+    // specialized controllers
     camera: Camera,
-    primitive_collection: PrimitiveCollection,
     gui: Gui,
     renderer: RenderManager,
+
+    // model data
+    primitive_collection: PrimitiveCollection,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
@@ -51,9 +58,9 @@ impl Engine {
 
         // init primitives
         let mut primitive_collection = PrimitiveCollection::default();
-        primitive_collection.add_primitive(Sphere::new(glam::Vec3::new(0.0, 0.0, 0.0), 0.4).into());
+        primitive_collection.add_primitive(Sphere::new(glam::Vec3::new(0.0, 0.0, 0.0), 0.5).into());
         primitive_collection.add_primitive(
-            Cube::new(glam::Vec3::new(0.0, -1.5, 0.5), glam::Vec3::splat(0.8)).into(),
+            Cube::new(glam::Vec3::new(-0.8, 1.7, 0.), glam::Vec3::splat(0.7)).into(),
         );
 
         // init renderer
@@ -67,13 +74,17 @@ impl Engine {
 
         Engine {
             _window: window,
-            cursor_state,
+
             window_resize: false,
             scale_factor,
+            cursor_state,
+            primitive_lock_on: false,
+
             camera,
-            primitive_collection,
             gui,
             renderer,
+
+            primitive_collection,
         }
     }
 
@@ -138,34 +149,49 @@ impl Engine {
 
     /// Per frame engine logic and rendering
     fn process_frame(&mut self) {
-        // input processing...
-
-        // update cursor state
+        // process recieved events for cursor state
         self.cursor_state.process_frame();
 
-        // process gui state and update layout
-        if let Err(e) = self.gui.update_gui_layout(
-            &mut self.renderer.gui_renderer_mut(),
-            &mut self.primitive_collection,
-            &mut self.camera,
-        ) {
+        // process gui inputs and update layout
+        if let Err(e) = self
+            .gui
+            .update_gui(&mut self.primitive_collection, &mut self.primitive_lock_on)
+        {
             anyhow_panic(&e, "update gui");
         }
 
-        // engine processing...
+        // update camera based on now processed user inputs
+        self.update_camera();
 
-        // update camera
-        self.camera.process_frame(&self.cursor_state);
-
-        // submit rendering commands
+        // now that frame processing is done, submit rendering commands
         if let Err(e) = self.renderer.render_frame(
             self.window_resize,
+            &mut self.gui,
             &self.camera,
             &self.primitive_collection,
-            &self.gui,
         ) {
             anyhow_panic(&e, "render frame");
         }
         self.window_resize = false;
+    }
+
+    fn update_camera(&mut self) {
+        // left mouse button dragging changes camera orientation
+        if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
+            self.camera
+                .rotate(self.cursor_state.position_frame_change());
+        }
+
+        // look mode logic
+        // NOTE let_chains still unstable: https://github.com/rust-lang/rust/issues/53667
+        let selected_primitive = self.primitive_collection.selected_primitive();
+        if selected_primitive.is_some() && self.primitive_lock_on {
+            // set lock on target to selected primitive
+            let primitive = selected_primitive.expect("if let replacement");
+            self.camera.set_lock_on_target(primitive.center());
+        } else {
+            // if no primitive selected use arcball mode
+            self.camera.unset_lock_on_target();
+        }
     }
 }

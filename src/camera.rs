@@ -1,14 +1,9 @@
-use crate::cursor_state::MouseButton;
-use crate::helper::angle::Angle;
-use crate::{config, cursor_state::CursorState};
+use crate::{config, helper::angle::Angle};
 use anyhow::ensure;
-use egui::epaint::text::cursor::Cursor;
 use glam::{DVec2, Mat3, Mat4, Vec3};
 
 const NEAR_PLANE: f32 = 0.01;
 const FAR_PLANE: f32 = 100.;
-
-// todo try removing normalize calls?
 
 /// Defines where the camera is looking at. Can set to either a direction or target
 #[derive(Debug, Clone, Copy)]
@@ -36,14 +31,18 @@ pub struct Camera {
 // Public functions
 impl Camera {
     pub fn new(resolution: [i32; 2]) -> anyhow::Result<Self> {
-        let direction = Vec3::new(1., 0., 0.);
-        let normal = config::WORLD_SPACE_UP.to_vec3().cross(direction);
+        let position = Vec3::splat(3.);
+        let target = Vec3::ZERO;
+        let direction = target - position;
+        let up = config::WORLD_SPACE_UP.to_vec3();
         ensure!(
-            normal != Vec3::splat(0.),
+            // ensures initial normal value won't be 0
+            up != Vec3::X,
             "config::WORLD_SPACE_UP can not be set to the x axis. this is a bug!"
         );
+        let normal = up.cross(direction);
         Ok(Camera {
-            position: Vec3::new(-5., 0., 0.),
+            position,
             look_mode: LookMode::Direction(direction),
             normal: normal.normalize(),
             fov: config::FIELD_OF_VIEW,
@@ -51,12 +50,27 @@ impl Camera {
         })
     }
 
-    /// Update camera based on user input
-    pub fn process_frame(&mut self, cursor: &CursorState) {
-        // left mouse button dragging changes camera orientation
-        if cursor.which_dragging() == Some(MouseButton::Left) {
-            self.rotate(cursor.position_frame_change());
+    /// Changes the viewing direction based on the pixel amount the cursor has moved
+    pub fn rotate(&mut self, delta_cursor_position: DVec2) {
+        let delta_angle = self.delta_cursor_to_angle(delta_cursor_position.into());
+        let [horizontal, vertical] = delta_angle.map(|a| a.radians() as f32);
+        let normal = self.normal.normalize();
+        match self.look_mode {
+            LookMode::Direction(direction) => {
+                // no lock-on target so maintain position and arcball direction
+                let rotation_matrix =
+                    Mat3::from_axis_angle(normal, -vertical) * Mat3::from_rotation_z(horizontal);
+                self.look_mode = LookMode::Direction(rotation_matrix * direction);
+            }
+            LookMode::Target(target) => {
+                // lock on target stays the same but camera position rotates around it
+                let rotation_matrix =
+                    Mat3::from_axis_angle(normal, vertical) * Mat3::from_rotation_z(-horizontal);
+                self.position = rotation_matrix * (self.position - target) + target;
+            }
         }
+        // update normal now that camera orientation has changed
+        self.update_normal();
     }
 
     // Setters
@@ -114,29 +128,6 @@ impl Camera {
 }
 // Private functions
 impl Camera {
-    /// Changes the viewing direction based on the pixel amount the cursor has moved
-    fn rotate(&mut self, delta_cursor_position: DVec2) {
-        let delta_angle = self.delta_cursor_to_angle(delta_cursor_position.into());
-        let [horizontal, vertical] = delta_angle.map(|a| a.radians() as f32);
-        let normal = self.normal.normalize();
-        match self.look_mode {
-            LookMode::Direction(direction) => {
-                // no lock-on target so maintain position and arcball direction
-                let rotation_matrix =
-                    Mat3::from_axis_angle(normal, -vertical) * Mat3::from_rotation_z(horizontal);
-                self.look_mode = LookMode::Direction(rotation_matrix * direction);
-            }
-            LookMode::Target(target) => {
-                // lock on target stays the same but camera position rotates around it
-                let rotation_matrix =
-                    Mat3::from_axis_angle(normal, vertical) * Mat3::from_rotation_z(-horizontal);
-                self.position = rotation_matrix * (self.position - target) + target;
-            }
-        }
-        // update normal now that camera orientation has changed
-        self.update_normal();
-    }
-
     /// Sets direction and calculates normal
     fn update_normal(&mut self) {
         // only set normal if cross product won't be zero i.e. normal doesn't change if facing up

@@ -1,5 +1,5 @@
 use super::{primitive::Primitive, primitive::PrimitiveTrait};
-use crate::{camera::Camera, shaders::shader_interfaces::PrimitiveDataSlice};
+use crate::shaders::shader_interfaces::PrimitiveDataSlice;
 use std::{error, fmt};
 
 /// Collection of [`Primitive`]s. Also contains encoded data to upload to the gpu.
@@ -65,15 +65,9 @@ impl PrimitiveCollection {
     }
 
     // todo doc
-    pub fn set_selected_primitive(
-        &mut self,
-        index: usize,
-        camera: &mut Camera,
-    ) -> Result<(), PrimitiveCollectionError> {
-        if let Some(selected_primitive) = self.primitives.get(index) {
+    pub fn set_selected_primitive(&mut self, index: usize) -> Result<(), PrimitiveCollectionError> {
+        if let Some(_) = self.primitives.get(index) {
             self.selected_primitive_index = Some(index);
-            // tell camera to look at selected primitive
-            camera.set_lock_on_target(selected_primitive.center());
             Ok(())
         } else {
             Err(PrimitiveCollectionError::InvalidPrimitiveIndex {
@@ -84,9 +78,8 @@ impl PrimitiveCollection {
     }
 
     // todo doc
-    pub fn unset_selected_primitive(&mut self, camera: &mut Camera) {
+    pub fn unset_selected_primitive(&mut self) {
         self.selected_primitive_index = None;
-        camera.unset_lock_on_target();
     }
 }
 
