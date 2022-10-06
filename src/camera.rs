@@ -154,10 +154,10 @@ impl Camera {
     fn delta_cursor_to_angle(&self, delta_cursor_position: [f64; 2]) -> [Angle; 2] {
         delta_cursor_position.map(|delta| match self.look_mode {
             LookMode::Direction(_) => {
-                Angle::new_radians(delta * config::LOOK_SENSITIVITY.radians())
+                Angle::from_radians(delta * config::LOOK_SENSITIVITY.radians())
             }
             LookMode::Target(_) => {
-                Angle::new_radians(delta * config::ARC_BALL_SENSITIVITY.radians())
+                Angle::from_radians(delta * config::ARC_BALL_SENSITIVITY.radians())
             }
         })
     }

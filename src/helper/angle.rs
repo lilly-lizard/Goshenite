@@ -9,11 +9,11 @@ pub enum Angle {
 
 impl Angle {
     #[inline]
-    pub const fn new_radians(radians: f64) -> Self {
+    pub const fn from_radians(radians: f64) -> Self {
         Self::Radians(radians)
     }
     #[inline]
-    pub const fn new_degrees(degrees: f64) -> Self {
+    pub const fn from_degrees(degrees: f64) -> Self {
         Self::Degrees(degrees)
     }
 

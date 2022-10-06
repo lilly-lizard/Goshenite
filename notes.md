@@ -1,6 +1,7 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
+- scroll zoom
 - live update primitive lock-on target. Arcs for primitive collection?
 - renderdoc see vulkano command output e.g. pipeline barriers, semaphores...
 - render xyz arrows on selected object

@@ -38,10 +38,10 @@ impl WorldSpaceUp {
 }
 
 /// Field of view
-pub const FIELD_OF_VIEW: Angle = Angle::new_radians(std::f64::consts::FRAC_PI_4);
+pub const FIELD_OF_VIEW: Angle = Angle::from_radians(std::f64::consts::FRAC_PI_4);
 /// Sensitivity for changing the view direction with the cursor = angle / pixels
-pub const LOOK_SENSITIVITY: Angle = Angle::new_radians(0.001);
-pub const ARC_BALL_SENSITIVITY: Angle = Angle::new_radians(0.005);
+pub const LOOK_SENSITIVITY: Angle = Angle::from_radians(0.001);
+pub const ARC_BALL_SENSITIVITY: Angle = Angle::from_radians(0.005);
 
 // renderer settings
 pub const VULKAN_VER_MAJ: u32 = 1;
