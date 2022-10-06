@@ -1,16 +1,18 @@
-use super::blit_pass::BlitPass;
-use super::gui_renderer::GuiRenderer;
-use super::scene_pass::ScenePass;
-use crate::camera::Camera;
-use crate::config;
-use crate::gui::Gui;
-use crate::primitives::primitives::PrimitiveCollection;
-use crate::shaders::shader_interfaces::CameraPushConstant;
+use super::{
+    blit_pass::BlitPass, gui_renderer::GuiRenderer, overlay_pass::OverlayPass,
+    scene_pass::ScenePass,
+};
+use crate::{
+    camera::Camera, config, gui::Gui, primitives::primitive_collection::PrimitiveCollection,
+};
 use anyhow::{anyhow, bail, ensure, Context};
 use log::{debug, error, info, warn};
 use std::sync::Arc;
 use vulkano::{
-    command_buffer::{self, RenderPassBeginInfo, SubpassContents},
+    command_buffer::{
+        self, allocator::StandardCommandBufferAllocator, RenderPassBeginInfo, SubpassContents,
+    },
+    descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::{
         self,
         physical::{PhysicalDevice, PhysicalDeviceType},
@@ -31,7 +33,7 @@ use vulkano::{
         AttachmentDescription, AttachmentReference, Framebuffer, FramebufferCreateInfo, LoadOp,
         RenderPass, RenderPassCreateInfo, StoreOp, Subpass, SubpassDependency, SubpassDescription,
     },
-    swapchain::{self, PresentInfo, Surface, Swapchain, SwapchainCreationError},
+    swapchain::{self, Surface, Swapchain, SwapchainCreationError, SwapchainPresentInfo},
     sync::{self, AccessFlags, FlushError, GpuFuture, PipelineStages},
     VulkanLibrary,
 };
@@ -62,8 +64,12 @@ pub struct RenderManager {
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
 
+    command_buffer_allocator: StandardCommandBufferAllocator,
+    descriptor_allocator: StandardDescriptorSetAllocator,
+
     scene_pass: ScenePass,
     blit_pass: BlitPass,
+    overlay_pass: OverlayPass,
     gui_pass: GuiRenderer,
 
     future_previous_frame: Option<Box<dyn GpuFuture>>, // todo description
@@ -75,7 +81,10 @@ pub struct RenderManager {
 
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
-    pub fn new(window: Arc<Window>, primitives: &PrimitiveCollection) -> anyhow::Result<Self> {
+    pub fn new(
+        window: Arc<Window>,
+        primitive_collection: &PrimitiveCollection,
+    ) -> anyhow::Result<Self> {
         // load vulkan library
         let vulkan_library = VulkanLibrary::new().context("loading vulkan library")?;
         info!(
@@ -247,13 +256,25 @@ impl RenderManager {
         let multisample = SampleCount::Sample1;
         let render_pass = create_render_pass(device.clone(), &swapchain_image_views, multisample)?;
 
+        // describe swapchain subpass
+        let subpass = Subpass::from(render_pass.clone(), render_pass_indices::SUBPASS_SWAPCHAIN)
+            .ok_or(anyhow!(
+                "render pass does not contain subpass at index {}",
+                render_pass_indices::SUBPASS_SWAPCHAIN
+            ))?;
+
         // create framebuffers
         let framebuffers = create_framebuffers(render_pass.clone(), &swapchain_image_views)?;
+
+        // command buffer and descriptor allocators
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
+        let descriptor_allocator = StandardDescriptorSetAllocator::new(device.clone());
 
         // init compute shader scene pass
         let scene_pass = ScenePass::new(
             device.clone(),
-            primitives,
+            &descriptor_allocator,
+            primitive_collection,
             swapchain_images[0].dimensions().width_height(),
             render_image.clone(),
         )?;
@@ -261,69 +282,68 @@ impl RenderManager {
         // init blit pass
         let blit_pass = BlitPass::new(
             device.clone(),
+            &descriptor_allocator,
             render_image.clone(),
-            Subpass::from(render_pass.clone(), render_pass_indices::SUBPASS_SWAPCHAIN).ok_or(
-                anyhow!(
-                    "render pass does not contain subpass at index {}",
-                    render_pass_indices::SUBPASS_SWAPCHAIN
-                ),
-            )?,
+            subpass.clone(),
         )?;
 
+        // init overlay pass
+        let overlay_pass = OverlayPass::new(device.clone(), subpass.clone())?;
+
         // init gui renderer
-        let gui_pass = GuiRenderer::new(
-            device.clone(),
-            transfer_queue.clone(),
-            Subpass::from(render_pass.clone(), render_pass_indices::SUBPASS_SWAPCHAIN).ok_or(
-                anyhow!(
-                    "render pass does not contain subpass at index {}",
-                    render_pass_indices::SUBPASS_SWAPCHAIN
-                ),
-            )?,
-        )?;
+        let gui_pass = GuiRenderer::new(device.clone(), transfer_queue.clone(), subpass.clone())?;
 
         // create futures used for frame synchronization
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
-        let recreate_swapchain = false;
 
         Ok(RenderManager {
-            _debug_callback: debug_callback,
             device,
             render_queue,
             _transfer_queue: transfer_queue,
+            _debug_callback: debug_callback,
+
             surface,
             swapchain,
             swapchain_image_views,
+
             viewport,
             render_image,
             render_pass,
             framebuffers,
+
             scene_pass,
             blit_pass,
+            overlay_pass,
             gui_pass,
-            future_previous_frame,
-            recreate_swapchain,
-        })
-    }
 
-    /// Returns a mutable reference to the gui renderer so its resources can be updated by the gui
-    pub fn gui_renderer_mut(&mut self) -> &mut GuiRenderer {
-        &mut self.gui_pass
+            command_buffer_allocator,
+            descriptor_allocator,
+            future_previous_frame,
+            recreate_swapchain: false,
+        })
     }
 
     /// Submits Vulkan commands for rendering a frame.
     pub fn render_frame(
         &mut self,
         window_resize: bool,
-        primitives: &PrimitiveCollection,
-        gui: &Gui,
-        camera: Camera,
+        gui: &mut Gui,
+        camera: &Camera,
+        primitive_collection: &PrimitiveCollection,
     ) -> anyhow::Result<()> {
         // checks for submission finish and free locks on gpu resources
-        self.future_previous_frame
-            .as_mut()
-            .unwrap()
-            .cleanup_finished();
+        if let Some(future_previous_frame) = self.future_previous_frame.as_mut() {
+            future_previous_frame.cleanup_finished();
+        }
+
+        // update gui textures
+        for textures_delta in gui.textures_delta() {
+            self.gui_pass.update_textures(
+                &self.command_buffer_allocator,
+                &self.descriptor_allocator,
+                textures_delta,
+            )?;
+        }
 
         self.recreate_swapchain = self.recreate_swapchain || window_resize;
         if self.recreate_swapchain {
@@ -344,32 +364,32 @@ impl RenderManager {
                 }
             };
         // `suboptimal` indicates that the swapchain image will still work but may not be displayed correctly
-        // we'll render the frame anyway because we're cheeky
+        // we'll render the frame anyway hehe
         if suboptimal {
+            debug!(
+                "suboptimal swapchain image {}, rendering anyway...",
+                swapchain_index
+            );
             self.recreate_swapchain = true;
         }
 
         // todo shouldn't need to recreate each frame?
-        self.scene_pass.update_primitives(primitives)?;
+        self.scene_pass
+            .update_primitives(&self.descriptor_allocator, primitive_collection)?;
 
         // todo actually set this
         let need_srgb_conv = false;
 
         // record command buffer
         let mut builder = command_buffer::AutoCommandBufferBuilder::primary(
-            self.device.clone(),
+            &self.command_buffer_allocator,
             self.render_queue.queue_family_index(),
             command_buffer::CommandBufferUsage::OneTimeSubmit,
         )
-        .unwrap();
+        .context("beginning primary command buffer")?;
 
         // compute shader scene render
-        let camera_push_constant = CameraPushConstant::new(
-            glam::Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
-            camera.position(),
-        );
-        self.scene_pass
-            .record_commands(&mut builder, camera_push_constant)?;
+        self.scene_pass.record_commands(&mut builder, camera)?;
 
         // begin render pass
         let clear_values: Vec<Option<ClearValue>> = vec![Some([0.0, 0.0, 0.0, 1.0].into())];
@@ -389,15 +409,20 @@ impl RenderManager {
         self.blit_pass
             .record_commands(&mut builder, self.viewport.clone())?;
 
+        // draw editor overlay
+        self.overlay_pass.record_commands(
+            &mut builder,
+            camera,
+            primitive_collection,
+            self.viewport.clone(),
+        )?;
+
         // render gui
         self.gui_pass.record_commands(
             &mut builder,
             gui,
             need_srgb_conv,
-            [
-                self.viewport.dimensions[0] as u32,
-                self.viewport.dimensions[1] as u32,
-            ],
+            self.viewport.dimensions,
         )?;
 
         // end render pass
@@ -410,16 +435,16 @@ impl RenderManager {
         let future = self
             .future_previous_frame
             .take()
-            .unwrap()
+            .unwrap_or(sync::now(self.device.clone()).boxed()) // should never be None anyway...
             .join(acquire_future)
             .then_execute(self.render_queue.clone(), command_buffer)
-            .unwrap()
+            .context("executing vulkan primary command buffer")?
             .then_swapchain_present(
                 self.render_queue.clone(),
-                PresentInfo {
-                    index: swapchain_index,
-                    ..PresentInfo::swapchain(self.swapchain.clone())
-                },
+                SwapchainPresentInfo::swapchain_image_index(
+                    self.swapchain.clone(),
+                    swapchain_index,
+                ),
             )
             .then_signal_fence_and_flush();
 
@@ -443,16 +468,21 @@ impl RenderManager {
 impl RenderManager {
     /// Recreates the swapchain, render image and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
-        debug!("recreating swapchain and render targets...");
+        // determine suitable new size
+        let new_size: [u32; 2] = self.surface.window().inner_size().into();
 
+        debug!(
+            "recreating swapchain and render targets to size: {:?}",
+            new_size
+        );
         let (new_swapchain, swapchain_images) =
             match self.swapchain.recreate(swapchain::SwapchainCreateInfo {
-                image_extent: self.surface.window().inner_size().into(),
+                image_extent: new_size,
                 ..self.swapchain.create_info()
             }) {
                 Ok(r) => r,
-                // This error tends to happen when the user is manually resizing the window.
-                // Simply restarting the loop is the easiest way to fix this issue.
+                // this error tends to happen when the user is manually resizing the window.
+                // simply restarting the loop is the easiest way to fix this issue.
                 Err(e @ SwapchainCreationError::ImageExtentNotSupported { .. }) => {
                     debug!("failed to recreate swapchain due to {}", e);
                     return Ok(());
@@ -463,8 +493,10 @@ impl RenderManager {
         self.swapchain = new_swapchain;
         self.swapchain_image_views = swapchain_images
             .iter()
-            .map(|image| ImageView::new_default(image.clone()).unwrap())
-            .collect::<Vec<_>>();
+            .map(|image| {
+                ImageView::new_default(image.clone()).context("recreating swapchaing image view")
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         // set parameters for new resolution
         let resolution = swapchain_images[0].dimensions().width_height();
@@ -481,12 +513,15 @@ impl RenderManager {
             create_framebuffers(self.render_pass.clone(), &self.swapchain_image_views)?;
 
         // update scene pass
-        self.scene_pass
-            .update_render_target(resolution, self.render_image.clone())?;
+        self.scene_pass.update_render_target(
+            &self.descriptor_allocator,
+            resolution,
+            self.render_image.clone(),
+        )?;
 
         // update blit pass
         self.blit_pass
-            .update_render_image(self.render_image.clone())?;
+            .update_render_image(&self.descriptor_allocator, self.render_image.clone())?;
 
         // unset trigger
         self.recreate_swapchain = false;
@@ -858,59 +893,3 @@ mod vulkan_callback {
         };
     }
 }
-
-/*
-/// Describes the types of errors encountered by the renderer
-// todo handle this stuff
-#[derive(Debug)]
-pub enum RenderManagerError {
-    /// Requested dimensions are not within supported range when attempting to create a render target (swapchain)
-    /// This error tends to happen when the user is manually resizing the window.
-    /// Simply restarting the loop is the easiest way to fix this issue.
-    ///
-    /// Equivalent to vulkano [SwapchainCreationError::ImageExtentNotSupported](`vulkano::swapchain::SwapchainCreationError::ImageExtentNotSupported`)
-    SurfaceSizeUnsupported {
-        provided: [u32; 2],
-        min_supported: [u32; 2],
-        max_supported: [u32; 2],
-    },
-    // todo VulkanError recoverable case handling... clamp inner window size in Engine::process_frame()?
-    // The window surface is no longer accessible and must be recreated.
-    // Invalidates the RenderManger and requires re-initialization.
-    //
-    // Equivalent to vulkano [SurfacePropertiesError::SurfaceLost](`vulkano::device::physical::SurfacePropertiesError::SurfaceLost`)
-    //SurfaceLost,
-}
-impl fmt::Display for RenderManagerError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        match self {
-            //RenderManagerError::SurfaceLost =>
-            //    write!(f, "the Vulkan surface is no longer accessible, thus invalidating this RenderManager instance"),
-            RenderManagerError::SurfaceSizeUnsupported{ provided, min_supported, max_supported } =>
-                write!(f, "cannot create render target with requested dimensions = {:?}. min size = {:?}, max size = {:?}",
-                    provided, min_supported, max_supported),
-        }
-    }
-}
-impl From<SwapchainCreationError> for RenderManagerError {
-    fn from(error: SwapchainCreationError) -> Self {
-        match error {
-            // this error tends to happen when the user is manually resizing the window.
-            // simply restarting the loop is the easiest way to fix this issue.
-            SwapchainCreationError::ImageExtentNotSupported {
-                provided,
-                min_supported,
-                max_supported,
-            } => {
-                let err = RenderManagerError::SurfaceSizeUnsupported {
-                    provided,
-                    min_supported,
-                    max_supported,
-                };
-                debug!("cannot create swapchain: {}", err);
-                err
-            }
-        }
-    }
-}
-*/

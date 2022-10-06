@@ -5,11 +5,11 @@
 /// Defines the up/down axis in the world space coordinate system
 const vec3 WORLD_SPACE_UP = vec3(0., 0., 1.);
 /// Maximum number of ray marching steps before confirming a miss
-const uint MAX_STEPS = 32;
+const uint MAX_STEPS = 50;
 /// Maximum distance to travel
 const float MAX_DIST = 1000.;
 /// Minimum distance to travel (epsilon)
-const float MIN_DIST = 0.001;
+const float MIN_DIST = 0.0001;
 
 // workgroup size. set via specialization constants 0 and 1
 layout (local_size_x_id = 0, local_size_y_id = 1) in;
@@ -128,7 +128,7 @@ void main()
 	if (dim.x <= gl_GlobalInvocationID.x || dim.y <= gl_GlobalInvocationID.y)
 		return; // don't bother rendering outside of image bounds
 
-	vec2 pos_uv = (vec2(gl_GlobalInvocationID.xy) + vec2(0.5) - vec2(dim) / 2.) / dim; // clip space position in frame
+	vec2 pos_uv = (vec2(gl_GlobalInvocationID.xy) * 2. - dim + vec2(.5)) / dim; // clip space position in frame (between -1 and 1)
 	vec3 ray_d = normalize((cam.proj_view_inverse * vec4(pos_uv, 1., 1.)).xyz); // ray direction in world space
 
 	// render scene

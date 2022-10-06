@@ -51,9 +51,9 @@ pub enum CreateShaderError {
 impl fmt::Display for CreateShaderError {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         match self {
-            Self::IOError { e, path } => write!(f, "Failed to read shader file {}: {}", path, e),
+            Self::IOError { e, path } => write!(f, "failed to read shader file {}: {}", path, e),
             Self::ShaderCreationError { e, path } => {
-                write!(f, "Failed to create shader module from {}: {}", path, e)
+                write!(f, "failed to create shader module from {}: {}", path, e)
             }
             Self::MissingEntryPoint(path) => {
                 write!(

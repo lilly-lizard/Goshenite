@@ -6,6 +6,7 @@ use winit::{
     window::{CursorIcon, Window},
 };
 
+/// Records and processes the state of the mouse cursor
 pub struct CursorState {
     window: Arc<Window>,
     /// Describes wherver the cursur is currently within the window bounds
@@ -38,6 +39,9 @@ impl CursorState {
         }
     }
 
+    /// Update cursor position.
+    /// * `position` - coords in pixels relative to the top-left corner of the window
+    /// (equivilent to [`winit::event::CursorMoved::position`])
     pub fn set_position(&mut self, position: [f64; 2]) {
         self.position = Some(position.into());
         // if positions aren't initialized yet
@@ -46,25 +50,31 @@ impl CursorState {
         }
     }
 
+    /// Update state of a mouse button
+    /// * `winit_button` - winit mouse button enum
+    /// * `state` - winit enum indicating event type (pressed or released)
+    /// * `cursor_captured` - indicates if the gui wants exclusive use of this event
     pub fn set_click_state(
         &mut self,
         winit_button: winit::event::MouseButton,
         state: ElementState,
-        cursor_captured: bool,
+        captured_by_gui: bool,
     ) {
         match MouseButton::from_winit(winit_button) {
             Ok(button) => self
                 .is_pressed
                 // button is only set to pressed when cursor hasn't been captured by e.g. gui
-                .set(button, !cursor_captured && state == ElementState::Pressed),
-            Err(e) => debug!("{}", e),
+                .set(button, !captured_by_gui && state == ElementState::Pressed),
+            Err(e) => debug!("set_click_state: {}", e),
         };
     }
 
+    /// Update wherver the cursor is in the window area
     pub fn set_in_window_state(&mut self, is_in_window: bool) {
         self.in_window = is_in_window;
     }
 
+    /// Process events to update internal state
     pub fn process_frame(&mut self) {
         // position processing
         self.position_frame_change =
@@ -95,9 +105,12 @@ impl CursorState {
         self.is_pressed_previous = self.is_pressed;
     }
 
+    /// Returns the change in cursor pixel position between the previous 2 [`Self::process_frame`] calls
     pub fn position_frame_change(&self) -> DVec2 {
         self.position_frame_change
     }
+
+    /// Returns which, if any, mouse button is in the dragging state
     pub fn which_dragging(&self) -> Option<MouseButton> {
         self.which_dragging
     }

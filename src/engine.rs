@@ -3,9 +3,9 @@ use crate::config;
 use crate::cursor_state::{CursorState, MouseButton};
 use crate::gui::Gui;
 use crate::helper::anyhow_panic::{anyhow_panic, anyhow_unwrap};
-use crate::primitives::{cube::Cube, primitives::PrimitiveCollection, sphere::Sphere};
+use crate::primitives::primitive::PrimitiveTrait;
+use crate::primitives::{cube::Cube, primitive_collection::PrimitiveCollection, sphere::Sphere};
 use crate::renderer::render_manager::RenderManager;
-use glam::Vec2;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 use std::sync::Arc;
@@ -15,29 +15,38 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
+/// Goshenite engine logic
 pub struct Engine {
     _window: Arc<Window>,
-    cursor_state: CursorState,
+
+    // state
     window_resize: bool,
     scale_factor: f64,
+    cursor_state: CursorState,
+    primitive_lock_on: bool,
 
+    // specialized controllers
     camera: Camera,
-    primitives: PrimitiveCollection,
     gui: Gui,
     renderer: RenderManager,
+
+    // model data
+    primitive_collection: PrimitiveCollection,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
-        let default_resolution = [1000, 700];
-
         // init window
+        let mut window_builder = WindowBuilder::new().with_title(config::ENGINE_NAME);
+        if config::START_MAXIMIZED {
+            window_builder = window_builder.with_maximized(true);
+        } else {
+            window_builder = window_builder.with_inner_size(winit::dpi::LogicalSize::new(
+                config::DEFAULT_WINDOW_SIZE[0],
+                config::DEFAULT_WINDOW_SIZE[1],
+            ));
+        }
         let window = Arc::new(
-            WindowBuilder::new()
-                .with_title(config::ENGINE_NAME)
-                .with_inner_size(winit::dpi::LogicalSize::new(
-                    f64::from(default_resolution[0]),
-                    f64::from(default_resolution[1]),
-                ))
+            window_builder
                 .build(event_loop)
                 .expect("failed to instanciate window due to os error"),
         );
@@ -45,18 +54,18 @@ impl Engine {
         let cursor_state = CursorState::new(window.clone());
 
         // init camera
-        let camera = Camera::new(window.inner_size().into());
+        let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
         // init primitives
-        let mut primitives = PrimitiveCollection::default();
-        primitives.add_primitive(Sphere::new(glam::Vec3::new(0.0, 1.0, -0.4), 0.4).into());
-        primitives.add_primitive(
-            Cube::new(glam::Vec3::new(0.0, -1.0, 0.4), glam::Vec3::splat(0.8)).into(),
+        let mut primitive_collection = PrimitiveCollection::default();
+        primitive_collection.add_primitive(Sphere::new(glam::Vec3::new(0.0, 0.0, 0.0), 0.5).into());
+        primitive_collection.add_primitive(
+            Cube::new(glam::Vec3::new(-0.8, 1.7, 0.), glam::Vec3::splat(0.7)).into(),
         );
 
         // init renderer
         let renderer = anyhow_unwrap(
-            RenderManager::new(window.clone(), &primitives),
+            RenderManager::new(window.clone(), &primitive_collection),
             "initialize renderer",
         );
 
@@ -65,13 +74,17 @@ impl Engine {
 
         Engine {
             _window: window,
-            cursor_state,
+
             window_resize: false,
             scale_factor,
+            cursor_state,
+            primitive_lock_on: false,
+
             camera,
-            primitives,
             gui,
             renderer,
+
+            primitive_collection,
         }
     }
 
@@ -87,7 +100,7 @@ impl Engine {
             } => *control_flow = ControlFlow::Exit,
             // process window events and update state
             Event::WindowEvent { event, .. } => self.process_input(event),
-            // per frame logic todo is this called at screen refresh rate?
+            // per frame logic
             Event::MainEventsCleared => self.process_frame(),
             _ => (),
         }
@@ -95,7 +108,9 @@ impl Engine {
 
     /// Process window events and update state
     fn process_input(&mut self, event: WindowEvent) {
-        //debug!("winit event: {:?}", event);
+        if config::PER_FRAME_DEBUG_LOGS {
+            debug!("winit event: {:?}", event);
+        }
 
         // egui event handling
         let captured_by_gui = self.gui.process_event(&event);
@@ -116,7 +131,6 @@ impl Engine {
             WindowEvent::CursorLeft { .. } => self.cursor_state.set_in_window_state(false),
             // window resize
             WindowEvent::Resized(new_inner_size) => {
-                // todo instant renderer resize?
                 self.window_resize = true;
                 self.camera.set_aspect_ratio(new_inner_size.into())
             }
@@ -125,7 +139,6 @@ impl Engine {
                 scale_factor,
                 new_inner_size,
             } => {
-                // todo instant renderer resize?
                 self.scale_factor = scale_factor;
                 self.window_resize = true;
                 self.camera.set_aspect_ratio((*new_inner_size).into())
@@ -136,32 +149,49 @@ impl Engine {
 
     /// Per frame engine logic and rendering
     fn process_frame(&mut self) {
-        // update cursor state
+        // process recieved events for cursor state
         self.cursor_state.process_frame();
 
-        // update gui
+        // process gui inputs and update layout
         if let Err(e) = self
             .gui
-            .update_frame(&mut self.renderer.gui_renderer_mut(), &mut self.primitives)
+            .update_gui(&mut self.primitive_collection, &mut self.primitive_lock_on)
         {
             anyhow_panic(&e, "update gui");
         }
 
-        // update camera
-        if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
-            let delta_cursor: Vec2 =
-                (self.cursor_state.position_frame_change() * config::SENSITIVITY_LOOK).as_vec2();
-            self.camera
-                .rotate(delta_cursor.x.into(), (-delta_cursor.y).into());
-        }
+        // update camera based on now processed user inputs
+        self.update_camera();
 
-        // submit rendering commands
-        if let Err(e) =
-            self.renderer
-                .render_frame(self.window_resize, &self.primitives, &self.gui, self.camera)
-        {
+        // now that frame processing is done, submit rendering commands
+        if let Err(e) = self.renderer.render_frame(
+            self.window_resize,
+            &mut self.gui,
+            &self.camera,
+            &self.primitive_collection,
+        ) {
             anyhow_panic(&e, "render frame");
         }
         self.window_resize = false;
+    }
+
+    fn update_camera(&mut self) {
+        // left mouse button dragging changes camera orientation
+        if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
+            self.camera
+                .rotate(self.cursor_state.position_frame_change());
+        }
+
+        // look mode logic
+        // NOTE let_chains still unstable: https://github.com/rust-lang/rust/issues/53667
+        let selected_primitive = self.primitive_collection.selected_primitive();
+        if selected_primitive.is_some() && self.primitive_lock_on {
+            // set lock on target to selected primitive
+            let primitive = selected_primitive.expect("if let replacement");
+            self.camera.set_lock_on_target(primitive.center());
+        } else {
+            // if no primitive selected use arcball mode
+            self.camera.unset_lock_on_target();
+        }
     }
 }

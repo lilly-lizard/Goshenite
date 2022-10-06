@@ -6,7 +6,7 @@ pub struct Immutable<T> {
     value: T,
 }
 impl<T> Immutable<T> {
-    pub fn new(value: T) -> Self {
+    pub const fn new(value: T) -> Self {
         Immutable { value }
     }
 }

@@ -1,26 +1,32 @@
 /// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
 use super::common::{CreateDescriptorSetError, CreateShaderError};
-use crate::gui::Gui;
-use crate::renderer::common::create_shader_module;
-use crate::shaders::shader_interfaces::{self, SHADER_ENTRY_POINT};
+use crate::{
+    gui::Gui,
+    renderer::common::create_shader_module,
+    shaders::shader_interfaces::{self, EguiVertex, SHADER_ENTRY_POINT},
+};
 use ahash::AHashMap;
 use anyhow::Context;
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId};
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
-use std::fmt::{self, Display};
-use std::sync::Arc;
-use vulkano::render_pass::Subpass;
+use std::{
+    fmt::{self, Display},
+    sync::Arc,
+};
 use vulkano::{
     buffer::{
         cpu_access::CpuAccessibleBuffer, cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool,
         TypedBufferAccess,
     },
     command_buffer::{
-        AutoCommandBufferBuilder, BufferImageCopy, CommandBufferUsage, CopyBufferToImageInfo,
-        PrimaryCommandBuffer,
+        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
+        CommandBufferUsage, CopyBufferToImageInfo, PrimaryCommandBuffer,
     },
-    descriptor_set::{layout::DescriptorSetLayout, PersistentDescriptorSet, WriteDescriptorSet},
+    descriptor_set::{
+        allocator::StandardDescriptorSetAllocator, layout::DescriptorSetLayout,
+        PersistentDescriptorSet, WriteDescriptorSet,
+    },
     device::{Device, Queue},
     format::Format,
     image::{
@@ -38,6 +44,7 @@ use vulkano::{
         },
         Pipeline, PipelineBindPoint,
     },
+    render_pass::Subpass,
     sampler::{self, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
     sync::GpuFuture,
     DeviceSize,
@@ -54,16 +61,6 @@ mod descriptor {
     pub const SET_FONT_TEXTURE: usize = 0;
     pub const BINDING_FONT_TEXTURE: u32 = 0;
 }
-
-/// Should match vertex definition of egui (except color is `[f32; 4]`)
-#[repr(C)]
-#[derive(Default, Debug, Clone, Copy, bytemuck::Zeroable, bytemuck::Pod)]
-struct EguiVertex {
-    pub position: [f32; 2],
-    pub tex_coords: [f32; 2],
-    pub color: [f32; 4],
-}
-vulkano::impl_vertex!(EguiVertex, position, tex_coords, color);
 
 /// Index format
 type VertexIndex = u32;
@@ -104,7 +101,12 @@ impl GuiRenderer {
     }
 
     /// Creates and/or removes texture resources for a [`Gui`](crate::gui::Gui) frame.
-    pub fn update_textures(&mut self, textures_delta: egui::TexturesDelta) -> anyhow::Result<()> {
+    pub fn update_textures(
+        &mut self,
+        command_buffer_allocator: &StandardCommandBufferAllocator,
+        descriptor_allocator: &StandardDescriptorSetAllocator,
+        textures_delta: egui::TexturesDelta,
+    ) -> anyhow::Result<()> {
         // release unused texture resources
         for &id in &textures_delta.free {
             self.unregister_image(id);
@@ -112,7 +114,7 @@ impl GuiRenderer {
 
         // create command buffer builder
         let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            self.device.clone(),
+            command_buffer_allocator,
             self.transfer_queue.queue_family_index(),
             CommandBufferUsage::OneTimeSubmit,
         )
@@ -120,7 +122,12 @@ impl GuiRenderer {
 
         // create new images and record upload commands
         for (id, image_delta) in textures_delta.set {
-            self.create_texture(id, image_delta, &mut command_buffer_builder)?;
+            self.create_texture(
+                descriptor_allocator,
+                id,
+                image_delta,
+                &mut command_buffer_builder,
+            )?;
         }
 
         // execute command buffer
@@ -130,7 +137,7 @@ impl GuiRenderer {
         let finished = command_buffer
             .execute(self.transfer_queue.clone())
             .context("executing gui texture upload commands")?;
-        // todo flush blocks thread... pass onto renderer manager
+        // todo flush blocks thread? pass onto renderer manager
         let _future = finished
             .then_signal_fence_and_flush()
             .context("executing gui texture upload commands")?;
@@ -148,15 +155,15 @@ impl GuiRenderer {
         command_buffer: &mut AutoCommandBufferBuilder<L>,
         gui: &Gui,
         need_srgb_conv: bool,
-        framebuffer_dimensions: [u32; 2],
+        framebuffer_dimensions: [f32; 2],
     ) -> anyhow::Result<()> {
         let scale_factor = gui.scale_factor();
         let primitives = gui.mesh_primitives();
 
-        let push_constants = shader_interfaces::GuiPushConstant::new(
+        let push_constants = shader_interfaces::GuiPushConstants::new(
             [
-                framebuffer_dimensions[0] as f32 / scale_factor,
-                framebuffer_dimensions[1] as f32 / scale_factor,
+                framebuffer_dimensions[0] / scale_factor,
+                framebuffer_dimensions[1] / scale_factor,
             ],
             need_srgb_conv,
         );
@@ -196,10 +203,7 @@ impl GuiRenderer {
                             0,
                             [Viewport {
                                 origin: [0.0, 0.0],
-                                dimensions: [
-                                    framebuffer_dimensions[0] as f32,
-                                    framebuffer_dimensions[1] as f32,
-                                ],
+                                dimensions: framebuffer_dimensions,
                                 depth_range: 0.0..1.0,
                             }],
                         )
@@ -214,9 +218,9 @@ impl GuiRenderer {
                         .bind_vertex_buffers(0, vertices.clone())
                         .bind_index_buffer(indices.clone())
                         .draw_indexed(indices.len() as u32, 1, 0, 0, 0)
-                        .context("recording gui render commands")?;
+                        .context("recording gui draw commands")?;
                 }
-                _ => continue, // don't need to support Primitive::Callback
+                Primitive::Callback(_) => continue, // we don't need to support Primitive::Callback
             }
         }
         Ok(())
@@ -244,6 +248,7 @@ impl GuiRenderer {
     /// Helper function for [`GuiRenderer::update_textures`]
     fn create_texture<L>(
         &mut self,
+        descriptor_allocator: &StandardDescriptorSetAllocator,
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
         command_buffer_builder: &mut AutoCommandBufferBuilder<L>,
@@ -365,7 +370,7 @@ impl GuiRenderer {
                 })
                 .context("creating new gui texture desc set")?;
             let font_desc_set = self
-                .sampled_image_desc_set(layout, font_image.clone())
+                .sampled_image_desc_set(descriptor_allocator, layout, font_image.clone())
                 .context("creating new gui texture desc set")?;
 
             // store new texture
@@ -398,9 +403,9 @@ impl GuiRenderer {
         let vertex_chunk = self
             .vertex_buffer_pool
             .from_iter(v_slice.into_iter().map(|v| EguiVertex {
-                position: [v.pos.x, v.pos.y],
-                tex_coords: [v.uv.x, v.uv.y],
-                color: [
+                in_position: v.pos.into(),
+                in_tex_coords: v.uv.into(),
+                in_color: [
                     v.color.r() as f32 / 255.0,
                     v.color.g() as f32 / 255.0,
                     v.color.b() as f32 / 255.0,
@@ -422,10 +427,12 @@ impl GuiRenderer {
     /// Creates a descriptor set for images
     fn sampled_image_desc_set(
         &self,
+        descriptor_allocator: &StandardDescriptorSetAllocator,
         layout: &Arc<DescriptorSetLayout>,
         image: Arc<dyn ImageViewAbstract + 'static>,
     ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
         PersistentDescriptorSet::new(
+            descriptor_allocator,
             layout.clone(),
             [WriteDescriptorSet::image_view_sampler(
                 descriptor::BINDING_FONT_TEXTURE,
@@ -458,7 +465,7 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
             .ok_or(CreateShaderError::MissingEntryPoint(
                 FRAG_SHADER_PATH.to_string(),
             ))?;
-    Ok(GraphicsPipeline::start()
+    GraphicsPipeline::start()
         .vertex_input_state(BuffersDefinition::new().vertex::<EguiVertex>())
         .vertex_shader(vert_shader, ())
         .input_assembly_state(InputAssemblyState::new())
@@ -468,7 +475,7 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
         .rasterization_state(RasterizationState::new().cull_mode(CullMode::None))
         .render_pass(subpass)
         .build(device.clone())
-        .context("gui pipeline")?)
+        .context("gui pipeline")
 }
 
 /// Creates vertex and index buffer pools.
@@ -505,22 +512,22 @@ fn create_buffer_pools(
 }
 
 /// Caclulates the region of the framebuffer to render a gui element.
-fn get_rect_scissor(scale_factor: f32, framebuffer_dimensions: [u32; 2], rect: Rect) -> Scissor {
+fn get_rect_scissor(scale_factor: f32, framebuffer_dimensions: [f32; 2], rect: Rect) -> Scissor {
     let min = egui::Pos2 {
         x: rect.min.x * scale_factor,
         y: rect.min.y * scale_factor,
     };
     let min = egui::Pos2 {
-        x: min.x.clamp(0.0, framebuffer_dimensions[0] as f32),
-        y: min.y.clamp(0.0, framebuffer_dimensions[1] as f32),
+        x: min.x.clamp(0.0, framebuffer_dimensions[0]),
+        y: min.y.clamp(0.0, framebuffer_dimensions[1]),
     };
     let max = egui::Pos2 {
         x: rect.max.x * scale_factor,
         y: rect.max.y * scale_factor,
     };
     let max = egui::Pos2 {
-        x: max.x.clamp(min.x, framebuffer_dimensions[0] as f32),
-        y: max.y.clamp(min.y, framebuffer_dimensions[1] as f32),
+        x: max.x.clamp(min.x, framebuffer_dimensions[0]),
+        y: max.y.clamp(min.y, framebuffer_dimensions[1]),
     };
     Scissor {
         origin: [min.x.round() as u32, min.y.round() as u32],

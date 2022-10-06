@@ -19,12 +19,12 @@ anyhow = { version = "1.0", features = ["backtrace"] }
 # terminal output formatting
 colored = { version = "2.0", optional = true }
 # glam is a vector and math library well suited for 3D graphics (noticeably more lightweight than cgmath)
-glam = "0.21"
+glam = { version = "0.21", features = ["debug-glam-assert"] }
 # winit is a cross-platform window creation and management library (version must match vulkano-win support)
 winit = "0.27"
 # vulkano is a safe and convenient vulkan (ash) wrapper
-vulkano = "0.31.0"
-vulkano-win = "0.31.0" # winit interop boilerplate
+vulkano = { version = "0.31.0", path = "../vulkano-fork/vulkano" }
+vulkano-win = { version = "0.31.0", path = "../vulkano-fork/vulkano-win" } # winit interop boilerplate
 # bit-casting crate (for cpu<->gpu buffers)
 bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library

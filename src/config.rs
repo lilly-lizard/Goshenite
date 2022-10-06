@@ -1,6 +1,16 @@
 use glam::Vec3;
 
+use crate::helper::angle::Angle;
+
 pub const ENGINE_NAME: &str = "Goshenite";
+
+/// If true, enables spammy debug log messages that happen every frame
+pub const PER_FRAME_DEBUG_LOGS: bool = false;
+
+/// Wherever the app window starts maximized
+pub const START_MAXIMIZED: bool = false;
+/// Default window size if `START_MAXIMIZED` is false
+pub const DEFAULT_WINDOW_SIZE: [u32; 2] = [1000, 700];
 
 /// Describes which direction is up in the world space coordinate system, set to Z by default
 pub const WORLD_SPACE_UP: WorldSpaceUp = WorldSpaceUp::Z;
@@ -27,14 +37,15 @@ impl WorldSpaceUp {
     }
 }
 
-/// Sensitivity for changing the view direction with the cursor = radians / pixels
-pub const SENSITIVITY_LOOK: f64 = 0.001;
+/// Field of view
+pub const FIELD_OF_VIEW: Angle = Angle::from_radians(std::f64::consts::FRAC_PI_4);
+/// Sensitivity for changing the view direction with the cursor = angle / pixels
+pub const LOOK_SENSITIVITY: Angle = Angle::from_radians(0.001);
+pub const ARC_BALL_SENSITIVITY: Angle = Angle::from_radians(0.005);
 
 // renderer settings
 pub const VULKAN_VER_MAJ: u32 = 1;
-/// Renderer requires core features:
-/// - dynamic rendering
-pub const VULKAN_VER_MIN: u32 = 3;
+pub const VULKAN_VER_MIN: u32 = 2;
 pub const DEFAULT_WORK_GROUP_SIZE: [u32; 2] = [16, 16];
 /// If true, the renderer will attempt to enable valication layers
 pub const ENABLE_VULKAN_VALIDATION: bool = true;
