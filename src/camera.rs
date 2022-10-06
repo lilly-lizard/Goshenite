@@ -116,15 +116,6 @@ impl Camera {
     pub fn position(&self) -> Vec3 {
         self.position
     }
-
-    /// If lock on is set, returns the world space position the camera is locked on to.
-    pub fn lock_on_target(&self) -> Option<Vec3> {
-        if let LookMode::Target(target) = self.look_mode {
-            Some(target)
-        } else {
-            None
-        }
-    }
 }
 // Private functions
 impl Camera {
