@@ -71,17 +71,22 @@ impl std::error::Error for CreateShaderError {}
 #[derive(Debug)]
 pub enum CreateDescriptorSetError {
     /// Descriptor set index not found in the pipeline layout
-    InvalidDescriptorSetIndex { index: usize },
+    InvalidDescriptorSetIndex {
+        /// Descriptor set index
+        index: usize,
+        /// A shader where this descriptor set is expected to be found, to assist with debugging
+        shader_path: &'static str,
+    },
 }
 impl std::error::Error for CreateDescriptorSetError {}
 impl fmt::Display for CreateDescriptorSetError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Self::InvalidDescriptorSetIndex { index } => {
+            Self::InvalidDescriptorSetIndex { index, shader_path } => {
                 write!(
                     f,
-                    "descriptor set index {} not found in pipeline layout",
-                    index
+                    "descriptor set index {} not found in pipeline layout. possibly relavent shader {}",
+                    index, shader_path
                 )
             }
         }

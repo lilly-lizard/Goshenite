@@ -11,12 +11,14 @@ const float MAX_DIST = 1000.;
 /// Minimum distance to travel (epsilon)
 const float MIN_DIST = 0.0001;
 
-// workgroup size. set via specialization constants 0 and 1
-layout (local_size_x_id = 0, local_size_y_id = 1) in;
-// output image
-layout (set = 0, binding = 0, rgba8) uniform writeonly image2D renderImage;
+// input UV from full_screen.vert
+layout (location = 0) in vec2 inUV;
+
+// output g-buffer
+layout (location = 0) out vec4 outColor;
+
 // encoded object data to render
-layout (set = 1, binding = 0, std430) readonly buffer PrimitiveData {
+layout (set = 0, binding = 0, std430) readonly buffer PrimitiveData {
 	uint count;
 	uint data[];
 } primitives;
@@ -124,15 +126,11 @@ vec3 ray_march(const vec3 ray_o, const vec3 ray_d)
 
 void main()
 {
-	uvec2 dim = uvec2(imageSize(renderImage)); // ouput image dimensions
-	if (dim.x <= gl_GlobalInvocationID.x || dim.y <= gl_GlobalInvocationID.y)
-		return; // don't bother rendering outside of image bounds
-
-	vec2 pos_uv = (vec2(gl_GlobalInvocationID.xy) * 2. - dim + vec2(.5)) / dim; // clip space position in frame (between -1 and 1)
-	vec3 ray_d = normalize((cam.proj_view_inverse * vec4(pos_uv, 1., 1.)).xyz); // ray direction in world space
+	vec2 pos_uv = inUV * 2. - 1.; // clip space position in frame (between -1 and 1)
+	vec3 ray_d = normalize((cam.proj_view_inverse * vec4(pos_uv.x, -pos_uv.y, 1., 1.)).xyz); // ray direction in world space
 
 	// render scene
 	vec3 color = ray_march(cam.position.xyz, ray_d);
 
-	imageStore(renderImage, ivec2(gl_GlobalInvocationID.xy), vec4(color, 1.));
+	outColor = vec4(color, 1.);
 }

@@ -2,6 +2,7 @@
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - primitive id/normal g-buffer
+- fragment shading geometry pass (no reason for compute at this point)
 - coordinate overlay z-buffer
 - scroll zoom
 - live update primitive lock-on target. Arcs/weak pointers for primitive collection?

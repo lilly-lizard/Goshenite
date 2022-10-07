@@ -389,6 +389,7 @@ impl GuiRenderer {
                 .get(descriptor::SET_FONT_TEXTURE)
                 .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
                     index: descriptor::SET_FONT_TEXTURE,
+                    shader_path: FRAG_SHADER_PATH,
                 })
                 .context("creating new gui texture desc set")?;
             let font_desc_set = self

@@ -4,35 +4,35 @@ use crate::{
     config,
     primitives::primitive_collection::PrimitiveCollection,
     shaders::shader_interfaces::{
-        CameraPushConstants, ComputeSpecConstant, PrimitiveData, PrimitiveDataUnit,
-        SHADER_ENTRY_POINT,
+        CameraPushConstants, PrimitiveData, PrimitiveDataUnit, SHADER_ENTRY_POINT,
     },
 };
 use anyhow::Context;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
-use std::{fmt, sync::Arc};
+use std::sync::Arc;
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
     command_buffer::AutoCommandBufferBuilder,
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
-    device::{physical::PhysicalDevice, Device},
-    image::{view::ImageView, StorageImage},
+    device::Device,
     memory::pool::StandardMemoryPool,
-    pipeline::{ComputePipeline, Pipeline, PipelineBindPoint},
+    pipeline::{
+        graphics::viewport::{Viewport, ViewportState},
+        GraphicsPipeline, Pipeline, PipelineBindPoint,
+    },
+    render_pass::Subpass,
     DeviceSize,
 };
 
-const COMP_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.comp.spv";
+const VERT_SHADER_PATH: &str = "assets/shader_binaries/full_screen.vert.spv";
+const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
 
 /// Describes descriptor set indices
 mod descriptor {
-    pub const SET_IMAGE: usize = 0;
-    pub const SET_PRIMITVES: usize = 1;
-
-    pub const BINDING_IMAGE: u32 = 0;
+    pub const SET_PRIMITVES: usize = 0;
     pub const BINDING_PRIMITVES: u32 = 0;
 }
 
@@ -41,14 +41,8 @@ const RESERVED_PRIMITIVE_BUFFER_POOL: DeviceSize = 8 * 4 * 1024;
 
 /// Defines functionality for rendering the scene geometry to write to g-buffers
 pub struct GeometryPass {
-    device: Arc<Device>,
-
-    work_group_size: [u32; 2],
-    work_group_count: [u32; 3],
     primitive_buffer_pool: CpuBufferPool<PrimitiveDataUnit>,
-
-    pipeline: Arc<ComputePipeline>,
-    desc_set_render_image: Arc<PersistentDescriptorSet>,
+    pipeline: Arc<GraphicsPipeline>,
     desc_set_primitives: Arc<PersistentDescriptorSet>,
 }
 // Public functions
@@ -57,37 +51,8 @@ impl GeometryPass {
         device: Arc<Device>,
         descriptor_allocator: &StandardDescriptorSetAllocator,
         primitive_collection: &PrimitiveCollection,
-        render_image_size: [u32; 2],
-        render_image: Arc<ImageView<StorageImage>>,
+        subpass: Subpass,
     ) -> anyhow::Result<Self> {
-        let physical_device = device.physical_device();
-
-        // calculate work group size and count for geometry compute shader
-        let work_group_size = [
-            std::cmp::min(
-                config::DEFAULT_WORK_GROUP_SIZE[0],
-                physical_device.properties().max_compute_work_group_size[0],
-            ),
-            std::cmp::min(
-                config::DEFAULT_WORK_GROUP_SIZE[1],
-                physical_device.properties().max_compute_work_group_size[1],
-            ),
-        ];
-        let work_group_count = calc_work_group_count(
-            device.physical_device().clone(),
-            render_image_size,
-            work_group_size,
-        )
-        .context("initializing geometry pass")?;
-        debug!(
-            "calulated geometry render work group size: {:?}",
-            work_group_size
-        );
-        debug!(
-            "calulated geometry render work group count: {:?}",
-            work_group_count
-        );
-
         // init primitive buffer pool
         let primitive_buffer_pool = CpuBufferPool::new(
             device.clone(),
@@ -105,21 +70,15 @@ impl GeometryPass {
         );
 
         // init compute pipeline and descriptor sets
-        let pipeline = create_pipeline(device.clone(), work_group_size)?;
-        let desc_set_render_image =
-            create_desc_set_render_image(descriptor_allocator, pipeline.clone(), render_image)?;
+        let pipeline = create_pipeline(device.clone(), subpass)?;
         let primitive_buffer =
             create_primitives_buffer(primitive_collection, &primitive_buffer_pool)?;
         let desc_set_primitives =
             create_desc_set_primitives(descriptor_allocator, pipeline.clone(), primitive_buffer)?;
 
         Ok(Self {
-            device,
             pipeline,
-            desc_set_render_image,
             desc_set_primitives,
-            work_group_size,
-            work_group_count,
             primitive_buffer_pool,
         })
     }
@@ -141,147 +100,60 @@ impl GeometryPass {
         Ok(())
     }
 
-    /// Updates render target data e.g. when it has been resized
-    pub fn update_render_target(
-        &mut self,
-        descriptor_allocator: &StandardDescriptorSetAllocator,
-        resolution: [u32; 2],
-        render_image: Arc<ImageView<StorageImage>>,
-    ) -> anyhow::Result<()> {
-        self.work_group_count = calc_work_group_count(
-            self.device.physical_device().clone(),
-            resolution,
-            self.work_group_size,
-        )
-        .context("updating geometry pass render target")?;
-        debug!(
-            "calulated geometry render work group size: {:?}",
-            self.work_group_size
-        );
-        debug!(
-            "calulated geometry render work group count: {:?}",
-            self.work_group_count
-        );
-        self.desc_set_render_image = create_desc_set_render_image(
-            descriptor_allocator,
-            self.pipeline.clone(),
-            render_image.clone(),
-        )
-        .context("updating geometry pass render target")?;
-        Ok(())
-    }
-
     /// Records rendering commands to a command buffer
     pub fn record_commands<L>(
         &self,
         command_buffer: &mut AutoCommandBufferBuilder<L>,
         camera: &Camera,
+        viewport: Viewport,
     ) -> anyhow::Result<()> {
         let camera_push_constant = CameraPushConstants::new(
             glam::Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
             camera.position(),
         );
-        let mut desc_sets: Vec<Arc<PersistentDescriptorSet>> = Vec::default();
-        desc_sets.insert(descriptor::SET_IMAGE, self.desc_set_render_image.clone());
-        desc_sets.insert(descriptor::SET_PRIMITVES, self.desc_set_primitives.clone());
         command_buffer
-            .bind_pipeline_compute(self.pipeline.clone())
+            .set_viewport(0, [viewport])
+            .bind_pipeline_graphics(self.pipeline.clone())
             .bind_descriptor_sets(
-                PipelineBindPoint::Compute,
+                PipelineBindPoint::Graphics,
                 self.pipeline.layout().clone(),
                 0,
-                desc_sets,
+                self.desc_set_primitives.clone(),
             )
             .push_constants(self.pipeline.layout().clone(), 0, camera_push_constant)
-            .dispatch(self.work_group_count)
+            .draw(3, 1, 0, 0)
             .context("recording geometry pass commands")?;
         Ok(())
     }
 }
 
-/// Calculate required work group count for a given render resolution,
-/// and checks that the work group count is within the physical device limits
-fn calc_work_group_count(
-    physical_device: Arc<PhysicalDevice>,
-    resolution: [u32; 2],
-    work_group_size: [u32; 2],
-) -> Result<[u32; 3], GeometryPassError> {
-    let mut group_count_x = resolution[0] / work_group_size[0];
-    if (resolution[0] % work_group_size[0]) != 0 {
-        group_count_x += 1;
-    }
-    let mut group_count_y = resolution[1] / work_group_size[1];
-    if (resolution[1] % work_group_size[1]) != 0 {
-        group_count_y += 1;
-    }
-    // check that work group count is within physical device limits
-    let group_count_limit: [u32; 2] = [
-        physical_device.properties().max_compute_work_group_count[0],
-        physical_device.properties().max_compute_work_group_count[1],
-    ];
-    if group_count_x > group_count_limit[0] || group_count_y > group_count_limit[1] {
-        return Err(GeometryPassError::UnsupportedWorkGroupCount {
-            group_count: [group_count_x, group_count_y],
-            group_count_limit,
-        });
-    }
-    return Ok([group_count_x, group_count_y, 1]);
-}
-
-fn create_pipeline(
-    device: Arc<Device>,
-    work_group_size: [u32; 2],
-) -> anyhow::Result<Arc<ComputePipeline>> {
-    //return Err(ComputePipelineCreationError::IncompatibleSpecializationConstants.into());
-    let comp_module = create_shader_module(device.clone(), COMP_SHADER_PATH)?;
-    let comp_shader =
-        comp_module
+fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<GraphicsPipeline>> {
+    let vert_module = create_shader_module(device.clone(), VERT_SHADER_PATH)?;
+    let vert_shader =
+        vert_module
             .entry_point(SHADER_ENTRY_POINT)
             .ok_or(CreateShaderError::MissingEntryPoint(
-                COMP_SHADER_PATH.to_string(),
+                VERT_SHADER_PATH.to_string(),
             ))?;
-
-    let compute_spec_constant = ComputeSpecConstant {
-        local_size_x: work_group_size[0],
-        local_size_y: work_group_size[1],
-    };
-    ComputePipeline::new(
-        device.clone(),
-        comp_shader,
-        &compute_spec_constant,
-        None,
-        |_| {},
-    )
-    .context("creating geometry pass pipeline")
-}
-
-fn create_desc_set_render_image(
-    descriptor_allocator: &StandardDescriptorSetAllocator,
-    geometry_pipeline: Arc<ComputePipeline>,
-    render_image: Arc<ImageView<StorageImage>>,
-) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
-    PersistentDescriptorSet::new(
-        descriptor_allocator,
-        geometry_pipeline
-            .layout()
-            .set_layouts()
-            .get(descriptor::SET_IMAGE)
-            .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
-                index: descriptor::SET_IMAGE,
-            })
-            .context("creating render image desc set")?
-            .to_owned(),
-        [WriteDescriptorSet::image_view(
-            descriptor::BINDING_IMAGE,
-            render_image,
-        )],
-    )
-    .context("creating render image desc set")
+    let frag_module = create_shader_module(device.clone(), FRAG_SHADER_PATH)?;
+    let frag_shader =
+        frag_module
+            .entry_point(SHADER_ENTRY_POINT)
+            .ok_or(CreateShaderError::MissingEntryPoint(
+                FRAG_SHADER_PATH.to_string(),
+            ))?;
+    Ok(GraphicsPipeline::start()
+        .render_pass(subpass)
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .vertex_shader(vert_shader, ())
+        .fragment_shader(frag_shader, ())
+        .build(device.clone())
+        .context("creating geometry pass pipeline")?)
 }
 
 fn create_desc_set_primitives(
     descriptor_allocator: &StandardDescriptorSetAllocator,
-    geometry_pipeline: Arc<ComputePipeline>,
+    geometry_pipeline: Arc<GraphicsPipeline>,
     primitive_buffer: Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StandardMemoryPool>>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
     PersistentDescriptorSet::new(
@@ -292,6 +164,7 @@ fn create_desc_set_primitives(
             .get(descriptor::SET_PRIMITVES)
             .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
                 index: descriptor::SET_PRIMITVES,
+                shader_path: FRAG_SHADER_PATH,
             })
             .context("creating primitives desc set")?
             .to_owned(),
@@ -319,30 +192,3 @@ fn create_primitives_buffer(
         .from_iter(combined_data)
         .context("creating primitives buffer")
 }
-
-// ~~~ Errors ~~~
-
-#[derive(Debug)]
-pub enum GeometryPassError {
-    /// The calculated compute shader work group count exceeds physical device limits.
-    /// todo this could be handled more elegently by doing multiple dispatches?
-    UnsupportedWorkGroupCount {
-        group_count: [u32; 2],
-        group_count_limit: [u32; 2],
-    },
-}
-impl fmt::Display for GeometryPassError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::UnsupportedWorkGroupCount {
-                group_count,
-                group_count_limit,
-            } => write!(
-                f,
-                "compute shader work group count {:?} exceeds driver limits {:?}",
-                group_count, group_count_limit
-            ),
-        }
-    }
-}
-impl std::error::Error for GeometryPassError {}

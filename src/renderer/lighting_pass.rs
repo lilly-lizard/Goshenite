@@ -10,13 +10,12 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Device,
-    image::{view::ImageView, StorageImage},
+    image::{view::ImageView, AttachmentImage},
     pipeline::{
         graphics::viewport::{Viewport, ViewportState},
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::Subpass,
-    sampler::{self, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
 };
 
 const VERT_SHADER_PATH: &str = "assets/shader_binaries/full_screen.vert.spv";
@@ -34,43 +33,29 @@ mod descriptor {
 pub struct LightingPass {
     pipeline: Arc<GraphicsPipeline>,
     desc_set: Arc<PersistentDescriptorSet>,
-    sampler: Arc<Sampler>,
 }
 // Public functions
 impl LightingPass {
     pub fn new(
         device: Arc<Device>,
         descriptor_allocator: &StandardDescriptorSetAllocator,
-        render_image: Arc<ImageView<StorageImage>>,
+        render_image: Arc<ImageView<AttachmentImage>>,
         subpass: Subpass,
     ) -> anyhow::Result<Self> {
-        let sampler = create_sampler(device.clone())?;
         let pipeline = create_pipeline(device.clone(), subpass)?;
-        let desc_set = create_desc_set(
-            descriptor_allocator,
-            pipeline.clone(),
-            render_image.clone(),
-            sampler.clone(),
-        )?;
-        Ok(Self {
-            pipeline,
-            desc_set,
-            sampler,
-        })
+        let desc_set =
+            create_desc_set_gbuffer(descriptor_allocator, pipeline.clone(), render_image.clone())?;
+        Ok(Self { pipeline, desc_set })
     }
 
     /// Updates render image data e.g. when it has been resized
     pub fn update_render_image(
         &mut self,
         descriptor_allocator: &StandardDescriptorSetAllocator,
-        render_image: Arc<ImageView<StorageImage>>,
+        render_image: Arc<ImageView<AttachmentImage>>,
     ) -> anyhow::Result<()> {
-        self.desc_set = create_desc_set(
-            descriptor_allocator,
-            self.pipeline.clone(),
-            render_image,
-            self.sampler.clone(),
-        )?;
+        self.desc_set =
+            create_desc_set_gbuffer(descriptor_allocator, self.pipeline.clone(), render_image)?;
         Ok(())
     }
 
@@ -94,20 +79,6 @@ impl LightingPass {
             .context("recording lighting pass commands")?;
         Ok(())
     }
-}
-
-fn create_sampler(device: Arc<Device>) -> anyhow::Result<Arc<Sampler>> {
-    sampler::Sampler::new(
-        device,
-        SamplerCreateInfo {
-            mag_filter: sampler::Filter::Linear,
-            min_filter: sampler::Filter::Linear,
-            address_mode: [SamplerAddressMode::ClampToEdge; 3],
-            mipmap_mode: SamplerMipmapMode::Linear,
-            ..Default::default()
-        },
-    )
-    .context("creating lighting pass sampler")
 }
 
 fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<GraphicsPipeline>> {
@@ -134,11 +105,10 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
         .context("creating lighting pass pipeline")?)
 }
 
-fn create_desc_set(
+fn create_desc_set_gbuffer(
     descriptor_allocator: &StandardDescriptorSetAllocator,
     lighting_pipeline: Arc<GraphicsPipeline>,
-    render_image: Arc<ImageView<StorageImage>>,
-    render_image_sampler: Arc<Sampler>,
+    render_image: Arc<ImageView<AttachmentImage>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
     PersistentDescriptorSet::new(
         descriptor_allocator,
@@ -148,12 +118,12 @@ fn create_desc_set(
             .get(descriptor::SET_LIGHTING_FRAG)
             .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
                 index: descriptor::SET_LIGHTING_FRAG,
+                shader_path: FRAG_SHADER_PATH,
             })?
             .to_owned(),
-        [WriteDescriptorSet::image_view_sampler(
+        [WriteDescriptorSet::image_view(
             descriptor::BINDING_SAMPLER,
             render_image,
-            render_image_sampler,
         )],
     )
     .context("creating lighting pass desc set")
