@@ -30,7 +30,7 @@ pub struct Camera {
 }
 // Public functions
 impl Camera {
-    pub fn new(resolution: [i32; 2]) -> anyhow::Result<Self> {
+    pub fn new(resolution: [f32; 2]) -> anyhow::Result<Self> {
         let position = Vec3::splat(3.);
         let target = Vec3::ZERO;
         let direction = target - position;
@@ -74,9 +74,9 @@ impl Camera {
     }
 
     // Setters
-    // todo docs
 
-    pub fn set_aspect_ratio(&mut self, resolution: [i32; 2]) {
+    /// Set the aspect ratio given the screen dimensions
+    pub fn set_aspect_ratio(&mut self, resolution: [f32; 2]) {
         self.aspect_ratio = calc_aspect_ratio(resolution);
     }
 
@@ -145,6 +145,6 @@ impl Camera {
     }
 }
 
-fn calc_aspect_ratio(resolution: [i32; 2]) -> f32 {
-    resolution[0] as f32 / resolution[1] as f32
+fn calc_aspect_ratio(resolution: [f32; 2]) -> f32 {
+    resolution[0] / resolution[1]
 }

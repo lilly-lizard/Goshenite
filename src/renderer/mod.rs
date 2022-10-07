@@ -1,6 +1,6 @@
-mod blit_pass;
 mod common;
-pub mod gui_renderer;
+mod geometry_pass;
+mod gui_renderer;
+mod lighting_pass;
 mod overlay_pass;
 pub mod render_manager;
-mod scene_pass;

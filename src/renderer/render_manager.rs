@@ -1,6 +1,6 @@
 use super::{
-    blit_pass::BlitPass, gui_renderer::GuiRenderer, overlay_pass::OverlayPass,
-    scene_pass::ScenePass,
+    geometry_pass::GeometryPass, gui_renderer::GuiRenderer, lighting_pass::LightingPass,
+    overlay_pass::OverlayPass,
 };
 use crate::{
     camera::Camera, config, gui::Gui, primitives::primitive_collection::PrimitiveCollection,
@@ -67,8 +67,8 @@ pub struct RenderManager {
     command_buffer_allocator: StandardCommandBufferAllocator,
     descriptor_allocator: StandardDescriptorSetAllocator,
 
-    scene_pass: ScenePass,
-    blit_pass: BlitPass,
+    geometry_pass: GeometryPass,
+    lighting_pass: LightingPass,
     overlay_pass: OverlayPass,
     gui_pass: GuiRenderer,
 
@@ -77,7 +77,7 @@ pub struct RenderManager {
     recreate_swapchain: bool,
 }
 
-// ~~~ Public functions ~~~
+// Public functions
 
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
@@ -270,8 +270,8 @@ impl RenderManager {
         let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
         let descriptor_allocator = StandardDescriptorSetAllocator::new(device.clone());
 
-        // init compute shader scene pass
-        let scene_pass = ScenePass::new(
+        // init compute shader geometry pass
+        let geometry_pass = GeometryPass::new(
             device.clone(),
             &descriptor_allocator,
             primitive_collection,
@@ -279,8 +279,8 @@ impl RenderManager {
             render_image.clone(),
         )?;
 
-        // init blit pass
-        let blit_pass = BlitPass::new(
+        // init lighting pass
+        let lighting_pass = LightingPass::new(
             device.clone(),
             &descriptor_allocator,
             render_image.clone(),
@@ -290,8 +290,8 @@ impl RenderManager {
         // init overlay pass
         let overlay_pass = OverlayPass::new(device.clone(), subpass.clone())?;
 
-        // init gui renderer
-        let gui_pass = GuiRenderer::new(device.clone(), transfer_queue.clone(), subpass.clone())?;
+        // init gui renderer todo queue
+        let gui_pass = GuiRenderer::new(device.clone(), render_queue.clone(), subpass.clone())?;
 
         // create futures used for frame synchronization
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
@@ -311,8 +311,8 @@ impl RenderManager {
             render_pass,
             framebuffers,
 
-            scene_pass,
-            blit_pass,
+            geometry_pass,
+            lighting_pass,
             overlay_pass,
             gui_pass,
 
@@ -337,13 +337,17 @@ impl RenderManager {
         }
 
         // update gui textures
-        for textures_delta in gui.textures_delta() {
+        self.future_previous_frame = Some(
             self.gui_pass.update_textures(
+                self.future_previous_frame
+                    .take()
+                    .unwrap_or(sync::now(self.device.clone()).boxed()), // should never be None anyway...
                 &self.command_buffer_allocator,
                 &self.descriptor_allocator,
-                textures_delta,
-            )?;
-        }
+                gui.textures_delta(),
+                self.render_queue.clone(),
+            )?,
+        );
 
         self.recreate_swapchain = self.recreate_swapchain || window_resize;
         if self.recreate_swapchain {
@@ -363,7 +367,7 @@ impl RenderManager {
                     return Err(anyhow!(e)).context("aquiring swapchain image");
                 }
             };
-        // `suboptimal` indicates that the swapchain image will still work but may not be displayed correctly
+        // 'suboptimal' indicates that the swapchain image will still work but may not be displayed correctly
         // we'll render the frame anyway hehe
         if suboptimal {
             debug!(
@@ -374,7 +378,7 @@ impl RenderManager {
         }
 
         // todo shouldn't need to recreate each frame?
-        self.scene_pass
+        self.geometry_pass
             .update_primitives(&self.descriptor_allocator, primitive_collection)?;
 
         // todo actually set this
@@ -388,8 +392,8 @@ impl RenderManager {
         )
         .context("beginning primary command buffer")?;
 
-        // compute shader scene render
-        self.scene_pass.record_commands(&mut builder, camera)?;
+        // compute shader geometry render
+        self.geometry_pass.record_commands(&mut builder, camera)?;
 
         // begin render pass
         let clear_values: Vec<Option<ClearValue>> = vec![Some([0.0, 0.0, 0.0, 1.0].into())];
@@ -406,7 +410,7 @@ impl RenderManager {
             .context("recording begin render pass command")?;
 
         // draw render image to screen
-        self.blit_pass
+        self.lighting_pass
             .record_commands(&mut builder, self.viewport.clone())?;
 
         // draw editor overlay
@@ -464,7 +468,9 @@ impl RenderManager {
         Ok(())
     }
 }
+
 // Private functions
+
 impl RenderManager {
     /// Recreates the swapchain, render image and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
@@ -512,15 +518,15 @@ impl RenderManager {
         self.framebuffers =
             create_framebuffers(self.render_pass.clone(), &self.swapchain_image_views)?;
 
-        // update scene pass
-        self.scene_pass.update_render_target(
+        // update geometry pass
+        self.geometry_pass.update_render_target(
             &self.descriptor_allocator,
             resolution,
             self.render_image.clone(),
         )?;
 
-        // update blit pass
-        self.blit_pass
+        // update lighting pass
+        self.lighting_pass
             .update_render_image(&self.descriptor_allocator, self.render_image.clone())?;
 
         // unset trigger
@@ -800,7 +806,7 @@ fn create_render_pass(
     ];
 
     let subpasses = vec![
-        // blit + gui passes
+        // lighting + gui passes
         SubpassDescription {
             color_attachments: vec![Some(AttachmentReference {
                 attachment: render_pass_indices::ATTACHMENT_SWAPCHAIN,

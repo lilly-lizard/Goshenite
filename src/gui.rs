@@ -56,7 +56,7 @@ impl Gui {
             window: window.clone(),
             context,
             window_state,
-            mesh_primitives: vec![],
+            mesh_primitives: Default::default(),
             primitive_editor_state: Default::default(),
             textures_delta: Default::default(),
         }
@@ -117,11 +117,16 @@ impl Gui {
         self.mesh_primitives = self.context.tessellate(shapes);
 
         // store required texture changes for the renderer to apply updates
-        self.textures_delta.push(textures_delta);
+        if !textures_delta.is_empty() {
+            self.textures_delta.push(textures_delta);
+        }
 
         Ok(())
     }
 
+    /// Returns texture update info accumulated since the last call to this function.
+    /// Calling this clears the internal texture delta storage, so be sure appropriate renderer
+    /// updates are done after calling this.
     pub fn textures_delta(&mut self) -> Vec<TexturesDelta> {
         std::mem::take(&mut self.textures_delta)
     }
