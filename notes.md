@@ -1,8 +1,9 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
-- coordinate overlay z-buffer
 - primitive id/normal g-buffer
+- fragment shading geometry pass (no reason for compute at this point)
+- coordinate overlay z-buffer
 - scroll zoom
 - live update primitive lock-on target. Arcs/weak pointers for primitive collection?
 - renderdoc see vulkano command output e.g. pipeline barriers, semaphores...

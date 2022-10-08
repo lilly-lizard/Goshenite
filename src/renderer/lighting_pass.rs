@@ -10,67 +10,52 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Device,
-    image::{view::ImageView, StorageImage},
+    image::{view::ImageView, AttachmentImage},
     pipeline::{
         graphics::viewport::{Viewport, ViewportState},
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::Subpass,
-    sampler::{self, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
 };
 
-const VERT_SHADER_PATH: &str = "assets/shader_binaries/blit.vert.spv";
-const FRAG_SHADER_PATH: &str = "assets/shader_binaries/blit.frag.spv";
+const VERT_SHADER_PATH: &str = "assets/shader_binaries/full_screen.vert.cxx.spv";
+const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_lighting.frag.spv";
 
 /// Describes descriptor set indices
 mod descriptor {
-    /// descriptor set index in `post.frag`
-    pub const SET_BLIT_FRAG: usize = 0;
-    /// render image sampler binding in `post.frag`
+    /// descriptor set index in `scene_lighting.frag`
+    pub const SET_LIGHTING_FRAG: usize = 0;
+    /// render image sampler binding in `scene_lighting.frag`
     pub const BINDING_SAMPLER: u32 = 0;
 }
 
-/// Defines functionality for writing the render image to the swapchain image
-pub struct BlitPass {
+/// Defines functionality for reading the g-buffers and calculating the scene color values
+pub struct LightingPass {
     pipeline: Arc<GraphicsPipeline>,
     desc_set: Arc<PersistentDescriptorSet>,
-    sampler: Arc<Sampler>,
 }
 // Public functions
-impl BlitPass {
+impl LightingPass {
     pub fn new(
         device: Arc<Device>,
         descriptor_allocator: &StandardDescriptorSetAllocator,
-        render_image: Arc<ImageView<StorageImage>>,
+        render_image: Arc<ImageView<AttachmentImage>>,
         subpass: Subpass,
     ) -> anyhow::Result<Self> {
-        let sampler = create_sampler(device.clone())?;
         let pipeline = create_pipeline(device.clone(), subpass)?;
-        let desc_set = create_desc_set(
-            descriptor_allocator,
-            pipeline.clone(),
-            render_image.clone(),
-            sampler.clone(),
-        )?;
-        Ok(Self {
-            pipeline,
-            desc_set,
-            sampler,
-        })
+        let desc_set =
+            create_desc_set_gbuffer(descriptor_allocator, pipeline.clone(), render_image.clone())?;
+        Ok(Self { pipeline, desc_set })
     }
 
     /// Updates render image data e.g. when it has been resized
     pub fn update_render_image(
         &mut self,
         descriptor_allocator: &StandardDescriptorSetAllocator,
-        render_image: Arc<ImageView<StorageImage>>,
+        render_image: Arc<ImageView<AttachmentImage>>,
     ) -> anyhow::Result<()> {
-        self.desc_set = create_desc_set(
-            descriptor_allocator,
-            self.pipeline.clone(),
-            render_image,
-            self.sampler.clone(),
-        )?;
+        self.desc_set =
+            create_desc_set_gbuffer(descriptor_allocator, self.pipeline.clone(), render_image)?;
         Ok(())
     }
 
@@ -91,23 +76,9 @@ impl BlitPass {
                 self.desc_set.clone(),
             )
             .draw(3, 1, 0, 0)
-            .context("recording blit pass commands")?;
+            .context("recording lighting pass commands")?;
         Ok(())
     }
-}
-
-fn create_sampler(device: Arc<Device>) -> anyhow::Result<Arc<Sampler>> {
-    sampler::Sampler::new(
-        device,
-        SamplerCreateInfo {
-            mag_filter: sampler::Filter::Linear,
-            min_filter: sampler::Filter::Linear,
-            address_mode: [SamplerAddressMode::ClampToEdge; 3],
-            mipmap_mode: SamplerMipmapMode::Linear,
-            ..Default::default()
-        },
-    )
-    .context("creating blit pass sampler")
 }
 
 fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<GraphicsPipeline>> {
@@ -116,14 +87,14 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
         vert_module
             .entry_point(SHADER_ENTRY_POINT)
             .ok_or(CreateShaderError::MissingEntryPoint(
-                VERT_SHADER_PATH.to_string(),
+                VERT_SHADER_PATH.to_owned(),
             ))?;
     let frag_module = create_shader_module(device.clone(), FRAG_SHADER_PATH)?;
     let frag_shader =
         frag_module
             .entry_point(SHADER_ENTRY_POINT)
             .ok_or(CreateShaderError::MissingEntryPoint(
-                FRAG_SHADER_PATH.to_string(),
+                FRAG_SHADER_PATH.to_owned(),
             ))?;
     Ok(GraphicsPipeline::start()
         .render_pass(subpass)
@@ -131,30 +102,29 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
         .vertex_shader(vert_shader, ())
         .fragment_shader(frag_shader, ())
         .build(device.clone())
-        .context("creating blit pass pipeline")?)
+        .context("creating lighting pass pipeline")?)
 }
 
-fn create_desc_set(
+fn create_desc_set_gbuffer(
     descriptor_allocator: &StandardDescriptorSetAllocator,
-    blit_pipeline: Arc<GraphicsPipeline>,
-    render_image: Arc<ImageView<StorageImage>>,
-    render_image_sampler: Arc<Sampler>,
+    lighting_pipeline: Arc<GraphicsPipeline>,
+    render_image: Arc<ImageView<AttachmentImage>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
     PersistentDescriptorSet::new(
         descriptor_allocator,
-        blit_pipeline
+        lighting_pipeline
             .layout()
             .set_layouts()
-            .get(descriptor::SET_BLIT_FRAG)
+            .get(descriptor::SET_LIGHTING_FRAG)
             .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
-                index: descriptor::SET_BLIT_FRAG,
+                index: descriptor::SET_LIGHTING_FRAG,
+                shader_path: FRAG_SHADER_PATH,
             })?
             .to_owned(),
-        [WriteDescriptorSet::image_view_sampler(
+        [WriteDescriptorSet::image_view(
             descriptor::BINDING_SAMPLER,
             render_image,
-            render_image_sampler,
         )],
     )
-    .context("creating blit pass desc set")
+    .context("creating lighting pass desc set")
 }

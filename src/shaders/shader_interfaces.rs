@@ -3,7 +3,6 @@ use crate::primitives::primitive_collection::PrimitiveCollection;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3, Vec4};
 use std::fmt::{self, Display};
-use vulkano::shader::{SpecializationConstants, SpecializationMapEntry};
 
 /// Function name of the entry point for shaders
 pub const SHADER_ENTRY_POINT: &str = "main";
@@ -62,37 +61,6 @@ impl Display for PrimitiveDataError {
             f,
             "cannot create primitive data structure as the number of primitive exceeds u32::MAX"
         )
-    }
-}
-
-// ~~~ Specialization Constants ~~~
-
-/// Scene render compute shader specialization constants. Used for setting the local work group size
-#[repr(C)]
-#[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
-pub struct ComputeSpecConstant {
-    /// Local work group size x value
-    pub local_size_x: u32,
-    /// Local work group size y value
-    pub local_size_y: u32,
-}
-unsafe impl SpecializationConstants for ComputeSpecConstant {
-    /// Returns descriptors of the struct's layout.
-    fn descriptors() -> &'static [SpecializationMapEntry] {
-        &[
-            // local_size_x
-            SpecializationMapEntry {
-                constant_id: 0,
-                offset: 0,
-                size: 4,
-            },
-            // local_size_y
-            SpecializationMapEntry {
-                constant_id: 1,
-                offset: 4,
-                size: 4,
-            },
-        ]
     }
 }
 

@@ -7,9 +7,10 @@ use crate::{
 };
 use ahash::AHashMap;
 use anyhow::Context;
-use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId};
+use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
+use smallvec::{smallvec, SmallVec};
 use std::{
     fmt::{self, Display},
     sync::Arc,
@@ -21,7 +22,7 @@ use vulkano::{
     },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
-        CommandBufferUsage, CopyBufferToImageInfo, PrimaryCommandBuffer,
+        CommandBufferUsage, CopyBufferToImageInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, layout::DescriptorSetLayout,
@@ -80,7 +81,7 @@ pub struct GuiRenderer {
 // Public functions
 impl GuiRenderer {
     /// Initializes the gui renderer
-    pub(super) fn new(
+    pub fn new(
         device: Arc<Device>,
         transfer_queue: Arc<Queue>,
         subpass: Subpass,
@@ -101,15 +102,18 @@ impl GuiRenderer {
     }
 
     /// Creates and/or removes texture resources for a [`Gui`](crate::gui::Gui) frame.
+    /// todo desc
     pub fn update_textures(
         &mut self,
+        exec_after_future: Box<dyn GpuFuture>,
         command_buffer_allocator: &StandardCommandBufferAllocator,
         descriptor_allocator: &StandardDescriptorSetAllocator,
-        textures_delta: egui::TexturesDelta,
-    ) -> anyhow::Result<()> {
-        // release unused texture resources
-        for &id in &textures_delta.free {
-            self.unregister_image(id);
+        textures_delta_vec: Vec<TexturesDelta>,
+        render_queue: Arc<Queue>,
+    ) -> anyhow::Result<Box<dyn GpuFuture>> {
+        // return if empty
+        if textures_delta_vec.is_empty() {
+            return Ok(exec_after_future);
         }
 
         // create command buffer builder
@@ -120,28 +124,35 @@ impl GuiRenderer {
         )
         .context("creating command buffer for gui texture upload")?;
 
-        // create new images and record upload commands
-        for (id, image_delta) in textures_delta.set {
-            self.create_texture(
-                descriptor_allocator,
-                id,
-                image_delta,
-                &mut command_buffer_builder,
-            )?;
+        for textures_delta in textures_delta_vec {
+            // release unused texture resources
+            for &id in &textures_delta.free {
+                self.unregister_image(id);
+            }
+
+            // create new images and record upload commands
+            for (id, image_delta) in textures_delta.set {
+                self.create_texture(
+                    descriptor_allocator,
+                    id,
+                    image_delta,
+                    &mut command_buffer_builder,
+                    render_queue.clone(),
+                )?;
+            }
         }
 
         // execute command buffer
         let command_buffer = command_buffer_builder
             .build()
             .context("building command buffer for gui texture upload")?;
-        let finished = command_buffer
-            .execute(self.transfer_queue.clone())
+        let finished = exec_after_future
+            .then_execute(self.transfer_queue.clone(), command_buffer)
             .context("executing gui texture upload commands")?;
-        // todo flush blocks thread? pass onto renderer manager
-        let _future = finished
+        let future = finished
             .then_signal_fence_and_flush()
             .context("executing gui texture upload commands")?;
-        Ok(())
+        Ok(future.boxed())
     }
 
     /// Record gui rendering commands
@@ -252,6 +263,7 @@ impl GuiRenderer {
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
         command_buffer_builder: &mut AutoCommandBufferBuilder<L>,
+        render_queue: Arc<Queue>,
     ) -> anyhow::Result<()> {
         // extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
@@ -329,6 +341,16 @@ impl GuiRenderer {
             debug!("creating new gui texture id = {:?}", texture_id);
 
             // create image
+            let transfer_queue_family = self.transfer_queue.queue_family_index();
+            let render_queue_family = render_queue.queue_family_index();
+            let queue_family_indices: SmallVec<[u32; 2]> =
+                if transfer_queue_family == render_queue_family {
+                    // results in VkSharingMode.VK_SHARING_MODE_EXCLUSIVE
+                    smallvec![render_queue_family]
+                } else {
+                    // results in VkSharingMode.VK_SHARING_MODE_CONCURRENT
+                    smallvec![render_queue_family, transfer_queue_family]
+                };
             let (image, init_access) = ImmutableImage::uninitialized(
                 self.device.clone(),
                 vulkano::image::ImageDimensions::Dim2d {
@@ -345,7 +367,7 @@ impl GuiRenderer {
                 },
                 Default::default(),
                 ImageLayout::ShaderReadOnlyOptimal,
-                None,
+                queue_family_indices,
             )
             .context("creating new gui texture image")?;
             let font_image =
@@ -367,6 +389,7 @@ impl GuiRenderer {
                 .get(descriptor::SET_FONT_TEXTURE)
                 .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
                     index: descriptor::SET_FONT_TEXTURE,
+                    shader_path: FRAG_SHADER_PATH,
                 })
                 .context("creating new gui texture desc set")?;
             let font_desc_set = self
@@ -456,14 +479,14 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
         vert_module
             .entry_point(SHADER_ENTRY_POINT)
             .ok_or(CreateShaderError::MissingEntryPoint(
-                VERT_SHADER_PATH.to_string(),
+                VERT_SHADER_PATH.to_owned(),
             ))?;
     let frag_module = create_shader_module(device.clone(), FRAG_SHADER_PATH)?;
     let frag_shader =
         frag_module
             .entry_point(SHADER_ENTRY_POINT)
             .ok_or(CreateShaderError::MissingEntryPoint(
-                FRAG_SHADER_PATH.to_string(),
+                FRAG_SHADER_PATH.to_owned(),
             ))?;
     GraphicsPipeline::start()
         .vertex_input_state(BuffersDefinition::new().vertex::<EguiVertex>())
