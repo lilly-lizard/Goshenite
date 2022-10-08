@@ -102,7 +102,7 @@ impl GuiPushConstants {
     }
 }
 
-// todo doc
+/// Should match definition in `overlay.vert`
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
 pub struct OverlayPushConstants {
@@ -120,7 +120,7 @@ impl OverlayPushConstants {
 
 // ~~~ Vertex Inputs ~~~
 
-// todo doc/name
+/// Should match inputs to `overlay.vert`
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Zeroable, Pod)]
 pub struct OverlayVertex {
@@ -139,7 +139,7 @@ impl OverlayVertex {
     }
 }
 
-/// todo doc Should match vertex definition of egui (except color is `[f32; 4]`)
+/// Should match vertex definition for `gui.vert` (except color is `[f32; 4]`)
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Zeroable, Pod)]
 pub struct EguiVertex {

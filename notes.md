@@ -2,17 +2,11 @@
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - primitive id/normal g-buffer
-- fragment shading geometry pass (no reason for compute at this point)
-- coordinate overlay z-buffer
-- scroll zoom
-- live update primitive lock-on target. Arcs/weak pointers for primitive collection?
-- renderdoc see vulkano command output e.g. pipeline barriers, semaphores...
-- render xyz arrows on selected object
-- frame future for update_textures
 - try compute shader with circle compiler. benifits:
 	- c interop with rust codebase
 	- primitive classes and shit
 - render outline on selected object
+- clickable primitives
 - output render png (write tests using this?)
 
 ## cleanup
@@ -36,6 +30,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## low priority
 
+- coordinate overlay z-buffer
 - hemisphere (circle) clamps on looking too far up/down
 - attempt to restart renderer on error: e.g. SurfaceLost attempt reinitialization. pop-up dialogue "renderer has crashes. attempt re-initialization? report bug here..."
 - test anyhow dereferencing e.g. SurfaceSizeUnsupported (see bottom of render_manager.rs)
