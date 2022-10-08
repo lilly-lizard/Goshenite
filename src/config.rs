@@ -52,3 +52,10 @@ pub const VULKAN_VER_MAJ: u32 = 1;
 pub const VULKAN_VER_MIN: u32 = 2;
 /// If true, the renderer will attempt to enable valication layers
 pub const ENABLE_VULKAN_VALIDATION: bool = cfg!(debug_assertions);
+
+/// You'll notice in src/shaders there's .cxx versions of the glsl shaders. These are equivilent
+/// source files using C++ language features thanks to the [circle](https://www.circle-lang.org/)
+/// compiler. This flag tells parts of the renderer to use circle compiled versions of shaders.
+///
+/// For more info on using circle for shader compilation see https://github.com/seanbaxter/shaders.
+pub const USE_CIRCLE_SHADERS: bool = true;
