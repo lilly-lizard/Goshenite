@@ -27,7 +27,7 @@ use vulkano::{
     DeviceSize,
 };
 
-const VERT_SHADER_PATH: &str = "assets/shader_binaries/full_screen.vert.spv";
+const VERT_SHADER_PATH: &str = "assets/shader_binaries/full_screen.vert.cxx.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
 
 /// Describes descriptor set indices
@@ -133,14 +133,14 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
         vert_module
             .entry_point(SHADER_ENTRY_POINT)
             .ok_or(CreateShaderError::MissingEntryPoint(
-                VERT_SHADER_PATH.to_string(),
+                VERT_SHADER_PATH.to_owned(),
             ))?;
     let frag_module = create_shader_module(device.clone(), FRAG_SHADER_PATH)?;
     let frag_shader =
         frag_module
             .entry_point(SHADER_ENTRY_POINT)
             .ok_or(CreateShaderError::MissingEntryPoint(
-                FRAG_SHADER_PATH.to_string(),
+                FRAG_SHADER_PATH.to_owned(),
             ))?;
     Ok(GraphicsPipeline::start()
         .render_pass(subpass)

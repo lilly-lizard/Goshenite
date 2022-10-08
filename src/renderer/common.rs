@@ -16,7 +16,7 @@ pub fn create_shader_module(
         Err(e) => {
             return Err(CreateShaderError::IOError {
                 e,
-                path: spirv_path.to_string(),
+                path: spirv_path.to_owned(),
             })
         }
     };

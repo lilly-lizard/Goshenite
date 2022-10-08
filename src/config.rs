@@ -1,8 +1,12 @@
 use glam::Vec3;
+use log::LevelFilter;
 
 use crate::helper::angle::Angle;
 
 pub const ENGINE_NAME: &str = "Goshenite";
+
+/// Default log level filter
+pub const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Info;
 
 /// If true, enables spammy debug log messages that happen every frame
 pub const PER_FRAME_DEBUG_LOGS: bool = false;
@@ -47,4 +51,4 @@ pub const ARC_BALL_SENSITIVITY: Angle = Angle::from_radians(0.005);
 pub const VULKAN_VER_MAJ: u32 = 1;
 pub const VULKAN_VER_MIN: u32 = 2;
 /// If true, the renderer will attempt to enable valication layers
-pub const ENABLE_VULKAN_VALIDATION: bool = true;
+pub const ENABLE_VULKAN_VALIDATION: bool = cfg!(debug_assertions);
