@@ -115,16 +115,20 @@ impl Engine {
         // egui event handling
         let captured_by_gui = self.gui.process_event(&event);
 
+        // engine event handling
         match event {
             // cursor moved. triggered when cursor is in window or if currently dragging and started in the window (on linux at least)
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_state.set_position(position.into())
             }
-            // send cursor event to input manager
+            // send mouse button events to input manager
             WindowEvent::MouseInput { state, button, .. } => {
                 self.cursor_state
                     .set_click_state(button, state, captured_by_gui)
             }
+            WindowEvent::MouseWheel { delta, .. } => self
+                .cursor_state
+                .accumulate_scroll_delta(delta, captured_by_gui),
             // cursor entered window
             WindowEvent::CursorEntered { .. } => self.cursor_state.set_in_window_state(true),
             // cursor left window
@@ -176,22 +180,27 @@ impl Engine {
     }
 
     fn update_camera(&mut self) {
-        // left mouse button dragging changes camera orientation
-        if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
-            self.camera
-                .rotate(self.cursor_state.position_frame_change());
-        }
-
         // look mode logic
         // NOTE let_chains still unstable: https://github.com/rust-lang/rust/issues/53667
         let selected_primitive = self.primitive_collection.selected_primitive();
         if selected_primitive.is_some() && self.primitive_lock_on {
             // set lock on target to selected primitive
             let primitive = selected_primitive.expect("if let replacement");
-            self.camera.set_lock_on_target(primitive.center());
+            self.camera
+                .set_lock_on_target(primitive.center().as_dvec3());
         } else {
             // if no primitive selected use arcball mode
             self.camera.unset_lock_on_target();
         }
+
+        // left mouse button dragging changes camera orientation
+        if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
+            self.camera
+                .rotate(self.cursor_state.position_frame_change());
+        }
+
+        // zoom in/out logic
+        let scroll_delta = self.cursor_state.get_and_clear_scroll_delta();
+        self.camera.scroll_zoom(scroll_delta.y);
     }
 }

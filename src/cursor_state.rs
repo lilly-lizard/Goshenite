@@ -1,8 +1,9 @@
+use crate::config;
 use glam::DVec2;
 use log::debug;
 use std::sync::Arc;
 use winit::{
-    event::ElementState,
+    event::{ElementState, MouseScrollDelta},
     window::{CursorIcon, Window},
 };
 
@@ -24,6 +25,8 @@ pub struct CursorState {
     is_pressed_previous: ButtonStates,
     /// Which button (if any) is currently dragging (if multiple, set to the first)
     which_dragging: Option<MouseButton>,
+    /// Horizontal/vertical scrolling since last call to [`get_and_clear_scroll_delta`](Self::get_and_clear_scroll_delta).
+    scroll_delta: DVec2,
 }
 impl CursorState {
     pub fn new(window: Arc<Window>) -> Self {
@@ -32,10 +35,11 @@ impl CursorState {
             in_window: false,
             position: None, // because there's (currenlty) no way to know the initial cursor position until the first `WindowEvent::CursorMoved` event
             position_previous: None,
-            position_frame_change: DVec2::default(),
-            is_pressed: ButtonStates::default(),
-            is_pressed_previous: ButtonStates::default(),
+            position_frame_change: DVec2::ZERO,
+            is_pressed: Default::default(),
+            is_pressed_previous: Default::default(),
             which_dragging: None,
+            scroll_delta: DVec2::ZERO,
         }
     }
 
@@ -67,6 +71,23 @@ impl CursorState {
                 .set(button, !captured_by_gui && state == ElementState::Pressed),
             Err(e) => debug!("set_click_state: {}", e),
         };
+    }
+
+    /// Accumulate scroll travel values due to a winit scroll event. Use [`get_and_clear_scroll_delta`](Self::get_and_clear_scroll_delta)
+    /// to query the total acccumulation.
+    pub fn accumulate_scroll_delta(&mut self, delta: MouseScrollDelta, captured_by_gui: bool) {
+        if !captured_by_gui {
+            match delta {
+                // can happen with mouse wheel or touchpad
+                MouseScrollDelta::LineDelta(h, v) => {
+                    self.scroll_delta += config::SCROLL_SENSITIVITY * DVec2::new(h as f64, v as f64)
+                }
+                // happens if system supports it (whatever that means)
+                MouseScrollDelta::PixelDelta(d) => {
+                    self.scroll_delta += config::SCROLL_SENSITIVITY * DVec2::new(d.x, d.y)
+                }
+            }
+        }
     }
 
     /// Update wherver the cursor is in the window area
@@ -113,6 +134,12 @@ impl CursorState {
     /// Returns which, if any, mouse button is in the dragging state
     pub fn which_dragging(&self) -> Option<MouseButton> {
         self.which_dragging
+    }
+
+    /// Returns the accumulated horizontal and vertical scrolling since the last call to this function.
+    /// Clears the internal scroll delta storage.
+    pub fn get_and_clear_scroll_delta(&mut self) -> DVec2 {
+        std::mem::take(&mut self.scroll_delta)
     }
 }
 

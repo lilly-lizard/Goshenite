@@ -127,7 +127,7 @@ impl Gui {
     /// Returns texture update info accumulated since the last call to this function.
     /// Calling this clears the internal texture delta storage, so be sure appropriate renderer
     /// updates are done after calling this.
-    pub fn textures_delta(&mut self) -> Vec<TexturesDelta> {
+    pub fn get_and_clear_textures_delta(&mut self) -> Vec<TexturesDelta> {
         std::mem::take(&mut self.textures_delta)
     }
 }

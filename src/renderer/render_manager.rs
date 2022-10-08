@@ -365,7 +365,7 @@ impl RenderManager {
                     .unwrap_or(sync::now(self.device.clone()).boxed()), // should never be None anyway...
                 &self.command_buffer_allocator,
                 &self.descriptor_allocator,
-                gui.textures_delta(),
+                gui.get_and_clear_textures_delta(),
                 self.render_queue.clone(),
             )?,
         );

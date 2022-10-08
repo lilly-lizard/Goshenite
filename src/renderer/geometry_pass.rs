@@ -109,8 +109,8 @@ impl GeometryPass {
         viewport: Viewport,
     ) -> anyhow::Result<()> {
         let camera_push_constant = CameraPushConstants::new(
-            glam::Mat4::inverse(&(camera.proj_matrix() * camera.view_matrix())),
-            camera.position(),
+            glam::DMat4::inverse(&(camera.proj_matrix() * camera.view_matrix())).as_mat4(),
+            camera.position().as_vec3(),
         );
         command_buffer
             .set_viewport(0, [viewport])

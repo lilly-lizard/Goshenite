@@ -10,7 +10,7 @@ mod shaders;
 
 use engine::Engine;
 use helper::logger::ConsoleLogger;
-use log::{info, LevelFilter};
+use log::info;
 use winit::{event_loop::EventLoop, platform::run_return::EventLoopExtRunReturn};
 
 /// spooky symbols, what could it mean...

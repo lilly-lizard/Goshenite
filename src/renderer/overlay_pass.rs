@@ -53,7 +53,7 @@ impl OverlayPass {
         // if a primitive is selected, render the xyz coordinate indicator at its center
         if let Some(selected_primitive) = primitive_collection.selected_primitive() {
             let push_constants = OverlayPushConstants::new(
-                camera.proj_matrix() * camera.view_matrix(),
+                (camera.proj_matrix() * camera.view_matrix()).as_mat4(),
                 Vec4::from((selected_primitive.center(), 0.0)),
             );
             command_buffer
