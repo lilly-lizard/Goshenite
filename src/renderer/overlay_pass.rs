@@ -42,7 +42,7 @@ impl OverlayPass {
         })
     }
 
-    // todo doc
+    /// Records rendering commands
     pub fn record_commands<L>(
         &mut self,
         command_buffer: &mut AutoCommandBufferBuilder<L>,

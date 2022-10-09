@@ -50,12 +50,12 @@ impl PrimitiveCollection {
         }
     }
 
-    // todo doc
+    /// Returns the vec index selected primitive, if a primitive is selected
     pub fn selected_primitive_index(&self) -> Option<usize> {
         self.selected_primitive_index
     }
 
-    // todo doc
+    /// Returns the vec selected primitive, if a primitive is selected
     pub fn selected_primitive(&self) -> Option<Primitive> {
         if let Some(index) = self.selected_primitive_index {
             self.primitives.get(index).cloned()
@@ -64,7 +64,7 @@ impl PrimitiveCollection {
         }
     }
 
-    // todo doc
+    /// Sets the selected primtive to the primitive at `index` if the index is valid
     pub fn set_selected_primitive(&mut self, index: usize) -> Result<(), PrimitiveCollectionError> {
         if let Some(_) = self.primitives.get(index) {
             self.selected_primitive_index = Some(index);
@@ -77,7 +77,7 @@ impl PrimitiveCollection {
         }
     }
 
-    // todo doc
+    /// Updates this collection to have no primitive selected
     pub fn unset_selected_primitive(&mut self) {
         self.selected_primitive_index = None;
     }

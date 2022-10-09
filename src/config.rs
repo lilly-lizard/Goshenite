@@ -54,7 +54,7 @@ pub const LOOK_SENSITIVITY: Angle = Angle::from_radians(0.001);
 /// Sensitivity rotating the camer in [`ViewMode::Target`](crate::camera::ViewMode::Target) = angle / pixels
 pub const ARC_BALL_SENSITIVITY: Angle = Angle::from_radians(0.005);
 /// Scrolling sensitivity
-pub const SCROLL_SENSITIVITY: f64 = 1.0;
+pub const SCROLL_SENSITIVITY: f64 = 0.5;
 
 // Renderer Settings
 

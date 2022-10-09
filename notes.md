@@ -1,18 +1,14 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
+- VK_FORMAT_R32_UINT primitive_id g-buffer (note total local limit = 128bits for arm)
 - primitive id/normal g-buffer
-- fragment shading geometry pass (no reason for compute at this point)
-- coordinate overlay z-buffer
-- scroll zoom
-- live update primitive lock-on target. Arcs/weak pointers for primitive collection?
-- renderdoc see vulkano command output e.g. pipeline barriers, semaphores...
-- render xyz arrows on selected object
-- frame future for update_textures
 - try compute shader with circle compiler. benifits:
 	- c interop with rust codebase
 	- primitive classes and shit
+- hemisphere (circle) clamps on looking too far up/down (quaternions?)
 - render outline on selected object
+- clickable primitives
 - output render png (write tests using this?)
 
 ## cleanup
@@ -36,7 +32,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## low priority
 
-- hemisphere (circle) clamps on looking too far up/down
+- coordinate overlay z-buffer
 - attempt to restart renderer on error: e.g. SurfaceLost attempt reinitialization. pop-up dialogue "renderer has crashes. attempt re-initialization? report bug here..."
 - test anyhow dereferencing e.g. SurfaceSizeUnsupported (see bottom of render_manager.rs)
 - preview new primitive, greyed out/transparent until add?
@@ -84,6 +80,8 @@ possibilities:
 
 - HIP instead of vulkan compute? https://github.com/charles-r-earp/hip-sys
 - ray marching intro https://michaelwalczyk.com/blog-ray-marching.html
+- vulkan format types https://stackoverflow.com/questions/59628956/what-is-the-difference-between-normalized-scaled-and-integer-vkformats
+	- format properties https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap45.html#features-required-format-support
 
 # References
 

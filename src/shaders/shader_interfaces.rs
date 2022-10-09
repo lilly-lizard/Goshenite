@@ -3,9 +3,14 @@ use crate::primitives::primitive_collection::PrimitiveCollection;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3, Vec4};
 use std::fmt::{self, Display};
+use vulkano::format::Format;
 
 /// Function name of the entry point for shaders
 pub const SHADER_ENTRY_POINT: &str = "main";
+
+/// G-buffer format
+pub const G_BUFFER_FORMAT_NORMAL: Format = Format::R8G8B8A8_UNORM;
+pub const G_BUFFER_FORMAT_PRIMITIVE_ID: Format = Format::R32_UINT;
 
 // ~~~ Primitive Data ~~~
 
@@ -102,7 +107,7 @@ impl GuiPushConstants {
     }
 }
 
-// todo doc
+/// Should match definition in `overlay.vert`
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
 pub struct OverlayPushConstants {
@@ -120,7 +125,7 @@ impl OverlayPushConstants {
 
 // ~~~ Vertex Inputs ~~~
 
-// todo doc/name
+/// Should match inputs to `overlay.vert`
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Zeroable, Pod)]
 pub struct OverlayVertex {
@@ -139,7 +144,7 @@ impl OverlayVertex {
     }
 }
 
-/// todo doc Should match vertex definition of egui (except color is `[f32; 4]`)
+/// Should match vertex definition for `gui.vert` (except color is `[f32; 4]`)
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Zeroable, Pod)]
 pub struct EguiVertex {
