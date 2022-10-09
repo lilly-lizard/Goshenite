@@ -13,7 +13,8 @@ const float MIN_DIST = 0.0001;
 layout (location = 0) in vec2 in_uv;
 
 // output g-buffer
-layout (location = 0) out vec4 out_gbuffer;
+layout (location = 0) out vec4 out_normal;
+layout (location = 1) out uint out_primitive_id;
 
 // encoded object data to render
 layout (set = 0, binding = 0, std430) readonly buffer PrimitiveData {
@@ -171,9 +172,6 @@ void main()
 	uint primitive_id;
 	ray_march(cam.position.xyz, ray_d, normal, primitive_id);
 
-	GBufferValue store = {
-		normal,
-		primitive_id,
-	};
-	out_gbuffer = gbuffer_encode(store);
+	out_normal = vec4(normal, 0.);
+	out_primitive_id = primitive_id;
 }

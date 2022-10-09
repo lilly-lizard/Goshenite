@@ -1,6 +1,5 @@
 use super::common::{create_shader_module, CreateDescriptorSetError, CreateShaderError};
 use crate::{
-    camera::Camera,
     config,
     primitives::primitive_collection::PrimitiveCollection,
     shaders::shader_interfaces::{

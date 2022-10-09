@@ -29,8 +29,10 @@ const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_lighting.frag.spv";
 mod descriptor {
     /// descriptor set index in `scene_lighting.frag`
     pub const SET_LIGHTING_FRAG: usize = 0;
-    /// g-buffer input attachment binding in `scene_lighting.frag`
-    pub const BINDING_GBUFFER: u32 = 0;
+    /// normal g-buffer input attachment binding in `scene_lighting.frag`
+    pub const BINDING_NORMAL: u32 = 0;
+    /// primitive-id g-buffer input attachment binding in `scene_lighting.frag`
+    pub const BINDING_PRIMITIVE_ID: u32 = 1;
 }
 
 /// Defines functionality for reading the g-buffers and calculating the scene color values
@@ -43,23 +45,33 @@ impl LightingPass {
     pub fn new(
         device: Arc<Device>,
         descriptor_allocator: &StandardDescriptorSetAllocator,
-        g_buffer: Arc<ImageView<AttachmentImage>>,
+        g_buffer_normal: Arc<ImageView<AttachmentImage>>,
+        g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
         subpass: Subpass,
     ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
-        let desc_set =
-            create_desc_set_gbuffer(descriptor_allocator, pipeline.clone(), g_buffer.clone())?;
+        let desc_set = create_desc_set_gbuffers(
+            descriptor_allocator,
+            pipeline.clone(),
+            g_buffer_normal,
+            g_buffer_primitive_id,
+        )?;
         Ok(Self { pipeline, desc_set })
     }
 
     /// Updates g-buffer data e.g. when it has been resized
-    pub fn update_g_buffer(
+    pub fn update_g_buffers(
         &mut self,
         descriptor_allocator: &StandardDescriptorSetAllocator,
-        g_buffer: Arc<ImageView<AttachmentImage>>,
+        g_buffer_normal: Arc<ImageView<AttachmentImage>>,
+        g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
     ) -> anyhow::Result<()> {
-        self.desc_set =
-            create_desc_set_gbuffer(descriptor_allocator, self.pipeline.clone(), g_buffer)?;
+        self.desc_set = create_desc_set_gbuffers(
+            descriptor_allocator,
+            self.pipeline.clone(),
+            g_buffer_normal,
+            g_buffer_primitive_id,
+        )?;
         Ok(())
     }
 
@@ -116,10 +128,11 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
         .context("creating lighting pass pipeline")?)
 }
 
-fn create_desc_set_gbuffer(
+fn create_desc_set_gbuffers(
     descriptor_allocator: &StandardDescriptorSetAllocator,
     lighting_pipeline: Arc<GraphicsPipeline>,
-    g_buffer: Arc<ImageView<AttachmentImage>>,
+    g_buffer_normal: Arc<ImageView<AttachmentImage>>,
+    g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
     PersistentDescriptorSet::new(
         descriptor_allocator,
@@ -132,10 +145,10 @@ fn create_desc_set_gbuffer(
                 shader_path: FRAG_SHADER_PATH,
             })?
             .to_owned(),
-        [WriteDescriptorSet::image_view(
-            descriptor::BINDING_GBUFFER,
-            g_buffer,
-        )],
+        [
+            WriteDescriptorSet::image_view(descriptor::BINDING_NORMAL, g_buffer_normal),
+            WriteDescriptorSet::image_view(descriptor::BINDING_PRIMITIVE_ID, g_buffer_primitive_id),
+        ],
     )
     .context("creating lighting pass desc set")
 }

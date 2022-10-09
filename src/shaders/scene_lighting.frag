@@ -2,8 +2,9 @@
 #extension GL_GOOGLE_include_directive : require
 #include "primitives.glsl"
 
-// g-buffer input attachment
-layout (input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput in_gbuffer;
+// g-buffer input attachments
+layout (input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput in_normal;
+layout (input_attachment_index = 1, set = 0, binding = 1) uniform usubpassInput in_prmitive_id;
 // input UV from full_screen.vert
 layout (location = 0) in vec2 in_uv;
 
@@ -26,9 +27,10 @@ vec3 background(const vec3 ray_d)
 void main() 
 {
 	// decode g-buffer
-	GBufferValue decoded = gbuffer_decode(subpassLoad(in_gbuffer));
+	vec3 normal = subpassLoad(in_normal).xyz;
+	uint primitive_id = subpassLoad(in_prmitive_id).x;
 	
-	if (decoded.primitive_id == ID_INVALID) {
+	if (primitive_id == ID_INVALID) {
 		// ray miss: draw background
 
 		// clip space position in frame (between -1 and 1)
@@ -38,6 +40,6 @@ void main()
 		out_color = vec4(background(ray_d), 1.);
 	} else {
 		// ray hit: just output normal as color for now
-		out_color = vec4(decoded.normal, 1.);
+		out_color = vec4(normal, 1.);
 	}
 }

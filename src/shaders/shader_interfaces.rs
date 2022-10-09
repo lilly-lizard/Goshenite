@@ -9,7 +9,8 @@ use vulkano::format::Format;
 pub const SHADER_ENTRY_POINT: &str = "main";
 
 /// G-buffer format
-pub const G_BUFFER_FORMAT: Format = Format::R8G8B8A8_UNORM;
+pub const G_BUFFER_FORMAT_NORMAL: Format = Format::R8G8B8A8_UNORM;
+pub const G_BUFFER_FORMAT_PRIMITIVE_ID: Format = Format::R32_UINT;
 
 // ~~~ Primitive Data ~~~
 
