@@ -3,7 +3,11 @@ use super::{
     overlay_pass::OverlayPass,
 };
 use crate::{
-    camera::Camera, config, gui::Gui, primitives::primitive_collection::PrimitiveCollection,
+    camera::Camera,
+    config,
+    gui::Gui,
+    primitives::primitive_collection::PrimitiveCollection,
+    shaders::shader_interfaces::{self, CameraPushConstants},
 };
 use anyhow::{anyhow, bail, ensure, Context};
 use log::{debug, error, info, warn};
@@ -18,7 +22,7 @@ use vulkano::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo,
     },
-    format::{ClearValue, Format},
+    format::ClearValue,
     image::{
         view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract, SampleCount,
         SwapchainImage,
@@ -59,7 +63,7 @@ pub struct RenderManager {
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>, // todo smallvec?
 
     viewport: Viewport,
-    render_image: Arc<ImageView<AttachmentImage>>,
+    g_buffer: Arc<ImageView<AttachmentImage>>,
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
 
@@ -247,7 +251,7 @@ impl RenderManager {
             .context("creating swapchain image views")?;
 
         // scene render target
-        let render_image = create_render_image(
+        let g_buffer = create_g_buffer(
             device.clone(),
             swapchain_images[0].dimensions().width_height(),
         )?;
@@ -256,7 +260,7 @@ impl RenderManager {
         let multisample = SampleCount::Sample1;
         let render_pass = create_render_pass(
             device.clone(),
-            render_image.clone(),
+            g_buffer.clone(),
             &swapchain_image_views,
             multisample,
         )?;
@@ -280,7 +284,7 @@ impl RenderManager {
         // create framebuffers
         let framebuffers = create_framebuffers(
             render_pass.clone(),
-            render_image.clone(),
+            g_buffer.clone(),
             &swapchain_image_views,
         )?;
 
@@ -300,7 +304,7 @@ impl RenderManager {
         let lighting_pass = LightingPass::new(
             device.clone(),
             &descriptor_allocator,
-            render_image.clone(),
+            g_buffer.clone(),
             subpass_swapchain.clone(),
         )?;
 
@@ -328,7 +332,7 @@ impl RenderManager {
             swapchain_image_views,
 
             viewport,
-            render_image,
+            g_buffer,
             render_pass,
             framebuffers,
 
@@ -405,6 +409,12 @@ impl RenderManager {
         // todo actually set this
         let need_srgb_conv = false;
 
+        // camera data used in geometry and lighting passes
+        let camera_push_constants = CameraPushConstants::new(
+            glam::DMat4::inverse(&(camera.proj_matrix() * camera.view_matrix())).as_mat4(),
+            camera.position().as_vec3(),
+        );
+
         // record command buffer
         let mut builder = command_buffer::AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
@@ -435,17 +445,23 @@ impl RenderManager {
             )
             .context("recording begin render pass command")?;
 
-        // compute shader geometry render
-        self.geometry_pass
-            .record_commands(&mut builder, camera, self.viewport.clone())?;
+        // geometry ray-marching pass (outputs to g-buffer)
+        self.geometry_pass.record_commands(
+            &mut builder,
+            camera_push_constants,
+            self.viewport.clone(),
+        )?;
 
         builder
             .next_subpass(SubpassContents::Inline)
             .context("recording next subpass command")?;
 
-        // draw render image to screen
-        self.lighting_pass
-            .record_commands(&mut builder, self.viewport.clone())?;
+        // execute deferred lighting pass (reads from g-buffer)
+        self.lighting_pass.record_commands(
+            &mut builder,
+            camera_push_constants,
+            self.viewport.clone(),
+        )?;
 
         // draw editor overlay
         self.overlay_pass.record_commands(
@@ -506,7 +522,7 @@ impl RenderManager {
 // Private functions
 
 impl RenderManager {
-    /// Recreates the swapchain, render image and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
+    /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
         // determine suitable new size
         let new_size: [u32; 2] = self.surface.window().inner_size().into();
@@ -542,8 +558,8 @@ impl RenderManager {
         let resolution = swapchain_images[0].dimensions().width_height();
         self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
 
-        // recreate render image with new dimensions
-        self.render_image = create_render_image(
+        // recreate g-buffer with new dimensions
+        self.g_buffer = create_g_buffer(
             self.device.clone(),
             swapchain_images[0].dimensions().width_height(),
         )?;
@@ -551,13 +567,13 @@ impl RenderManager {
         // recreate render pass and framebuffers for new swapchain images
         self.framebuffers = create_framebuffers(
             self.render_pass.clone(),
-            self.render_image.clone(),
+            self.g_buffer.clone(),
             &self.swapchain_image_views,
         )?;
 
         // update lighting pass
         self.lighting_pass
-            .update_render_image(&self.descriptor_allocator, self.render_image.clone())?;
+            .update_g_buffer(&self.descriptor_allocator, self.g_buffer.clone())?;
 
         // unset trigger
         self.recreate_swapchain = false;
@@ -791,32 +807,30 @@ fn create_swapchain(
 
 /// Creates the render target for the scene render. _Note that the value of `access_queue` isn't actually used
 /// in the vulkan image creation create info._
-fn create_render_image(
+fn create_g_buffer(
     device: Arc<Device>,
     size: [u32; 2],
 ) -> anyhow::Result<Arc<ImageView<AttachmentImage>>> {
-    // format must match what's specified in the compute shader layout
-    let render_image_format = Format::R8G8B8A8_UNORM; // todo better format
     ImageView::new_default(
         AttachmentImage::with_usage(
             device,
             size,
-            render_image_format,
+            shader_interfaces::G_BUFFER_FORMAT,
             ImageUsage {
                 transient_attachment: true,
                 input_attachment: true,
                 ..ImageUsage::empty()
             },
         )
-        .context("creating render image")?,
+        .context("creating g-buffer")?,
     )
-    .context("creating render image view")
+    .context("creating g-buffer image view")
 }
 
 /// Create render pass
 fn create_render_pass(
     device: Arc<Device>,
-    render_image: Arc<ImageView<AttachmentImage>>,
+    g_buffer: Arc<ImageView<AttachmentImage>>,
     swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
     sample_count: SampleCount,
 ) -> anyhow::Result<Arc<RenderPass>> {
@@ -825,9 +839,9 @@ fn create_render_pass(
         "no swapchain images provided to create render pass"
     );
     let swapchain_image = &swapchain_image_views[0].image();
-    let render_image_format = render_image
+    let g_buffer_format = g_buffer
         .format()
-        .expect("render image created with a format");
+        .expect("g-buffer should have been created and have a format...");
 
     // ensure indices match macro below
     let msg = "render_pass_indices don't match macro array below!";
@@ -839,11 +853,11 @@ fn create_render_pass(
     // create render pass boilerplate and object
     vulkano::ordered_passes_renderpass!(device,
         attachments: {
-            // render image
-            render_image: {
+            // g-buffer
+            g_buffer: {
                 load: Clear,
                 store: DontCare,
-                format: render_image_format,
+                format: g_buffer_format,
                 samples: sample_count,
             },
             // swapchain image
@@ -857,7 +871,7 @@ fn create_render_pass(
         passes: [
             // gbuffer subpass
             {
-                color: [render_image],
+                color: [g_buffer],
                 depth_stencil: {},
                 input: []
             },
@@ -865,7 +879,7 @@ fn create_render_pass(
             {
                 color: [swapchain],
                 depth_stencil: {},
-                input: [render_image]
+                input: [g_buffer]
             }
         ]
     )
@@ -875,7 +889,7 @@ fn create_render_pass(
 /// Create framebuffers
 fn create_framebuffers(
     render_pass: Arc<RenderPass>,
-    render_image: Arc<ImageView<AttachmentImage>>,
+    g_buffer: Arc<ImageView<AttachmentImage>>,
     swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
 ) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
     // 1 for each swapchain image
@@ -885,7 +899,7 @@ fn create_framebuffers(
             let mut attachments: Vec<Arc<dyn ImageViewAbstract>> = Vec::default();
             attachments.insert(
                 render_pass_indices::ATTACHMENT_GBUFFER as usize,
-                render_image.clone(),
+                g_buffer.clone(),
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_SWAPCHAIN as usize,

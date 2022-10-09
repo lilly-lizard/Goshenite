@@ -105,13 +105,9 @@ impl GeometryPass {
     pub fn record_commands<L>(
         &self,
         command_buffer: &mut AutoCommandBufferBuilder<L>,
-        camera: &Camera,
+        camera_push_constant: CameraPushConstants,
         viewport: Viewport,
     ) -> anyhow::Result<()> {
-        let camera_push_constant = CameraPushConstants::new(
-            glam::DMat4::inverse(&(camera.proj_matrix() * camera.view_matrix())).as_mat4(),
-            camera.position().as_vec3(),
-        );
         command_buffer
             .set_viewport(0, [viewport])
             .bind_pipeline_graphics(self.pipeline.clone())

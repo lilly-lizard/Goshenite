@@ -1,5 +1,8 @@
 use super::common::{create_shader_module, CreateDescriptorSetError, CreateShaderError};
-use crate::{config, shaders::shader_interfaces::SHADER_ENTRY_POINT};
+use crate::{
+    config,
+    shaders::shader_interfaces::{CameraPushConstants, SHADER_ENTRY_POINT},
+};
 use anyhow::Context;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -26,8 +29,8 @@ const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_lighting.frag.spv";
 mod descriptor {
     /// descriptor set index in `scene_lighting.frag`
     pub const SET_LIGHTING_FRAG: usize = 0;
-    /// render image sampler binding in `scene_lighting.frag`
-    pub const BINDING_SAMPLER: u32 = 0;
+    /// g-buffer input attachment binding in `scene_lighting.frag`
+    pub const BINDING_GBUFFER: u32 = 0;
 }
 
 /// Defines functionality for reading the g-buffers and calculating the scene color values
@@ -40,23 +43,23 @@ impl LightingPass {
     pub fn new(
         device: Arc<Device>,
         descriptor_allocator: &StandardDescriptorSetAllocator,
-        render_image: Arc<ImageView<AttachmentImage>>,
+        g_buffer: Arc<ImageView<AttachmentImage>>,
         subpass: Subpass,
     ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
         let desc_set =
-            create_desc_set_gbuffer(descriptor_allocator, pipeline.clone(), render_image.clone())?;
+            create_desc_set_gbuffer(descriptor_allocator, pipeline.clone(), g_buffer.clone())?;
         Ok(Self { pipeline, desc_set })
     }
 
-    /// Updates render image data e.g. when it has been resized
-    pub fn update_render_image(
+    /// Updates g-buffer data e.g. when it has been resized
+    pub fn update_g_buffer(
         &mut self,
         descriptor_allocator: &StandardDescriptorSetAllocator,
-        render_image: Arc<ImageView<AttachmentImage>>,
+        g_buffer: Arc<ImageView<AttachmentImage>>,
     ) -> anyhow::Result<()> {
         self.desc_set =
-            create_desc_set_gbuffer(descriptor_allocator, self.pipeline.clone(), render_image)?;
+            create_desc_set_gbuffer(descriptor_allocator, self.pipeline.clone(), g_buffer)?;
         Ok(())
     }
 
@@ -65,6 +68,7 @@ impl LightingPass {
     pub fn record_commands<L>(
         &self,
         command_buffer: &mut AutoCommandBufferBuilder<L>,
+        camera_push_constants: CameraPushConstants,
         viewport: Viewport,
     ) -> anyhow::Result<()> {
         command_buffer
@@ -76,6 +80,7 @@ impl LightingPass {
                 0,
                 self.desc_set.clone(),
             )
+            .push_constants(self.pipeline.layout().clone(), 0, camera_push_constants)
             .draw(3, 1, 0, 0)
             .context("recording lighting pass commands")?;
         Ok(())
@@ -114,7 +119,7 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
 fn create_desc_set_gbuffer(
     descriptor_allocator: &StandardDescriptorSetAllocator,
     lighting_pipeline: Arc<GraphicsPipeline>,
-    render_image: Arc<ImageView<AttachmentImage>>,
+    g_buffer: Arc<ImageView<AttachmentImage>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
     PersistentDescriptorSet::new(
         descriptor_allocator,
@@ -128,8 +133,8 @@ fn create_desc_set_gbuffer(
             })?
             .to_owned(),
         [WriteDescriptorSet::image_view(
-            descriptor::BINDING_SAMPLER,
-            render_image,
+            descriptor::BINDING_GBUFFER,
+            g_buffer,
         )],
     )
     .context("creating lighting pass desc set")

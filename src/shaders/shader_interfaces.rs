@@ -3,9 +3,13 @@ use crate::primitives::primitive_collection::PrimitiveCollection;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3, Vec4};
 use std::fmt::{self, Display};
+use vulkano::format::Format;
 
 /// Function name of the entry point for shaders
 pub const SHADER_ENTRY_POINT: &str = "main";
+
+/// G-buffer format
+pub const G_BUFFER_FORMAT: Format = Format::R8G8B8A8_UNORM;
 
 // ~~~ Primitive Data ~~~
 
