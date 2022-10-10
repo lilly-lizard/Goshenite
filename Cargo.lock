@@ -676,7 +676,7 @@ checksum = "518faa5064866338b013ff9b2350dc318e14cc4fcd6cb8206d7e7c9886c98815"
 
 [[package]]
 name = "goshenite"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "ahash",
  "anyhow",

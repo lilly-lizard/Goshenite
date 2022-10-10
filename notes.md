@@ -4,8 +4,11 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - objects consisting of primtives and ops https://iquilezles.org/articles/distfunctions/
 - smooth union op (curved combination)
 - hemisphere (circle) clamps on looking too far up/down (quaternions?)
+- surface noise modifiers
 - render outline on selected object
 - output render png (write tests using this?)
+- save model as file
+- curl noise field
 
 ## cleanup
 
@@ -45,7 +48,10 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - tests for Primitives data
 
 - Bang Wong color palette
-- curl noise field
+
+### optimize
+
+- decrease MIN_DIST as distance progresses (need less resolution)
 
 # Code Guidelines
 
@@ -66,8 +72,7 @@ possibilities:
 - define uv functions and associate textures
 - editor generates shaders. real time feedback?
 - live feedback modes e.g. sculpting mode just has primitives and normals
-- ignore color and render normals to start off with
-- **sworld space**: z up; right handed (x forward, y left), camera space: z depth
+- **world space**: z up; right handed (x forward, y left), camera space: z depth
 
 ## ideas
 
