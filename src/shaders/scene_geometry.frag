@@ -16,20 +16,20 @@ layout (location = 0) in vec2 in_uv;
 layout (location = 0) out vec4 out_normal;
 layout (location = 1) out uint out_primitive_id;
 
-// encoded object data to render
+// encoded primitive data
 layout (set = 0, binding = 0, std430) readonly buffer PrimitiveData {
-	uint count;
 	uint data[];
 } primitives;
+// encoded object operations to perform on primitives
+layout (set = 0, binding = 1, std430) readonly buffer ObjectData {
+	uint count;
+	uint ops[];
+} objects;
 // push constant with camera data
 layout (push_constant) uniform Camera {
 	mat4 proj_view_inverse;
 	vec4 position;
 } cam;
-
-// ~~~ Primitive Data Decoding ~~~
-
-// todo
 
 // ~~~ Signed Distance Fields ~~~
 
@@ -69,6 +69,18 @@ SdfResult op_union(SdfResult p1, SdfResult p2)
 	return p1.d < p2.d ? p1 : p2;
 }
 
+/// Subtracts the volume of primitive 2 from primitive 1
+SdfResult op_subtraction(SdfResult p1, SdfResult p2)
+{
+	return -p1.d > p2.d ? p1 : p2;
+}
+
+/// Results in the intersection of 2 primitives
+SdfResult op_intersection(SdfResult p1, SdfResult p2)
+{
+	return p1.d > p2.d ? p1 : p2;
+}
+
 // ~~~ Scene Traversal ~~~
 
 /// Calculates the distance to the closest primitive in the scene from `point`
@@ -76,6 +88,17 @@ SdfResult map(vec3 point)
 {
 	// the closest primitve and distance to point p
 	SdfResult closest_res = { MAX_DIST, ID_INVALID };
+
+	// loop through the object operations
+	uint op_index = 0;
+	while (op_index < objects.count) {
+		uint buffer_pos = op_index * OP_UNIT_LENGTH;
+		uint op = objects.ops[buffer_pos++];
+		uint p1 = objects.ops[buffer_pos++];
+		uint p2 = objects.ops[buffer_pos++];
+
+		op_index++;
+	}
 
 	// loop through the primitives
 	uint primitive_index = 0;
@@ -87,14 +110,17 @@ SdfResult map(vec3 point)
 		uint buffer_pos = primitive_index * PRIMITIVE_UNIT_LENGTH;
 		uint primitive_type = primitives.data[buffer_pos++];
 		if (primitive_type == PRIMITIVE_SPHERE) {
+			// decode data
 			vec3 center = vec3(
 				uintBitsToFloat(primitives.data[buffer_pos++]),
 				uintBitsToFloat(primitives.data[buffer_pos++]),
 				uintBitsToFloat(primitives.data[buffer_pos++])
 			);
 			float radius = uintBitsToFloat(primitives.data[buffer_pos++]);
+			// sphere closest distance
 			test_res.d = sdfSphere(point, center, radius);
 		} else if (primitive_type == PRIMITIVE_CUBE) {
+			// decode data
 			vec3 center = vec3(
 				uintBitsToFloat(primitives.data[buffer_pos++]),
 				uintBitsToFloat(primitives.data[buffer_pos++]),
@@ -105,6 +131,7 @@ SdfResult map(vec3 point)
 				uintBitsToFloat(primitives.data[buffer_pos++]),
 				uintBitsToFloat(primitives.data[buffer_pos++])
 			);
+			// box closest distance
 			test_res.d = sdfBox(point, center, dimensions);
 		}
 

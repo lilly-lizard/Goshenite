@@ -60,7 +60,7 @@ impl Engine {
         let mut primitive_collection = PrimitiveCollection::default();
         primitive_collection.add_primitive(Sphere::new(glam::Vec3::new(0.0, 0.0, 0.0), 0.5).into());
         primitive_collection.add_primitive(
-            Cube::new(glam::Vec3::new(-0.8, 1.7, 0.), glam::Vec3::splat(0.7)).into(),
+            Cube::new(glam::Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8)).into(),
         );
 
         // init renderer
