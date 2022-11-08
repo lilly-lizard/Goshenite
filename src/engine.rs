@@ -7,7 +7,7 @@ use crate::primitives::primitive::PrimitiveTrait;
 use crate::primitives::{cube::Cube, primitive_collection::PrimitiveCollection, sphere::Sphere};
 use crate::renderer::render_manager::RenderManager;
 #[allow(unused_imports)]
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
 use winit::{
     event::{Event, WindowEvent},
@@ -108,9 +108,7 @@ impl Engine {
 
     /// Process window events and update state
     fn process_input(&mut self, event: WindowEvent) {
-        if config::PER_FRAME_DEBUG_LOGS {
-            debug!("winit event: {:?}", event);
-        }
+        trace!("winit event: {:?}", event);
 
         // egui event handling
         let captured_by_gui = self.gui.process_event(&event);

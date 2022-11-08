@@ -8,7 +8,7 @@ use crate::{
 };
 use anyhow::Context;
 #[allow(unused_imports)]
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
@@ -183,12 +183,10 @@ fn create_primitives_buffer(
 ) -> anyhow::Result<Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StandardMemoryPool>>>> {
     // todo should be able to update buffer wihtout recreating?
     let combined_data = PrimitiveData::combined_data(primitive_collection)?;
-    if config::PER_FRAME_DEBUG_LOGS {
-        debug!(
-            "creating new primitives buffer slice for {} primitives",
-            combined_data.len()
-        );
-    }
+    trace!(
+        "creating new primitives buffer slice for {} primitives",
+        combined_data.len()
+    );
     buffer_pool
         .from_iter(combined_data)
         .context("creating primitives buffer")

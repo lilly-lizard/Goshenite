@@ -58,6 +58,8 @@ const VERTICES_PER_QUAD: DeviceSize = 4;
 const VERTEX_BUFFER_SIZE: DeviceSize = 1024 * 1024 * VERTICES_PER_QUAD;
 const INDEX_BUFFER_SIZE: DeviceSize = 1024 * 1024 * 2;
 
+const TEXTURE_FORMAT: Format = Format::R8G8B8A8_SRGB;
+
 mod descriptor {
     pub const SET_FONT_TEXTURE: usize = 0;
     pub const BINDING_FONT_TEXTURE: u32 = 0;
@@ -101,8 +103,8 @@ impl GuiRenderer {
         })
     }
 
-    /// Creates and/or removes texture resources for a [`Gui`](crate::gui::Gui) frame.
-    /// todo desc
+    /// Creates and/or removes texture resources as required by [`TexturesDelta`](epaint::Textures::TexturesDelta)
+    /// output by [`egui::end_frame`](egui::context::Context::end_frame).
     pub fn update_textures(
         &mut self,
         exec_after_future: Box<dyn GpuFuture>,
@@ -358,7 +360,7 @@ impl GuiRenderer {
                     height: delta.image.height() as u32,
                     array_layers: 1,
                 },
-                Format::R8G8B8A8_SRGB,
+                TEXTURE_FORMAT,
                 vulkano::image::MipmapsCount::One,
                 ImageUsage {
                     transfer_dst: true,

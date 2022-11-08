@@ -4,12 +4,8 @@ use log::LevelFilter;
 
 pub const ENGINE_NAME: &str = "Goshenite";
 
-/// Default log level filter
-pub const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Info;
-
-/// If true, enables spammy debug log messages that happen every frame. Will only show if max log level
-/// is set to `LevelFilter::Debug`.
-pub const PER_FRAME_DEBUG_LOGS: bool = false;
+/// Minimum log level. Logs at levels lower than this value will not be displayed.
+pub const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Debug;
 
 /// Wherever the app window starts maximized
 pub const START_MAXIMIZED: bool = false;

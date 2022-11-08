@@ -1,6 +1,7 @@
 # TODO
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
+- srgb logic (test on windows)
 - objects consisting of primtives and ops https://iquilezles.org/articles/distfunctions/
 - smooth union op (curved combination)
 - hemisphere (circle) clamps on looking too far up/down (quaternions?)
@@ -31,6 +32,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## low priority
 
+- smallvecs
 - clickable primitives
 - coordinate overlay z-buffer
 - attempt to restart renderer on error: e.g. SurfaceLost attempt reinitialization. pop-up dialogue "renderer has crashes. attempt re-initialization? report bug here..."
@@ -46,6 +48,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 	- VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_B10G11R11_UFLOAT_PACK32
 	- https://stackoverflow.com/questions/72548476/whats-the-best-practice-for-handling-format-qualifiers-for-images-in-compute-sh
 - tests for Primitives data
+- if using compute shader, use shader_storage_image_write_without_format
 
 - Bang Wong color palette
 
@@ -61,6 +64,10 @@ comments by action or object e.g. a search for 'transition image layout' wouldn'
 	the comment 'transition depth buffer image layout'
 - avoid Box<dyn Error> if possible, just create an enum https://fettblog.eu/rust-enums-wrapping-errors/
 - https://rust-lang.github.io/api-guidelines yeet
+
+## logging
+
+- all 'spammy' logging should go in trace, e.g. per-frame states, per-input states, to keep debug and higher reasonably clean and readable
 
 # design decisions
 
