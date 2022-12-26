@@ -1,6 +1,7 @@
 use crate::helper::angle::Angle;
 use glam::DVec3;
 use log::LevelFilter;
+use vulkano::format::Format;
 
 pub const ENGINE_NAME: &str = "Goshenite";
 
@@ -64,9 +65,9 @@ pub const VULKAN_VER_MIN: u32 = 2;
 /// is installed on the system, a debug callback will be created to log layer messages.
 pub const ENABLE_VULKAN_VALIDATION: bool = cfg!(debug_assertions);
 
-/// You'll notice in src/shaders there's .cxx versions of the glsl shaders. These are equivilent
-/// source files using C++ language features thanks to the [circle](https://www.circle-lang.org/)
-/// compiler. This flag tells parts of the renderer to use circle compiled versions of shaders.
-///
-/// For more info on using circle for shader compilation see https://github.com/seanbaxter/shaders.
-pub const USE_CIRCLE_SHADERS: bool = true;
+/// Function name of the entry point for shaders
+pub const SHADER_ENTRY_POINT: &str = "main";
+
+/// G-buffer formats. Note that the combined bit total of these should be under 128bits to fit in tile storage on many tile-based architectures.
+pub const G_BUFFER_FORMAT_NORMAL: Format = Format::R8G8B8A8_UNORM;
+pub const G_BUFFER_FORMAT_PRIMITIVE_ID: Format = Format::R32_UINT;

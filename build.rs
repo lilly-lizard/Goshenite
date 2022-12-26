@@ -7,6 +7,34 @@ use std::{
     path::PathBuf,
 };
 
+/// Attempts to read the source file at `shader_path` and returns its contents as a String
+#[cfg(feature = "shader-compile")]
+fn read_shader(shader_path: &PathBuf) -> std::io::Result<String> {
+    let mut shader_text = String::new();
+    let mut shader_file = File::open(shader_path)?;
+    shader_file.read_to_string(&mut shader_text)?;
+    Ok(shader_text)
+}
+
+/// Returns the directory containing the shader source files
+#[cfg(feature = "shader-compile")]
+fn get_shader_dir() -> PathBuf {
+    let mut shader_dir = std::env::current_dir().expect("cannot access pwd");
+    shader_dir.push("src");
+    shader_dir.push("shaders");
+    shader_dir.push("glsl");
+    shader_dir
+}
+
+/// Returns the directory to output spirv binaries
+#[cfg(feature = "shader-compile")]
+fn get_spirv_dir() -> PathBuf {
+    let mut spirv_dir = std::env::current_dir().expect("cannot access pwd");
+    spirv_dir.push("assets");
+    spirv_dir.push("shader_binaries");
+    spirv_dir
+}
+
 /// Compile glsl shaders in src/shaders and output spirv binaries to assets/shader_binares.
 /// Requirements:
 /// - Entry point must be "main".
@@ -139,33 +167,6 @@ fn gen_shader_spirv() {
             .write_all(spirv_bin)
             .expect("failed to write spirv data to output file");
     }
-}
-
-/// Attempts to read the source file at `shader_path` and returns its contents as a String
-#[cfg(feature = "shader-compile")]
-fn read_shader(shader_path: &PathBuf) -> std::io::Result<String> {
-    let mut shader_text = String::new();
-    let mut shader_file = File::open(shader_path)?;
-    shader_file.read_to_string(&mut shader_text)?;
-    Ok(shader_text)
-}
-
-/// Returns the directory containing the shader source files
-#[cfg(feature = "shader-compile")]
-fn get_shader_dir() -> PathBuf {
-    let mut shader_dir = std::env::current_dir().expect("cannot access pwd");
-    shader_dir.push("src");
-    shader_dir.push("shaders");
-    shader_dir
-}
-
-/// Returns the directory to output spirv binaries
-#[cfg(feature = "shader-compile")]
-fn get_spirv_dir() -> PathBuf {
-    let mut spirv_dir = std::env::current_dir().expect("cannot access pwd");
-    spirv_dir.push("assets");
-    spirv_dir.push("shader_binaries");
-    spirv_dir
 }
 
 fn main() {

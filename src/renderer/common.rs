@@ -1,4 +1,4 @@
-use crate::shaders::shader_interfaces::SHADER_ENTRY_POINT;
+use crate::config::SHADER_ENTRY_POINT;
 use std::{fmt, sync::Arc};
 use vulkano::{
     device::Device,

@@ -1,5 +1,8 @@
-# TODO
+# general guidelines
+
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
+
+# TODO
 
 - switch scene_geometry.frag to hlsl, delete circle (https://alain.xyz/blog/a-review-of-shader-languages, but also https://github.com/KhronosGroup/glslang/wiki/HLSL-FAQ)
 - objects consisting of primtives and ops https://iquilezles.org/articles/distfunctions/

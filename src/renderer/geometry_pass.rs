@@ -1,9 +1,11 @@
 use super::common::{create_shader_module, CreateDescriptorSetError, CreateShaderError};
 use crate::{
     config,
+    config::SHADER_ENTRY_POINT,
     primitives::primitive_collection::PrimitiveCollection,
-    shaders::shader_interfaces::{
-        CameraPushConstants, PrimitiveData, PrimitiveDataUnit, SHADER_ENTRY_POINT,
+    shaders::{
+        primitive_buffer::{self, PrimitiveDataUnit},
+        push_constants::CameraPushConstants,
     },
 };
 use anyhow::Context;
@@ -26,8 +28,7 @@ use vulkano::{
     DeviceSize,
 };
 
-const VERT_SHADER_GLSL_PATH: &str = "assets/shader_binaries/full_screen.vert.spv";
-const VERT_SHADER_CIRCLE_PATH: &str = "assets/shader_binaries/full_screen.vert.cxx.spv";
+const VERT_SHADER_PATH: &str = "assets/shader_binaries/full_screen.vert.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
 
 /// Describes descriptor set indices
@@ -124,17 +125,12 @@ impl GeometryPass {
 }
 
 fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<GraphicsPipeline>> {
-    let vert_shader_path = if config::USE_CIRCLE_SHADERS {
-        VERT_SHADER_CIRCLE_PATH
-    } else {
-        VERT_SHADER_GLSL_PATH
-    };
-    let vert_module = create_shader_module(device.clone(), vert_shader_path)?;
+    let vert_module = create_shader_module(device.clone(), VERT_SHADER_PATH)?;
     let vert_shader =
         vert_module
             .entry_point(SHADER_ENTRY_POINT)
             .ok_or(CreateShaderError::MissingEntryPoint(
-                vert_shader_path.to_owned(),
+                VERT_SHADER_PATH.to_owned(),
             ))?;
     let frag_module = create_shader_module(device.clone(), FRAG_SHADER_PATH)?;
     let frag_shader =
@@ -182,7 +178,7 @@ fn create_primitives_buffer(
     buffer_pool: &CpuBufferPool<PrimitiveDataUnit>,
 ) -> anyhow::Result<Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StandardMemoryPool>>>> {
     // todo should be able to update buffer wihtout recreating?
-    let combined_data = PrimitiveData::combined_data(primitive_collection)?;
+    let combined_data = primitive_buffer::to_raw_buffer(primitive_collection)?;
     if config::PER_FRAME_DEBUG_LOGS {
         debug!(
             "creating new primitives buffer slice for {} primitives",

@@ -14,7 +14,7 @@ layout(push_constant) uniform PushConstants {
 
 void main() {
 	gl_Position = pc.proj_view * (in_position + pc.offset);
-	gl_Position.y = -gl_Position.y; // fuck knows why
+	gl_Position.y = -gl_Position.y; // fuck knows why. feel free to fix this cpu side to save a couple of gpu instructions?
 	out_color = in_color;
 	out_normal = in_normal;
 }

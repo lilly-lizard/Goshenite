@@ -1,8 +1,5 @@
 use super::common::{create_shader_module, CreateDescriptorSetError, CreateShaderError};
-use crate::{
-    config,
-    shaders::shader_interfaces::{CameraPushConstants, SHADER_ENTRY_POINT},
-};
+use crate::{config::SHADER_ENTRY_POINT, shaders::push_constants::CameraPushConstants};
 use anyhow::Context;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -21,8 +18,7 @@ use vulkano::{
     render_pass::Subpass,
 };
 
-const VERT_SHADER_GLSL_PATH: &str = "assets/shader_binaries/full_screen.vert.spv";
-const VERT_SHADER_CIRCLE_PATH: &str = "assets/shader_binaries/full_screen.vert.cxx.spv";
+const VERT_SHADER_PATH: &str = "assets/shader_binaries/full_screen.vert.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_lighting.frag.spv";
 
 /// Describes descriptor set indices
@@ -100,17 +96,12 @@ impl LightingPass {
 }
 
 fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<GraphicsPipeline>> {
-    let vert_shader_path = if config::USE_CIRCLE_SHADERS {
-        VERT_SHADER_CIRCLE_PATH
-    } else {
-        VERT_SHADER_GLSL_PATH
-    };
-    let vert_module = create_shader_module(device.clone(), vert_shader_path)?;
+    let vert_module = create_shader_module(device.clone(), VERT_SHADER_PATH)?;
     let vert_shader =
         vert_module
             .entry_point(SHADER_ENTRY_POINT)
             .ok_or(CreateShaderError::MissingEntryPoint(
-                vert_shader_path.to_owned(),
+                VERT_SHADER_PATH.to_owned(),
             ))?;
     let frag_module = create_shader_module(device.clone(), FRAG_SHADER_PATH)?;
     let frag_shader =

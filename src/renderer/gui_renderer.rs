@@ -1,9 +1,10 @@
 /// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
 use super::common::{CreateDescriptorSetError, CreateShaderError};
 use crate::{
+    config::SHADER_ENTRY_POINT,
     gui::Gui,
     renderer::common::create_shader_module,
-    shaders::shader_interfaces::{self, EguiVertex, SHADER_ENTRY_POINT},
+    shaders::{push_constants::GuiPushConstants, vertex_inputs::EguiVertex},
 };
 use ahash::AHashMap;
 use anyhow::Context;
@@ -171,7 +172,7 @@ impl GuiRenderer {
         let scale_factor = gui.scale_factor();
         let primitives = gui.mesh_primitives();
 
-        let push_constants = shader_interfaces::GuiPushConstants::new(
+        let push_constants = GuiPushConstants::new(
             [
                 framebuffer_dimensions[0] / scale_factor,
                 framebuffer_dimensions[1] / scale_factor,

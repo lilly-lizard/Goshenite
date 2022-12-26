@@ -1,5 +1,5 @@
 use super::{primitive::Primitive, primitive::PrimitiveTrait};
-use crate::shaders::shader_interfaces::PrimitiveDataSlice;
+use crate::shaders::primitive_buffer::PrimitiveDataSlice;
 use std::{error, fmt};
 
 /// Collection of [`Primitive`]s. Also contains encoded data to upload to the gpu.

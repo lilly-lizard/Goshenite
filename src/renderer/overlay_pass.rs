@@ -1,8 +1,9 @@
 use super::common::{create_shader_module, CreateShaderError};
 use crate::{
     camera::Camera,
+    config::SHADER_ENTRY_POINT,
     primitives::{primitive::PrimitiveTrait, primitive_collection::PrimitiveCollection},
-    shaders::shader_interfaces::{OverlayPushConstants, OverlayVertex, SHADER_ENTRY_POINT},
+    shaders::{push_constants::OverlayPushConstants, vertex_inputs::OverlayVertex},
 };
 use anyhow::Context;
 use glam::{Vec3, Vec4};

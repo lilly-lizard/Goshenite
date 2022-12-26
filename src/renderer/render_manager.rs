@@ -3,11 +3,8 @@ use super::{
     overlay_pass::OverlayPass,
 };
 use crate::{
-    camera::Camera,
-    config,
-    gui::Gui,
-    primitives::primitive_collection::PrimitiveCollection,
-    shaders::shader_interfaces::{self, CameraPushConstants},
+    camera::Camera, config, gui::Gui, primitives::primitive_collection::PrimitiveCollection,
+    shaders::push_constants::CameraPushConstants,
 };
 use anyhow::{anyhow, bail, ensure, Context};
 use log::{debug, error, info, warn};
@@ -256,12 +253,12 @@ impl RenderManager {
         let g_buffer_normal = create_g_buffer(
             device.clone(),
             swapchain_images[0].dimensions().width_height(),
-            shader_interfaces::G_BUFFER_FORMAT_NORMAL,
+            config::G_BUFFER_FORMAT_NORMAL,
         )?;
         let g_buffer_primitive_id = create_g_buffer(
             device.clone(),
             swapchain_images[0].dimensions().width_height(),
-            shader_interfaces::G_BUFFER_FORMAT_PRIMITIVE_ID,
+            config::G_BUFFER_FORMAT_PRIMITIVE_ID,
         )?;
 
         // create render_pass
@@ -572,12 +569,12 @@ impl RenderManager {
         self.g_buffer_normal = create_g_buffer(
             self.device.clone(),
             swapchain_images[0].dimensions().width_height(),
-            shader_interfaces::G_BUFFER_FORMAT_NORMAL,
+            config::G_BUFFER_FORMAT_NORMAL,
         )?;
         self.g_buffer_primitive_id = create_g_buffer(
             self.device.clone(),
             swapchain_images[0].dimensions().width_height(),
-            shader_interfaces::G_BUFFER_FORMAT_PRIMITIVE_ID,
+            config::G_BUFFER_FORMAT_PRIMITIVE_ID,
         )?;
 
         // recreate render pass and framebuffers for new swapchain images
@@ -882,14 +879,14 @@ fn create_render_pass(
             g_buffer_normal: {
                 load: Clear,
                 store: DontCare,
-                format: shader_interfaces::G_BUFFER_FORMAT_NORMAL,
+                format: config::G_BUFFER_FORMAT_NORMAL,
                 samples: sample_count,
             },
             // primitive-id g-buffer
             g_buffer_primitive_id: {
                 load: Clear,
                 store: DontCare,
-                format: shader_interfaces::G_BUFFER_FORMAT_PRIMITIVE_ID,
+                format: config::G_BUFFER_FORMAT_PRIMITIVE_ID,
                 samples: sample_count,
             }
         },

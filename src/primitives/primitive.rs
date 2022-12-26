@@ -1,7 +1,7 @@
 use super::{cube::Cube, sphere::Sphere};
 use crate::{
     helper::from_enum_impl::from_enum_impl,
-    shaders::shader_interfaces::{primitive_codes, PrimitiveDataSlice, PRIMITIVE_LEN},
+    shaders::primitive_buffer::{primitive_codes, PrimitiveDataSlice, PRIMITIVE_UNIT_LEN},
 };
 use glam::Vec3;
 
@@ -25,7 +25,7 @@ pub enum Primitive {
 impl PrimitiveTrait for Primitive {
     fn encode(&self) -> PrimitiveDataSlice {
         match self {
-            Primitive::Null => [primitive_codes::NULL; PRIMITIVE_LEN],
+            Primitive::Null => [primitive_codes::NULL; PRIMITIVE_UNIT_LEN],
             Primitive::Sphere(s) => s.encode(),
             Primitive::Cube(c) => c.encode(),
         }
