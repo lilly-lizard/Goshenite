@@ -1,4 +1,7 @@
-use crate::primitives::{primitive::Primitive, primitive_collection::PrimitiveCollection};
+use crate::primitives::{
+    primitive::{Primitive, PrimitiveTrait},
+    primitive_collection::PrimitiveCollection,
+};
 use egui::{
     Button, Checkbox, ComboBox, DragValue, FontFamily::Proportional, FontId, Sense, TexturesDelta,
 };
@@ -148,7 +151,7 @@ impl Gui {
                 primitive_input,
                 live_update,
             } = &mut self.primitive_editor_state;
-            let selected_primitive = primitive_collection.selected_primitive_index();
+            let selected_primitive = primitive_collection.selected_index();
 
             if let Some(primitive_index) = selected_primitive {
                 // status
@@ -174,9 +177,7 @@ impl Gui {
                 });
                 if update_primitive {
                     // overwrite selected primitive with user data
-                    if let Err(e) =
-                        primitive_collection.update_primitive(primitive_index, *primitive_input)
-                    {
+                    if let Err(e) = primitive_collection.update(primitive_index, *primitive_input) {
                         warn!("could not update primitive due to: {}", e);
                     }
                 }
@@ -197,7 +198,7 @@ impl Gui {
                         )
                         .clicked()
                     {
-                        primitive_collection.add_primitive(*primitive_input);
+                        primitive_collection.append(*primitive_input);
                     }
 
                     // dropdown menu to select primitive type
@@ -294,10 +295,10 @@ impl Gui {
             // if a primitive from the list was selected, tell primitive_collection
             if let Some(index) = new_selected_primitive {
                 // if index is invalid, no harm done
-                let _err = primitive_collection.set_selected_primitive(index);
+                let _err = primitive_collection.set_selected_index(index);
             }
 
-            // TODO [TESTING] tests GuiRenderer create_texture() functionality for when ImageDelta.pos != None
+            // TODO TESTING tests GuiRenderer create_texture() functionality for when ImageDelta.pos != None
             // todo add to testing window function and document
             ui.separator();
             if ui.add(Button::new("gui bug test")).clicked() {

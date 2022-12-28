@@ -3,9 +3,12 @@ use crate::config;
 use crate::cursor_state::{CursorState, MouseButton};
 use crate::gui::Gui;
 use crate::helper::anyhow_panic::{anyhow_panic, anyhow_unwrap};
+use crate::operations::operation_collection::OperationCollection;
+use crate::operations::single::Single;
 use crate::primitives::primitive::PrimitiveTrait;
 use crate::primitives::{cube::Cube, primitive_collection::PrimitiveCollection, sphere::Sphere};
 use crate::renderer::render_manager::RenderManager;
+use log::trace;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 use std::sync::Arc;
@@ -32,6 +35,7 @@ pub struct Engine {
 
     // model data
     primitive_collection: PrimitiveCollection,
+    operation_collection: OperationCollection,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
@@ -58,14 +62,18 @@ impl Engine {
 
         // init primitives
         let mut primitive_collection = PrimitiveCollection::default();
-        primitive_collection.add_primitive(Sphere::new(glam::Vec3::new(0.0, 0.0, 0.0), 0.5).into());
-        primitive_collection.add_primitive(
-            Cube::new(glam::Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8)).into(),
-        );
+        primitive_collection.append(Sphere::new(glam::Vec3::new(0.0, 0.0, 0.0), 0.5).into());
+        primitive_collection
+            .append(Cube::new(glam::Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8)).into());
+
+        // init operations
+        let mut operation_collection = OperationCollection::default();
+        operation_collection.append(Single::new(0).into());
+        operation_collection.append(Single::new(1).into());
 
         // init renderer
         let renderer = anyhow_unwrap(
-            RenderManager::new(window.clone(), &primitive_collection),
+            RenderManager::new(window.clone(), &primitive_collection, &operation_collection),
             "initialize renderer",
         );
 
@@ -85,6 +93,7 @@ impl Engine {
             renderer,
 
             primitive_collection,
+            operation_collection,
         }
     }
 
@@ -108,9 +117,7 @@ impl Engine {
 
     /// Process window events and update state
     fn process_input(&mut self, event: WindowEvent) {
-        if config::PER_FRAME_DEBUG_LOGS {
-            debug!("winit event: {:?}", event);
-        }
+        trace!("winit event: {:?}", event);
 
         // egui event handling
         let captured_by_gui = self.gui.process_event(&event);
@@ -173,6 +180,7 @@ impl Engine {
             &mut self.gui,
             &self.camera,
             &self.primitive_collection,
+            &self.operation_collection,
         ) {
             anyhow_panic(&e, "render frame");
         }

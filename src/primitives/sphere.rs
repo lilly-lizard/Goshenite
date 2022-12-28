@@ -26,8 +26,13 @@ impl PrimitiveTrait for Sphere {
             primitive_codes::NULL,
         ]
     }
+
     fn center(&self) -> Vec3 {
         self.center
+    }
+
+    fn type_name(&self) -> &'static str {
+        "Sphere"
     }
 }
 impl Default for Sphere {

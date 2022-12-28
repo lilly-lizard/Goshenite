@@ -16,15 +16,15 @@ layout (location = 0) in vec2 in_uv;
 layout (location = 0) out vec4 out_normal;
 layout (location = 1) out uint out_primitive_id;
 
-// encoded primitive data
-layout (set = 0, binding = 0, std430) readonly buffer PrimitiveData {
+// primitives to be rendered
+layout (set = 0, binding = 0, std430) readonly buffer Primitive {
 	uint data[];
 } primitives;
-// encoded object operations to perform on primitives
-layout (set = 0, binding = 1, std430) readonly buffer ObjectData {
+// operations to perform on primitives
+layout (set = 0, binding = 1, std430) readonly buffer Operations {
 	uint count;
 	uint ops[];
-} objects;
+} operations;
 // push constant with camera data
 layout (push_constant) uniform Camera {
 	mat4 proj_view_inverse;
@@ -122,8 +122,7 @@ SdfResult process_op(uint op, SdfResult p1_res, SdfResult p2_res)
 
 	switch(op)
 	{
-	case OP_PRIMITIVE_1: 	res = p1_res; break;
-	case OP_PRIMITIVE_2: 	res = p2_res; break;
+	case OP_SINGLE: 		res = p1_res; break;
 	case OP_UNION: 			res = op_union(p1_res, p2_res); break;
 	case OP_SUBTRACTION: 	res = op_subtraction(p1_res, p2_res); break;
 	case OP_INTERSECTION: 	res = op_intersection(p1_res, p2_res); break;
@@ -143,11 +142,11 @@ SdfResult map(vec3 pos)
 
 	// loop through the object operations
 	uint op_index = 0;
-	while (op_index < objects.count) {
+	while (op_index < operations.count) {
 		uint buffer_pos = op_index * OP_UNIT_LENGTH;
-		uint op = objects.ops[buffer_pos++];
-		uint p1_index = objects.ops[buffer_pos++];
-		uint p2_index = objects.ops[buffer_pos++];
+		uint op = operations.ops[buffer_pos++];
+		uint p1_index = operations.ops[buffer_pos++];
+		uint p2_index = operations.ops[buffer_pos++];
 
 		SdfResult p1_res = process_primitive(p1_index, pos);
 		SdfResult p2_res = process_primitive(p2_index, pos);

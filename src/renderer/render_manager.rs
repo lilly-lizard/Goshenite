@@ -3,7 +3,8 @@ use super::{
     overlay_pass::OverlayPass,
 };
 use crate::{
-    camera::Camera, config, gui::Gui, primitives::primitive_collection::PrimitiveCollection,
+    camera::Camera, config, gui::Gui, operations::operation_collection::OperationCollection,
+    primitives::primitive_collection::PrimitiveCollection,
     shaders::push_constants::CameraPushConstants,
 };
 use anyhow::{anyhow, bail, ensure, Context};
@@ -37,7 +38,6 @@ use vulkano::{
 };
 use winit::window::Window;
 
-/// Indices for render pass attachments and subpasses
 mod render_pass_indices {
     pub const ATTACHMENT_SWAPCHAIN: u32 = 0;
     pub const ATTACHMENT_NORMAL: u32 = 1;
@@ -46,7 +46,6 @@ mod render_pass_indices {
     pub const SUBPASS_SWAPCHAIN: u32 = 1;
 }
 
-/// Indicates a queue family index
 pub type QueueFamilyIndex = u32;
 
 /// Contains Vulkan resources and methods to manage rendering
@@ -58,7 +57,7 @@ pub struct RenderManager {
 
     surface: Arc<Surface<Arc<Window>>>,
     swapchain: Arc<Swapchain<Arc<Window>>>,
-    swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>, // todo smallvec?
+    swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>, // bruh smallvec?
 
     viewport: Viewport,
     g_buffer_normal: Arc<ImageView<AttachmentImage>>,
@@ -74,8 +73,7 @@ pub struct RenderManager {
     overlay_pass: OverlayPass,
     gui_pass: GuiRenderer,
 
-    future_previous_frame: Option<Box<dyn GpuFuture>>, // todo description
-    /// indicates that the swapchain needs to be recreated next frame
+    future_previous_frame: Option<Box<dyn GpuFuture>>,
     recreate_swapchain: bool,
 }
 
@@ -86,8 +84,8 @@ impl RenderManager {
     pub fn new(
         window: Arc<Window>,
         primitive_collection: &PrimitiveCollection,
+        operation_collection: &OperationCollection,
     ) -> anyhow::Result<Self> {
-        // load vulkan library
         let vulkan_library = VulkanLibrary::new().context("loading vulkan library")?;
         info!(
             "loaded vulkan library, api version = {}",
@@ -298,6 +296,7 @@ impl RenderManager {
             device.clone(),
             &descriptor_allocator,
             primitive_collection,
+            operation_collection,
             subpass_gbuffer,
         )?;
 
@@ -358,6 +357,7 @@ impl RenderManager {
         gui: &mut Gui,
         camera: &Camera,
         primitive_collection: &PrimitiveCollection,
+        operation_collection: &OperationCollection,
     ) -> anyhow::Result<()> {
         // checks for submission finish and free locks on gpu resources
         if let Some(future_previous_frame) = self.future_previous_frame.as_mut() {
@@ -406,8 +406,11 @@ impl RenderManager {
         }
 
         // todo shouldn't need to recreate each frame?
-        self.geometry_pass
-            .update_primitives(&self.descriptor_allocator, primitive_collection)?;
+        self.geometry_pass.update_buffers(
+            &self.descriptor_allocator,
+            primitive_collection,
+            operation_collection,
+        )?;
 
         // todo actually set this
         let need_srgb_conv = false;

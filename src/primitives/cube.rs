@@ -26,8 +26,13 @@ impl PrimitiveTrait for Cube {
             primitive_codes::NULL,
         ]
     }
+
     fn center(&self) -> Vec3 {
         self.center
+    }
+
+    fn type_name(&self) -> &'static str {
+        "Cube"
     }
 }
 impl Default for Cube {

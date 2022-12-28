@@ -4,6 +4,10 @@
 /// 1. the name of your enum.
 /// 2. the nested type, which should have the same name as its enum variant.
 ///
+/// For example this:
+/// ```
+/// from_enum_impl!(ParentEnum, NestedType);
+/// ```
 /// Will expand to something like this:
 /// ```
 /// impl From<NestedType> for ParentEnum {

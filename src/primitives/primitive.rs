@@ -5,14 +5,17 @@ use crate::{
 };
 use glam::Vec3;
 
-/// Required functions for a usable primitive.
+/// A primitive is a basic geometric building block that can be manipulated and combined
+/// using [`Operation`]s
 pub trait PrimitiveTrait: Default + PartialEq + Clone {
-    /// Returns the primitive data encoded as a [`PrimitiveDataSlice`].
+    /// Returns buffer compatible primitive data as a [`PrimitiveDataSlice`].
     ///
     /// _Note: must match the decode process in `scene.comp`_
     fn encode(&self) -> PrimitiveDataSlice;
     /// Returns the spacial center of the primitive.
     fn center(&self) -> Vec3;
+    /// Returns the primitive type as a str
+    fn type_name(&self) -> &'static str;
 }
 
 /// Enum of all the supported primitive types.
@@ -25,32 +28,31 @@ pub enum Primitive {
 impl PrimitiveTrait for Primitive {
     fn encode(&self) -> PrimitiveDataSlice {
         match self {
-            Primitive::Null => [primitive_codes::NULL; PRIMITIVE_UNIT_LEN],
-            Primitive::Sphere(s) => s.encode(),
-            Primitive::Cube(c) => c.encode(),
+            Self::Null => [primitive_codes::NULL; PRIMITIVE_UNIT_LEN],
+            Self::Sphere(s) => s.encode(),
+            Self::Cube(c) => c.encode(),
         }
     }
+
     fn center(&self) -> Vec3 {
         match self {
-            Primitive::Null => Default::default(),
-            Primitive::Sphere(s) => s.center(),
-            Primitive::Cube(c) => c.center(),
+            Self::Null => Default::default(),
+            Self::Sphere(s) => s.center(),
+            Self::Cube(c) => c.center(),
+        }
+    }
+
+    fn type_name(&self) -> &'static str {
+        match self {
+            Self::Null => "Null",
+            Self::Sphere(s) => s.type_name(),
+            Self::Cube(c) => c.type_name(),
         }
     }
 }
 impl Default for Primitive {
     fn default() -> Self {
         Self::Null
-    }
-}
-impl Primitive {
-    /// Returns the name of the enum primitive type
-    pub fn type_name(&self) -> &'static str {
-        match self {
-            Self::Null => "Null",
-            Self::Sphere(_) => "Sphere",
-            Self::Cube(_) => "Cube",
-        }
     }
 }
 from_enum_impl!(Primitive, Sphere);
