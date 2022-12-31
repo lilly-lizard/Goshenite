@@ -413,7 +413,7 @@ impl RenderManager {
         )?;
 
         // todo actually set this
-        let need_srgb_conv = false;
+        let need_srgb_conv = true;
 
         // camera data used in geometry and lighting passes
         let camera_push_constants = CameraPushConstants::new(

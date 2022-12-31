@@ -17,7 +17,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## cleanup
 
-- Primitive/Operation -> convert from enum to boxed dyn trait collections. have vecs for 
+- Primitive/Operation -> convert from enum to boxed dyn trait collections. have vecs for each type and collection points to them
 - try rust analyzer extract method in render_manager.rs. what would uncle bob do?
 - update gui buffers pub fn
 - GuiRenderer::create_texture -> create_textures batch texture creation

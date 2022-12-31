@@ -1,12 +1,12 @@
 #version 450
 
-layout(location = 0) in vec4 in_color;
-layout(location = 1) in vec2 in_tex_coords;
+layout (location = 0) in vec4 in_color;
+layout (location = 1) in vec2 in_tex_coords;
 
-layout(location = 0) out vec4 out_color;
+layout (location = 0) out vec4 out_color;
 
-layout(binding = 0, set = 0) uniform sampler2D font_texture;
-layout(push_constant) uniform PushConstants {
+layout (binding = 0, set = 0) uniform sampler2D font_texture;
+layout (push_constant) uniform PushConstants {
     vec2 screen_size;
     uint need_srgb_conv;
 } push_constants;

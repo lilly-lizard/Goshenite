@@ -106,6 +106,7 @@ impl GeometryPass {
             primitives_buffer,
             operations_buffer,
         )?;
+        self.desc_set = desc_set;
         Ok(())
     }
 
