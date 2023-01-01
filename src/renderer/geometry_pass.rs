@@ -4,8 +4,8 @@ use crate::{
     operations::operation_collection::OperationCollection,
     primitives::primitive_collection::PrimitiveCollection,
     shaders::{
-        operation_buffer::OperationDataUnit,
-        primitive_buffer::{self, PrimitiveDataUnit},
+        operation_buffer::{self, OperationDataUnit},
+        primitive_buffer::PrimitiveDataUnit,
         push_constants::CameraPushConstants,
     },
 };
@@ -187,7 +187,12 @@ fn create_primitives_buffer(
     buffer_pool: &CpuBufferPool<PrimitiveDataUnit>,
 ) -> anyhow::Result<Arc<CpuBufferPoolChunk<PrimitiveDataUnit, Arc<StandardMemoryPool>>>> {
     // todo should be able to update buffer wihtout recreating?
-    let buffer_data = primitive_buffer::to_raw_buffer(primitive_collection)?;
+    let buffer_data: Vec<PrimitiveDataUnit> = primitive_collection
+        .buffer_data()
+        .into_iter()
+        .flatten()
+        .copied()
+        .collect();
     trace!(
         "creating new primitives buffer slice for {} primitives",
         buffer_data.len()
@@ -202,12 +207,7 @@ fn create_operations_buffer(
     buffer_pool: &CpuBufferPool<OperationDataUnit>,
 ) -> anyhow::Result<Arc<CpuBufferPoolChunk<OperationDataUnit, Arc<StandardMemoryPool>>>> {
     // todo should be able to update buffer wihtout recreating?
-    let buffer_data: Vec<OperationDataUnit> = operations_collection
-        .buffer_data()
-        .into_iter()
-        .flatten()
-        .copied()
-        .collect();
+    let buffer_data = operation_buffer::to_raw_buffer(operations_collection)?;
     trace!(
         "creating new operations buffer slice for {} operations",
         buffer_data.len()
