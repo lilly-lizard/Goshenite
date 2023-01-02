@@ -34,7 +34,7 @@ subpass ┆ subpass       ┆
 4. __E__ - Egui pass - egui menus
 
 Subpass outputs:
-- Subpass 0 - g-buffers:
-	1. rgba8 [normal.xyz, 0]
-	2. u32 [primitive-id]
-- Subpass 1 - swapchain image
+1. Subpass 0 - g-buffers:
+	- rgba8 [normal.xyz, 0]
+	- u32 [primitive-id]
+2. Subpass 1 - swapchain image

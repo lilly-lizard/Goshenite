@@ -2,12 +2,12 @@
 
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
-# TODO
+# todo
+
+- 
 
 - weak references or something for Operations e.g. Union
 - switch scene_geometry.frag to hlsl, delete circle (https://alain.xyz/blog/a-review-of-shader-languages, but also https://github.com/KhronosGroup/glslang/wiki/HLSL-FAQ)
-- srgb logic (test on windows)
-- objects consisting of primtives and ops https://iquilezles.org/articles/distfunctions/
 - smooth union op (curved combination)
 - hemisphere (circle) clamps on looking too far up/down (quaternions?)
 - surface noise modifiers
@@ -28,8 +28,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## always
 
-- documentation
-- todos
 - unwrap/except/assert
 - clippy
 

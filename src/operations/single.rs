@@ -14,7 +14,7 @@ impl Single {
 impl OperationTrait for Single {
     fn encode(&self) -> OperationDataSlice {
         [
-            op_codes::UNION,
+            op_codes::SINGLE,
             self.primitive_index as OperationDataUnit,
             op_codes::INVALID,
         ]

@@ -5,6 +5,7 @@ use crate::gui::Gui;
 use crate::helper::anyhow_panic::{anyhow_panic, anyhow_unwrap};
 use crate::operations::operation_collection::OperationCollection;
 use crate::operations::single::Single;
+use crate::operations::union::Union;
 use crate::primitives::primitive::PrimitiveTrait;
 use crate::primitives::{cube::Cube, primitive_collection::PrimitiveCollection, sphere::Sphere};
 use crate::renderer::render_manager::RenderManager;
@@ -67,8 +68,7 @@ impl Engine {
 
         // init operations
         let mut operation_collection = OperationCollection::default();
-        operation_collection.append(Single::new(0).into());
-        operation_collection.append(Single::new(1).into());
+        operation_collection.append(Union::new(0, 1).into());
 
         // init renderer
         let renderer = anyhow_unwrap(

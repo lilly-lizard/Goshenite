@@ -4,15 +4,23 @@ use crate::shaders::operation_buffer::{op_codes, OperationDataSlice, OperationDa
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Union {
     // todo weak ptr or reference or something
-    pub prim_1_index: usize,
-    pub prim_2_index: usize,
+    pub primitive_index_1: usize,
+    pub primitive_index_2: usize,
+}
+impl Union {
+    pub fn new(primitive_index_1: usize, primitive_index_2: usize) -> Self {
+        Self {
+            primitive_index_1,
+            primitive_index_2,
+        }
+    }
 }
 impl OperationTrait for Union {
     fn encode(&self) -> OperationDataSlice {
         [
             op_codes::UNION,
-            self.prim_1_index as OperationDataUnit,
-            self.prim_2_index as OperationDataUnit,
+            self.primitive_index_1 as OperationDataUnit,
+            self.primitive_index_2 as OperationDataUnit,
         ]
     }
 
@@ -23,8 +31,8 @@ impl OperationTrait for Union {
 impl Default for Union {
     fn default() -> Self {
         Self {
-            prim_1_index: 0,
-            prim_2_index: 0,
+            primitive_index_1: 0,
+            primitive_index_2: 0,
         }
     }
 }

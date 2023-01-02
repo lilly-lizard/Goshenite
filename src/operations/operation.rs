@@ -5,7 +5,7 @@ use crate::{
     },
 };
 
-use super::single::Single;
+use super::{single::Single, union::Union};
 
 pub trait OperationTrait: Default + PartialEq + Clone {
     /// Returns buffer compatible operation data as a [`PrimitiveDataSlice`].
@@ -25,6 +25,7 @@ pub enum Operation {
         p2_index: OperationDataUnit,
     },
     Single(Single),
+    Union(Union),
 }
 impl OperationTrait for Operation {
     fn encode(&self) -> OperationDataSlice {
@@ -36,6 +37,7 @@ impl OperationTrait for Operation {
                 p2_index,
             } => [*op, *p1_index, *p2_index],
             Self::Single(op) => op.encode(),
+            Self::Union(op) => op.encode(),
         }
     }
 
@@ -44,6 +46,7 @@ impl OperationTrait for Operation {
             Self::Null => "Null",
             Self::Raw { .. } => "Raw",
             Self::Single(op) => op.op_name(),
+            Self::Union(op) => op.op_name(),
         }
     }
 }
@@ -53,3 +56,4 @@ impl Default for Operation {
     }
 }
 from_enum_impl!(Operation, Single);
+from_enum_impl!(Operation, Union);

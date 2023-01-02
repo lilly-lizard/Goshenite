@@ -45,7 +45,7 @@ struct SdfResult {
 // * `pos` - pos in space to calculate for
 // * `center` - sphere center
 // * `radius` - sphere radius
-float sdfSphere(vec3 pos, vec3 center, float radius)
+float sdf_sphere(vec3 pos, vec3 center, float radius)
 {
 	return length(pos - center) - radius;
 }
@@ -54,7 +54,7 @@ float sdfSphere(vec3 pos, vec3 center, float radius)
 // * `pos` - pos in space to calculate for
 // * `center` - center of the box
 // * `dimensions` - width, length and height of the box
-float sdfBox(vec3 pos, vec3 center, vec3 dimensions)
+float sdf_box(vec3 pos, vec3 center, vec3 dimensions)
 {
 	vec3 d = abs(pos - center) - dimensions / 2.;
 	return min(max(d.x, max(d.y, d.z)), 0.) + length(max(d, 0.));
@@ -74,7 +74,7 @@ SdfResult process_primitive(uint primitive_index, vec3 pos)
 			uintBitsToFloat(primitives.data[buffer_pos++])
 		);
 		float radius = uintBitsToFloat(primitives.data[buffer_pos++]);
-		res.d = sdfSphere(pos, center, radius);
+		res.d = sdf_sphere(pos, center, radius);
 	}
 	else if (primitive_type == PRIMITIVE_CUBE)
 	{
@@ -88,7 +88,7 @@ SdfResult process_primitive(uint primitive_index, vec3 pos)
 			uintBitsToFloat(primitives.data[buffer_pos++]),
 			uintBitsToFloat(primitives.data[buffer_pos++])
 		);
-		res.d = sdfBox(pos, center, dimensions);
+		res.d = sdf_box(pos, center, dimensions);
 	}
 	// else if (primitive_type == PRIMITIVE_CUBE) do nothing
 
