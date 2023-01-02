@@ -59,6 +59,8 @@ const VERTICES_PER_QUAD: DeviceSize = 4;
 const VERTEX_BUFFER_SIZE: DeviceSize = 1024 * 1024 * VERTICES_PER_QUAD;
 const INDEX_BUFFER_SIZE: DeviceSize = 1024 * 1024 * 2;
 
+const TEXTURE_FORMAT: Format = Format::R8G8B8A8_SRGB;
+
 mod descriptor {
     pub const SET_FONT_TEXTURE: usize = 0;
     pub const BINDING_FONT_TEXTURE: u32 = 0;
@@ -102,8 +104,8 @@ impl GuiRenderer {
         })
     }
 
-    /// Creates and/or removes texture resources for a [`Gui`](crate::gui::Gui) frame.
-    /// todo desc
+    /// Creates and/or removes texture resources as required by [`TexturesDelta`](epaint::Textures::TexturesDelta)
+    /// output by [`egui::end_frame`](egui::context::Context::end_frame).
     pub fn update_textures(
         &mut self,
         exec_after_future: Box<dyn GpuFuture>,
@@ -160,13 +162,13 @@ impl GuiRenderer {
     /// * `command_buffer`: Primary command buffer to record commands to. Must be already in dynamic rendering state.
     /// * `primitives`: List of egui primitives to render. Can aquire from [Gui::primitives](`crate::gui::Gui::primitives`).
     /// * `scale_factor`: Gui dpi config. Can aquire from [Gui::scale_factor](`crate::gui::Gui::scale_factor`).
-    /// * `need_srgb_conv`: Set to true if rendering to an SRGB framebuffer.
+    /// * `is_srgb_framebuffer`: Set to true if rendering to an SRGB framebuffer.
     /// * `framebuffer_dimensions`: Framebuffer dimensions.
     pub(super) fn record_commands<L>(
         &mut self,
         command_buffer: &mut AutoCommandBufferBuilder<L>,
         gui: &Gui,
-        need_srgb_conv: bool,
+        is_srgb_framebuffer: bool,
         framebuffer_dimensions: [f32; 2],
     ) -> anyhow::Result<()> {
         let scale_factor = gui.scale_factor();
@@ -177,7 +179,7 @@ impl GuiRenderer {
                 framebuffer_dimensions[0] / scale_factor,
                 framebuffer_dimensions[1] / scale_factor,
             ],
-            need_srgb_conv,
+            is_srgb_framebuffer,
         );
         for ClippedPrimitive {
             clip_rect,
@@ -359,7 +361,7 @@ impl GuiRenderer {
                     height: delta.image.height() as u32,
                     array_layers: 1,
                 },
-                Format::R8G8B8A8_SRGB,
+                TEXTURE_FORMAT,
                 vulkano::image::MipmapsCount::One,
                 ImageUsage {
                     transfer_dst: true,

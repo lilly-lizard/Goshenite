@@ -1611,6 +1611,7 @@ dependencies = [
 [[package]]
 name = "vulkano"
 version = "0.31.0"
+source = "git+https://github.com/vulkano-rs/vulkano?rev=3c6c1c909ffc8c185dffcd1a06b8950651da19bc#3c6c1c909ffc8c185dffcd1a06b8950651da19bc"
 dependencies = [
  "ahash",
  "ash",
@@ -1636,6 +1637,7 @@ dependencies = [
 [[package]]
 name = "vulkano-win"
 version = "0.31.0"
+source = "git+https://github.com/vulkano-rs/vulkano?rev=3c6c1c909ffc8c185dffcd1a06b8950651da19bc#3c6c1c909ffc8c185dffcd1a06b8950651da19bc"
 dependencies = [
  "core-graphics-types",
  "objc",

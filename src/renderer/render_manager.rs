@@ -20,7 +20,7 @@ use vulkano::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceCreateInfo, DeviceExtensions, Queue, QueueCreateInfo,
     },
-    format::{ClearValue, Format},
+    format::{ClearValue, Format, NumericType},
     image::{
         view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract, SampleCount,
         SwapchainImage,
@@ -39,11 +39,11 @@ use vulkano::{
 use winit::window::Window;
 
 mod render_pass_indices {
-    pub const ATTACHMENT_SWAPCHAIN: u32 = 0;
-    pub const ATTACHMENT_NORMAL: u32 = 1;
-    pub const ATTACHMENT_PRIMITIVE_ID: u32 = 2;
-    pub const SUBPASS_GBUFFER: u32 = 0;
-    pub const SUBPASS_SWAPCHAIN: u32 = 1;
+    pub const ATTACHMENT_SWAPCHAIN: usize = 0;
+    pub const ATTACHMENT_NORMAL: usize = 1;
+    pub const ATTACHMENT_PRIMITIVE_ID: usize = 2;
+    pub const SUBPASS_GBUFFER: usize = 0;
+    pub const SUBPASS_SWAPCHAIN: usize = 1;
 }
 
 pub type QueueFamilyIndex = u32;
@@ -58,12 +58,14 @@ pub struct RenderManager {
     surface: Arc<Surface<Arc<Window>>>,
     swapchain: Arc<Swapchain<Arc<Window>>>,
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>, // bruh smallvec?
+    is_srgb_framebuffer: bool,
 
     viewport: Viewport,
     g_buffer_normal: Arc<ImageView<AttachmentImage>>,
     g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
+    clear_values: [Option<ClearValue>; 3],
 
     command_buffer_allocator: StandardCommandBufferAllocator,
     descriptor_allocator: StandardDescriptorSetAllocator,
@@ -73,7 +75,9 @@ pub struct RenderManager {
     overlay_pass: OverlayPass,
     gui_pass: GuiRenderer,
 
+    /// Can be used to synchronize commands with the submission for the previous frame
     future_previous_frame: Option<Box<dyn GpuFuture>>,
+    /// Indicates that the swapchain needs to be recreated next frame
     recreate_swapchain: bool,
 }
 
@@ -222,15 +226,21 @@ impl RenderManager {
             queues.next().expect("requested 1 unique transfer queue")
         };
 
-        // create swapchain and images
+        // swapchain
         let (swapchain, swapchain_images) =
             create_swapchain(device.clone(), physical_device.clone(), surface.clone())?;
         debug!(
             "initial swapchain image size = {:?}",
             swapchain_images[0].dimensions()
         );
+        let is_srgb_framebuffer = is_srgb_framebuffer(swapchain_images[0].clone());
+        let swapchain_image_views = swapchain_images
+            .iter()
+            .map(|image| ImageView::new_default(image.clone()))
+            .collect::<Result<Vec<_>, _>>()
+            .context("creating swapchain image views")?;
 
-        // init dynamic viewport
+        // dynamic viewport
         let viewport = Viewport {
             origin: [0.0, 0.0],
             dimensions: [
@@ -240,14 +250,7 @@ impl RenderManager {
             depth_range: 0.0..1.0,
         };
 
-        // create swapchain image views
-        let swapchain_image_views = swapchain_images
-            .iter()
-            .map(|image| ImageView::new_default(image.clone()))
-            .collect::<Result<Vec<_>, _>>()
-            .context("creating swapchain image views")?;
-
-        // create g-buffers
+        // g-buffers
         let g_buffer_normal = create_g_buffer(
             device.clone(),
             swapchain_images[0].dimensions().width_height(),
@@ -264,20 +267,22 @@ impl RenderManager {
         let render_pass = create_render_pass(device.clone(), &swapchain_image_views, multisample)?;
 
         // describe subpasses
-        let subpass_gbuffer =
-            Subpass::from(render_pass.clone(), render_pass_indices::SUBPASS_GBUFFER).ok_or(
-                anyhow!(
-                    "render pass does not contain subpass at index {}",
-                    render_pass_indices::SUBPASS_GBUFFER
-                ),
-            )?;
-        let subpass_swapchain =
-            Subpass::from(render_pass.clone(), render_pass_indices::SUBPASS_SWAPCHAIN).ok_or(
-                anyhow!(
-                    "render pass does not contain subpass at index {}",
-                    render_pass_indices::SUBPASS_SWAPCHAIN
-                ),
-            )?;
+        let subpass_gbuffer = Subpass::from(
+            render_pass.clone(),
+            render_pass_indices::SUBPASS_GBUFFER as u32,
+        )
+        .ok_or(anyhow!(
+            "render pass does not contain subpass at index {}",
+            render_pass_indices::SUBPASS_GBUFFER
+        ))?;
+        let subpass_swapchain = Subpass::from(
+            render_pass.clone(),
+            render_pass_indices::SUBPASS_SWAPCHAIN as u32,
+        )
+        .ok_or(anyhow!(
+            "render pass does not contain subpass at index {}",
+            render_pass_indices::SUBPASS_SWAPCHAIN
+        ))?;
 
         // create framebuffers
         let framebuffers = create_framebuffers(
@@ -286,6 +291,10 @@ impl RenderManager {
             g_buffer_normal.clone(),
             g_buffer_primitive_id.clone(),
         )?;
+        let mut clear_values: [Option<ClearValue>; 3] = Default::default();
+        clear_values[render_pass_indices::ATTACHMENT_SWAPCHAIN] = Some([0.0, 0.0, 0.0, 1.0].into());
+        clear_values[render_pass_indices::ATTACHMENT_NORMAL] = Some([0.0; 4].into());
+        clear_values[render_pass_indices::ATTACHMENT_PRIMITIVE_ID] = Some([0u32; 4].into());
 
         // command buffer and descriptor allocators
         let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
@@ -331,12 +340,14 @@ impl RenderManager {
             surface,
             swapchain,
             swapchain_image_views,
+            is_srgb_framebuffer,
 
             viewport,
             g_buffer_normal,
             g_buffer_primitive_id,
             render_pass,
             framebuffers,
+            clear_values,
 
             geometry_pass,
             lighting_pass,
@@ -412,9 +423,6 @@ impl RenderManager {
             operation_collection,
         )?;
 
-        // todo actually set this
-        let need_srgb_conv = true;
-
         // camera data used in geometry and lighting passes
         let camera_push_constants = CameraPushConstants::new(
             glam::DMat4::inverse(&(camera.proj_matrix() * camera.view_matrix())).as_mat4(),
@@ -429,24 +437,11 @@ impl RenderManager {
         )
         .context("beginning primary command buffer")?;
 
-        // begin render pass todo store clear values
-        let mut clear_values: Vec<Option<ClearValue>> = Vec::default();
-        clear_values.insert(
-            render_pass_indices::ATTACHMENT_SWAPCHAIN as usize,
-            Some([0.0, 0.0, 0.0, 1.0].into()),
-        );
-        clear_values.insert(
-            render_pass_indices::ATTACHMENT_NORMAL as usize,
-            Some([0.0; 4].into()),
-        );
-        clear_values.insert(
-            render_pass_indices::ATTACHMENT_PRIMITIVE_ID as usize,
-            Some([0u32; 4].into()),
-        );
+        // begin render pass
         builder
             .begin_render_pass(
                 RenderPassBeginInfo {
-                    clear_values,
+                    clear_values: self.clear_values.into(),
                     ..RenderPassBeginInfo::framebuffer(
                         self.framebuffers[swapchain_index as usize].clone(),
                     )
@@ -485,7 +480,7 @@ impl RenderManager {
         self.gui_pass.record_commands(
             &mut builder,
             gui,
-            need_srgb_conv,
+            self.is_srgb_framebuffer,
             self.viewport.dimensions,
         )?;
 
@@ -534,7 +529,6 @@ impl RenderManager {
 impl RenderManager {
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
-        // determine suitable new size
         let new_size: [u32; 2] = self.surface.window().inner_size().into();
 
         debug!(
@@ -564,11 +558,9 @@ impl RenderManager {
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        // set parameters for new resolution
         let resolution = swapchain_images[0].dimensions().width_height();
         self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
 
-        // recreate g-buffers with new dimensions
         self.g_buffer_normal = create_g_buffer(
             self.device.clone(),
             swapchain_images[0].dimensions().width_height(),
@@ -580,7 +572,6 @@ impl RenderManager {
             config::G_BUFFER_FORMAT_PRIMITIVE_ID,
         )?;
 
-        // recreate render pass and framebuffers for new swapchain images
         self.framebuffers = create_framebuffers(
             self.render_pass.clone(),
             &self.swapchain_image_views,
@@ -588,16 +579,15 @@ impl RenderManager {
             self.g_buffer_primitive_id.clone(),
         )?;
 
-        // update lighting pass
         self.lighting_pass.update_g_buffers(
             &self.descriptor_allocator,
             self.g_buffer_normal.clone(),
             self.g_buffer_primitive_id.clone(),
         )?;
 
-        // unset trigger
-        self.recreate_swapchain = false;
+        self.is_srgb_framebuffer = is_srgb_framebuffer(swapchain_images[0].clone());
 
+        self.recreate_swapchain = false;
         Ok(())
     }
 }
@@ -825,6 +815,15 @@ fn create_swapchain(
     .context("creating swapchain")
 }
 
+// is swapchain image in a SRGB format, which requires color conversion in shaders
+fn is_srgb_framebuffer(swapchain_image: Arc<SwapchainImage<Arc<Window>>>) -> bool {
+    swapchain_image
+        .format()
+        .type_color()
+        .unwrap_or(NumericType::UNORM)
+        == NumericType::SRGB
+}
+
 /// Creates the render target for the scene render. _Note that the value of `access_queue` isn't actually used
 /// in the vulkan image creation create info._
 fn create_g_buffer(
@@ -924,15 +923,15 @@ fn create_framebuffers(
         .map(|image_view| {
             let mut attachments: Vec<Arc<dyn ImageViewAbstract>> = Vec::default();
             attachments.insert(
-                render_pass_indices::ATTACHMENT_SWAPCHAIN as usize,
+                render_pass_indices::ATTACHMENT_SWAPCHAIN,
                 image_view.clone(),
             );
             attachments.insert(
-                render_pass_indices::ATTACHMENT_NORMAL as usize,
+                render_pass_indices::ATTACHMENT_NORMAL,
                 g_buffer_normal.clone(),
             );
             attachments.insert(
-                render_pass_indices::ATTACHMENT_PRIMITIVE_ID as usize,
+                render_pass_indices::ATTACHMENT_PRIMITIVE_ID,
                 g_buffer_primtive_id.clone(),
             );
             Framebuffer::new(
