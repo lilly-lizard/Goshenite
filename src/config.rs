@@ -59,7 +59,7 @@ pub const VULKAN_VER_MAJ: u32 = 1;
 pub const VULKAN_VER_MIN: u32 = 2;
 /// If true, the renderer will attempt to enable khronos valication layer. If VK_LAYER_KHRONOS_validation
 /// is installed on the system, a debug callback will be created to log layer messages.
-pub const ENABLE_VULKAN_VALIDATION: bool = false; //cfg!(debug_assertions);
+pub const ENABLE_VULKAN_VALIDATION: bool = false; //cfg!(debug_assertions); disabled pending https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/4891
 
 /// Function name of the entry point for shaders
 pub const SHADER_ENTRY_POINT: &str = "main";
