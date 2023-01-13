@@ -4,8 +4,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
-- 
-
 - weak references or something for Operations e.g. Union
 - switch scene_geometry.frag to hlsl, delete circle (https://alain.xyz/blog/a-review-of-shader-languages, but also https://github.com/KhronosGroup/glslang/wiki/HLSL-FAQ)
 - smooth union op (curved combination)

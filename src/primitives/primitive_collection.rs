@@ -1,4 +1,4 @@
-use super::{primitive::Primitive, primitive::PrimitiveTrait};
+use super::primitive::PrimitiveTrait;
 use crate::{
     helper::more_errors::{CollectionError, IndexError},
     shaders::primitive_buffer::PrimitiveDataSlice,
@@ -19,10 +19,6 @@ impl PrimitiveCollection {
     pub fn append(&mut self, primitive: Primitive) {
         self.primitives.push(primitive);
         self.buffer_data.push(primitive.encode());
-    }
-
-    pub fn primitives(&self) -> &Vec<Primitive> {
-        &self.primitives
     }
 
     pub fn update(

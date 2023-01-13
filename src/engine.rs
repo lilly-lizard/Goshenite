@@ -4,7 +4,6 @@ use crate::cursor_state::{CursorState, MouseButton};
 use crate::gui::Gui;
 use crate::helper::anyhow_panic::{anyhow_panic, anyhow_unwrap};
 use crate::operations::operation_collection::OperationCollection;
-use crate::operations::single::Single;
 use crate::operations::union::Union;
 use crate::primitives::primitive::PrimitiveTrait;
 use crate::primitives::{cube::Cube, primitive_collection::PrimitiveCollection, sphere::Sphere};
