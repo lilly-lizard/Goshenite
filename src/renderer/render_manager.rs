@@ -915,7 +915,7 @@ fn create_framebuffers(
     render_pass: Arc<RenderPass>,
     swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
     g_buffer_normal: Arc<ImageView<AttachmentImage>>,
-    g_buffer_primtive_id: Arc<ImageView<AttachmentImage>>,
+    g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
 ) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
     // 1 for each swapchain image
     swapchain_image_views
@@ -932,7 +932,7 @@ fn create_framebuffers(
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_PRIMITIVE_ID,
-                g_buffer_primtive_id.clone(),
+                g_buffer_primitive_id.clone(),
             );
             Framebuffer::new(
                 render_pass.clone(),
