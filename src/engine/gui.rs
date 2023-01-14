@@ -1,7 +1,3 @@
-use crate::primitives::{
-    primitive::{Primitive, Primitive},
-    primitive_collection::PrimitiveCollection,
-};
 use egui::{
     Button, Checkbox, ComboBox, DragValue, FontFamily::Proportional, FontId, Sense, TexturesDelta,
 };

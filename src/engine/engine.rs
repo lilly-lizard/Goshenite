@@ -1,13 +1,14 @@
-use crate::camera::Camera;
-use crate::config;
-use crate::cursor_state::{CursorState, MouseButton};
-use crate::gui::Gui;
-use crate::helper::anyhow_panic::{anyhow_panic, anyhow_unwrap};
-use crate::operations::operation_collection::OperationCollection;
-use crate::operations::union::Union;
-use crate::primitives::primitive::Primitive;
-use crate::primitives::{cube::Cube, primitive_collection::PrimitiveCollection, sphere::Sphere};
-use crate::renderer::render_manager::RenderManager;
+use super::{
+    camera::Camera,
+    cursor_state::{CursorState, MouseButton},
+};
+//use crate::gui::Gui;
+use crate::{
+    config,
+    helper::anyhow_panic::{anyhow_panic, anyhow_unwrap},
+    object::object::Object,
+    renderer::render_manager::RenderManager,
+};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
@@ -29,12 +30,11 @@ pub struct Engine {
 
     // specialized controllers
     camera: Camera,
-    gui: Gui,
+    //gui: Gui,
     renderer: RenderManager,
 
     // model data
-    primitive_collection: PrimitiveCollection,
-    operation_collection: OperationCollection,
+    object: Object,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
