@@ -4,3 +4,4 @@ mod geometry_pass;
 mod lighting_pass;
 //mod overlay_pass;
 pub mod render_manager;
+mod vulkan_helper;

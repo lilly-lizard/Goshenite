@@ -8,8 +8,16 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 	1. object struct - DONE
 	2. shaders
 	3. buffer/renderer code
+		1. single object
+		2. multiple objects
 	4. gui/engine
 2. organise shaders directory structure and content
+	- would be nice to structure as per how I conceptualize the code i.e.
+		1. user interface -> intuitive, ux/gui
+		2. backend -> optimized, rendering code
+		3. engine -> abstraction, connecting glue between user interface and backend
+	- clearly defined design goals for each section of the code
+	- could try minimizing the coupling between backend and ui
 3. raster bounding boxes
 
 # todo

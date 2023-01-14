@@ -7,7 +7,8 @@ mod shaders;
 
 use engine::engine::Engine;
 use helper::logger::ConsoleLogger;
-use log::info;
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 use winit::{event_loop::EventLoop, platform::run_return::EventLoopExtRunReturn};
 
 const SPLASH: &str = "

@@ -31,7 +31,7 @@ use vulkano::{
     DeviceSize,
 };
 
-const VERT_SHADER_PATH: &str = "assets/shader_binaries/full_screen.vert.spv";
+const VERT_SHADER_PATH: &str = "assets/shader_binaries/bounding_box.vert.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
 
 // descriptor set and binding indices
@@ -57,7 +57,7 @@ impl GeometryPass {
         memory_allocator: &impl MemoryAllocator,
         descriptor_allocator: &StandardDescriptorSetAllocator,
         subpass: Subpass,
-        object: &Object,
+        objects: &Vec<Object>,
     ) -> anyhow::Result<Self> {
         let buffer_pool = create_buffer_pool(memory_allocator)?;
         debug!("uploading initial object to object buffer pool",);
@@ -162,18 +162,19 @@ fn create_desc_set(
     geometry_pipeline: Arc<GraphicsPipeline>,
     buffer_pool: Arc<CpuAccessibleBuffer<[ObjectDataUnit]>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
+    let set_layout = geometry_pipeline
+        .layout()
+        .set_layouts()
+        .get(descriptor::SET_BUFFERS)
+        .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+            index: descriptor::SET_BUFFERS,
+            shader_path: FRAG_SHADER_PATH,
+        })
+        .context("creating object buffer desc set")?
+        .to_owned();
     PersistentDescriptorSet::new(
         descriptor_allocator,
-        geometry_pipeline
-            .layout()
-            .set_layouts()
-            .get(descriptor::SET_BUFFERS)
-            .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
-                index: descriptor::SET_BUFFERS,
-                shader_path: FRAG_SHADER_PATH,
-            })
-            .context("creating object buffer desc set")?
-            .to_owned(),
+        set_layout,
         [WriteDescriptorSet::buffer(
             descriptor::BINDING_OBJECTS,
             buffer_pool,
