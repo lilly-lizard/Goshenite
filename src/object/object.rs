@@ -1,6 +1,10 @@
 use super::operation::Operation;
 use super::primitives::{none::None, primitive::Primitive};
+use crate::shaders::object_buffer::ObjectDataUnit;
 use std::rc::Rc;
+
+// this is because the shaders store the primitive op index in the lower 16 bits of a u32
+const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
 
 pub struct PrimitiveOp {
     pub op: Operation,
@@ -27,10 +31,21 @@ impl Object {
         &mut self.primitive_ops
     }
 
-    pub fn append(&mut self, operation: Operation, primitive: Rc<dyn Primitive>) {
+    pub fn append(&mut self, operation: Operation, primitive: Rc<impl Primitive>) {
         self.primitive_ops.push(PrimitiveOp {
             op: operation,
             pr: primitive,
         });
+    }
+
+    pub fn encoded_data(&self) -> Vec<ObjectDataUnit> {
+        // avoiding this case should be the responsibility of the functions adding to `primtive_ops`
+        debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);
+        let mut encoded = Vec::from([self.primitive_ops.len() as ObjectDataUnit]);
+        for primitive_op in self.primitive_ops {
+            encoded.push(primitive_op.op.op_code());
+            encoded.extend_from_slice(&primitive_op.pr.encode());
+        }
+        encoded
     }
 }

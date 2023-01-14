@@ -2,7 +2,7 @@ use super::primitive::Primitive;
 use crate::shaders::object_buffer::{primitive_codes, PrimitiveDataSlice, PRIMITIVE_UNIT_LEN};
 use glam::Vec3;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct None {}
 impl Primitive for None {
     fn encode(&self) -> PrimitiveDataSlice {

@@ -18,7 +18,7 @@ layout (location = 1) out uint out_object_id;
 
 // todo for now just single object
 const uint OBJECT_INDEX = 0;
-layout (set = 0, binding = 1, std430) readonly buffer Object {
+layout (set = 0, binding = 0, std430) readonly buffer Object {
 	uint op_count;
 	uint data[];
 } object;

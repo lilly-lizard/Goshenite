@@ -1,8 +1,7 @@
 use super::common::{create_shader_module, CreateShaderError};
 use crate::{
-    camera::Camera,
     config::SHADER_ENTRY_POINT,
-    primitives::{primitive::Primitive, primitive_collection::PrimitiveCollection},
+    engine::camera::Camera,
     shaders::{push_constants::OverlayPushConstants, vertex_inputs::OverlayVertex},
 };
 use anyhow::Context;
@@ -12,6 +11,7 @@ use vulkano::{
     buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::AutoCommandBufferBuilder,
     device::Device,
+    memory::{self, allocator::MemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::ColorBlendState,
@@ -34,9 +34,13 @@ pub struct OverlayPass {
 }
 // Public functions
 impl OverlayPass {
-    pub fn new(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Self> {
+    pub fn new(
+        device: Arc<Device>,
+        memory_allocator: &impl MemoryAllocator,
+        subpass: Subpass,
+    ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
-        let vertex_buffer = create_vertex_buffer(device.clone())?;
+        let vertex_buffer = create_vertex_buffer(memory_allocator)?;
         Ok(Self {
             pipeline,
             vertex_buffer,
@@ -48,9 +52,9 @@ impl OverlayPass {
         &mut self,
         command_buffer: &mut AutoCommandBufferBuilder<L>,
         camera: &Camera,
-        primitive_collection: &PrimitiveCollection,
         viewport: Viewport,
     ) -> anyhow::Result<()> {
+        /* todo
         // if a primitive is selected, render the xyz coordinate indicator at its center
         if let Some(selected_primitive) = primitive_collection.selected_primitive() {
             let push_constants = OverlayPushConstants::new(
@@ -65,6 +69,7 @@ impl OverlayPass {
                 .draw(VERTEX_COUNT as u32, 1, 0, 0)
                 .context("recording overlay draw commands")?;
         }
+        */
         Ok(())
     }
 }
@@ -102,10 +107,10 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
 }
 
 fn create_vertex_buffer(
-    device: Arc<Device>,
+    memory_allocator: &impl MemoryAllocator,
 ) -> anyhow::Result<Arc<CpuAccessibleBuffer<[OverlayVertex]>>> {
     CpuAccessibleBuffer::from_iter(
-        device.clone(),
+        memory_allocator,
         BufferUsage {
             vertex_buffer: true,
             ..BufferUsage::empty()

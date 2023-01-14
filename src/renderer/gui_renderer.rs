@@ -2,7 +2,7 @@
 use super::common::{CreateDescriptorSetError, CreateShaderError};
 use crate::{
     config::SHADER_ENTRY_POINT,
-    gui::Gui,
+    engine::gui::Gui,
     renderer::common::create_shader_module,
     shaders::{push_constants::GuiPushConstants, vertex_inputs::EguiVertex},
 };
@@ -34,7 +34,7 @@ use vulkano::{
     image::{
         view::ImageView, ImageAccess, ImageLayout, ImageUsage, ImageViewAbstract, ImmutableImage,
     },
-    memory::pool::StandardMemoryPool,
+    memory::allocator::{MemoryAllocator, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::{
             color_blend::{AttachmentBlend, BlendFactor, ColorBlendState},
@@ -71,6 +71,7 @@ type VertexIndex = u32;
 
 pub struct GuiRenderer {
     device: Arc<Device>,
+    memory_allocator: Arc<dyn MemoryAllocator>,
     transfer_queue: Arc<Queue>,
 
     pipeline: Arc<GraphicsPipeline>,
@@ -78,7 +79,7 @@ pub struct GuiRenderer {
     vertex_buffer_pool: CpuBufferPool<EguiVertex>,
     index_buffer_pool: CpuBufferPool<VertexIndex>,
 
-    texture_images: AHashMap<egui::TextureId, Arc<dyn ImageViewAbstract + Send + Sync + 'static>>,
+    texture_images: AHashMap<egui::TextureId, Arc<dyn ImageViewAbstract>>,
     texture_desc_sets: AHashMap<egui::TextureId, Arc<PersistentDescriptorSet>>,
 }
 // Public functions
@@ -86,14 +87,17 @@ impl GuiRenderer {
     /// Initializes the gui renderer
     pub fn new(
         device: Arc<Device>,
+        memory_allocator: Arc<StandardMemoryAllocator>,
         transfer_queue: Arc<Queue>,
         subpass: Subpass,
     ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
-        let (vertex_buffer_pool, index_buffer_pool) = create_buffer_pools(device.clone())?;
+        let (vertex_buffer_pool, index_buffer_pool) =
+            create_buffer_pools(device.clone(), memory_allocator)?;
         let sampler = Self::create_sampler(device.clone())?;
         Ok(Self {
             device,
+            memory_allocator,
             transfer_queue,
             pipeline,
             sampler,
@@ -201,7 +205,7 @@ impl GuiRenderer {
                     )];
 
                     // create vertex and index buffers
-                    let (vertices, indices) = self.create_subbuffers(mesh)?;
+                    let (vertices, indices) = self.create_subbuffers(&mesh)?;
 
                     let desc_set = self
                         .texture_desc_sets
@@ -302,7 +306,7 @@ impl GuiRenderer {
 
         // create buffer to be copied to the image
         let texture_data_buffer = CpuAccessibleBuffer::from_iter(
-            self.device.clone(),
+            self.memory_allocator.as_ref(),
             BufferUsage {
                 transfer_src: true,
                 ..BufferUsage::empty()
@@ -355,7 +359,7 @@ impl GuiRenderer {
                     smallvec![render_queue_family, transfer_queue_family]
                 };
             let (image, init_access) = ImmutableImage::uninitialized(
-                self.device.clone(),
+                self.memory_allocator.as_ref(),
                 vulkano::image::ImageDimensions::Dim2d {
                     width: delta.image.width() as u32,
                     height: delta.image.height() as u32,
@@ -420,8 +424,8 @@ impl GuiRenderer {
         &self,
         mesh: &Mesh,
     ) -> anyhow::Result<(
-        Arc<CpuBufferPoolChunk<EguiVertex, Arc<StandardMemoryPool>>>,
-        Arc<CpuBufferPoolChunk<VertexIndex, Arc<StandardMemoryPool>>>,
+        Arc<CpuBufferPoolChunk<EguiVertex>>,
+        Arc<CpuBufferPoolChunk<VertexIndex>>,
     )> {
         // copy vertices to buffer
         let v_slice = &mesh.vertices;
@@ -455,7 +459,7 @@ impl GuiRenderer {
         &self,
         descriptor_allocator: &StandardDescriptorSetAllocator,
         layout: &Arc<DescriptorSetLayout>,
-        image: Arc<dyn ImageViewAbstract + 'static>,
+        image: Arc<impl ImageViewAbstract>,
     ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
         PersistentDescriptorSet::new(
             descriptor_allocator,
@@ -509,8 +513,9 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
 /// Helper function for [`Self::new`]
 fn create_buffer_pools(
     device: Arc<Device>,
+    memory_allocator: Arc<StandardMemoryAllocator>,
 ) -> anyhow::Result<(CpuBufferPool<EguiVertex>, CpuBufferPool<VertexIndex>)> {
-    let vertex_buffer_pool = CpuBufferPool::vertex_buffer(device.clone());
+    let vertex_buffer_pool = CpuBufferPool::vertex_buffer(memory_allocator);
     vertex_buffer_pool
         .reserve(VERTEX_BUFFER_SIZE)
         .context("creating gui vertex buffer pool")?;
@@ -520,11 +525,12 @@ fn create_buffer_pools(
     );
 
     let index_buffer_pool = CpuBufferPool::new(
-        device,
+        memory_allocator,
         BufferUsage {
             index_buffer: true,
             ..BufferUsage::empty()
         },
+        MemoryUsage::Upload,
     );
     index_buffer_pool
         .reserve(INDEX_BUFFER_SIZE)

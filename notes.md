@@ -6,8 +6,9 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 1. objects refactor
 	1. object struct - DONE
-	2. shaders/buffers
-	3. gui/engine
+	2. shaders
+	3. buffer/renderer code
+	4. gui/engine
 2. organise shaders directory structure and content
 3. raster bounding boxes
 
@@ -68,6 +69,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - decrease MIN_DIST as distance progresses (need less resolution)
 - don't recreate buffer pools each frame in geometry_pass.rs
+- FastMemoryAllocator for frequent (per frame) memory allocations (see StandardMemoryAllocator description)
 
 # Code Guidelines
 

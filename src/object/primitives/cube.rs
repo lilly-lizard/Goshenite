@@ -2,7 +2,7 @@ use super::primitive::Primitive;
 use crate::shaders::object_buffer::{primitive_codes, PrimitiveDataSlice};
 use glam::Vec3;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Cube {
     pub center: Vec3,
     pub dimensions: Vec3,

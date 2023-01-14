@@ -3,8 +3,9 @@ use super::{
     overlay_pass::OverlayPass,
 };
 use crate::{
-    camera::Camera, config, gui::Gui, operations::operation_collection::OperationCollection,
-    primitives::primitive_collection::PrimitiveCollection,
+    config,
+    engine::{camera::Camera, gui::Gui},
+    object::object::Object,
     shaders::push_constants::CameraPushConstants,
 };
 use anyhow::{anyhow, bail, ensure, Context};
@@ -12,7 +13,9 @@ use log::{debug, error, info, warn};
 use std::sync::Arc;
 use vulkano::{
     command_buffer::{
-        self, allocator::StandardCommandBufferAllocator, RenderPassBeginInfo, SubpassContents,
+        self,
+        allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
+        RenderPassBeginInfo, SubpassContents,
     },
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::{
@@ -30,6 +33,7 @@ use vulkano::{
         DebugUtilsMessengerCreateInfo,
     },
     instance::{Instance, InstanceCreateInfo, InstanceExtensions},
+    memory::allocator::{MemoryAllocator, StandardMemoryAllocator},
     pipeline::graphics::viewport::Viewport,
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass, Subpass},
     swapchain::{self, Surface, Swapchain, SwapchainCreationError, SwapchainPresentInfo},
@@ -37,6 +41,10 @@ use vulkano::{
     VulkanLibrary,
 };
 use winit::window::Window;
+
+// number of primary and secondary command buffers to initially allocate
+const PRE_ALLOCATE_PRIMARY_COMMAND_BUFFERS: usize = 64;
+const PRE_ALLOCATE_SECONDARY_COMMAND_BUFFERS: usize = 0;
 
 mod render_pass_indices {
     pub const ATTACHMENT_SWAPCHAIN: usize = 0;
@@ -55,10 +63,15 @@ pub struct RenderManager {
     _transfer_queue: Arc<Queue>,
     _debug_callback: Option<DebugUtilsMessenger>,
 
-    surface: Arc<Surface<Arc<Window>>>,
-    swapchain: Arc<Swapchain<Arc<Window>>>,
-    swapchain_image_views: Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>, // bruh smallvec?
+    window: Arc<Window>,
+    surface: Arc<Surface>,
+    swapchain: Arc<Swapchain>,
+    swapchain_image_views: Vec<Arc<ImageView<SwapchainImage>>>,
     is_srgb_framebuffer: bool,
+
+    memory_allocator: Arc<StandardMemoryAllocator>,
+    command_buffer_allocator: StandardCommandBufferAllocator,
+    descriptor_allocator: StandardDescriptorSetAllocator,
 
     viewport: Viewport,
     g_buffer_normal: Arc<ImageView<AttachmentImage>>,
@@ -66,9 +79,6 @@ pub struct RenderManager {
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
     clear_values: [Option<ClearValue>; 3],
-
-    command_buffer_allocator: StandardCommandBufferAllocator,
-    descriptor_allocator: StandardDescriptorSetAllocator,
 
     geometry_pass: GeometryPass,
     lighting_pass: LightingPass,
@@ -85,11 +95,7 @@ pub struct RenderManager {
 
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
-    pub fn new(
-        window: Arc<Window>,
-        primitive_collection: &PrimitiveCollection,
-        operation_collection: &OperationCollection,
-    ) -> anyhow::Result<Self> {
+    pub fn new(window: Arc<Window>, object: &Object) -> anyhow::Result<Self> {
         let vulkan_library = VulkanLibrary::new().context("loading vulkan library")?;
         info!(
             "loaded vulkan library, api version = {}",
@@ -227,8 +233,12 @@ impl RenderManager {
         };
 
         // swapchain
-        let (swapchain, swapchain_images) =
-            create_swapchain(device.clone(), physical_device.clone(), surface.clone())?;
+        let (swapchain, swapchain_images) = create_swapchain(
+            device.clone(),
+            physical_device.clone(),
+            surface.clone(),
+            &window,
+        )?;
         debug!(
             "initial swapchain image size = {:?}",
             swapchain_images[0].dimensions()
@@ -249,18 +259,6 @@ impl RenderManager {
             ],
             depth_range: 0.0..1.0,
         };
-
-        // g-buffers
-        let g_buffer_normal = create_g_buffer(
-            device.clone(),
-            swapchain_images[0].dimensions().width_height(),
-            config::G_BUFFER_FORMAT_NORMAL,
-        )?;
-        let g_buffer_primitive_id = create_g_buffer(
-            device.clone(),
-            swapchain_images[0].dimensions().width_height(),
-            config::G_BUFFER_FORMAT_PRIMITIVE_ID,
-        )?;
 
         // create render_pass
         let multisample = SampleCount::Sample1;
@@ -284,6 +282,30 @@ impl RenderManager {
             render_pass_indices::SUBPASS_SWAPCHAIN
         ))?;
 
+        // allocators
+        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let command_buffer_allocator = StandardCommandBufferAllocator::new(
+            device.clone(),
+            StandardCommandBufferAllocatorCreateInfo {
+                primary_buffer_count: PRE_ALLOCATE_PRIMARY_COMMAND_BUFFERS,
+                secondary_buffer_count: PRE_ALLOCATE_SECONDARY_COMMAND_BUFFERS,
+                ..StandardCommandBufferAllocatorCreateInfo::default()
+            },
+        );
+        let descriptor_allocator = StandardDescriptorSetAllocator::new(device.clone());
+
+        // g-buffers
+        let g_buffer_normal = create_g_buffer(
+            &memory_allocator,
+            swapchain_images[0].dimensions().width_height(),
+            config::G_BUFFER_FORMAT_NORMAL,
+        )?;
+        let g_buffer_primitive_id = create_g_buffer(
+            &memory_allocator,
+            swapchain_images[0].dimensions().width_height(),
+            config::G_BUFFER_FORMAT_PRIMITIVE_ID,
+        )?;
+
         // create framebuffers
         let framebuffers = create_framebuffers(
             render_pass.clone(),
@@ -296,17 +318,13 @@ impl RenderManager {
         clear_values[render_pass_indices::ATTACHMENT_NORMAL] = Some([0.0; 4].into());
         clear_values[render_pass_indices::ATTACHMENT_PRIMITIVE_ID] = Some([0u32; 4].into());
 
-        // command buffer and descriptor allocators
-        let command_buffer_allocator = StandardCommandBufferAllocator::new(device.clone());
-        let descriptor_allocator = StandardDescriptorSetAllocator::new(device.clone());
-
         // init compute shader geometry pass
         let geometry_pass = GeometryPass::new(
             device.clone(),
+            memory_allocator.as_ref(),
             &descriptor_allocator,
-            primitive_collection,
-            operation_collection,
             subpass_gbuffer,
+            object,
         )?;
 
         // init lighting pass
@@ -319,11 +337,13 @@ impl RenderManager {
         )?;
 
         // init overlay pass
-        let overlay_pass = OverlayPass::new(device.clone(), subpass_swapchain.clone())?;
+        let overlay_pass =
+            OverlayPass::new(device.clone(), &memory_allocator, subpass_swapchain.clone())?;
 
         // init gui renderer todo queue
         let gui_pass = GuiRenderer::new(
             device.clone(),
+            memory_allocator.clone(),
             render_queue.clone(),
             subpass_swapchain.clone(),
         )?;
@@ -337,10 +357,15 @@ impl RenderManager {
             _transfer_queue: transfer_queue,
             _debug_callback: debug_callback,
 
+            window,
             surface,
             swapchain,
             swapchain_image_views,
             is_srgb_framebuffer,
+
+            memory_allocator,
+            command_buffer_allocator,
+            descriptor_allocator,
 
             viewport,
             g_buffer_normal,
@@ -354,8 +379,6 @@ impl RenderManager {
             overlay_pass,
             gui_pass,
 
-            command_buffer_allocator,
-            descriptor_allocator,
             future_previous_frame,
             recreate_swapchain: false,
         })
@@ -367,8 +390,6 @@ impl RenderManager {
         window_resize: bool,
         gui: &mut Gui,
         camera: &Camera,
-        primitive_collection: &PrimitiveCollection,
-        operation_collection: &OperationCollection,
     ) -> anyhow::Result<()> {
         // checks for submission finish and free locks on gpu resources
         if let Some(future_previous_frame) = self.future_previous_frame.as_mut() {
@@ -417,11 +438,8 @@ impl RenderManager {
         }
 
         // todo shouldn't need to recreate each frame?
-        self.geometry_pass.update_buffers(
-            &self.descriptor_allocator,
-            primitive_collection,
-            operation_collection,
-        )?;
+        //self.geometry_pass
+        //    .update_buffers(&self.descriptor_allocator)?;
 
         // camera data used in geometry and lighting passes
         let camera_push_constants = CameraPushConstants::new(
@@ -469,12 +487,8 @@ impl RenderManager {
         )?;
 
         // draw editor overlay
-        self.overlay_pass.record_commands(
-            &mut builder,
-            camera,
-            primitive_collection,
-            self.viewport.clone(),
-        )?;
+        self.overlay_pass
+            .record_commands(&mut builder, camera, self.viewport.clone())?;
 
         // render gui
         self.gui_pass.record_commands(
@@ -529,7 +543,7 @@ impl RenderManager {
 impl RenderManager {
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
-        let new_size: [u32; 2] = self.surface.window().inner_size().into();
+        let new_size: [u32; 2] = self.window.inner_size().into();
 
         debug!(
             "recreating swapchain and render targets to size: {:?}",
@@ -562,12 +576,12 @@ impl RenderManager {
         self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
 
         self.g_buffer_normal = create_g_buffer(
-            self.device.clone(),
+            &self.memory_allocator,
             swapchain_images[0].dimensions().width_height(),
             config::G_BUFFER_FORMAT_NORMAL,
         )?;
         self.g_buffer_primitive_id = create_g_buffer(
-            self.device.clone(),
+            &self.memory_allocator,
             swapchain_images[0].dimensions().width_height(),
             config::G_BUFFER_FORMAT_PRIMITIVE_ID,
         )?;
@@ -671,7 +685,7 @@ fn setup_debug_callback(instance: Arc<Instance>) -> Option<DebugUtilsMessenger> 
 fn choose_physical_device(
     instance: Arc<Instance>,
     device_extensions: &DeviceExtensions,
-    surface: &Arc<Surface<Arc<Window>>>,
+    surface: &Arc<Surface>,
 ) -> anyhow::Result<ChoosePhysicalDeviceReturn> {
     instance
         .enumerate_physical_devices()
@@ -758,11 +772,9 @@ struct ChoosePhysicalDeviceReturn {
 fn create_swapchain(
     device: Arc<Device>,
     physical_device: Arc<PhysicalDevice>,
-    surface: Arc<Surface<Arc<Window>>>,
-) -> anyhow::Result<(
-    Arc<Swapchain<Arc<Window>>>,
-    Vec<Arc<SwapchainImage<Arc<Window>>>>,
-)> {
+    surface: Arc<Surface>,
+    window: &Window,
+) -> anyhow::Result<(Arc<Swapchain>, Vec<Arc<SwapchainImage>>)> {
     // todo prefer sRGB (linux sRGB)
     let image_format = physical_device
         .surface_formats(&surface, Default::default())
@@ -801,7 +813,7 @@ fn create_swapchain(
         surface.clone(),
         swapchain::SwapchainCreateInfo {
             min_image_count: surface_capabilities.min_image_count,
-            image_extent: surface.window().inner_size().into(),
+            image_extent: window.inner_size().into(),
             image_usage: ImageUsage {
                 color_attachment: true,
                 ..ImageUsage::empty()
@@ -816,7 +828,7 @@ fn create_swapchain(
 }
 
 // is swapchain image in a SRGB format, which requires color conversion in shaders
-fn is_srgb_framebuffer(swapchain_image: Arc<SwapchainImage<Arc<Window>>>) -> bool {
+fn is_srgb_framebuffer(swapchain_image: Arc<SwapchainImage>) -> bool {
     swapchain_image
         .format()
         .type_color()
@@ -827,13 +839,13 @@ fn is_srgb_framebuffer(swapchain_image: Arc<SwapchainImage<Arc<Window>>>) -> boo
 /// Creates the render target for the scene render. _Note that the value of `access_queue` isn't actually used
 /// in the vulkan image creation create info._
 fn create_g_buffer(
-    device: Arc<Device>,
+    memory_allocator: &impl MemoryAllocator,
     size: [u32; 2],
     format: Format,
 ) -> anyhow::Result<Arc<ImageView<AttachmentImage>>> {
     ImageView::new_default(
         AttachmentImage::with_usage(
-            device,
+            memory_allocator,
             size,
             format,
             ImageUsage {
@@ -850,7 +862,7 @@ fn create_g_buffer(
 /// Create render pass
 fn create_render_pass(
     device: Arc<Device>,
-    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
+    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
     sample_count: SampleCount,
 ) -> anyhow::Result<Arc<RenderPass>> {
     ensure!(
@@ -913,7 +925,7 @@ fn create_render_pass(
 /// Create framebuffers
 fn create_framebuffers(
     render_pass: Arc<RenderPass>,
-    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage<Arc<Window>>>>>,
+    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
     g_buffer_normal: Arc<ImageView<AttachmentImage>>,
     g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
 ) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
