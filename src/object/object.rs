@@ -23,6 +23,15 @@ pub struct Object {
     primitive_ops: Vec<PrimitiveOp>,
 }
 impl Object {
+    pub fn new(base_primitive: Rc<dyn Primitive>) -> Self {
+        Self {
+            primitive_ops: vec![PrimitiveOp {
+                op: Operation::Union,
+                pr: base_primitive,
+            }],
+        }
+    }
+
     pub fn primitive_ops(&self) -> &Vec<PrimitiveOp> {
         &self.primitive_ops
     }
@@ -31,7 +40,7 @@ impl Object {
         &mut self.primitive_ops
     }
 
-    pub fn append(&mut self, operation: Operation, primitive: Rc<impl Primitive>) {
+    pub fn append(&mut self, operation: Operation, primitive: Rc<dyn Primitive>) {
         self.primitive_ops.push(PrimitiveOp {
             op: operation,
             pr: primitive,
@@ -41,8 +50,8 @@ impl Object {
     pub fn encoded_data(&self) -> Vec<ObjectDataUnit> {
         // avoiding this case should be the responsibility of the functions adding to `primtive_ops`
         debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);
-        let mut encoded = Vec::from([self.primitive_ops.len() as ObjectDataUnit]);
-        for primitive_op in self.primitive_ops {
+        let mut encoded = vec![self.primitive_ops.len() as ObjectDataUnit];
+        for primitive_op in &self.primitive_ops {
             encoded.push(primitive_op.op.op_code());
             encoded.extend_from_slice(&primitive_op.pr.encode());
         }

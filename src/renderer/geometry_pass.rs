@@ -61,7 +61,7 @@ impl GeometryPass {
     ) -> anyhow::Result<Self> {
         let buffer_pool = create_buffer_pool(memory_allocator)?;
         debug!("uploading initial object to object buffer pool",);
-        upload_object(&buffer_pool, object);
+        upload_object(&buffer_pool, object).context("uploading initial object to buffer")?;
 
         let pipeline = create_pipeline(device.clone(), subpass)?;
         let desc_set =

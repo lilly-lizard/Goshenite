@@ -1,9 +1,13 @@
 use crate::shaders::object_buffer::{op_codes, ObjectDataUnit};
 
 pub enum Operation {
+    /// No-op
     None,
+    /// Combination of this primitive and current shape. Equivalent to AND.
     Union,
+    /// Intersection of this primitive with current shape. Equivalent to OR.
     Intersection,
+    /// Subtract this primitive from current shape.
     Subtraction,
 }
 

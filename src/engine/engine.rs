@@ -2,16 +2,19 @@ use super::{
     camera::Camera,
     cursor_state::{CursorState, MouseButton},
 };
-//use crate::gui::Gui;
 use crate::{
     config,
     helper::anyhow_panic::{anyhow_panic, anyhow_unwrap},
-    object::object::Object,
+    object::{
+        object::Object,
+        operation::Operation,
+        primitives::{cube::Cube, sphere::Sphere},
+    },
     renderer::render_manager::RenderManager,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -30,7 +33,7 @@ pub struct Engine {
 
     // specialized controllers
     camera: Camera,
-    //gui: Gui,
+    //gui: Gui, bruh
     renderer: RenderManager,
 
     // model data
@@ -59,24 +62,19 @@ impl Engine {
         // init camera
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
-        // init primitives
-        let mut primitive_collection = PrimitiveCollection::default();
-        primitive_collection.append(Sphere::new(glam::Vec3::new(0.0, 0.0, 0.0), 0.5).into());
-        primitive_collection
-            .append(Cube::new(glam::Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8)).into());
-
-        // init operations
-        let mut operation_collection = OperationCollection::default();
-        operation_collection.append(Union::new(0, 1).into());
+        let sphere = Sphere::new(glam::Vec3::new(0.0, 0.0, 0.0), 0.5);
+        let cube = Cube::new(glam::Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8));
+        let mut object = Object::new(Rc::new(sphere));
+        object.append(Operation::Union, Rc::new(cube));
 
         // init renderer
         let renderer = anyhow_unwrap(
-            RenderManager::new(window.clone(), &primitive_collection, &operation_collection),
+            RenderManager::new(window.clone(), &object),
             "initialize renderer",
         );
 
         // init gui
-        let gui = Gui::new(&event_loop, window.clone());
+        //let gui = Gui::new(&event_loop, window.clone()); bruh
 
         Engine {
             _window: window,
@@ -87,11 +85,10 @@ impl Engine {
             primitive_lock_on: false,
 
             camera,
-            gui,
+            //gui, bruh
             renderer,
 
-            primitive_collection,
-            operation_collection,
+            object,
         }
     }
 
@@ -118,7 +115,7 @@ impl Engine {
         trace!("winit event: {:?}", event);
 
         // egui event handling
-        let captured_by_gui = self.gui.process_event(&event);
+        let captured_by_gui = false; //self.gui.process_event(&event); bruh
 
         // engine event handling
         match event {
@@ -162,24 +159,18 @@ impl Engine {
         self.cursor_state.process_frame();
 
         // process gui inputs and update layout
-        if let Err(e) = self
-            .gui
-            .update_gui(&mut self.primitive_collection, &mut self.primitive_lock_on)
-        {
-            anyhow_panic(&e, "update gui");
-        }
+        //if let Err(e) = self bruh
+        //    .gui
+        //    .update_gui(&mut self.primitive_collection, &mut self.primitive_lock_on)
+        //{
+        //    anyhow_panic(&e, "update gui");
+        //}
 
         // update camera based on now processed user inputs
         self.update_camera();
 
         // now that frame processing is done, submit rendering commands
-        if let Err(e) = self.renderer.render_frame(
-            self.window_resize,
-            &mut self.gui,
-            &self.camera,
-            &self.primitive_collection,
-            &self.operation_collection,
-        ) {
+        if let Err(e) = self.renderer.render_frame(self.window_resize, &self.camera) {
             anyhow_panic(&e, "render frame");
         }
         self.window_resize = false;
@@ -188,16 +179,17 @@ impl Engine {
     fn update_camera(&mut self) {
         // look mode logic
         // NOTE let_chains still unstable: https://github.com/rust-lang/rust/issues/53667
-        let selected_primitive = self.primitive_collection.selected_primitive();
-        if selected_primitive.is_some() && self.primitive_lock_on {
-            // set lock on target to selected primitive
-            let primitive = selected_primitive.expect("if let replacement");
-            self.camera
-                .set_lock_on_target(primitive.center().as_dvec3());
-        } else {
-            // if no primitive selected use arcball mode
-            self.camera.unset_lock_on_target();
-        }
+        //let selected_primitive = self.primitive_collection.selected_primitive(); bruh
+        //if selected_primitive.is_some() && self.primitive_lock_on {
+        //    // set lock on target to selected primitive
+        //    let primitive = selected_primitive.expect("if let replacement");
+        //    self.camera
+        //        .set_lock_on_target(primitive.center().as_dvec3());
+        //} else {
+        //    // if no primitive selected use arcball mode
+        //    self.camera.unset_lock_on_target();
+        //}
+        self.camera.unset_lock_on_target();
 
         // left mouse button dragging changes camera orientation
         if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
