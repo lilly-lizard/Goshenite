@@ -676,7 +676,7 @@ checksum = "12f597d56c1bd55a811a1be189459e8fad2bbc272616375602443bdfb37fa774"
 
 [[package]]
 name = "goshenite"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "ahash",
  "anyhow",
@@ -1481,6 +1481,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "thread_local"
+version = "1.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5516c27b78311c50bf42c071425c560ac799b11c30b31f87e3081965fe5e0180"
+dependencies = [
+ "once_cell",
+]
+
+[[package]]
 name = "tiny-skia"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1610,8 +1619,9 @@ dependencies = [
 
 [[package]]
 name = "vulkano"
-version = "0.31.0"
-source = "git+https://github.com/vulkano-rs/vulkano?rev=3c6c1c909ffc8c185dffcd1a06b8950651da19bc#3c6c1c909ffc8c185dffcd1a06b8950651da19bc"
+version = "0.32.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f80b11c6c46ecb2c42155c8bcbc3ff04b783185181d4bbe19d9635a711ec747f"
 dependencies = [
  "ahash",
  "ash",
@@ -1631,13 +1641,15 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
+ "thread_local",
  "vk-parse",
 ]
 
 [[package]]
 name = "vulkano-win"
-version = "0.31.0"
-source = "git+https://github.com/vulkano-rs/vulkano?rev=3c6c1c909ffc8c185dffcd1a06b8950651da19bc#3c6c1c909ffc8c185dffcd1a06b8950651da19bc"
+version = "0.32.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac1056e3238fe9025628b3de0f401d8c60b7a6dc89e059534568f55fef4e29f7"
 dependencies = [
  "core-graphics-types",
  "objc",

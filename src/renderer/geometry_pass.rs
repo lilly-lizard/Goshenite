@@ -1,13 +1,8 @@
 use super::common::{create_shader_module, CreateDescriptorSetError, CreateShaderError};
 use crate::{
     config::SHADER_ENTRY_POINT,
-    operations::operation_collection::OperationCollection,
-    primitives::primitive_collection::PrimitiveCollection,
-    shaders::{
-        operation_buffer::{self, OperationDataUnit},
-        primitive_buffer::PrimitiveDataUnit,
-        push_constants::CameraPushConstants,
-    },
+    object::object::Object,
+    shaders::{object_buffer::ObjectDataUnit, push_constants::CameraPushConstants},
 };
 use anyhow::Context;
 #[allow(unused_imports)]
@@ -20,7 +15,7 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Device,
-    memory::pool::StandardMemoryPool,
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::viewport::{Viewport, ViewportState},
         GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -52,8 +47,7 @@ impl GeometryPass {
     pub fn new(
         device: Arc<Device>,
         descriptor_allocator: &StandardDescriptorSetAllocator,
-        primitive_collection: &PrimitiveCollection,
-        operation_collection: &OperationCollection,
+        object: &Object, // todo just 1 object for now
         subpass: Subpass,
     ) -> anyhow::Result<Self> {
         let buffer_pool = CpuBufferPool::new(

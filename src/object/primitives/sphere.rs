@@ -23,7 +23,6 @@ impl Primitive for Sphere {
             // padding
             primitive_codes::NULL,
             primitive_codes::NULL,
-            primitive_codes::NULL,
         ]
     }
 

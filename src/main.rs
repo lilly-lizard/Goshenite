@@ -1,14 +1,11 @@
-mod camera;
 mod config;
-mod cursor_state;
 mod engine;
-mod gui;
 mod helper;
 mod object;
 mod renderer;
 mod shaders;
 
-use engine::Engine;
+use engine::engine::Engine;
 use helper::logger::ConsoleLogger;
 use log::info;
 use winit::{event_loop::EventLoop, platform::run_return::EventLoopExtRunReturn};

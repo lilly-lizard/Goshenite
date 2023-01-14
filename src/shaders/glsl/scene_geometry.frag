@@ -1,6 +1,6 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
-#include "primitives.glsl"
+#include "common.glsl"
 
 // Maximum number of ray marching steps before confirming a miss
 const uint MAX_STEPS = 50;
@@ -12,19 +12,16 @@ const float MIN_DIST = 0.0001;
 // input UV from full_screen.vert
 layout (location = 0) in vec2 in_uv;
 
-// output g-buffer
 layout (location = 0) out vec4 out_normal;
-layout (location = 1) out uint out_primitive_id;
+// upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side
+layout (location = 1) out uint out_object_id;
 
-// primitives to be rendered
-layout (set = 0, binding = 0, std430) readonly buffer Primitive {
+// todo for now just single object
+const uint OBJECT_INDEX = 0;
+layout (set = 0, binding = 1, std430) readonly buffer Object {
+	uint op_count;
 	uint data[];
-} primitives;
-// operations to perform on primitives
-layout (set = 0, binding = 1, std430) readonly buffer Operations {
-	uint count;
-	uint ops[];
-} operations;
+} object;
 // push constant with camera data
 layout (push_constant) uniform Camera {
 	mat4 proj_view_inverse;
@@ -37,8 +34,8 @@ layout (push_constant) uniform Camera {
 struct SdfResult {
 	// Distance from pos to primitive
 	float d;
-	// Primitive id
-	uint primitive_id;
+	// operation index
+	uint op_index;
 };
 
 // Signed distance function for a sphere
@@ -60,33 +57,32 @@ float sdf_box(vec3 pos, vec3 center, vec3 dimensions)
 	return min(max(d.x, max(d.y, d.z)), 0.) + length(max(d, 0.));
 }
 
-SdfResult process_primitive(uint primitive_index, vec3 pos)
+SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 {
-	uint buffer_pos = primitive_index * PRIMITIVE_UNIT_LENGTH;
-	uint primitive_type = primitives.data[buffer_pos++];
-	SdfResult res = { MAX_DIST, primitive_index };
+	uint primitive_type = object.data[buffer_index++];
+	SdfResult res = { MAX_DIST, op_index };
 
 	if (primitive_type == PRIMITIVE_SPHERE)
 	{
 		vec3 center = vec3(
-			uintBitsToFloat(primitives.data[buffer_pos++]),
-			uintBitsToFloat(primitives.data[buffer_pos++]),
-			uintBitsToFloat(primitives.data[buffer_pos++])
+			uintBitsToFloat(object.data[buffer_index++]),
+			uintBitsToFloat(object.data[buffer_index++]),
+			uintBitsToFloat(object.data[buffer_index++])
 		);
-		float radius = uintBitsToFloat(primitives.data[buffer_pos++]);
+		float radius = uintBitsToFloat(object.data[buffer_index++]);
 		res.d = sdf_sphere(pos, center, radius);
 	}
 	else if (primitive_type == PRIMITIVE_CUBE)
 	{
 		vec3 center = vec3(
-			uintBitsToFloat(primitives.data[buffer_pos++]),
-			uintBitsToFloat(primitives.data[buffer_pos++]),
-			uintBitsToFloat(primitives.data[buffer_pos++])
+			uintBitsToFloat(object.data[buffer_index++]),
+			uintBitsToFloat(object.data[buffer_index++]),
+			uintBitsToFloat(object.data[buffer_index++])
 		);
 		vec3 dimensions = vec3(
-			uintBitsToFloat(primitives.data[buffer_pos++]),
-			uintBitsToFloat(primitives.data[buffer_pos++]),
-			uintBitsToFloat(primitives.data[buffer_pos++])
+			uintBitsToFloat(object.data[buffer_index++]),
+			uintBitsToFloat(object.data[buffer_index++]),
+			uintBitsToFloat(object.data[buffer_index++])
 		);
 		res.d = sdf_box(pos, center, dimensions);
 	}
@@ -122,11 +118,10 @@ SdfResult process_op(uint op, SdfResult p1_res, SdfResult p2_res)
 
 	switch(op)
 	{
-	case OP_SINGLE: 		res = p1_res; break;
 	case OP_UNION: 			res = op_union(p1_res, p2_res); break;
-	case OP_SUBTRACTION: 	res = op_subtraction(p1_res, p2_res); break;
 	case OP_INTERSECTION: 	res = op_intersection(p1_res, p2_res); break;
-	// case OP_NULL: do nothing
+	case OP_SUBTRACTION: 	res = op_subtraction(p1_res, p2_res); break;
+	// else do nothing e.g. OP_NULL
 	}
 
 	return res;
@@ -142,18 +137,12 @@ SdfResult map(vec3 pos)
 
 	// loop through the object operations
 	uint op_index = 0;
-	while (op_index < operations.count) {
-		uint buffer_pos = op_index * OP_UNIT_LENGTH;
-		uint op = operations.ops[buffer_pos++];
-		uint p1_index = operations.ops[buffer_pos++];
-		uint p2_index = operations.ops[buffer_pos++];
+	while (op_index < object.op_count) {
+		uint buffer_index = op_index * OP_UNIT_LENGTH;
+		uint op = object.data[buffer_index++];
 
-		SdfResult p1_res = process_primitive(p1_index, pos);
-		SdfResult p2_res = process_primitive(p2_index, pos);
-		SdfResult op_res = process_op(op, p1_res, p2_res);
-
-		// store the res with the distance to the camera
-		closest_res = op_union(closest_res, op_res);
+		SdfResult primitive_res = process_primitive(buffer_index, op_index, pos);
+		closest_res = process_op(op, closest_res, primitive_res);
 
 		op_index++;
 	}
@@ -162,7 +151,7 @@ SdfResult map(vec3 pos)
 }
 
 // https://iquilezles.org/articles/normalsSDF
-// todo pass in hit primitive instead of checking against whole scene...
+// todo pass in hit primitive instead of checking against whole object?
 vec3 calcNormal(vec3 pos)
 {
 	const float EPSILON = 0.001; // defines a threshold for "essentially nothing"
@@ -176,7 +165,7 @@ vec3 calcNormal(vec3 pos)
 // Render the scene and return the color
 // * `ray_d` - ray direction
 //https://michaelwalczyk.com/blog-ray-marching.html
-void ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint primitive_id)
+void ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint object_id)
 {
 	// total distance traveled
 	float dist = 0.;
@@ -189,7 +178,7 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint pri
 		// ray hit
 		if (closest_primitive.d < MIN_DIST) {
 			normal = calcNormal(current_pos) / 2. + .5;
-			primitive_id = closest_primitive.primitive_id;
+			object_id = closest_primitive.op_index | (OBJECT_INDEX << 16);
 			return;
 		}
 
@@ -198,7 +187,7 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint pri
 	}
 
 	// ray miss
-	primitive_id = ID_INVALID;
+	object_id = ID_INVALID;
 	normal = vec3(0.);
 }
 
@@ -213,9 +202,9 @@ void main()
 
 	// render scene
 	vec3 normal;
-	uint primitive_id;
-	ray_march(cam.position.xyz, ray_d, normal, primitive_id);
+	uint object_id;
+	ray_march(cam.position.xyz, ray_d, normal, object_id);
 
 	out_normal = vec4(normal, 0.);
-	out_primitive_id = primitive_id;
+	out_object_id = object_id;
 }

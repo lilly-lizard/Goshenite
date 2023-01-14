@@ -6,7 +6,7 @@ use glam::Vec3;
 pub trait Primitive {
     /// Returns buffer compatible primitive data as a [`PrimitiveDataSlice`].
     ///
-    /// _Note: must match the decode process in `scene.comp`_
+    /// _Note: must match the decode process in `scene_geometry.frag`_
     fn encode(&self) -> PrimitiveDataSlice;
     /// Returns the spacial center of the primitive.
     fn center(&self) -> Vec3;

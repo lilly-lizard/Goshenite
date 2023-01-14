@@ -7,11 +7,14 @@ pub mod op_codes {
     pub const UNION: 		ObjectDataUnit = 0x00000001; // OR
     pub const INTERSECTION: ObjectDataUnit = 0x00000002; // AND
     pub const SUBTRACTION: 	ObjectDataUnit = 0x00000003;
-    pub const INVALID:      ObjectDataUnit = 0xFFFFFFFF; // better to fail noticably gpu side than fail subtly
+    pub const INVALID:      ObjectDataUnit = 0xFFFFFFFF;
 }
 
-/// Each primitive is encoded into an array of length `PRIMITIVE_UNIT_LEN`. This value should match the one defined in `primitives.glsl`.
-pub const PRIMITIVE_UNIT_LEN: usize = 8;
+/// Number of 32-bit values to store an op_code and a primitive.
+/// _Must match value defined in `common.glsl`_
+pub const OPERATION_UNIT_LEN: usize = 8;
+/// Each primitive is encoded into an array of length `PRIMITIVE_UNIT_LEN`.
+pub const PRIMITIVE_UNIT_LEN: usize = 7;
 
 /// An array which a primitive can be encoded into. Corresponds to the decoding logic in `scene.comp`.
 pub type PrimitiveDataSlice = [ObjectDataUnit; PRIMITIVE_UNIT_LEN];
@@ -24,4 +27,5 @@ pub mod primitive_codes {
     pub const NULL:     ObjectDataUnit = 0x00000000;
     pub const SPHERE:   ObjectDataUnit = 0x00000001;
     pub const CUBE:     ObjectDataUnit = 0x00000002;
+    pub const INVALID:  ObjectDataUnit = 0xFFFFFFFF;
 }

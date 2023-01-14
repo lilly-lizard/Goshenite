@@ -1,6 +1,6 @@
 [package]
 name = "goshenite"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2021"
 
 [features]
@@ -25,15 +25,15 @@ glam = { version = "0.22", features = ["debug-glam-assert"] }
 # winit is a cross-platform window creation and management library (version must match vulkano-win support)
 winit = "0.27"
 # vulkano is a safe and convenient vulkan (ash) wrapper
-vulkano = { version = "0.31.0", git = "https://github.com/vulkano-rs/vulkano", rev = "3c6c1c909ffc8c185dffcd1a06b8950651da19bc" }
-vulkano-win = { version = "0.31.0", git = "https://github.com/vulkano-rs/vulkano", rev = "3c6c1c909ffc8c185dffcd1a06b8950651da19bc" } # winit interop boilerplate
+vulkano = "0.32"
+vulkano-win = "0.32" # winit interop boilerplate
 # bit-casting crate (for cpu<->gpu buffers)
 bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
 egui = "0.19.0"
 egui-winit = "0.19.0"
 # hash library used by egui (fast af boii)
-ahash = "0.8.0"
+ahash = "0.8"
 
 # slotmap
 # specs: ECS

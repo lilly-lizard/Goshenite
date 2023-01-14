@@ -22,8 +22,6 @@ impl Primitive for Cube {
             self.dimensions.x.to_bits(),
             self.dimensions.y.to_bits(),
             self.dimensions.z.to_bits(),
-            // padding
-            primitive_codes::NULL,
         ]
     }
 
