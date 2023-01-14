@@ -4,8 +4,7 @@ mod cursor_state;
 mod engine;
 mod gui;
 mod helper;
-mod operations;
-mod primitives;
+mod object;
 mod renderer;
 mod shaders;
 
@@ -14,7 +13,6 @@ use helper::logger::ConsoleLogger;
 use log::info;
 use winit::{event_loop::EventLoop, platform::run_return::EventLoopExtRunReturn};
 
-/// spooky symbols, what could it mean...
 const SPLASH: &str = "
      ___        ___        ___        ___        ___        ___        ___       ___        ___     
     /\\  \\      /\\  \\      /\\  \\      /\\__\\      /\\  \\      /\\__\\      /\\  \\     /\\  \\      /\\  \\    

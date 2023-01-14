@@ -2,7 +2,7 @@ use super::common::{create_shader_module, CreateShaderError};
 use crate::{
     camera::Camera,
     config::SHADER_ENTRY_POINT,
-    primitives::{primitive::PrimitiveTrait, primitive_collection::PrimitiveCollection},
+    primitives::{primitive::Primitive, primitive_collection::PrimitiveCollection},
     shaders::{push_constants::OverlayPushConstants, vertex_inputs::OverlayVertex},
 };
 use anyhow::Context;

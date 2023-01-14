@@ -1,4 +1,4 @@
-use super::primitive::PrimitiveTrait;
+use super::primitive::Primitive;
 use crate::{
     helper::more_errors::{CollectionError, IndexError},
     shaders::primitive_buffer::PrimitiveDataSlice,

@@ -1,9 +1,9 @@
-use crate::shaders::primitive_buffer::PrimitiveDataSlice;
+use crate::shaders::object_buffer::PrimitiveDataSlice;
 use glam::Vec3;
 
 /// A primitive is a basic geometric building block that can be manipulated and combined
 /// using [`Operation`]s
-pub trait PrimitiveTrait: Default + PartialEq + Clone {
+pub trait Primitive {
     /// Returns buffer compatible primitive data as a [`PrimitiveDataSlice`].
     ///
     /// _Note: must match the decode process in `scene.comp`_

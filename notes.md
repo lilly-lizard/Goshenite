@@ -2,6 +2,15 @@
 
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
+# big todo
+
+1. objects refactor
+	1. object struct - DONE
+	2. shaders/buffers
+	3. gui/engine
+2. organise shaders directory structure and content
+3. raster bounding boxes
+
 # todo
 
 - weak references or something for Operations e.g. Union

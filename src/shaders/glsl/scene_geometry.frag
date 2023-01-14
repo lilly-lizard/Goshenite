@@ -90,7 +90,7 @@ SdfResult process_primitive(uint primitive_index, vec3 pos)
 		);
 		res.d = sdf_box(pos, center, dimensions);
 	}
-	// else if (primitive_type == PRIMITIVE_CUBE) do nothing
+	// else do nothing e.g. PRIMITIVE_NULL
 
 	return res;
 }
@@ -101,19 +101,19 @@ SdfResult process_primitive(uint primitive_index, vec3 pos)
 // Returns the result with the shortest distance.
 SdfResult op_union(SdfResult p1, SdfResult p2)
 {
-	return p1.d < p2.d ? p1 : p2;
+	return p1.d < p2.d ? p1 : p2; // OR
+}
+
+// Results in the intersection of 2 primitives
+SdfResult op_intersection(SdfResult p1, SdfResult p2)
+{
+	return p1.d > p2.d ? p1 : p2; // AND
 }
 
 // Subtracts the volume of primitive 2 from primitive 1
 SdfResult op_subtraction(SdfResult p1, SdfResult p2)
 {
 	return -p1.d > p2.d ? p1 : p2;
-}
-
-// Results in the intersection of 2 primitives
-SdfResult op_intersection(SdfResult p1, SdfResult p2)
-{
-	return p1.d > p2.d ? p1 : p2;
 }
 
 SdfResult process_op(uint op, SdfResult p1_res, SdfResult p2_res)

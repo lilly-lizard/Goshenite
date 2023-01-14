@@ -1,5 +1,5 @@
-use super::primitive::PrimitiveTrait;
-use crate::shaders::primitive_buffer::{primitive_codes, PrimitiveDataSlice};
+use super::primitive::Primitive;
+use crate::shaders::object_buffer::{primitive_codes, PrimitiveDataSlice};
 use glam::Vec3;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -12,7 +12,7 @@ impl Cube {
         Self { center, dimensions }
     }
 }
-impl PrimitiveTrait for Cube {
+impl Primitive for Cube {
     fn encode(&self) -> PrimitiveDataSlice {
         [
             primitive_codes::CUBE,

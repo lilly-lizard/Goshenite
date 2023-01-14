@@ -1,5 +1,5 @@
 use crate::primitives::{
-    primitive::{Primitive, PrimitiveTrait},
+    primitive::{Primitive, Primitive},
     primitive_collection::PrimitiveCollection,
 };
 use egui::{

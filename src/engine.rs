@@ -5,7 +5,7 @@ use crate::gui::Gui;
 use crate::helper::anyhow_panic::{anyhow_panic, anyhow_unwrap};
 use crate::operations::operation_collection::OperationCollection;
 use crate::operations::union::Union;
-use crate::primitives::primitive::PrimitiveTrait;
+use crate::primitives::primitive::Primitive;
 use crate::primitives::{cube::Cube, primitive_collection::PrimitiveCollection, sphere::Sphere};
 use crate::renderer::render_manager::RenderManager;
 #[allow(unused_imports)]
