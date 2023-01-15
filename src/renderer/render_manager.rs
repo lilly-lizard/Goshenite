@@ -1,6 +1,6 @@
 use super::{geometry_pass::GeometryPass, lighting_pass::LightingPass, vulkan_helper::*};
 use crate::{
-    config, engine::camera::Camera, object::object::Object,
+    config, engine::camera::Camera, object::object_collection::ObjectCollection,
     shaders::push_constants::CameraPushConstants,
 };
 use anyhow::{anyhow, Context};
@@ -70,7 +70,7 @@ pub struct RenderManager {
 
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
-    pub fn new(window: Arc<Window>, object: &Object) -> anyhow::Result<Self> {
+    pub fn new(window: Arc<Window>, object_collection: &ObjectCollection) -> anyhow::Result<Self> {
         let vulkan_library = VulkanLibrary::new().context("loading vulkan library")?;
         info!(
             "loaded vulkan library, api version = {}",
@@ -131,7 +131,7 @@ impl RenderManager {
         debug!("required vulkan device extensions: {:?}", device_extensions);
 
         // print available physical devices
-        debug!("Available Vulkan physical devices:");
+        debug!("available Vulkan physical devices:");
         for pd in instance
             .enumerate_physical_devices()
             .context("enumerating physical devices")?
@@ -185,7 +185,7 @@ impl RenderManager {
             physical_device.clone(),
             DeviceCreateInfo {
                 enabled_extensions: device_extensions,
-                enabled_features: enabled_features(),
+                enabled_features: required_features(),
                 queue_create_infos,
                 ..Default::default()
             },
@@ -289,10 +289,10 @@ impl RenderManager {
         // init compute shader geometry pass
         let geometry_pass = GeometryPass::new(
             device.clone(),
-            memory_allocator.as_ref(),
+            memory_allocator.clone(),
             &descriptor_allocator,
             subpass_gbuffer,
-            object,
+            object_collection,
         )?;
 
         // init lighting pass

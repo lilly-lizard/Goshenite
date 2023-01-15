@@ -7,6 +7,7 @@ use crate::{
     helper::anyhow_panic::{anyhow_panic, anyhow_unwrap},
     object::{
         object::Object,
+        object_collection::ObjectCollection,
         operation::Operation,
         primitives::{cube::Cube, sphere::Sphere},
     },
@@ -37,7 +38,7 @@ pub struct Engine {
     renderer: RenderManager,
 
     // model data
-    object: Object,
+    object_collection: ObjectCollection,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
@@ -67,9 +68,12 @@ impl Engine {
         let mut object = Object::new(Rc::new(sphere));
         object.append(Operation::Union, Rc::new(cube));
 
+        let mut object_collection = ObjectCollection::new();
+        object_collection.push(object);
+
         // init renderer
         let renderer = anyhow_unwrap(
-            RenderManager::new(window.clone(), &object),
+            RenderManager::new(window.clone(), &object_collection),
             "initialize renderer",
         );
 
@@ -88,7 +92,7 @@ impl Engine {
             //gui, bruh
             renderer,
 
-            object,
+            object_collection,
         }
     }
 

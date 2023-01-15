@@ -34,9 +34,10 @@ pub fn required_device_extensions() -> DeviceExtensions {
     }
 }
 
-pub fn enabled_features() -> device::Features {
+pub fn required_features() -> device::Features {
     device::Features {
         descriptor_indexing: true,
+        runtime_descriptor_array: true,
         ..device::Features::empty()
     }
 }
@@ -131,6 +132,7 @@ pub fn choose_physical_device(
     device_extensions: &DeviceExtensions,
     surface: &Arc<Surface>,
 ) -> anyhow::Result<ChoosePhysicalDeviceReturn> {
+    let required_features = required_features();
     instance
         .enumerate_physical_devices()
         .context("enumerating physical devices")?
@@ -155,6 +157,19 @@ pub fn choose_physical_device(
                         && q.queue_flags.transfer
                         && p.surface_support(i as u32, surface).unwrap_or(false)
                 });
+
+            let supported_features = p.supported_features();
+            if !supported_features.contains(&required_features) {
+                // device doesn't support features
+                let missing_features = required_features.difference(supported_features);
+                debug!(
+                    "physical device {} doesn't support the following required features: {:?}",
+                    p.properties().device_name,
+                    &missing_features
+                );
+                return None;
+            }
+
             if let Some(render_index) = render_family {
                 // attempt to find a different queue family that we can use for asynchronous transfer operations
                 // e.g. uploading image/buffer data while rendering

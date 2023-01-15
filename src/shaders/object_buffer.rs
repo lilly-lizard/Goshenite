@@ -1,6 +1,7 @@
 pub type ObjectDataUnit = u32;
 
 #[rustfmt::skip]
+#[allow(dead_code)]
 pub mod op_codes {
     use super::ObjectDataUnit;
     pub const NULL: 		ObjectDataUnit = 0x00000000;
@@ -22,6 +23,7 @@ pub type PrimitiveDataSlice = [ObjectDataUnit; PRIMITIVE_UNIT_LEN];
 /// Each `PrimitiveDataSlice` begins with a primitive code defining the type of primitive that has been encoded.
 /// The values defined here should match the ones defined in `primitives.glsl`.
 #[rustfmt::skip]
+#[allow(dead_code)]
 pub mod primitive_codes {
     use super::ObjectDataUnit;
     pub const NULL:     ObjectDataUnit = 0x00000000;

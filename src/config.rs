@@ -6,7 +6,7 @@ use vulkano::format::Format;
 pub const ENGINE_NAME: &str = "Goshenite";
 
 /// Log level filter. Logs of levels lower than this will not be displayed.
-pub const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Info;
+pub const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Debug;
 
 /// Wherever the app window starts maximized
 pub const START_MAXIMIZED: bool = false;
