@@ -37,7 +37,9 @@ pub fn required_device_extensions() -> DeviceExtensions {
 pub fn required_features() -> device::Features {
     device::Features {
         descriptor_indexing: true,
-        runtime_descriptor_array: true,
+        runtime_descriptor_array: true,           // todo needed?
+        descriptor_binding_partially_bound: true, // todo needed?
+        descriptor_binding_variable_descriptor_count: true, // needed
         ..device::Features::empty()
     }
 }

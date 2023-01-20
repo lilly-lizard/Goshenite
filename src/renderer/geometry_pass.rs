@@ -10,12 +10,17 @@ use crate::{
 use anyhow::Context;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{mem::size_of, sync::Arc};
+use std::{collections::BTreeMap, mem::size_of, sync::Arc};
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
     command_buffer::AutoCommandBufferBuilder,
     descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
+        allocator::StandardDescriptorSetAllocator,
+        layout::{
+            DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
+            DescriptorType,
+        },
+        PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Device,
     memory::allocator::{AllocationCreationError, MemoryUsage, StandardMemoryAllocator},
@@ -24,8 +29,11 @@ use vulkano::{
         GraphicsPipeline, Pipeline, PipelineBindPoint,
     },
     render_pass::Subpass,
+    shader::ShaderStages,
     DeviceSize,
 };
+
+const MAX_OBJECT_BUFFERS: u32 = 256;
 
 const VERT_SHADER_PATH: &str = "assets/shader_binaries/bounding_box.vert.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
@@ -67,7 +75,7 @@ impl GeometryPass {
             );
         }
 
-        let desc_set = create_desc_set(descriptor_allocator, pipeline.clone(), &object_buffers)?;
+        let desc_set = create_desc_set(device, descriptor_allocator, &object_buffers)?;
         Ok(Self {
             pipeline,
             buffer_pool,
@@ -151,27 +159,47 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
         .context("creating geometry pass pipeline")?)
 }
 
+// let set_layout = geometry_pipeline todo delete
+//     .layout()
+//     .set_layouts()
+//     .get(descriptor::SET_BUFFERS)
+//     .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+//         index: descriptor::SET_BUFFERS,
+//         shader_path: FRAG_SHADER_PATH,
+//     })
+//     .context("creating object buffer desc set")?
+//     .to_owned();
+
 fn create_desc_set(
+    device: Arc<Device>,
     descriptor_allocator: &StandardDescriptorSetAllocator,
-    geometry_pipeline: Arc<GraphicsPipeline>,
     object_buffers: &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
-    let set_layout = geometry_pipeline
-        .layout()
-        .set_layouts()
-        .get(descriptor::SET_BUFFERS)
-        .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
-            index: descriptor::SET_BUFFERS,
-            shader_path: FRAG_SHADER_PATH,
-        })
-        .context("creating object buffer desc set")?
-        .to_owned();
-    PersistentDescriptorSet::new(
+    let binding = DescriptorSetLayoutBinding {
+        descriptor_count: MAX_OBJECT_BUFFERS,
+        variable_descriptor_count: true,
+        stages: ShaderStages {
+            fragment: true,
+            ..ShaderStages::empty()
+        },
+        ..DescriptorSetLayoutBinding::descriptor_type(DescriptorType::StorageBuffer)
+    };
+    let mut bindings: BTreeMap<u32, DescriptorSetLayoutBinding> = BTreeMap::new();
+    bindings.insert(descriptor::BINDING_OBJECTS, binding);
+    let set_layout_ci = DescriptorSetLayoutCreateInfo {
+        bindings,
+        push_descriptor: false,
+        ..DescriptorSetLayoutCreateInfo::default()
+    };
+    let set_layout = DescriptorSetLayout::new(device, set_layout_ci)?;
+    PersistentDescriptorSet::new_variable(
         descriptor_allocator,
         set_layout,
+        object_buffers.len() as u32,
         object_buffers
             .into_iter()
-            .map(|buffer| WriteDescriptorSet::buffer(descriptor::BINDING_OBJECTS, buffer.clone())),
+            .map(|buffer| WriteDescriptorSet::buffer(descriptor::BINDING_OBJECTS, buffer.clone()))
+            .collect::<Vec<WriteDescriptorSet>>(),
     )
     .context("creating object buffer desc set")
 }

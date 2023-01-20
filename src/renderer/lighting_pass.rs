@@ -125,17 +125,18 @@ fn create_desc_set_gbuffers(
     g_buffer_normal: Arc<ImageView<AttachmentImage>>,
     g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
+    let set_layout = lighting_pipeline
+        .layout()
+        .set_layouts()
+        .get(descriptor::SET_LIGHTING_FRAG)
+        .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+            index: descriptor::SET_LIGHTING_FRAG,
+            shader_path: FRAG_SHADER_PATH,
+        })?
+        .to_owned();
     PersistentDescriptorSet::new(
         descriptor_allocator,
-        lighting_pipeline
-            .layout()
-            .set_layouts()
-            .get(descriptor::SET_LIGHTING_FRAG)
-            .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
-                index: descriptor::SET_LIGHTING_FRAG,
-                shader_path: FRAG_SHADER_PATH,
-            })?
-            .to_owned(),
+        set_layout,
         [
             WriteDescriptorSet::image_view(descriptor::BINDING_NORMAL, g_buffer_normal),
             WriteDescriptorSet::image_view(descriptor::BINDING_PRIMITIVE_ID, g_buffer_primitive_id),

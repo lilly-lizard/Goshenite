@@ -286,15 +286,6 @@ impl RenderManager {
         clear_values[render_pass_indices::ATTACHMENT_NORMAL] = Some([0.0; 4].into());
         clear_values[render_pass_indices::ATTACHMENT_PRIMITIVE_ID] = Some([0u32; 4].into());
 
-        // init compute shader geometry pass
-        let geometry_pass = GeometryPass::new(
-            device.clone(),
-            memory_allocator.clone(),
-            &descriptor_allocator,
-            subpass_gbuffer,
-            object_collection,
-        )?;
-
         // init lighting pass
         let lighting_pass = LightingPass::new(
             device.clone(),
@@ -302,6 +293,15 @@ impl RenderManager {
             g_buffer_normal.clone(),
             g_buffer_primitive_id.clone(),
             subpass_swapchain.clone(),
+        )?;
+
+        // init compute shader geometry pass
+        let geometry_pass = GeometryPass::new(
+            device.clone(),
+            memory_allocator.clone(),
+            &descriptor_allocator,
+            subpass_gbuffer,
+            object_collection,
         )?;
 
         // init overlay pass
