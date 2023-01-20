@@ -18,7 +18,7 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator,
         layout::{
             DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
-            DescriptorType,
+            DescriptorSetLayoutCreationError, DescriptorType,
         },
         PersistentDescriptorSet, WriteDescriptorSet,
     },
@@ -26,10 +26,11 @@ use vulkano::{
     memory::allocator::{AllocationCreationError, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::viewport::{Viewport, ViewportState},
-        GraphicsPipeline, Pipeline, PipelineBindPoint,
+        layout::{PipelineLayoutCreateInfo, PipelineLayoutCreationError},
+        GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
     render_pass::Subpass,
-    shader::ShaderStages,
+    shader::{EntryPoint, ShaderStages},
     DeviceSize,
 };
 
@@ -75,7 +76,7 @@ impl GeometryPass {
             );
         }
 
-        let desc_set = create_desc_set(device, descriptor_allocator, &object_buffers)?;
+        let desc_set = create_desc_set(descriptor_allocator, pipeline.clone(), &object_buffers)?;
         Ok(Self {
             pipeline,
             buffer_pool,
@@ -150,31 +151,23 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
             .ok_or(CreateShaderError::MissingEntryPoint(
                 FRAG_SHADER_PATH.to_owned(),
             ))?;
+
+    let pipeline_layout = create_pipeline_layout(device.clone(), &frag_shader)
+        .context("creating geometry pipeline layout")?;
+
     Ok(GraphicsPipeline::start()
         .render_pass(subpass)
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .vertex_shader(vert_shader, ())
         .fragment_shader(frag_shader, ())
-        .build(device.clone())
+        .with_pipeline_layout(device.clone(), pipeline_layout)
         .context("creating geometry pass pipeline")?)
 }
 
-// let set_layout = geometry_pipeline todo delete
-//     .layout()
-//     .set_layouts()
-//     .get(descriptor::SET_BUFFERS)
-//     .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
-//         index: descriptor::SET_BUFFERS,
-//         shader_path: FRAG_SHADER_PATH,
-//     })
-//     .context("creating object buffer desc set")?
-//     .to_owned();
-
-fn create_desc_set(
+fn create_pipeline_layout(
     device: Arc<Device>,
-    descriptor_allocator: &StandardDescriptorSetAllocator,
-    object_buffers: &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
-) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
+    frag_entry: &EntryPoint,
+) -> anyhow::Result<Arc<PipelineLayout>> {
     let binding = DescriptorSetLayoutBinding {
         descriptor_count: MAX_OBJECT_BUFFERS,
         variable_descriptor_count: true,
@@ -191,7 +184,74 @@ fn create_desc_set(
         push_descriptor: false,
         ..DescriptorSetLayoutCreateInfo::default()
     };
-    let set_layout = DescriptorSetLayout::new(device, set_layout_ci)?;
+    let set_layout = DescriptorSetLayout::new(device, set_layout_ci).context("bruh")?;
+
+    //
+
+    let mut layout_create_infos: Vec<_> =
+        DescriptorSetLayoutCreateInfo::from_requirements(frag_entry.descriptor_requirements());
+
+    // Set 0, Binding 0
+    let binding = layout_create_infos
+        .get(descriptor::SET_BUFFERS)
+        .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+            index: descriptor::SET_BUFFERS,
+            shader_path: FRAG_SHADER_PATH,
+        })
+        .context("bruh")?
+        .bindings
+        .get_mut(&descriptor::BINDING_OBJECTS)
+        .context("bruh")?;
+    binding.variable_descriptor_count = true;
+    binding.descriptor_count = 2;
+
+    let set_layouts = layout_create_infos
+        .into_iter()
+        .map(|desc| DescriptorSetLayout::new(device.clone(), desc))
+        .collect::<Result<Vec<_>, DescriptorSetLayoutCreationError>>()
+        .context("bruh")?;
+
+    Ok(PipelineLayout::new(
+        device.clone(),
+        PipelineLayoutCreateInfo {
+            set_layouts,
+            push_constant_ranges: frag_entry
+                .push_constant_requirements()
+                .cloned()
+                .into_iter()
+                .collect(),
+            ..Default::default()
+        },
+    )
+    .context("bruh")?)
+}
+
+// let set_layout = geometry_pipeline todo delete
+//     .layout()
+//     .set_layouts()
+//     .get(descriptor::SET_BUFFERS)
+//     .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+//         index: descriptor::SET_BUFFERS,
+//         shader_path: FRAG_SHADER_PATH,
+//     })
+//     .context("creating object buffer desc set")?
+//     .to_owned();
+
+fn create_desc_set(
+    descriptor_allocator: &StandardDescriptorSetAllocator,
+    geometry_pipeline: Arc<GraphicsPipeline>,
+    object_buffers: &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
+) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
+    let set_layout = geometry_pipeline
+        .layout()
+        .set_layouts()
+        .get(descriptor::SET_BUFFERS)
+        .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+            index: descriptor::SET_BUFFERS,
+            shader_path: FRAG_SHADER_PATH,
+        })
+        .context("creating object buffer desc set")?
+        .to_owned();
     PersistentDescriptorSet::new_variable(
         descriptor_allocator,
         set_layout,

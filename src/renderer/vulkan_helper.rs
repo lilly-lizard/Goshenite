@@ -37,9 +37,10 @@ pub fn required_device_extensions() -> DeviceExtensions {
 pub fn required_features() -> device::Features {
     device::Features {
         descriptor_indexing: true,
-        runtime_descriptor_array: true,           // todo needed?
+        runtime_descriptor_array: true,
+        descriptor_binding_variable_descriptor_count: true,
+        shader_storage_buffer_array_non_uniform_indexing: true,
         descriptor_binding_partially_bound: true, // todo needed?
-        descriptor_binding_variable_descriptor_count: true, // needed
         ..device::Features::empty()
     }
 }
