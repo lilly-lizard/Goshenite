@@ -13,6 +13,7 @@ use crate::{
     },
     renderer::render_manager::RenderManager,
 };
+use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{rc::Rc, sync::Arc};
@@ -63,13 +64,17 @@ impl Engine {
         // init camera
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
-        let sphere = Sphere::new(glam::Vec3::new(0.0, 0.0, 0.0), 0.5);
-        let cube = Cube::new(glam::Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8));
-        let mut object = Object::new(Rc::new(sphere));
-        object.append(Operation::Union, Rc::new(cube));
+        let sphere = Rc::new(Sphere::new(Vec3::new(0., 0., 0.), 0.5));
+        let cube = Rc::new(Cube::new(Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8)));
+
+        let mut object = Object::new(Vec3::new(-1., -1., 0.), cube.clone());
+        object.append(Operation::Union, sphere.clone());
+
+        let another_object = Object::new(Vec3::new(1., 1., 0.), sphere.clone());
 
         let mut object_collection = ObjectCollection::new();
         object_collection.push(object);
+        object_collection.push(another_object);
 
         // init renderer
         let renderer = anyhow_unwrap(

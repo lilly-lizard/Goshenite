@@ -214,7 +214,7 @@ fn set_object_buffer_variable_descriptor_count(
 fn create_desc_set(
     descriptor_allocator: &StandardDescriptorSetAllocator,
     geometry_pipeline: Arc<GraphicsPipeline>,
-    object_buffers: &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
+    object_buffers: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
     let set_layout = geometry_pipeline
         .layout()
@@ -230,10 +230,11 @@ fn create_desc_set(
         descriptor_allocator,
         set_layout,
         object_buffers.len() as u32,
-        object_buffers
-            .into_iter()
-            .map(|buffer| WriteDescriptorSet::buffer(descriptor::BINDING_OBJECTS, buffer.clone()))
-            .collect::<Vec<WriteDescriptorSet>>(),
+        [WriteDescriptorSet::buffer_array(
+            descriptor::BINDING_OBJECTS,
+            0,
+            object_buffers,
+        )],
     )
     .context("creating object buffer desc set")
 }

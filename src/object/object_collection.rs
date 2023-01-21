@@ -23,8 +23,10 @@ impl ObjectCollection {
         self.objects.get_mut(index)
     }
 
-    pub fn push(&mut self, object: Object) {
+    /// Returns the position `object` was pushed into
+    pub fn push(&mut self, object: Object) -> usize {
         self.objects.push(object);
+        self.objects.len() - 1
     }
 
     pub fn remove(&mut self, index: usize) {
