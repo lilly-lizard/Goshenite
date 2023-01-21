@@ -1,8 +1,10 @@
 use glam::Vec3;
 
 use super::operation::Operation;
-use super::primitives::{none::None, primitive::Primitive};
-use crate::shaders::object_buffer::ObjectDataUnit;
+use crate::{
+    engine::primitives::{none::None, primitive::Primitive},
+    renderer::shaders::object_buffer::ObjectDataUnit,
+};
 use std::rc::Rc;
 
 // this is because the shaders store the primitive op index in the lower 16 bits of a u32

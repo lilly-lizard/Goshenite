@@ -1,17 +1,13 @@
 use super::{
-    camera::Camera,
-    cursor_state::{CursorState, MouseButton},
+    object::{object::Object, object_collection::ObjectCollection, operation::Operation},
+    primitives::{cube::Cube, sphere::Sphere},
 };
 use crate::{
     config,
     helper::anyhow_panic::{anyhow_panic, anyhow_unwrap},
-    object::{
-        object::Object,
-        object_collection::ObjectCollection,
-        operation::Operation,
-        primitives::{cube::Cube, sphere::Sphere},
-    },
     renderer::render_manager::RenderManager,
+    user_interface::camera::Camera,
+    user_interface::cursor_state::{CursorState, MouseButton},
 };
 use glam::Vec3;
 #[allow(unused_imports)]

@@ -1,9 +1,8 @@
 mod config;
 mod engine;
 mod helper;
-mod object;
 mod renderer;
-mod shaders;
+mod user_interface;
 
 use engine::engine::Engine;
 use helper::logger::ConsoleLogger;

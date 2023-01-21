@@ -1,11 +1,13 @@
-use super::common::{create_shader_module, CreateDescriptorSetError, CreateShaderError};
-use crate::{
-    config::SHADER_ENTRY_POINT,
-    object::{object::Object, object_collection::ObjectCollection},
+use super::{
+    common::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
     shaders::{
         object_buffer::{ObjectDataUnit, OPERATION_UNIT_LEN},
         push_constants::CameraPushConstants,
     },
+};
+use crate::{
+    config::SHADER_ENTRY_POINT,
+    engine::object::{object::Object, object_collection::ObjectCollection},
 };
 use anyhow::Context;
 #[allow(unused_imports)]

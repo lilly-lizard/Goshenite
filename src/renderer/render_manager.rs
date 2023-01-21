@@ -1,7 +1,9 @@
-use super::{geometry_pass::GeometryPass, lighting_pass::LightingPass, vulkan_helper::*};
+use super::{
+    geometry_pass::GeometryPass, lighting_pass::LightingPass,
+    shaders::push_constants::CameraPushConstants, vulkan_helper::*,
+};
 use crate::{
-    config, engine::camera::Camera, object::object_collection::ObjectCollection,
-    shaders::push_constants::CameraPushConstants,
+    config, engine::object::object_collection::ObjectCollection, user_interface::camera::Camera,
 };
 use anyhow::{anyhow, Context};
 #[allow(unused_imports)]

@@ -1,5 +1,7 @@
 use super::primitive::Primitive;
-use crate::shaders::object_buffer::{primitive_codes, PrimitiveDataSlice, PRIMITIVE_UNIT_LEN};
+use crate::renderer::shaders::object_buffer::{
+    primitive_codes, PrimitiveDataSlice, PRIMITIVE_UNIT_LEN,
+};
 use glam::Vec3;
 
 #[derive(Debug, Clone, PartialEq)]

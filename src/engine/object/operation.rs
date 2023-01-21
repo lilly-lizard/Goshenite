@@ -1,4 +1,4 @@
-use crate::shaders::object_buffer::{op_codes, ObjectDataUnit};
+use crate::renderer::shaders::object_buffer::{op_codes, ObjectDataUnit};
 
 pub enum Operation {
     /// No-op

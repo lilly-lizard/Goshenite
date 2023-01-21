@@ -1,4 +1,4 @@
-use crate::shaders::object_buffer::PrimitiveDataSlice;
+use crate::renderer::shaders::object_buffer::PrimitiveDataSlice;
 use glam::Vec3;
 
 /// A primitive is a basic geometric building block that can be manipulated and combined
