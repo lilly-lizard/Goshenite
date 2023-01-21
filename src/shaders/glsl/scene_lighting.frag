@@ -21,7 +21,7 @@ layout (push_constant) uniform Camera {
 /// * `ray_d` - ray direction
 vec3 background(const vec3 ray_d)
 {
-	return vec3(0.3, 0.4, 0.5) + 0.3 * ray_d * WORLD_SPACE_UP;
+	return vec3(0.45, 0.55, 0.7) + 0.3 * dot(ray_d, WORLD_SPACE_UP);
 }
 
 void main() 

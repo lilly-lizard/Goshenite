@@ -9,7 +9,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 	2. shaders - DONE
 	3. buffer/renderer code
 		1. single object - DONE
-		2. multiple objects
+		2. multiple objects - DONE
 	4. gui/engine
 2. organise shaders directory structure and content
 	- would be nice to structure as per how I conceptualize the code i.e.
@@ -18,7 +18,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 		3. engine -> abstraction, connecting glue between user interface and backend
 	- clearly defined design goals for each section of the code
 	- could try minimizing the coupling between backend and ui
-3. raster bounding boxes
+3. raster bounding boxes (hard-coded AABB for now)
 
 # todo
 
@@ -189,6 +189,13 @@ spirv_parse.rs Instruction::parse				-> 0x7fffffffbc40
 nightly debug:
 spirv.rs:53 (start of Spirv::new)				-> 0x7fffffff6f70
 spirv_parse.rs Instruction::parse				-> 0x7fffffefa4d0
+
+# gpu hardware
+
+- https://github.com/VerticalResearchGroup/miaow
+- https://arxiv.org/pdf/2111.06166.pdf
+- https://github.com/openhwgroup/cv32e40p
+- https://github.com/malkadi/FGPU
 
 # splash
 ```
