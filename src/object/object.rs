@@ -1,3 +1,5 @@
+use glam::Vec3;
+
 use super::operation::Operation;
 use super::primitives::{none::None, primitive::Primitive};
 use crate::shaders::object_buffer::ObjectDataUnit;
@@ -20,11 +22,13 @@ impl Default for PrimitiveOp {
 }
 
 pub struct Object {
+    center: Vec3,
     primitive_ops: Vec<PrimitiveOp>,
 }
 impl Object {
-    pub fn new(base_primitive: Rc<dyn Primitive>) -> Self {
+    pub fn new(center: Vec3, base_primitive: Rc<dyn Primitive>) -> Self {
         Self {
+            center,
             primitive_ops: vec![PrimitiveOp {
                 op: Operation::Union,
                 pr: base_primitive,

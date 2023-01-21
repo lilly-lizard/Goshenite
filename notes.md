@@ -8,7 +8,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 	1. object struct - DONE
 	2. shaders - DONE
 	3. buffer/renderer code
-		1. single object
+		1. single object - DONE
 		2. multiple objects
 	4. gui/engine
 2. organise shaders directory structure and content

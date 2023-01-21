@@ -10,15 +10,14 @@ use crate::{
 use anyhow::Context;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{collections::BTreeMap, mem::size_of, sync::Arc};
+use std::{mem::size_of, sync::Arc};
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
     command_buffer::AutoCommandBufferBuilder,
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator,
         layout::{
-            DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutCreateInfo,
-            DescriptorSetLayoutCreationError, DescriptorType,
+            DescriptorSetLayout, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutCreationError,
         },
         PersistentDescriptorSet, WriteDescriptorSet,
     },
@@ -26,11 +25,11 @@ use vulkano::{
     memory::allocator::{AllocationCreationError, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
         graphics::viewport::{Viewport, ViewportState},
-        layout::{PipelineLayoutCreateInfo, PipelineLayoutCreationError},
+        layout::PipelineLayoutCreateInfo,
         GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
     render_pass::Subpass,
-    shader::{EntryPoint, ShaderStages},
+    shader::EntryPoint,
     DeviceSize,
 };
 

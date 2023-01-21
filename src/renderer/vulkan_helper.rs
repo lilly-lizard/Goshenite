@@ -40,7 +40,7 @@ pub fn required_features() -> device::Features {
         runtime_descriptor_array: true,
         descriptor_binding_variable_descriptor_count: true,
         shader_storage_buffer_array_non_uniform_indexing: true,
-        descriptor_binding_partially_bound: true, // todo needed?
+        descriptor_binding_partially_bound: true,
         ..device::Features::empty()
     }
 }

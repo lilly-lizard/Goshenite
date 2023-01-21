@@ -8,7 +8,7 @@ pub trait Primitive {
     ///
     /// _Note: must match the decode process in `scene_geometry.frag`_
     fn encode(&self) -> PrimitiveDataSlice;
-    /// Returns the spacial center of the primitive.
+    /// Returns the center of mass of the primitive, relative to the center of the parent object.
     fn center(&self) -> Vec3;
     /// Returns the primitive type as a str
     fn type_name(&self) -> &'static str;
