@@ -36,10 +36,16 @@ impl Object {
         }
     }
 
+    pub fn center(&self) -> Vec3 {
+        self.center
+    }
+    pub fn set_center(&mut self, center: Vec3) {
+        self.center = center;
+    }
+
     pub fn primitive_ops(&self) -> &Vec<PrimitiveOp> {
         &self.primitive_ops
     }
-
     pub fn primitive_ops_mut(&mut self) -> &mut Vec<PrimitiveOp> {
         &mut self.primitive_ops
     }
@@ -57,7 +63,7 @@ impl Object {
         let mut encoded = vec![self.primitive_ops.len() as ObjectDataUnit];
         for primitive_op in &self.primitive_ops {
             encoded.push(primitive_op.op.op_code());
-            encoded.extend_from_slice(&primitive_op.pr.encode());
+            encoded.extend_from_slice(&primitive_op.pr.encode(self.center));
         }
         encoded
     }

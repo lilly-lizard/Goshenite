@@ -13,12 +13,13 @@ impl Sphere {
     }
 }
 impl Primitive for Sphere {
-    fn encode(&self) -> PrimitiveDataSlice {
+    fn encode(&self, origin_offset: Vec3) -> PrimitiveDataSlice {
+        let world_center = self.center + origin_offset;
         [
             primitive_codes::SPHERE,
-            self.center.x.to_bits(),
-            self.center.y.to_bits(),
-            self.center.z.to_bits(),
+            world_center.x.to_bits(),
+            world_center.y.to_bits(),
+            world_center.z.to_bits(),
             self.radius.to_bits(),
             // padding
             primitive_codes::NULL,

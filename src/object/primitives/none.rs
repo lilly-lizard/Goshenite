@@ -5,7 +5,7 @@ use glam::Vec3;
 #[derive(Debug, Clone, PartialEq)]
 pub struct None {}
 impl Primitive for None {
-    fn encode(&self) -> PrimitiveDataSlice {
+    fn encode(&self, origin_offset: Vec3) -> PrimitiveDataSlice {
         [primitive_codes::NULL; PRIMITIVE_UNIT_LEN]
     }
 
