@@ -235,7 +235,7 @@ fn create_desc_set(
             0,
             object_buffers
                 .iter()
-                .map(|buf| buf.clone() as Arc<dyn BufferAccess>)
+                .map(|buf| buf.clone() as Arc<dyn BufferAccess>) // probably a nicer way to do this conversion but https://stackoverflow.com/questions/58683548/how-to-coerce-a-vec-of-structs-to-a-vec-of-trait-objects
                 .collect::<Vec<Arc<dyn BufferAccess>>>(),
         )],
     )
