@@ -12,7 +12,7 @@ use anyhow::Context;
 use log::{debug, error, info, trace, warn};
 use std::{mem::size_of, sync::Arc};
 use vulkano::{
-    buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
+    buffer::{cpu_pool::CpuBufferPoolChunk, BufferAccess, BufferUsage, CpuBufferPool},
     command_buffer::AutoCommandBufferBuilder,
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator,
@@ -214,7 +214,7 @@ fn set_object_buffer_variable_descriptor_count(
 fn create_desc_set(
     descriptor_allocator: &StandardDescriptorSetAllocator,
     geometry_pipeline: Arc<GraphicsPipeline>,
-    object_buffers: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
+    object_buffers: &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
     let set_layout = geometry_pipeline
         .layout()
@@ -233,7 +233,10 @@ fn create_desc_set(
         [WriteDescriptorSet::buffer_array(
             descriptor::BINDING_OBJECTS,
             0,
-            object_buffers,
+            object_buffers
+                .iter()
+                .map(|buf| buf.clone() as Arc<dyn BufferAccess>)
+                .collect::<Vec<Arc<dyn BufferAccess>>>(),
         )],
     )
     .context("creating object buffer desc set")

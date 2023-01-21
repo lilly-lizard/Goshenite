@@ -67,10 +67,10 @@ impl Engine {
         let sphere = Rc::new(Sphere::new(Vec3::new(0., 0., 0.), 0.5));
         let cube = Rc::new(Cube::new(Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8)));
 
-        let mut object = Object::new(Vec3::new(-1., -1., 0.), cube.clone());
+        let mut object = Object::new(Vec3::new(-1., 1., 0.), cube.clone());
         object.append(Operation::Union, sphere.clone());
 
-        let another_object = Object::new(Vec3::new(1., 1., 0.), sphere.clone());
+        let another_object = Object::new(Vec3::new(1., -1., 0.), sphere.clone());
 
         let mut object_collection = ObjectCollection::new();
         object_collection.push(object);
