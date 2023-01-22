@@ -20,6 +20,10 @@ pub struct PrimitiveReferences {
 // Public functions
 
 impl PrimitiveReferences {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     pub fn new_sphere(&mut self, center: Vec3, radius: f32) -> Rc<Sphere> {
         let id = new_id();
         let sphere = Rc::new(Sphere::new(id, center, radius));
@@ -38,6 +42,14 @@ impl PrimitiveReferences {
     }
     pub fn get_cube(&self, id: usize) -> Option<Rc<Cube>> {
         get_primitive::<Cube>(id, &self.cubes)
+    }
+}
+impl Default for PrimitiveReferences {
+    fn default() -> Self {
+        Self {
+            spheres: AHashMap::<usize, Weak<Sphere>>::default(),
+            cubes: AHashMap::<usize, Weak<Cube>>::default(),
+        }
     }
 }
 

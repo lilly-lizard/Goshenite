@@ -6,24 +6,20 @@ use egui::{
     Button, Checkbox, ComboBox, DragValue, FontFamily::Proportional, FontId, Sense, TexturesDelta,
 };
 #[allow(unused_imports)]
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
 use winit::{event_loop::EventLoopWindowTarget, window::Window};
 
-/// Primitive editor window state e.g. user input
+/// Persistend settings
 #[derive(Clone, Copy, Debug)]
-struct PrimitiveEditorState {
-    /// Contains user input data for primitive editor
-    pub primitive_input: Primitive,
-    /// Live update mode means user input primitive data is continuously updated
+struct GuiState {
+    /// Live update mode means user input primitive data is continuously updated. Otherwise changes
+    /// are not commited until the 'Update' button is pressed.
     pub live_update: bool,
 }
-impl Default for PrimitiveEditorState {
+impl Default for GuiState {
     fn default() -> Self {
-        Self {
-            primitive_input: Primitive::Null,
-            live_update: false,
-        }
+        Self { live_update: false }
     }
 }
 
@@ -33,7 +29,7 @@ pub struct Gui {
     context: egui::Context,
     window_state: egui_winit::State,
     mesh_primitives: Vec<egui::ClippedPrimitive>,
-    primitive_editor_state: PrimitiveEditorState,
+    gui_state: GuiState,
     textures_delta: Vec<TexturesDelta>,
 }
 // Public functions
@@ -89,12 +85,10 @@ impl Gui {
     }
 
     /// Updates the gui layout and tells the renderer to update any changed resources
-    /// * `primitive_lock_on` - value that the lock-on setting will be written to
     pub fn update_gui(
         &mut self,
         object_collection: &ObjectCollection,
         primitive_references: &PrimitiveReferences,
-        primitive_lock_on: &mut bool,
     ) -> anyhow::Result<()> {
         // begin frame
         let raw_input = self.window_state.take_egui_input(self.window.as_ref());
@@ -134,7 +128,9 @@ impl Gui {
         std::mem::take(&mut self.textures_delta)
     }
 }
+
 // Private functions
+
 impl Gui {
     fn primitives_window(
         &mut self,

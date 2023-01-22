@@ -5,8 +5,8 @@ use super::{
 use crate::{
     config,
     engine::object::object_collection::ObjectCollection,
-    renderer::gui_renderer::GuiRenderer,
-    user_interface::{camera::Camera, gui::Gui},
+    //renderer::gui_renderer::GuiRenderer,
+    user_interface::camera::Camera,
 };
 use anyhow::{anyhow, Context};
 #[allow(unused_imports)]
@@ -64,7 +64,7 @@ pub struct RenderManager {
     geometry_pass: GeometryPass,
     lighting_pass: LightingPass,
     //overlay_pass: OverlayPass, bruh
-    gui_pass: GuiRenderer,
+    //gui_pass: GuiRenderer,
     /// Can be used to synchronize commands with the submission for the previous frame
     future_previous_frame: Option<Box<dyn GpuFuture>>,
     /// Indicates that the swapchain needs to be recreated next frame
@@ -314,12 +314,12 @@ impl RenderManager {
         //    OverlayPass::new(device.clone(), &memory_allocator, subpass_swapchain.clone())?;
 
         // init gui renderer
-        let gui_pass = GuiRenderer::new(
-            device.clone(),
-            memory_allocator.clone(),
-            render_queue.clone(),
-            subpass_swapchain.clone(),
-        )?;
+        // let gui_pass = GuiRenderer::new(
+        //     device.clone(),
+        //     memory_allocator.clone(),
+        //     render_queue.clone(),
+        //     subpass_swapchain.clone(),
+        // )?;
 
         // create futures used for frame synchronization
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
@@ -350,7 +350,7 @@ impl RenderManager {
             geometry_pass,
             lighting_pass,
             //overlay_pass, bruh
-            gui_pass,
+            //gui_pass,
             future_previous_frame,
             recreate_swapchain: false,
         })
@@ -360,8 +360,8 @@ impl RenderManager {
     pub fn render_frame(
         &mut self,
         window_resize: bool,
-        gui: &mut Gui,
-        camera: &Camera,
+        //gui: &mut Gui,
+        camera: &mut Camera,
     ) -> anyhow::Result<()> {
         // checks for submission finish and free locks on gpu resources
         if let Some(future_previous_frame) = self.future_previous_frame.as_mut() {
@@ -369,17 +369,17 @@ impl RenderManager {
         }
 
         // update gui textures
-        self.future_previous_frame = Some(
-            self.gui_pass.update_textures(
-                self.future_previous_frame
-                    .take()
-                    .unwrap_or(sync::now(self.device.clone()).boxed()), // should never be None anyway...
-                &self.command_buffer_allocator,
-                &self.descriptor_allocator,
-                gui.get_and_clear_textures_delta(),
-                self.render_queue.clone(),
-            )?,
-        );
+        // self.future_previous_frame = Some(
+        //     self.gui_pass.update_textures(
+        //         self.future_previous_frame
+        //             .take()
+        //             .unwrap_or(sync::now(self.device.clone()).boxed()), // should never be None anyway...
+        //         &self.command_buffer_allocator,
+        //         &self.descriptor_allocator,
+        //         gui.get_and_clear_textures_delta(),
+        //         self.render_queue.clone(),
+        //     )?,
+        // );
 
         self.recreate_swapchain = self.recreate_swapchain || window_resize;
         if self.recreate_swapchain {

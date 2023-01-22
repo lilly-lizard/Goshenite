@@ -61,7 +61,7 @@ impl Camera {
     pub fn rotate(&mut self, delta_cursor_position: DVec2) {
         let delta_angle = self.delta_cursor_to_angle(delta_cursor_position.into());
         let [horizontal, vertical] = delta_angle.map(|a| a.radians());
-        match self.look_mode {
+        match &self.look_mode {
             // no lock-on target so maintain position adjust looking direction
             LookMode::Direction() => {
                 let rotation_matrix = DMat3::from_axis_angle(self.normal, -vertical)
@@ -70,7 +70,8 @@ impl Camera {
             }
             // lock on target stays the same but camera position rotates around it
             LookMode::Target(target_type) => {
-                if let Some(target_pos) = self.get_target_position_or_switch_look_modes(target_type)
+                if let Some(target_pos) =
+                    self.get_target_position_or_switch_look_modes(target_type.clone())
                 {
                     self.arcball(self.normal, target_pos, vertical, horizontal);
                 }
@@ -82,12 +83,13 @@ impl Camera {
 
     /// Move camera position forwards/backwards according to cursor scroll value
     pub fn scroll_zoom(&mut self, scroll_delta: f64) {
-        match self.look_mode {
+        match &self.look_mode {
             LookMode::Direction() => {
                 self.set_position(self.position + scroll_delta * self.direction);
             }
             LookMode::Target(target_type) => {
-                if let Some(target_pos) = self.get_target_position_or_switch_look_modes(target_type)
+                if let Some(target_pos) =
+                    self.get_target_position_or_switch_look_modes(target_type.clone())
                 {
                     self.scroll_zoom_target(scroll_delta, target_pos);
                 }
@@ -97,20 +99,25 @@ impl Camera {
 
     // Setters
 
-    /// Set the aspect ratio given the screen dimensions
     pub fn set_aspect_ratio(&mut self, resolution: [f32; 2]) {
         self.aspect_ratio = calc_aspect_ratio(resolution);
     }
 
-    /// Sets look mode to [`LookMode::Target`] with camera aiming at `target`
     pub fn set_lock_on_target(&mut self, target_pos: DVec3) {
         self.look_mode = LookMode::Target(LookTargetType::Position(target_pos));
     }
 
-    /// Sets look mode to [`LookMode::Direction`]
+    pub fn set_lock_on_object(&mut self, object: Weak<Object>) {
+        self.look_mode = LookMode::Target(LookTargetType::Object(object));
+    }
+
+    pub fn set_lock_on_primitive(&mut self, primitive: Weak<dyn Primitive>) {
+        self.look_mode = LookMode::Target(LookTargetType::Primitive(primitive));
+    }
+
     pub fn unset_lock_on_target(&mut self) {
-        if let LookMode::Target(target_type) = self.look_mode {
-            if let Some(target_pos) = target_pos(target_type) {
+        if let LookMode::Target(target_type) = &self.look_mode {
+            if let Some(target_pos) = target_pos(target_type.clone()) {
                 self.set_direction(target_pos);
             }
             self.look_mode = LookMode::Direction();
@@ -119,12 +126,13 @@ impl Camera {
 
     // Getters
 
-    pub fn view_matrix(&self) -> DMat4 {
+    pub fn view_matrix(&mut self) -> DMat4 {
         // either look at the lock-on target or in self.direction
-        let target_pos = match self.look_mode {
+        let target_pos = match &self.look_mode {
             LookMode::Direction() => self.position + self.direction,
             LookMode::Target(target_type) => {
-                if let Some(target_pos) = self.get_target_position_or_switch_look_modes(target_type)
+                if let Some(target_pos) =
+                    self.get_target_position_or_switch_look_modes(target_type.clone())
                 {
                     target_pos
                 } else {
@@ -149,7 +157,7 @@ impl Camera {
     }
 
     pub fn look_mode(&self) -> LookMode {
-        self.look_mode
+        self.look_mode.clone()
     }
 }
 
@@ -157,10 +165,11 @@ impl Camera {
 
 impl Camera {
     fn update_normal(&mut self) {
-        let direction = match self.look_mode {
+        let direction = match &self.look_mode {
             LookMode::Direction() => self.direction,
             LookMode::Target(target_type) => {
-                if let Some(target_pos) = self.get_target_position_or_switch_look_modes(target_type)
+                if let Some(target_pos) =
+                    self.get_target_position_or_switch_look_modes(target_type.clone())
                 {
                     target_pos - self.position
                 } else {

@@ -1,6 +1,6 @@
 use super::{
     object::{object::Object, object_collection::ObjectCollection, operation::Operation},
-    primitives::{cube::Cube, sphere::Sphere},
+    primitives::primitive_references::PrimitiveReferences,
 };
 use crate::{
     config,
@@ -31,15 +31,15 @@ pub struct Engine {
 
     // specialized controllers
     camera: Camera,
-    //gui: Gui, bruh
+    //gui: Gui,
     renderer: RenderManager,
 
     // model data
     object_collection: ObjectCollection,
+    primitive_references: PrimitiveReferences,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
-        // init window
         let mut window_builder = WindowBuilder::new().with_title(config::ENGINE_NAME);
         if config::START_MAXIMIZED {
             window_builder = window_builder.with_maximized(true);
@@ -57,11 +57,13 @@ impl Engine {
         let scale_factor = window.scale_factor();
         let cursor_state = CursorState::new(window.clone());
 
-        // init camera
-        let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
+        let mut camera =
+            anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
-        let sphere = Rc::new(Sphere::new(Vec3::new(0., 0., 0.), 0.5));
-        let cube = Rc::new(Cube::new(Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8)));
+        let mut primitive_references = PrimitiveReferences::new();
+
+        let sphere = primitive_references.new_sphere(Vec3::new(0., 0., 0.), 0.5);
+        let cube = primitive_references.new_cube(Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8));
 
         let mut object = Object::new(Vec3::new(-1., 1., 0.), cube.clone());
         object.append(Operation::Union, sphere.clone());
@@ -72,14 +74,16 @@ impl Engine {
         object_collection.push(object);
         object_collection.push(another_object);
 
-        // init renderer
+        // bruh
+        let object_ref = object_collection.get(0).unwrap();
+        camera.set_lock_on_object(Rc::downgrade(object_ref));
+
         let renderer = anyhow_unwrap(
             RenderManager::new(window.clone(), &object_collection),
             "initialize renderer",
         );
 
-        // init gui
-        //let gui = Gui::new(&event_loop, window.clone()); bruh
+        //let gui = Gui::new(&event_loop, window.clone());
 
         Engine {
             _window: window,
@@ -90,10 +94,11 @@ impl Engine {
             primitive_lock_on: false,
 
             camera,
-            //gui, bruh
+            //gui,
             renderer,
 
             object_collection,
+            primitive_references,
         }
     }
 
@@ -175,7 +180,10 @@ impl Engine {
         self.update_camera();
 
         // now that frame processing is done, submit rendering commands
-        if let Err(e) = self.renderer.render_frame(self.window_resize, &self.camera) {
+        if let Err(e) = self
+            .renderer
+            .render_frame(self.window_resize, &mut self.camera)
+        {
             anyhow_panic(&e, "render frame");
         }
         self.window_resize = false;
@@ -194,7 +202,6 @@ impl Engine {
         //    // if no primitive selected use arcball mode
         //    self.camera.unset_lock_on_target();
         //}
-        self.camera.unset_lock_on_target();
 
         // left mouse button dragging changes camera orientation
         if self.cursor_state.which_dragging() == Some(MouseButton::Left) {

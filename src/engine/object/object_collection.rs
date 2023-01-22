@@ -1,7 +1,8 @@
 use super::object::Object;
+use std::rc::Rc;
 
 pub struct ObjectCollection {
-    objects: Vec<Object>,
+    objects: Vec<Rc<Object>>,
 }
 
 impl ObjectCollection {
@@ -11,21 +12,17 @@ impl ObjectCollection {
         }
     }
 
-    pub fn objects(&self) -> &Vec<Object> {
+    pub fn objects(&self) -> &Vec<Rc<Object>> {
         &self.objects
     }
 
-    pub fn get(&self, index: usize) -> Option<&Object> {
+    pub fn get(&self, index: usize) -> Option<&Rc<Object>> {
         self.objects.get(index)
-    }
-
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut Object> {
-        self.objects.get_mut(index)
     }
 
     /// Returns the position `object` was pushed into
     pub fn push(&mut self, object: Object) -> usize {
-        self.objects.push(object);
+        self.objects.push(Rc::new(object));
         self.objects.len() - 1
     }
 
