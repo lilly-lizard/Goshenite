@@ -1,10 +1,10 @@
 /// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
-use super::common::{CreateDescriptorSetError, CreateShaderError};
-use crate::{
-    config::SHADER_ENTRY_POINT,
-    engine::gui::Gui,
-    renderer::common::create_shader_module,
+use super::{
+    common::{CreateDescriptorSetError, CreateShaderError},
     shaders::{push_constants::GuiPushConstants, vertex_inputs::EguiVertex},
+};
+use crate::{
+    config::SHADER_ENTRY_POINT, renderer::common::create_shader_module, user_interface::gui::Gui,
 };
 use ahash::AHashMap;
 use anyhow::Context;

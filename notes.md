@@ -11,8 +11,10 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 		1. single object - DONE
 		2. multiple objects - DONE
 	4. gui/engine
+		1. gui
+		2. overlay pass
 2. organise shaders directory structure and content
-	- would be nice to structure as per how I conceptualize the code i.e.
+	- would be nice to structure as per how I conceptualize the code i.e. - DONE
 		1. user interface -> intuitive, ux/gui
 		2. backend -> optimized, rendering code
 		3. engine -> abstraction, connecting glue between user interface and backend
