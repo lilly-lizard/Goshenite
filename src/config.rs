@@ -32,7 +32,7 @@ impl From<WorldSpaceUp> for DVec3 {
 }
 impl WorldSpaceUp {
     #[inline]
-    pub fn to_dvec3(self) -> DVec3 {
+    pub fn as_dvec3(self) -> DVec3 {
         self.into()
     }
 }
