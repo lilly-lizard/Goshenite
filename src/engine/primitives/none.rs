@@ -7,7 +7,10 @@ use glam::Vec3;
 #[derive(Debug, Clone, PartialEq)]
 pub struct None {}
 impl Primitive for None {
-    fn encode(&self, origin_offset: Vec3) -> PrimitiveDataSlice {
+    fn id(&self) -> usize {
+        usize::MAX
+    }
+    fn encode(&self, parent_origin: Vec3) -> PrimitiveDataSlice {
         [primitive_codes::NULL; PRIMITIVE_UNIT_LEN]
     }
 

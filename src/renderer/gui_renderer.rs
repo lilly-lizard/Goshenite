@@ -352,10 +352,10 @@ impl GuiRenderer {
             let render_queue_family = render_queue.queue_family_index();
             let queue_family_indices: SmallVec<[u32; 2]> =
                 if transfer_queue_family == render_queue_family {
-                    // results in VkSharingMode.VK_SHARING_MODE_EXCLUSIVE
+                    // will result in VK_SHARING_MODE_EXCLUSIVE
                     smallvec![render_queue_family]
                 } else {
-                    // results in VkSharingMode.VK_SHARING_MODE_CONCURRENT
+                    // will result in VK_SHARING_MODE_CONCURRENT
                     smallvec![render_queue_family, transfer_queue_family]
                 };
             let (image, init_access) = ImmutableImage::uninitialized(

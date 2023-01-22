@@ -1,3 +1,7 @@
+use crate::engine::{
+    object::object_collection::ObjectCollection,
+    primitives::{primitive::Primitive, primitive_references::PrimitiveReferences},
+};
 use egui::{
     Button, Checkbox, ComboBox, DragValue, FontFamily::Proportional, FontId, Sense, TexturesDelta,
 };
@@ -85,11 +89,11 @@ impl Gui {
     }
 
     /// Updates the gui layout and tells the renderer to update any changed resources
-    /// * `primitive_collection` - collection for the 'Primitive Editor' window to edit
     /// * `primitive_lock_on` - value that the lock-on setting will be written to
     pub fn update_gui(
         &mut self,
-        primitive_collection: &mut PrimitiveCollection,
+        object_collection: &ObjectCollection,
+        primitive_references: &PrimitiveReferences,
         primitive_lock_on: &mut bool,
     ) -> anyhow::Result<()> {
         // begin frame

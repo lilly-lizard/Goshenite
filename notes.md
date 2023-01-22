@@ -36,6 +36,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## cleanup
 
+- primitive_references to dos
 - Primitive/Operation -> convert from enum to boxed dyn trait collections. have vecs for each type and collection points to them
 - try rust analyzer extract method in render_manager.rs. what would uncle bob do?
 - update gui buffers pub fn

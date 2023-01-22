@@ -24,13 +24,13 @@ impl Default for PrimitiveOp {
 }
 
 pub struct Object {
-    center: Vec3,
+    origin: Vec3,
     primitive_ops: Vec<PrimitiveOp>,
 }
 impl Object {
-    pub fn new(center: Vec3, base_primitive: Rc<dyn Primitive>) -> Self {
+    pub fn new(origin: Vec3, base_primitive: Rc<dyn Primitive>) -> Self {
         Self {
-            center,
+            origin,
             primitive_ops: vec![PrimitiveOp {
                 op: Operation::Union,
                 pr: base_primitive,
@@ -38,11 +38,11 @@ impl Object {
         }
     }
 
-    pub fn center(&self) -> Vec3 {
-        self.center
+    pub fn origin(&self) -> Vec3 {
+        self.origin
     }
-    pub fn set_center(&mut self, center: Vec3) {
-        self.center = center;
+    pub fn set_origin(&mut self, origin: Vec3) {
+        self.origin = origin;
     }
 
     pub fn primitive_ops(&self) -> &Vec<PrimitiveOp> {
@@ -65,7 +65,7 @@ impl Object {
         let mut encoded = vec![self.primitive_ops.len() as ObjectDataUnit];
         for primitive_op in &self.primitive_ops {
             encoded.push(primitive_op.op.op_code());
-            encoded.extend_from_slice(&primitive_op.pr.encode(self.center));
+            encoded.extend_from_slice(&primitive_op.pr.encode(self.origin));
         }
         encoded
     }
