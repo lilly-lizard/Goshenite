@@ -70,7 +70,6 @@ mod descriptor {
 type VertexIndex = u32;
 
 pub struct GuiRenderer {
-    device: Arc<Device>,
     memory_allocator: Arc<dyn MemoryAllocator>,
     transfer_queue: Arc<Queue>,
 
@@ -96,7 +95,6 @@ impl GuiRenderer {
             create_buffer_pools(memory_allocator.clone())?;
         let sampler = Self::create_sampler(device.clone())?;
         Ok(Self {
-            device,
             memory_allocator,
             transfer_queue,
             pipeline,

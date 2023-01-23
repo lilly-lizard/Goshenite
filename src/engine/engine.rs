@@ -69,17 +69,14 @@ impl Engine {
 
         let mut object_collection = ObjectCollection::new();
 
-        let object = object_collection.new_object(
-            "bruh 0".to_string(),
-            Vec3::new(-1., 1., 0.),
-            cube.clone(),
-        );
+        let object =
+            object_collection.new_object("Bruh".to_string(), Vec3::new(-1., 1., 0.), cube.clone());
         object
             .borrow_mut()
             .push_op(Operation::Union, sphere.clone());
 
         let another_object = object_collection.new_object(
-            "bruh 1".to_string(),
+            "Another Bruh".to_string(),
             Vec3::new(1., -1., 0.),
             sphere.clone(),
         );

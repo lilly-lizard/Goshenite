@@ -6,7 +6,8 @@ use crate::engine::{
     primitives::{primitive::Primitive, primitive_references::PrimitiveReferences},
 };
 use egui::{
-    Button, Checkbox, ComboBox, DragValue, FontFamily::Proportional, FontId, Sense, TexturesDelta,
+    Button, Checkbox, ComboBox, DragValue, FontFamily::Proportional, FontId, RichText, Sense,
+    TextStyle, TexturesDelta,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -26,14 +27,21 @@ struct GuiState {
     /// are not commited until the 'Update' button is pressed.
     pub live_update: bool,
     pub selected_object: Option<Weak<ObjectRef>>,
-    pub selected_primitive: Option<Weak<dyn Primitive>>,
+    pub selected_primitive_op_index: Option<usize>,
+}
+impl GuiState {
+    #[inline]
+    pub fn deselect_object(&mut self) {
+        self.selected_object = None;
+        self.selected_primitive_op_index = None;
+    }
 }
 impl Default for GuiState {
     fn default() -> Self {
         Self {
             live_update: false,
             selected_object: None,
-            selected_primitive: None,
+            selected_primitive_op_index: None,
         }
     }
 }
@@ -44,7 +52,7 @@ pub struct Gui {
     context: egui::Context,
     window_state: egui_winit::State,
     mesh_primitives: Vec<egui::ClippedPrimitive>,
-    gui_state: GuiState,
+    state: GuiState,
     textures_delta: Vec<TexturesDelta>,
 }
 // Public functions
@@ -71,7 +79,7 @@ impl Gui {
             context,
             window_state,
             mesh_primitives: Default::default(),
-            gui_state: Default::default(),
+            state: Default::default(),
             textures_delta: Default::default(),
         }
     }
@@ -106,6 +114,7 @@ impl Gui {
         self.context.begin_frame(raw_input);
 
         self.objects_window(object_collection);
+        self.object_editor_window();
 
         // end frame
         let egui::FullOutput {
@@ -138,11 +147,7 @@ impl Gui {
     }
 
     pub fn selected_object(&self) -> Option<Weak<ObjectRef>> {
-        self.gui_state.selected_object.clone()
-    }
-
-    pub fn selected_primitive(&self) -> Option<Weak<dyn Primitive>> {
-        self.gui_state.selected_primitive.clone()
+        self.state.selected_object.clone()
     }
 }
 
@@ -156,14 +161,15 @@ impl Gui {
             let objects = object_collection.objects();
             for i in 0..objects.len() {
                 let current_object = &objects[i];
-                let label_text = format!("{} - {}", i, current_object.borrow().name);
+                let label_text = RichText::new(format!("{} - {}", i, current_object.borrow().name))
+                    .text_style(TextStyle::Monospace);
 
-                let is_selected = if let Some(object_ref) = &self.gui_state.selected_object {
+                let is_selected = if let Some(object_ref) = &self.state.selected_object {
                     if let Some(selected_object) = object_ref.upgrade() {
                         selected_object.borrow().id() == current_object.borrow().id()
                     } else {
                         debug!("selected object dropped. deselecting object...");
-                        self.gui_state.selected_object = None;
+                        self.state.deselect_object();
                         false
                     }
                 } else {
@@ -171,13 +177,75 @@ impl Gui {
                 };
 
                 if ui.selectable_label(is_selected, label_text).clicked() {
-                    self.gui_state.selected_object = Some(Rc::downgrade(current_object));
-                };
+                    if !is_selected {
+                        self.state.selected_object = Some(Rc::downgrade(current_object));
+                        self.state.selected_primitive_op_index = None;
+                    }
+                }
             }
         };
 
         // add window to egui context
         egui::Window::new("Objects")
+            .resizable(true)
+            .vscroll(true)
+            .hscroll(true)
+            .show(&self.context, add_contents);
+    }
+
+    fn object_editor_window(&mut self) {
+        // ui layout closure
+        let add_contents = |ui: &mut egui::Ui| {
+            let selected_object_ref = match &self.state.selected_object {
+                Some(o) => o.clone(),
+                None => {
+                    ui.label("No Object Selected...");
+                    return;
+                }
+            };
+            let selected_object = match selected_object_ref.upgrade() {
+                Some(o) => o,
+                None => {
+                    debug!("selected object dropped. deselecting object...");
+                    self.state.deselect_object();
+                    ui.label("No Object Selected...");
+                    return;
+                }
+            };
+            let selected_object = selected_object.borrow();
+
+            ui.heading(format!("{}", selected_object.name));
+
+            // primitive op editor
+            //todo
+
+            ui.separator();
+
+            // primitive op list
+            for i in 0..selected_object.primitive_ops.len() {
+                let current_primitive_op = &selected_object.primitive_ops[i];
+
+                let label_text = RichText::new(format!(
+                    "{} - {} {}",
+                    i,
+                    current_primitive_op.op.name(),
+                    current_primitive_op.pr.type_name()
+                ))
+                .text_style(TextStyle::Monospace);
+
+                let is_selected = if let Some(index) = self.state.selected_primitive_op_index {
+                    index == i
+                } else {
+                    false
+                };
+                if ui.selectable_label(is_selected, label_text).clicked() {
+                    self.state.selected_primitive_op_index = Some(i);
+                }
+            }
+        };
+
+        // add window to egui context
+        egui::Window::new("Object Editor")
             .resizable(true)
             .vscroll(true)
             .hscroll(true)
@@ -193,11 +261,11 @@ impl Gui {
                 let style = &*self.context.style();
                 let mut style = style.clone();
                 style.text_styles = [
-                    (egui::TextStyle::Heading, FontId::new(20.0, Proportional)),
-                    (egui::TextStyle::Body, FontId::new(18.0, Proportional)),
-                    (egui::TextStyle::Monospace, FontId::new(14.0, Proportional)),
-                    (egui::TextStyle::Button, FontId::new(14.0, Proportional)),
-                    (egui::TextStyle::Small, FontId::new(10.0, Proportional)),
+                    (TextStyle::Heading, FontId::new(20.0, Proportional)),
+                    (TextStyle::Body, FontId::new(18.0, Proportional)),
+                    (TextStyle::Monospace, FontId::new(14.0, Proportional)),
+                    (TextStyle::Button, FontId::new(14.0, Proportional)),
+                    (TextStyle::Small, FontId::new(10.0, Proportional)),
                 ]
                 .into();
                 self.context.set_style(style);
