@@ -2,7 +2,7 @@ use crate::renderer::shaders::object_buffer::{op_codes, ObjectDataUnit};
 
 pub enum Operation {
     /// No-op
-    None,
+    NOP,
     /// Combination of this primitive and current shape. Equivalent to AND.
     Union,
     /// Intersection of this primitive with current shape. Equivalent to OR.
@@ -14,7 +14,7 @@ pub enum Operation {
 impl Operation {
     pub fn op_code(&self) -> ObjectDataUnit {
         match *self {
-            Self::None => op_codes::NULL,
+            Self::NOP => op_codes::NOP,
             Self::Union => op_codes::UNION,
             Self::Intersection => op_codes::INTERSECTION,
             Self::Subtraction => op_codes::SUBTRACTION,
@@ -23,7 +23,7 @@ impl Operation {
 
     pub fn name(&self) -> &'static str {
         match *self {
-            Self::None => "None",
+            Self::NOP => "No-op",
             Self::Union => "Union",
             Self::Intersection => "Intersection",
             Self::Subtraction => "Subtraction",

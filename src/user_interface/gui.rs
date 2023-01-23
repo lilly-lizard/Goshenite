@@ -226,6 +226,7 @@ impl Gui {
                         selected_primitive_op.prim.borrow().type_name(),
                     );
 
+                    ui.separator();
                     match primitive_type {
                         PrimitiveRefType::Sphere => {
                             let sphere_id = selected_primitive_op.prim.borrow().id();
@@ -233,8 +234,7 @@ impl Gui {
                                 .expect("primitive collection doesn't contain primitive id from object op. this is a bug!");
                             let mut sphere = sphere_ref.borrow_mut();
 
-                            ui.separator();
-                            ui.label("Edit Sphere");
+                            ui.heading("Edit Sphere");
                             ui.horizontal(|ui| {
                                 ui.label("Center:");
                                 ui.add(DragValue::new(&mut sphere.center.x).speed(DRAG_INC));
@@ -256,8 +256,7 @@ impl Gui {
                                 .expect("primitive collection doesn't contain primitive id from object op. this is a bug!");
                             let mut cube = cube_ref.borrow_mut();
 
-                            ui.separator();
-                            ui.label("Edit Cube");
+                            ui.heading("Edit Cube");
                             ui.horizontal(|ui| {
                                 ui.label("Center:");
                                 ui.add(DragValue::new(&mut cube.center.x).speed(DRAG_INC));
@@ -272,7 +271,7 @@ impl Gui {
                             });
                         }
                         _ => {
-                            ui.label(format!(
+                            ui.heading(format!(
                                 "Primitive Type: {}",
                                 selected_primitive_op.prim.borrow().type_name()
                             ));

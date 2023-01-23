@@ -1,7 +1,7 @@
 use super::operation::Operation;
 use crate::{
     engine::primitives::{
-        none::None,
+        null_primitive::NullPrimitive,
         primitive::{new_primitive_ref, PrimitiveRef},
     },
     helper::unique_id_gen::UniqueId,
@@ -27,8 +27,8 @@ pub struct PrimitiveOp {
 impl Default for PrimitiveOp {
     fn default() -> Self {
         Self {
-            op: Operation::None,
-            prim: new_primitive_ref(None {}),
+            op: Operation::NOP,
+            prim: new_primitive_ref(NullPrimitive {}),
         }
     }
 }

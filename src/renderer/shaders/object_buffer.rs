@@ -4,7 +4,7 @@ pub type ObjectDataUnit = u32;
 #[allow(dead_code)]
 pub mod op_codes {
     use super::ObjectDataUnit;
-    pub const NULL: 		ObjectDataUnit = 0x00000000;
+    pub const NOP: 		    ObjectDataUnit = 0x00000000;
     pub const UNION: 		ObjectDataUnit = 0x00000001; // OR
     pub const INTERSECTION: ObjectDataUnit = 0x00000002; // AND
     pub const SUBTRACTION: 	ObjectDataUnit = 0x00000003;

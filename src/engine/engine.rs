@@ -1,6 +1,9 @@
 use super::{
     object::{object_collection::ObjectCollection, operation::Operation},
-    primitives::primitive_references::PrimitiveReferences,
+    primitives::{
+        null_primitive::NullPrimitive, primitive::new_primitive_ref,
+        primitive_references::PrimitiveReferences,
+    },
 };
 use crate::{
     config,
@@ -15,7 +18,7 @@ use crate::{
 use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -79,6 +82,9 @@ impl Engine {
             Vec3::new(1., -1., 0.),
             sphere.clone(),
         );
+        another_object
+            .borrow_mut()
+            .push_op(Operation::NOP, new_primitive_ref(NullPrimitive {}));
 
         let renderer = anyhow_unwrap(
             RenderManager::new(window.clone(), &object_collection),

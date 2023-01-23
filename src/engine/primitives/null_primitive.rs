@@ -5,11 +5,12 @@ use crate::renderer::shaders::object_buffer::{
 use glam::Vec3;
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct None {}
-impl Primitive for None {
+pub struct NullPrimitive {}
+impl Primitive for NullPrimitive {
     fn id(&self) -> usize {
         usize::MAX
     }
+
     fn encode(&self, _parent_origin: Vec3) -> PrimitiveDataSlice {
         [primitive_codes::NULL; PRIMITIVE_UNIT_LEN]
     }
@@ -19,10 +20,10 @@ impl Primitive for None {
     }
 
     fn type_name(&self) -> &'static str {
-        "None"
+        "Null-Primitive"
     }
 }
-impl Default for None {
+impl Default for NullPrimitive {
     fn default() -> Self {
         Self {}
     }
