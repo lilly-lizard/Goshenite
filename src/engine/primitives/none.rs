@@ -10,7 +10,7 @@ impl Primitive for None {
     fn id(&self) -> usize {
         usize::MAX
     }
-    fn encode(&self, parent_origin: Vec3) -> PrimitiveDataSlice {
+    fn encode(&self, _parent_origin: Vec3) -> PrimitiveDataSlice {
         [primitive_codes::NULL; PRIMITIVE_UNIT_LEN]
     }
 

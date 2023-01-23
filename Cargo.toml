@@ -1,6 +1,6 @@
 [package]
 name = "goshenite"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 
 [features]
@@ -30,8 +30,8 @@ vulkano-win = "0.32" # winit interop boilerplate
 # bit-casting crate (for cpu<->gpu buffers)
 bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
-egui = "0.19.0"
-egui-winit = "0.19.0"
+egui = "0.20"
+egui-winit = "0.20"
 # hash library used by egui (fast af boii)
 ahash = "0.8"
 

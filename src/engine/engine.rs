@@ -131,7 +131,7 @@ impl Engine {
         trace!("winit event: {:?}", event);
 
         // egui event handling
-        let captured_by_gui = self.gui.process_event(&event);
+        let captured_by_gui = self.gui.process_event(&event).consumed;
 
         // engine event handling
         match event {

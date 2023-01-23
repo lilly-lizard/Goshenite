@@ -2,7 +2,7 @@ use super::operation::Operation;
 use crate::{
     engine::primitives::{
         none::None,
-        primitive::{new_primitive_ref, Primitive, PrimitiveRef},
+        primitive::{new_primitive_ref, PrimitiveRef},
     },
     renderer::shaders::object_buffer::ObjectDataUnit,
 };

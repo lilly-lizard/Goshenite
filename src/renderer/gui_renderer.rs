@@ -286,13 +286,10 @@ impl GuiRenderer {
                     .flat_map(|color| color.to_array())
                     .collect()
             }
-            egui::ImageData::Font(image) => {
-                let gamma = 1.0;
-                image
-                    .srgba_pixels(gamma)
-                    .flat_map(|color| color.to_array())
-                    .collect()
-            }
+            egui::ImageData::Font(image) => image
+                .srgba_pixels(None)
+                .flat_map(|color| color.to_array())
+                .collect(),
         };
         if data.len() == 0 {
             warn!(

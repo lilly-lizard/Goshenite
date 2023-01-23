@@ -8,6 +8,7 @@ use egui::{
     Button, Checkbox, ComboBox, DragValue, FontFamily::Proportional, FontId, RichText, Sense,
     TextStyle, TexturesDelta,
 };
+use egui_winit::EventResponse;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{
@@ -90,7 +91,7 @@ impl Gui {
     /// and only when this returns `false` pass on the events to your game.
     ///
     /// Note that egui uses `tab` to move focus between elements, so this will always return `true` for tabs.
-    pub fn process_event(&mut self, event: &winit::event::WindowEvent<'_>) -> bool {
+    pub fn process_event(&mut self, event: &winit::event::WindowEvent<'_>) -> EventResponse {
         self.window_state.on_event(&self.context, event)
     }
 
@@ -195,10 +196,11 @@ impl Gui {
     fn object_editor_window(&mut self, primitive_references: &PrimitiveReferences) {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
+            let no_object_text = RichText::new("No Object Selected...").italics();
             let selected_object_ref = match &self.state.selected_object {
                 Some(o) => o.clone(),
                 None => {
-                    ui.label("No Object Selected...");
+                    ui.label(no_object_text);
                     return;
                 }
             };
@@ -207,7 +209,7 @@ impl Gui {
                 None => {
                     debug!("selected object dropped. deselecting object...");
                     self.state.deselect_object();
-                    ui.label("No Object Selected...");
+                    ui.label(no_object_text);
                     return;
                 }
             };
@@ -230,7 +232,9 @@ impl Gui {
                             let sphere_ref = primitive_references.get_sphere(sphere_id)
                                 .expect("primitive collection doesn't contain primitive id from object op. this is a bug!");
                             let mut sphere = sphere_ref.borrow_mut();
-                            ui.label("Edit Sphere:");
+
+                            ui.separator();
+                            ui.label("Edit Sphere");
                             ui.horizontal(|ui| {
                                 ui.label("Center:");
                                 ui.add(DragValue::new(&mut sphere.center.x).speed(DRAG_INC));
@@ -251,7 +255,9 @@ impl Gui {
                             let cube_ref = primitive_references.get_cube(cube_id)
                                 .expect("primitive collection doesn't contain primitive id from object op. this is a bug!");
                             let mut cube = cube_ref.borrow_mut();
-                            ui.label("Edit Cube:");
+
+                            ui.separator();
+                            ui.label("Edit Cube");
                             ui.horizontal(|ui| {
                                 ui.label("Center:");
                                 ui.add(DragValue::new(&mut cube.center.x).speed(DRAG_INC));
