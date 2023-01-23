@@ -1,8 +1,17 @@
+use std::{cell::RefCell, rc::Rc};
+
 use crate::renderer::shaders::object_buffer::PrimitiveDataSlice;
 use glam::Vec3;
 
+/// Use functions `borrow` and `borrow_mut` to access the `Primitive`.
+pub type PrimitiveRef = RefCell<dyn Primitive>;
+#[inline]
+pub fn new_primitive_ref<T: Primitive + 'static>(inner: T) -> Rc<PrimitiveRef> {
+    Rc::new(RefCell::new(inner))
+}
+
 /// A primitive is a basic geometric building block that can be manipulated and combined
-/// using [`Operation`]s
+/// using [`Operation`]s in an [`Object`]
 pub trait Primitive {
     /// Unique id that can be passed to `PrimitiveReferences` to lookup the actual struct
     fn id(&self) -> usize;

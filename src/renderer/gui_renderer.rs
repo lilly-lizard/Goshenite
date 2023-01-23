@@ -457,7 +457,7 @@ impl GuiRenderer {
         &self,
         descriptor_allocator: &StandardDescriptorSetAllocator,
         layout: &Arc<DescriptorSetLayout>,
-        image: Arc<ImageView<ImmutableImage>>,
+        image: Arc<impl ImageViewAbstract + 'static>,
     ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
         PersistentDescriptorSet::new(
             descriptor_allocator,

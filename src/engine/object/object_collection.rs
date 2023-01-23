@@ -1,5 +1,5 @@
 use super::object::{new_object_ref, Object, ObjectRef};
-use crate::{engine::primitives::primitive::Primitive, helper::unique_id_gen::UniqueIdGen};
+use crate::{engine::primitives::primitive::PrimitiveRef, helper::unique_id_gen::UniqueIdGen};
 use glam::Vec3;
 use std::rc::Rc;
 
@@ -20,7 +20,7 @@ impl ObjectCollection {
         &mut self,
         name: String,
         origin: Vec3,
-        base_primitive: Rc<dyn Primitive>,
+        base_primitive: Rc<PrimitiveRef>,
     ) -> Rc<ObjectRef> {
         let id = self.unique_id_gen.new_id();
         let object = new_object_ref(Object::new(id, name, origin, base_primitive));

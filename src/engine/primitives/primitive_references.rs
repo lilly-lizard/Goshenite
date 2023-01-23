@@ -1,70 +1,46 @@
-use super::{cube::Cube, sphere::Sphere};
+use super::{
+    cube::Cube,
+    primitive_ref_types::{new_cube_ref, new_sphere_ref, CubeRef, SphereRef},
+    sphere::Sphere,
+};
 use crate::helper::unique_id_gen::UniqueIdGen;
 use ahash::AHashMap;
 use glam::Vec3;
 use std::rc::{Rc, Weak};
 
-/// Implimentations of [`Primtive`] supported by [`PrimitiveReferences`] return one of these values
-/// when calling [`Primtive::type_name`]
-pub mod primitive_names {
-    pub const SPHERE: &'static str = "Sphere";
-    pub const CUBE: &'static str = "Cube";
-}
-
-pub enum PrimitiveRefType {
-    Unknown,
-    Sphere,
-    Cube,
-}
-impl PrimitiveRefType {
-    /// Pass in name from [`Primtive::type_name`]
-    pub fn from_name(name: &str) -> Self {
-        match name {
-            primitive_names::SPHERE => Self::Sphere,
-            primitive_names::CUBE => Self::Cube,
-            _ => Self::Unknown,
-        }
-    }
-}
-impl Default for PrimitiveRefType {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
-
 pub struct PrimitiveReferences {
     unique_id_gen: UniqueIdGen,
-    pub spheres: AHashMap<usize, Weak<Sphere>>,
-    pub cubes: AHashMap<usize, Weak<Cube>>,
+    pub spheres: AHashMap<usize, Weak<SphereRef>>,
+    pub cubes: AHashMap<usize, Weak<CubeRef>>,
 }
 
 impl PrimitiveReferences {
     pub fn new() -> Self {
         Self {
             unique_id_gen: UniqueIdGen::new(),
-            spheres: AHashMap::<usize, Weak<Sphere>>::default(),
-            cubes: AHashMap::<usize, Weak<Cube>>::default(),
+            spheres: AHashMap::<usize, Weak<SphereRef>>::default(),
+            cubes: AHashMap::<usize, Weak<CubeRef>>::default(),
         }
     }
 
-    pub fn new_sphere(&mut self, center: Vec3, radius: f32) -> Rc<Sphere> {
+    pub fn new_sphere(&mut self, center: Vec3, radius: f32) -> Rc<SphereRef> {
         let id = self.unique_id_gen.new_id();
-        let sphere = Rc::new(Sphere::new(id, center, radius));
+        let sphere = new_sphere_ref(Sphere::new(id, center, radius));
         self.spheres.insert(id, Rc::downgrade(&sphere));
         sphere
     }
-    pub fn new_cube(&mut self, center: Vec3, dimensions: Vec3) -> Rc<Cube> {
+    pub fn new_cube(&mut self, center: Vec3, dimensions: Vec3) -> Rc<CubeRef> {
         let id = self.unique_id_gen.new_id();
-        let cube = Rc::new(Cube::new(id, center, dimensions));
+        let cube = new_cube_ref(Cube::new(id, center, dimensions));
         self.cubes.insert(id, Rc::downgrade(&cube));
         cube
     }
 
-    pub fn get_sphere(&self, id: usize) -> Option<Rc<Sphere>> {
-        get_primitive::<Sphere>(id, &self.spheres)
+    pub fn get_sphere(&self, id: usize) -> Option<Rc<SphereRef>> {
+        get_primitive::<SphereRef>(id, &self.spheres)
     }
-    pub fn get_cube(&self, id: usize) -> Option<Rc<Cube>> {
-        get_primitive::<Cube>(id, &self.cubes)
+    pub fn get_cube(&self, id: usize) -> Option<Rc<CubeRef>> {
+        get_primitive::<CubeRef>(id, &self.cubes)
     }
 }
 

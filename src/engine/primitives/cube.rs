@@ -1,4 +1,4 @@
-use super::{primitive::Primitive, primitive_references::primitive_names};
+use super::{primitive::Primitive, primitive_ref_types::primitive_names};
 use crate::renderer::shaders::object_buffer::{primitive_codes, PrimitiveDataSlice};
 use glam::Vec3;
 

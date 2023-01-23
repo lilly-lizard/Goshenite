@@ -1,6 +1,9 @@
 use super::operation::Operation;
 use crate::{
-    engine::primitives::{none::None, primitive::Primitive},
+    engine::primitives::{
+        none::None,
+        primitive::{new_primitive_ref, Primitive, PrimitiveRef},
+    },
     renderer::shaders::object_buffer::ObjectDataUnit,
 };
 use glam::Vec3;
@@ -18,13 +21,13 @@ const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
 
 pub struct PrimitiveOp {
     pub op: Operation,
-    pub pr: Rc<dyn Primitive>,
+    pub prim: Rc<PrimitiveRef>,
 }
 impl Default for PrimitiveOp {
     fn default() -> Self {
         Self {
             op: Operation::None,
-            pr: Rc::new(None {}),
+            prim: new_primitive_ref(None {}),
         }
     }
 }
@@ -36,14 +39,14 @@ pub struct Object {
     pub primitive_ops: Vec<PrimitiveOp>,
 }
 impl Object {
-    pub fn new(id: usize, name: String, origin: Vec3, base_primitive: Rc<dyn Primitive>) -> Self {
+    pub fn new(id: usize, name: String, origin: Vec3, base_primitive: Rc<PrimitiveRef>) -> Self {
         Self {
             id,
             name,
             origin,
             primitive_ops: vec![PrimitiveOp {
                 op: Operation::Union,
-                pr: base_primitive,
+                prim: base_primitive,
             }],
         }
     }
@@ -52,10 +55,10 @@ impl Object {
         self.id
     }
 
-    pub fn push_op(&mut self, operation: Operation, primitive: Rc<dyn Primitive>) {
+    pub fn push_op(&mut self, operation: Operation, primitive: Rc<PrimitiveRef>) {
         self.primitive_ops.push(PrimitiveOp {
             op: operation,
-            pr: primitive,
+            prim: primitive,
         });
     }
 
@@ -65,7 +68,7 @@ impl Object {
         let mut encoded = vec![self.primitive_ops.len() as ObjectDataUnit];
         for primitive_op in &self.primitive_ops {
             encoded.push(primitive_op.op.op_code());
-            encoded.extend_from_slice(&primitive_op.pr.encode(self.origin));
+            encoded.extend_from_slice(&primitive_op.prim.borrow().encode(self.origin));
         }
         encoded
     }

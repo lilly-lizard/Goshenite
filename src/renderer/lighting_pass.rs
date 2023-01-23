@@ -13,7 +13,7 @@ use vulkano::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Device,
-    image::{view::ImageView, AttachmentImage},
+    image::ImageViewAbstract,
     pipeline::{
         graphics::viewport::{Viewport, ViewportState},
         GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -44,8 +44,8 @@ impl LightingPass {
     pub fn new(
         device: Arc<Device>,
         descriptor_allocator: &StandardDescriptorSetAllocator,
-        g_buffer_normal: Arc<ImageView<AttachmentImage>>,
-        g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
+        g_buffer_normal: Arc<impl ImageViewAbstract + 'static>,
+        g_buffer_primitive_id: Arc<impl ImageViewAbstract + 'static>,
         subpass: Subpass,
     ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
@@ -62,8 +62,8 @@ impl LightingPass {
     pub fn update_g_buffers(
         &mut self,
         descriptor_allocator: &StandardDescriptorSetAllocator,
-        g_buffer_normal: Arc<ImageView<AttachmentImage>>,
-        g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
+        g_buffer_normal: Arc<impl ImageViewAbstract + 'static>,
+        g_buffer_primitive_id: Arc<impl ImageViewAbstract + 'static>,
     ) -> anyhow::Result<()> {
         self.desc_set = create_desc_set_gbuffers(
             descriptor_allocator,
@@ -125,8 +125,8 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
 fn create_desc_set_gbuffers(
     descriptor_allocator: &StandardDescriptorSetAllocator,
     lighting_pipeline: Arc<GraphicsPipeline>,
-    g_buffer_normal: Arc<ImageView<AttachmentImage>>,
-    g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
+    g_buffer_normal: Arc<impl ImageViewAbstract + 'static>,
+    g_buffer_primitive_id: Arc<impl ImageViewAbstract + 'static>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
     let set_layout = lighting_pipeline
         .layout()

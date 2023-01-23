@@ -1,11 +1,7 @@
 use crate::engine::{
-    object::{
-        object::{Object, ObjectRef},
-        object_collection::ObjectCollection,
-    },
+    object::{object::ObjectRef, object_collection::ObjectCollection},
     primitives::{
-        primitive::Primitive,
-        primitive_references::{PrimitiveRefType, PrimitiveReferences},
+        primitive_ref_types::PrimitiveRefType, primitive_references::PrimitiveReferences,
     },
 };
 use egui::{
@@ -224,46 +220,55 @@ impl Gui {
                 if selected_primitive_op_index < selected_object.primitive_ops.len() {
                     let selected_primitive_op =
                         &selected_object.primitive_ops[selected_primitive_op_index];
-                    let primitive_type =
-                        PrimitiveRefType::from_name(selected_primitive_op.pr.type_name());
+                    let primitive_type = PrimitiveRefType::from_name(
+                        selected_primitive_op.prim.borrow().type_name(),
+                    );
 
                     match primitive_type {
                         PrimitiveRefType::Sphere => {
+                            let sphere_id = selected_primitive_op.prim.borrow().id();
+                            let sphere_ref = primitive_references.get_sphere(sphere_id)
+                                .expect("primitive collection doesn't contain primitive id from object op. this is a bug!");
+                            let mut sphere = sphere_ref.borrow_mut();
                             ui.label("Edit Sphere:");
-                            // ui.horizontal(|ui| {
-                            //     ui.label("Center:");
-                            //     ui.add(DragValue::new(&mut s.center.x).speed(DRAG_INC));
-                            //     ui.add(DragValue::new(&mut s.center.y).speed(DRAG_INC));
-                            //     ui.add(DragValue::new(&mut s.center.z).speed(DRAG_INC));
-                            // });
-                            // ui.horizontal(|ui| {
-                            //     ui.label("Radius:");
-                            //     ui.add(
-                            //         DragValue::new(&mut s.radius)
-                            //             .speed(DRAG_INC)
-                            //             .clamp_range(0..=100),
-                            //     );
-                            // });
+                            ui.horizontal(|ui| {
+                                ui.label("Center:");
+                                ui.add(DragValue::new(&mut sphere.center.x).speed(DRAG_INC));
+                                ui.add(DragValue::new(&mut sphere.center.y).speed(DRAG_INC));
+                                ui.add(DragValue::new(&mut sphere.center.z).speed(DRAG_INC));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Radius:");
+                                ui.add(
+                                    DragValue::new(&mut sphere.radius)
+                                        .speed(DRAG_INC)
+                                        .clamp_range(0..=100),
+                                );
+                            });
                         }
                         PrimitiveRefType::Cube => {
+                            let cube_id = selected_primitive_op.prim.borrow().id();
+                            let cube_ref = primitive_references.get_cube(cube_id)
+                                .expect("primitive collection doesn't contain primitive id from object op. this is a bug!");
+                            let mut cube = cube_ref.borrow_mut();
                             ui.label("Edit Cube:");
-                            // ui.horizontal(|ui| {
-                            //     ui.label("Center:");
-                            //     ui.add(DragValue::new(&mut c.center.x).speed(DRAG_INC));
-                            //     ui.add(DragValue::new(&mut c.center.y).speed(DRAG_INC));
-                            //     ui.add(DragValue::new(&mut c.center.z).speed(DRAG_INC));
-                            // });
-                            // ui.horizontal(|ui| {
-                            //     ui.label("Dimensions:");
-                            //     ui.add(DragValue::new(&mut c.dimensions.x).speed(DRAG_INC));
-                            //     ui.add(DragValue::new(&mut c.dimensions.y).speed(DRAG_INC));
-                            //     ui.add(DragValue::new(&mut c.dimensions.z).speed(DRAG_INC));
-                            // });
+                            ui.horizontal(|ui| {
+                                ui.label("Center:");
+                                ui.add(DragValue::new(&mut cube.center.x).speed(DRAG_INC));
+                                ui.add(DragValue::new(&mut cube.center.y).speed(DRAG_INC));
+                                ui.add(DragValue::new(&mut cube.center.z).speed(DRAG_INC));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Dimensions:");
+                                ui.add(DragValue::new(&mut cube.dimensions.x).speed(DRAG_INC));
+                                ui.add(DragValue::new(&mut cube.dimensions.y).speed(DRAG_INC));
+                                ui.add(DragValue::new(&mut cube.dimensions.z).speed(DRAG_INC));
+                            });
                         }
                         _ => {
                             ui.label(format!(
                                 "Primitive Type: {}",
-                                selected_primitive_op.pr.type_name()
+                                selected_primitive_op.prim.borrow().type_name()
                             ));
                         }
                     }
@@ -280,7 +285,7 @@ impl Gui {
                     "{} - {} {}",
                     i,
                     current_primitive_op.op.name(),
-                    current_primitive_op.pr.type_name()
+                    current_primitive_op.prim.borrow().type_name()
                 ))
                 .text_style(TextStyle::Monospace);
 
