@@ -5,6 +5,7 @@ use super::{
 use crate::{
     config,
     engine::object::object_collection::ObjectCollection,
+    helper::unique_id_gen::UniqueId,
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::{anyhow, Context};
@@ -353,6 +354,13 @@ impl RenderManager {
             future_previous_frame,
             recreate_swapchain: false,
         })
+    }
+
+    pub fn update_object_buffers(
+        &mut self,
+        object_collection: &ObjectCollection,
+        objects_to_update: Vec<UniqueId>,
+    ) {
     }
 
     /// Submits Vulkan commands for rendering a frame.

@@ -70,7 +70,7 @@ impl GeometryPass {
         let buffer_pool = create_buffer_pool(memory_allocator)?;
 
         let mut object_buffers: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>> = Vec::new();
-        for object in object_collection.objects() {
+        for (_, object) in object_collection.objects() {
             object_buffers.push(
                 upload_object(&buffer_pool, &object.borrow())
                     .context("uploading initial objects to buffer")?,

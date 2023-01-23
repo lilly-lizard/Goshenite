@@ -59,8 +59,7 @@ impl Engine {
         let scale_factor = window.scale_factor();
         let cursor_state = CursorState::new(window.clone());
 
-        let mut camera =
-            anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
+        let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
         let mut primitive_references = PrimitiveReferences::new();
 
@@ -80,10 +79,6 @@ impl Engine {
             Vec3::new(1., -1., 0.),
             sphere.clone(),
         );
-
-        // bruh
-        let object_ref = object_collection.get(0).unwrap();
-        camera.set_lock_on_object(Rc::downgrade(object_ref));
 
         let renderer = anyhow_unwrap(
             RenderManager::new(window.clone(), &object_collection),

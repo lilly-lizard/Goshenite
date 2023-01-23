@@ -10,20 +10,18 @@ const float MAX_DIST = 1000.;
 // Minimum distance to travel (epsilon)
 const float MIN_DIST = 0.0001;
 
-layout (location = 0) in flat uint in_object_id;
+layout (location = 0) in flat uint in_object_index;
 layout (location = 1) in vec2 in_uv;
 
 layout (location = 0) out vec4 out_normal;
 // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side
 layout (location = 1) out uint out_object_id;
 
-// todo for now just single object
-const uint OBJECT_INDEX = 0;
 layout (set = 0, binding = 0, std430) readonly buffer Object {
+	uint id;
 	uint op_count;
 	uint data[];
 } objects[];
-// push constant with camera data
 layout (push_constant) uniform Camera {
 	mat4 proj_view_inverse;
 	vec4 position;
@@ -60,30 +58,30 @@ float sdf_box(vec3 pos, vec3 center, vec3 dimensions)
 
 SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 {
-	uint primitive_type = objects[in_object_id].data[buffer_index++];
+	uint primitive_type = objects[in_object_index].data[buffer_index++];
 	SdfResult res = { MAX_DIST, op_index };
 
 	if (primitive_type == PRIMITIVE_SPHERE)
 	{
 		vec3 center = vec3(
-			uintBitsToFloat(objects[in_object_id].data[buffer_index++]),
-			uintBitsToFloat(objects[in_object_id].data[buffer_index++]),
-			uintBitsToFloat(objects[in_object_id].data[buffer_index++])
+			uintBitsToFloat(objects[in_object_index].data[buffer_index++]),
+			uintBitsToFloat(objects[in_object_index].data[buffer_index++]),
+			uintBitsToFloat(objects[in_object_index].data[buffer_index++])
 		);
-		float radius = uintBitsToFloat(objects[in_object_id].data[buffer_index++]);
+		float radius = uintBitsToFloat(objects[in_object_index].data[buffer_index++]);
 		res.d = sdf_sphere(pos, center, radius);
 	}
 	else if (primitive_type == PRIMITIVE_CUBE)
 	{
 		vec3 center = vec3(
-			uintBitsToFloat(objects[in_object_id].data[buffer_index++]),
-			uintBitsToFloat(objects[in_object_id].data[buffer_index++]),
-			uintBitsToFloat(objects[in_object_id].data[buffer_index++])
+			uintBitsToFloat(objects[in_object_index].data[buffer_index++]),
+			uintBitsToFloat(objects[in_object_index].data[buffer_index++]),
+			uintBitsToFloat(objects[in_object_index].data[buffer_index++])
 		);
 		vec3 dimensions = vec3(
-			uintBitsToFloat(objects[in_object_id].data[buffer_index++]),
-			uintBitsToFloat(objects[in_object_id].data[buffer_index++]),
-			uintBitsToFloat(objects[in_object_id].data[buffer_index++])
+			uintBitsToFloat(objects[in_object_index].data[buffer_index++]),
+			uintBitsToFloat(objects[in_object_index].data[buffer_index++]),
+			uintBitsToFloat(objects[in_object_index].data[buffer_index++])
 		);
 		res.d = sdf_box(pos, center, dimensions);
 	}
@@ -138,9 +136,9 @@ SdfResult map(vec3 pos)
 
 	// loop through the object operations
 	uint op_index = 0;
-	while (op_index < objects[in_object_id].op_count) {
+	while (op_index < objects[in_object_index].op_count) {
 		uint buffer_index = op_index * OP_UNIT_LENGTH;
-		uint op = objects[in_object_id].data[buffer_index++];
+		uint op = objects[in_object_index].data[buffer_index++];
 
 		SdfResult primitive_res = process_primitive(buffer_index, op_index, pos);
 		closest_res = process_op(op, closest_res, primitive_res);
@@ -179,7 +177,7 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint obj
 		// ray hit
 		if (closest_primitive.d < MIN_DIST) {
 			normal = calcNormal(current_pos) / 2. + .5;
-			object_id = closest_primitive.op_index | (OBJECT_INDEX << 16);
+			object_id = closest_primitive.op_index | (objects[in_object_index].id << 16);
 			return;
 		}
 

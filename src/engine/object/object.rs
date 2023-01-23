@@ -4,6 +4,7 @@ use crate::{
         none::None,
         primitive::{new_primitive_ref, PrimitiveRef},
     },
+    helper::unique_id_gen::UniqueId,
     renderer::shaders::object_buffer::ObjectDataUnit,
 };
 use glam::Vec3;
@@ -33,13 +34,13 @@ impl Default for PrimitiveOp {
 }
 
 pub struct Object {
-    id: usize,
+    id: UniqueId,
     pub name: String,
     pub origin: Vec3,
     pub primitive_ops: Vec<PrimitiveOp>,
 }
 impl Object {
-    pub fn new(id: usize, name: String, origin: Vec3, base_primitive: Rc<PrimitiveRef>) -> Self {
+    pub fn new(id: UniqueId, name: String, origin: Vec3, base_primitive: Rc<PrimitiveRef>) -> Self {
         Self {
             id,
             name,
@@ -51,7 +52,7 @@ impl Object {
         }
     }
 
-    pub fn id(&self) -> usize {
+    pub fn id(&self) -> UniqueId {
         self.id
     }
 
@@ -65,7 +66,10 @@ impl Object {
     pub fn encoded_data(&self) -> Vec<ObjectDataUnit> {
         // avoiding this case should be the responsibility of the functions adding to `primtive_ops`
         debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);
-        let mut encoded = vec![self.primitive_ops.len() as ObjectDataUnit];
+        let mut encoded = vec![
+            self.id as ObjectDataUnit,
+            self.primitive_ops.len() as ObjectDataUnit,
+        ];
         for primitive_op in &self.primitive_ops {
             encoded.push(primitive_op.op.op_code());
             encoded.extend_from_slice(&primitive_op.prim.borrow().encode(self.origin));

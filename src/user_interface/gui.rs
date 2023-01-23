@@ -159,10 +159,10 @@ impl Gui {
         let add_contents = |ui: &mut egui::Ui| {
             // object list
             let objects = object_collection.objects();
-            for i in 0..objects.len() {
-                let current_object = &objects[i];
-                let label_text = RichText::new(format!("{} - {}", i, current_object.borrow().name))
-                    .text_style(TextStyle::Monospace);
+            for (current_id, current_object) in objects.iter() {
+                let label_text =
+                    RichText::new(format!("{} - {}", current_id, current_object.borrow().name))
+                        .text_style(TextStyle::Monospace);
 
                 let is_selected = if let Some(object_ref) = &self.state.selected_object {
                     if let Some(selected_object) = object_ref.upgrade() {

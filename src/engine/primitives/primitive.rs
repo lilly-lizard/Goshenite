@@ -1,6 +1,8 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::renderer::shaders::object_buffer::PrimitiveDataSlice;
+use crate::{
+    helper::unique_id_gen::UniqueId, renderer::shaders::object_buffer::PrimitiveDataSlice,
+};
 use glam::Vec3;
 
 /// Use functions `borrow` and `borrow_mut` to access the `Primitive`.
@@ -14,7 +16,7 @@ pub fn new_primitive_ref<T: Primitive + 'static>(inner: T) -> Rc<PrimitiveRef> {
 /// using [`Operation`]s in an [`Object`]
 pub trait Primitive {
     /// Unique id that can be passed to `PrimitiveReferences` to lookup the actual struct
-    fn id(&self) -> usize;
+    fn id(&self) -> UniqueId;
     /// Returns buffer compatible primitive data as a [`PrimitiveDataSlice`].
     /// `parent_origin` is the world space origin of the parent object, which should be added to
     /// the primitive center before encoding.

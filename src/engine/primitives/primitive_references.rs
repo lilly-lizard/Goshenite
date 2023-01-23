@@ -3,23 +3,23 @@ use super::{
     primitive_ref_types::{new_cube_ref, new_sphere_ref, CubeRef, SphereRef},
     sphere::Sphere,
 };
-use crate::helper::unique_id_gen::UniqueIdGen;
+use crate::helper::unique_id_gen::{UniqueId, UniqueIdGen};
 use ahash::AHashMap;
 use glam::Vec3;
 use std::rc::{Rc, Weak};
 
 pub struct PrimitiveReferences {
     unique_id_gen: UniqueIdGen,
-    pub spheres: AHashMap<usize, Weak<SphereRef>>,
-    pub cubes: AHashMap<usize, Weak<CubeRef>>,
+    pub spheres: AHashMap<UniqueId, Weak<SphereRef>>,
+    pub cubes: AHashMap<UniqueId, Weak<CubeRef>>,
 }
 
 impl PrimitiveReferences {
     pub fn new() -> Self {
         Self {
             unique_id_gen: UniqueIdGen::new(),
-            spheres: AHashMap::<usize, Weak<SphereRef>>::default(),
-            cubes: AHashMap::<usize, Weak<CubeRef>>::default(),
+            spheres: AHashMap::<UniqueId, Weak<SphereRef>>::default(),
+            cubes: AHashMap::<UniqueId, Weak<CubeRef>>::default(),
         }
     }
 
@@ -36,15 +36,15 @@ impl PrimitiveReferences {
         cube
     }
 
-    pub fn get_sphere(&self, id: usize) -> Option<Rc<SphereRef>> {
+    pub fn get_sphere(&self, id: UniqueId) -> Option<Rc<SphereRef>> {
         get_primitive::<SphereRef>(id, &self.spheres)
     }
-    pub fn get_cube(&self, id: usize) -> Option<Rc<CubeRef>> {
+    pub fn get_cube(&self, id: UniqueId) -> Option<Rc<CubeRef>> {
         get_primitive::<CubeRef>(id, &self.cubes)
     }
 }
 
-fn get_primitive<T>(id: usize, collection: &AHashMap<usize, Weak<T>>) -> Option<Rc<T>> {
+fn get_primitive<T>(id: UniqueId, collection: &AHashMap<UniqueId, Weak<T>>) -> Option<Rc<T>> {
     if let Some(weak_ref) = collection.get(&id) {
         weak_ref.upgrade()
     } else {

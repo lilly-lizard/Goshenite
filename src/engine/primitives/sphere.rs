@@ -1,20 +1,23 @@
 use super::{primitive::Primitive, primitive_ref_types::primitive_names};
-use crate::renderer::shaders::object_buffer::{primitive_codes, PrimitiveDataSlice};
+use crate::{
+    helper::unique_id_gen::UniqueId,
+    renderer::shaders::object_buffer::{primitive_codes, PrimitiveDataSlice},
+};
 use glam::Vec3;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sphere {
-    id: usize,
+    id: UniqueId,
     pub center: Vec3,
     pub radius: f32,
 }
 impl Sphere {
-    pub const fn new(id: usize, center: Vec3, radius: f32) -> Self {
+    pub const fn new(id: UniqueId, center: Vec3, radius: f32) -> Self {
         Self { id, center, radius }
     }
 }
 impl Primitive for Sphere {
-    fn id(&self) -> usize {
+    fn id(&self) -> UniqueId {
         self.id
     }
     fn encode(&self, parent_origin: Vec3) -> PrimitiveDataSlice {
