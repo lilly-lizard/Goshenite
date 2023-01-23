@@ -1,5 +1,5 @@
 use super::{
-    object::{object::Object, object_collection::ObjectCollection, operation::Operation},
+    object::{object_collection::ObjectCollection, operation::Operation},
     primitives::primitive_references::PrimitiveReferences,
 };
 use crate::{
@@ -7,7 +7,10 @@ use crate::{
     helper::anyhow_panic::{anyhow_panic, anyhow_unwrap},
     renderer::render_manager::RenderManager,
     user_interface::camera::Camera,
-    user_interface::cursor_state::{CursorState, MouseButton},
+    user_interface::{
+        cursor_state::{CursorState, MouseButton},
+        gui::Gui,
+    },
 };
 use glam::Vec3;
 #[allow(unused_imports)]
@@ -27,11 +30,10 @@ pub struct Engine {
     window_resize: bool,
     scale_factor: f64,
     cursor_state: CursorState,
-    primitive_lock_on: bool,
 
     // specialized controllers
     camera: Camera,
-    //gui: Gui,
+    gui: Gui,
     renderer: RenderManager,
 
     // model data
@@ -91,7 +93,7 @@ impl Engine {
             "initialize renderer",
         );
 
-        //let gui = Gui::new(&event_loop, window.clone());
+        let gui = Gui::new(&event_loop, window.clone());
 
         Engine {
             _window: window,
@@ -99,10 +101,9 @@ impl Engine {
             window_resize: false,
             scale_factor,
             cursor_state,
-            primitive_lock_on: false,
 
             camera,
-            //gui,
+            gui,
             renderer,
 
             object_collection,
@@ -133,7 +134,7 @@ impl Engine {
         trace!("winit event: {:?}", event);
 
         // egui event handling
-        let captured_by_gui = false; //self.gui.process_event(&event); bruh
+        let captured_by_gui = self.gui.process_event(&event);
 
         // engine event handling
         match event {
@@ -177,20 +178,20 @@ impl Engine {
         self.cursor_state.process_frame();
 
         // process gui inputs and update layout
-        //if let Err(e) = self bruh
-        //    .gui
-        //    .update_gui(&mut self.primitive_collection, &mut self.primitive_lock_on)
-        //{
-        //    anyhow_panic(&e, "update gui");
-        //}
+        if let Err(e) = self
+            .gui
+            .update_gui(&self.object_collection, &self.primitive_references)
+        {
+            anyhow_panic(&e, "update gui");
+        }
 
         // update camera based on now processed user inputs
         self.update_camera();
 
         // now that frame processing is done, submit rendering commands
-        if let Err(e) = self
-            .renderer
-            .render_frame(self.window_resize, &mut self.camera)
+        if let Err(e) =
+            self.renderer
+                .render_frame(self.window_resize, &mut self.gui, &mut self.camera)
         {
             anyhow_panic(&e, "render frame");
         }
@@ -200,16 +201,13 @@ impl Engine {
     fn update_camera(&mut self) {
         // look mode logic
         // NOTE let_chains still unstable: https://github.com/rust-lang/rust/issues/53667
-        //let selected_primitive = self.primitive_collection.selected_primitive(); bruh
-        //if selected_primitive.is_some() && self.primitive_lock_on {
-        //    // set lock on target to selected primitive
-        //    let primitive = selected_primitive.expect("if let replacement");
-        //    self.camera
-        //        .set_lock_on_target(primitive.center().as_dvec3());
-        //} else {
-        //    // if no primitive selected use arcball mode
-        //    self.camera.unset_lock_on_target();
-        //}
+        if let Some(selected_object_ref) = self.gui.selected_object() {
+            // set lock on target to selected primitive
+            self.camera.set_lock_on_object(selected_object_ref);
+        } else {
+            // if no primitive selected use arcball mode
+            self.camera.unset_lock_on_target();
+        }
 
         // left mouse button dragging changes camera orientation
         if self.cursor_state.which_dragging() == Some(MouseButton::Left) {

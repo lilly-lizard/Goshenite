@@ -93,7 +93,7 @@ impl GuiRenderer {
     ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
         let (vertex_buffer_pool, index_buffer_pool) =
-            create_buffer_pools(device.clone(), memory_allocator)?;
+            create_buffer_pools(memory_allocator.clone())?;
         let sampler = Self::create_sampler(device.clone())?;
         Ok(Self {
             device,
@@ -459,7 +459,7 @@ impl GuiRenderer {
         &self,
         descriptor_allocator: &StandardDescriptorSetAllocator,
         layout: &Arc<DescriptorSetLayout>,
-        image: Arc<impl ImageViewAbstract>,
+        image: Arc<ImageView<ImmutableImage>>,
     ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
         PersistentDescriptorSet::new(
             descriptor_allocator,
@@ -512,10 +512,9 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
 ///
 /// Helper function for [`Self::new`]
 fn create_buffer_pools(
-    device: Arc<Device>,
     memory_allocator: Arc<StandardMemoryAllocator>,
 ) -> anyhow::Result<(CpuBufferPool<EguiVertex>, CpuBufferPool<VertexIndex>)> {
-    let vertex_buffer_pool = CpuBufferPool::vertex_buffer(memory_allocator);
+    let vertex_buffer_pool = CpuBufferPool::vertex_buffer(memory_allocator.clone());
     vertex_buffer_pool
         .reserve(VERTEX_BUFFER_SIZE)
         .context("creating gui vertex buffer pool")?;

@@ -1,12 +1,11 @@
 use super::{
-    geometry_pass::GeometryPass, lighting_pass::LightingPass,
+    geometry_pass::GeometryPass, gui_renderer::GuiRenderer, lighting_pass::LightingPass,
     shaders::push_constants::CameraPushConstants, vulkan_helper::*,
 };
 use crate::{
     config,
     engine::object::object_collection::ObjectCollection,
-    //renderer::gui_renderer::GuiRenderer,
-    user_interface::camera::Camera,
+    user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::{anyhow, Context};
 #[allow(unused_imports)]
@@ -63,8 +62,8 @@ pub struct RenderManager {
 
     geometry_pass: GeometryPass,
     lighting_pass: LightingPass,
-    //overlay_pass: OverlayPass, bruh
-    //gui_pass: GuiRenderer,
+    //overlay_pass: OverlayPass,
+    gui_pass: GuiRenderer,
     /// Can be used to synchronize commands with the submission for the previous frame
     future_previous_frame: Option<Box<dyn GpuFuture>>,
     /// Indicates that the swapchain needs to be recreated next frame
@@ -310,16 +309,16 @@ impl RenderManager {
         )?;
 
         // init overlay pass
-        //let overlay_pass = bruh
+        //let overlay_pass =
         //    OverlayPass::new(device.clone(), &memory_allocator, subpass_swapchain.clone())?;
 
         // init gui renderer
-        // let gui_pass = GuiRenderer::new(
-        //     device.clone(),
-        //     memory_allocator.clone(),
-        //     render_queue.clone(),
-        //     subpass_swapchain.clone(),
-        // )?;
+        let gui_pass = GuiRenderer::new(
+            device.clone(),
+            memory_allocator.clone(),
+            render_queue.clone(),
+            subpass_swapchain.clone(),
+        )?;
 
         // create futures used for frame synchronization
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
@@ -349,8 +348,8 @@ impl RenderManager {
 
             geometry_pass,
             lighting_pass,
-            //overlay_pass, bruh
-            //gui_pass,
+            //overlay_pass,
+            gui_pass,
             future_previous_frame,
             recreate_swapchain: false,
         })
@@ -360,7 +359,7 @@ impl RenderManager {
     pub fn render_frame(
         &mut self,
         window_resize: bool,
-        //gui: &mut Gui,
+        gui: &mut Gui,
         camera: &mut Camera,
     ) -> anyhow::Result<()> {
         // checks for submission finish and free locks on gpu resources
@@ -369,17 +368,17 @@ impl RenderManager {
         }
 
         // update gui textures
-        // self.future_previous_frame = Some(
-        //     self.gui_pass.update_textures(
-        //         self.future_previous_frame
-        //             .take()
-        //             .unwrap_or(sync::now(self.device.clone()).boxed()), // should never be None anyway...
-        //         &self.command_buffer_allocator,
-        //         &self.descriptor_allocator,
-        //         gui.get_and_clear_textures_delta(),
-        //         self.render_queue.clone(),
-        //     )?,
-        // );
+        self.future_previous_frame = Some(
+            self.gui_pass.update_textures(
+                self.future_previous_frame
+                    .take()
+                    .unwrap_or(sync::now(self.device.clone()).boxed()), // should never be None anyway...
+                &self.command_buffer_allocator,
+                &self.descriptor_allocator,
+                gui.get_and_clear_textures_delta(),
+                self.render_queue.clone(),
+            )?,
+        );
 
         self.recreate_swapchain = self.recreate_swapchain || window_resize;
         if self.recreate_swapchain {
@@ -459,16 +458,16 @@ impl RenderManager {
         )?;
 
         // draw editor overlay
-        //self.overlay_pass bruh
+        //self.overlay_pass
         //    .record_commands(&mut builder, camera, self.viewport.clone())?;
 
         // render gui
-        //self.gui_pass.record_commands( bruh
-        //    &mut builder,
-        //    gui,
-        //    self.is_srgb_framebuffer,
-        //    self.viewport.dimensions,
-        //)?;
+        self.gui_pass.record_commands(
+            &mut builder,
+            gui,
+            self.is_srgb_framebuffer,
+            self.viewport.dimensions,
+        )?;
 
         // end render pass
         builder
