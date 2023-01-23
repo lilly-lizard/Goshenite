@@ -3,7 +3,10 @@ use crate::engine::{
         object::{Object, ObjectRef},
         object_collection::ObjectCollection,
     },
-    primitives::{primitive::Primitive, primitive_references::PrimitiveReferences},
+    primitives::{
+        primitive::Primitive,
+        primitive_references::{PrimitiveRefType, PrimitiveReferences},
+    },
 };
 use egui::{
     Button, Checkbox, ComboBox, DragValue, FontFamily::Proportional, FontId, RichText, Sense,
@@ -114,7 +117,7 @@ impl Gui {
         self.context.begin_frame(raw_input);
 
         self.objects_window(object_collection);
-        self.object_editor_window();
+        self.object_editor_window(primitive_references);
 
         // end frame
         let egui::FullOutput {
@@ -193,7 +196,7 @@ impl Gui {
             .show(&self.context, add_contents);
     }
 
-    fn object_editor_window(&mut self) {
+    fn object_editor_window(&mut self, primitive_references: &PrimitiveReferences) {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
             let selected_object_ref = match &self.state.selected_object {
@@ -217,7 +220,55 @@ impl Gui {
             ui.heading(format!("{}", selected_object.name));
 
             // primitive op editor
-            //todo
+            if let Some(selected_primitive_op_index) = self.state.selected_primitive_op_index {
+                if selected_primitive_op_index < selected_object.primitive_ops.len() {
+                    let selected_primitive_op =
+                        &selected_object.primitive_ops[selected_primitive_op_index];
+                    let primitive_type =
+                        PrimitiveRefType::from_name(selected_primitive_op.pr.type_name());
+
+                    match primitive_type {
+                        PrimitiveRefType::Sphere => {
+                            ui.label("Edit Sphere:");
+                            // ui.horizontal(|ui| {
+                            //     ui.label("Center:");
+                            //     ui.add(DragValue::new(&mut s.center.x).speed(DRAG_INC));
+                            //     ui.add(DragValue::new(&mut s.center.y).speed(DRAG_INC));
+                            //     ui.add(DragValue::new(&mut s.center.z).speed(DRAG_INC));
+                            // });
+                            // ui.horizontal(|ui| {
+                            //     ui.label("Radius:");
+                            //     ui.add(
+                            //         DragValue::new(&mut s.radius)
+                            //             .speed(DRAG_INC)
+                            //             .clamp_range(0..=100),
+                            //     );
+                            // });
+                        }
+                        PrimitiveRefType::Cube => {
+                            ui.label("Edit Cube:");
+                            // ui.horizontal(|ui| {
+                            //     ui.label("Center:");
+                            //     ui.add(DragValue::new(&mut c.center.x).speed(DRAG_INC));
+                            //     ui.add(DragValue::new(&mut c.center.y).speed(DRAG_INC));
+                            //     ui.add(DragValue::new(&mut c.center.z).speed(DRAG_INC));
+                            // });
+                            // ui.horizontal(|ui| {
+                            //     ui.label("Dimensions:");
+                            //     ui.add(DragValue::new(&mut c.dimensions.x).speed(DRAG_INC));
+                            //     ui.add(DragValue::new(&mut c.dimensions.y).speed(DRAG_INC));
+                            //     ui.add(DragValue::new(&mut c.dimensions.z).speed(DRAG_INC));
+                            // });
+                        }
+                        _ => {
+                            ui.label(format!(
+                                "Primitive Type: {}",
+                                selected_primitive_op.pr.type_name()
+                            ));
+                        }
+                    }
+                }
+            }
 
             ui.separator();
 
