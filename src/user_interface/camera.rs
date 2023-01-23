@@ -1,6 +1,6 @@
 use crate::{
     config,
-    engine::{object::object::Object, primitives::primitive::Primitive},
+    engine::{object::object::ObjectRef, primitives::primitive::Primitive},
     helper::angle::Angle,
 };
 use anyhow::ensure;
@@ -12,7 +12,7 @@ use std::rc::Weak;
 #[derive(Clone)]
 pub enum LookTargetType {
     Position(DVec3),
-    Object(Weak<Object>),
+    Object(Weak<ObjectRef>),
     Primitive(Weak<dyn Primitive>),
 }
 
@@ -107,7 +107,7 @@ impl Camera {
         self.look_mode = LookMode::Target(LookTargetType::Position(target_pos));
     }
 
-    pub fn set_lock_on_object(&mut self, object: Weak<Object>) {
+    pub fn set_lock_on_object(&mut self, object: Weak<ObjectRef>) {
         self.look_mode = LookMode::Target(LookTargetType::Object(object));
     }
 
@@ -258,7 +258,7 @@ fn target_pos(target_type: LookTargetType) -> Option<DVec3> {
         LookTargetType::Position(position) => Some(position),
         LookTargetType::Object(object_ref) => {
             if let Some(object) = object_ref.upgrade() {
-                Some(object.origin().as_dvec3())
+                Some(object.borrow().origin.as_dvec3())
             } else {
                 debug!("camera target object reference no longer present...");
                 None

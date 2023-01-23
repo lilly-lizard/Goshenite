@@ -65,14 +65,22 @@ impl Engine {
         let sphere = primitive_references.new_sphere(Vec3::new(0., 0., 0.), 0.5);
         let cube = primitive_references.new_cube(Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8));
 
-        let mut object = Object::new(Vec3::new(-1., 1., 0.), cube.clone());
-        object.append(Operation::Union, sphere.clone());
-
-        let another_object = Object::new(Vec3::new(1., -1., 0.), sphere.clone());
-
         let mut object_collection = ObjectCollection::new();
-        object_collection.push(object);
-        object_collection.push(another_object);
+
+        let object = object_collection.new_object(
+            "bruh 0".to_string(),
+            Vec3::new(-1., 1., 0.),
+            cube.clone(),
+        );
+        object
+            .borrow_mut()
+            .push_op(Operation::Union, sphere.clone());
+
+        let another_object = object_collection.new_object(
+            "bruh 1".to_string(),
+            Vec3::new(1., -1., 0.),
+            sphere.clone(),
+        );
 
         // bruh
         let object_ref = object_collection.get(0).unwrap();

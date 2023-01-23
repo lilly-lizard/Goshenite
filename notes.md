@@ -24,6 +24,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- init renderer test
 - weak references or something for Operations e.g. Union
 - switch scene_geometry.frag to hlsl, delete circle (https://alain.xyz/blog/a-review-of-shader-languages, but also https://github.com/KhronosGroup/glslang/wiki/HLSL-FAQ)
 - smooth union op (curved combination)
@@ -81,6 +82,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - decrease MIN_DIST as distance progresses (need less resolution)
 - don't recreate buffer pools each frame in geometry_pass.rs
 - FastMemoryAllocator for frequent (per frame) memory allocations (see StandardMemoryAllocator description)
+- gui performance hit when list becomes too big (https://github.com/emilk/egui#cpu-usage) try only laying out part of list in view
 
 # Code Guidelines
 

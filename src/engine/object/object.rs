@@ -1,11 +1,17 @@
-use glam::Vec3;
-
 use super::operation::Operation;
 use crate::{
     engine::primitives::{none::None, primitive::Primitive},
     renderer::shaders::object_buffer::ObjectDataUnit,
 };
-use std::rc::Rc;
+use glam::Vec3;
+use std::{cell::RefCell, rc::Rc};
+
+/// Use functions `borrow` and `borrow_mut` to access the `Object`.
+pub type ObjectRef = RefCell<Object>;
+#[inline]
+pub fn new_object_ref(object: Object) -> Rc<ObjectRef> {
+    Rc::new(RefCell::new(object))
+}
 
 // this is because the shaders store the primitive op index in the lower 16 bits of a u32
 const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
@@ -24,12 +30,16 @@ impl Default for PrimitiveOp {
 }
 
 pub struct Object {
-    origin: Vec3,
-    primitive_ops: Vec<PrimitiveOp>,
+    id: usize,
+    pub name: String,
+    pub origin: Vec3,
+    pub primitive_ops: Vec<PrimitiveOp>,
 }
 impl Object {
-    pub fn new(origin: Vec3, base_primitive: Rc<dyn Primitive>) -> Self {
+    pub fn new(id: usize, name: String, origin: Vec3, base_primitive: Rc<dyn Primitive>) -> Self {
         Self {
+            id,
+            name,
             origin,
             primitive_ops: vec![PrimitiveOp {
                 op: Operation::Union,
@@ -38,21 +48,11 @@ impl Object {
         }
     }
 
-    pub fn origin(&self) -> Vec3 {
-        self.origin
-    }
-    pub fn set_origin(&mut self, origin: Vec3) {
-        self.origin = origin;
+    pub fn id(&self) -> usize {
+        self.id
     }
 
-    pub fn primitive_ops(&self) -> &Vec<PrimitiveOp> {
-        &self.primitive_ops
-    }
-    pub fn primitive_ops_mut(&mut self) -> &mut Vec<PrimitiveOp> {
-        &mut self.primitive_ops
-    }
-
-    pub fn append(&mut self, operation: Operation, primitive: Rc<dyn Primitive>) {
+    pub fn push_op(&mut self, operation: Operation, primitive: Rc<dyn Primitive>) {
         self.primitive_ops.push(PrimitiveOp {
             op: operation,
             pr: primitive,

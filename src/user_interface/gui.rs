@@ -1,5 +1,8 @@
 use crate::engine::{
-    object::object_collection::ObjectCollection,
+    object::{
+        object::{Object, ObjectRef},
+        object_collection::ObjectCollection,
+    },
     primitives::{primitive::Primitive, primitive_references::PrimitiveReferences},
 };
 use egui::{
@@ -7,19 +10,31 @@ use egui::{
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::sync::Arc;
+use std::{
+    rc::{Rc, Weak},
+    sync::Arc,
+};
 use winit::{event_loop::EventLoopWindowTarget, window::Window};
 
+/// Ammount to incriment when modifying values via dragging
+const DRAG_INC: f64 = 0.02;
+
 /// Persistend settings
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone)]
 struct GuiState {
     /// Live update mode means user input primitive data is continuously updated. Otherwise changes
     /// are not commited until the 'Update' button is pressed.
     pub live_update: bool,
+    pub selected_object: Option<Weak<ObjectRef>>,
+    pub selected_primitive: Option<Weak<dyn Primitive>>,
 }
 impl Default for GuiState {
     fn default() -> Self {
-        Self { live_update: false }
+        Self {
+            live_update: false,
+            selected_object: None,
+            selected_primitive: None,
+        }
     }
 }
 
@@ -56,7 +71,7 @@ impl Gui {
             context,
             window_state,
             mesh_primitives: Default::default(),
-            primitive_editor_state: Default::default(),
+            gui_state: Default::default(),
             textures_delta: Default::default(),
         }
     }
@@ -77,14 +92,10 @@ impl Gui {
         &self.mesh_primitives
     }
 
-    /// Returns the scale factor (i.e. window dpi) currently configured for the egui context.
-    ///
-    /// See [`winit::window::Window::scale_factor`]
     pub fn scale_factor(&self) -> f32 {
         self.window_state.pixels_per_point()
     }
 
-    /// Updates the gui layout and tells the renderer to update any changed resources
     pub fn update_gui(
         &mut self,
         object_collection: &ObjectCollection,
@@ -94,8 +105,7 @@ impl Gui {
         let raw_input = self.window_state.take_egui_input(self.window.as_ref());
         self.context.begin_frame(raw_input);
 
-        // draw primitive editor window
-        self.primitives_window(primitive_collection, primitive_lock_on);
+        self.objects_window(object_collection);
 
         // end frame
         let egui::FullOutput {
@@ -122,178 +132,60 @@ impl Gui {
     }
 
     /// Returns texture update info accumulated since the last call to this function.
-    /// Calling this clears the internal texture delta storage, so be sure appropriate renderer
-    /// updates are done after calling this.
+    /// Calling this clears the internal texture delta storage.
     pub fn get_and_clear_textures_delta(&mut self) -> Vec<TexturesDelta> {
         std::mem::take(&mut self.textures_delta)
+    }
+
+    pub fn selected_object(&self) -> Option<Weak<ObjectRef>> {
+        self.gui_state.selected_object.clone()
+    }
+
+    pub fn selected_primitive(&self) -> Option<Weak<dyn Primitive>> {
+        self.gui_state.selected_primitive.clone()
     }
 }
 
 // Private functions
 
 impl Gui {
-    fn primitives_window(
-        &mut self,
-        primitive_collection: &mut PrimitiveCollection,
-        primitive_lock_on: &mut bool,
-    ) {
+    fn objects_window(&mut self, object_collection: &ObjectCollection) {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
-            /// Ammount to incriment when modifying by dragging
-            const DRAG_INC: f64 = 0.02;
+            // object list
+            let objects = object_collection.objects();
+            for i in 0..objects.len() {
+                let current_object = &objects[i];
+                let label_text = format!("{} - {}", i, current_object.borrow().name);
 
-            // persistent state
-            let PrimitiveEditorState {
-                primitive_input,
-                live_update,
-            } = &mut self.primitive_editor_state;
-            let selected_primitive = primitive_collection.selected_index();
-
-            if let Some(primitive_index) = selected_primitive {
-                // status
-                ui.heading(format!("Modify primitive {}", primitive_index));
-
-                // lock-on tick-box
-                ui.add(Checkbox::new(primitive_lock_on, "Enable lock-on"));
-
-                // update primitive buttons
-                let mut update_primitive = *live_update;
-                ui.horizontal(|ui| {
-                    // 'Update' button (disabled in 'Live update' mode)
-                    update_primitive |= ui
-                        .add(Button::new("Update").sense(if *live_update {
-                            // disable if 'Live update' mode is on
-                            Sense::hover()
-                        } else {
-                            Sense::click()
-                        }))
-                        .clicked();
-                    // 'Live update' checkbox means the primitive data gets constantly updated
-                    ui.add(Checkbox::new(&mut *live_update, "Live update"));
-                });
-                if update_primitive {
-                    // overwrite selected primitive with user data
-                    if let Err(e) = primitive_collection.update(primitive_index, *primitive_input) {
-                        warn!("could not update primitive due to: {}", e);
+                let is_selected = if let Some(object_ref) = &self.gui_state.selected_object {
+                    if let Some(selected_object) = object_ref.upgrade() {
+                        selected_object.borrow().id() == current_object.borrow().id()
+                    } else {
+                        debug!("selected object dropped. deselecting object...");
+                        self.gui_state.selected_object = None;
+                        false
                     }
-                }
-            } else {
-                // status
-                ui.heading("New primitive");
-
-                ui.horizontal(|ui| {
-                    // new primitive button
-                    if ui
-                        .add(
-                            Button::new("Add").sense(if *primitive_input == Primitive::Null {
-                                // disable if primitive type == Null
-                                Sense::hover()
-                            } else {
-                                Sense::click()
-                            }),
-                        )
-                        .clicked()
-                    {
-                        primitive_collection.append(*primitive_input);
-                    }
-
-                    // dropdown menu to select primitive type
-                    ComboBox::from_label("Primitive type")
-                        .selected_text(primitive_input.type_name())
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut *primitive_input,
-                                Primitive::Sphere(Default::default()),
-                                "Sphere",
-                            );
-                            ui.selectable_value(
-                                &mut *primitive_input,
-                                Primitive::Cube(Default::default()),
-                                "Cube",
-                            );
-                        });
-                });
-            };
-
-            // user data input section
-            match *primitive_input {
-                Primitive::Sphere(ref mut s) => {
-                    ui.horizontal(|ui| {
-                        ui.label("Center:");
-                        ui.add(DragValue::new(&mut s.center.x).speed(DRAG_INC));
-                        ui.add(DragValue::new(&mut s.center.y).speed(DRAG_INC));
-                        ui.add(DragValue::new(&mut s.center.z).speed(DRAG_INC));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Radius:");
-                        ui.add(
-                            DragValue::new(&mut s.radius)
-                                .speed(DRAG_INC)
-                                .clamp_range(0..=100),
-                        );
-                    });
-                }
-                Primitive::Cube(ref mut c) => {
-                    ui.horizontal(|ui| {
-                        ui.label("Center:");
-                        ui.add(DragValue::new(&mut c.center.x).speed(DRAG_INC));
-                        ui.add(DragValue::new(&mut c.center.y).speed(DRAG_INC));
-                        ui.add(DragValue::new(&mut c.center.z).speed(DRAG_INC));
-                    });
-                    ui.horizontal(|ui| {
-                        ui.label("Dimensions:");
-                        ui.add(DragValue::new(&mut c.dimensions.x).speed(DRAG_INC));
-                        ui.add(DragValue::new(&mut c.dimensions.y).speed(DRAG_INC));
-                        ui.add(DragValue::new(&mut c.dimensions.z).speed(DRAG_INC));
-                    });
-                }
-                Primitive::Null => (),
-            };
-
-            ui.separator();
-
-            // new primitive button
-            if ui
-                .selectable_label(selected_primitive.is_none(), "New primitive")
-                .clicked()
-            {
-                primitive_collection.unset_selected_primitive();
-                *primitive_input = Primitive::Null;
-            }
-            // primitive list
-            // todo performance hit when list becomes too big (https://github.com/emilk/egui#cpu-usage) try only laying out part in view
-            let primitives = primitive_collection.primitives();
-            let mut new_selected_primitive: Option<usize> = None;
-            for i in 0..primitives.len() {
-                // label text depending on primitive type
-                let label_text = match primitives[i] {
-                    Primitive::Sphere(s) => {
-                        format!("{} Sphere: center = {}, radius = {}", i, s.center, s.radius)
-                    }
-                    Primitive::Cube(c) => format!(
-                        "{} Cube: center = {}, radius = {}",
-                        i, c.center, c.dimensions
-                    ),
-                    Primitive::Null => format!("{} Null", 1),
-                };
-                // check if this primitive is selected
-                let is_selected = if let Some(pi) = selected_primitive {
-                    pi == i
                 } else {
                     false
                 };
-                // selectable label
+
                 if ui.selectable_label(is_selected, label_text).clicked() {
-                    new_selected_primitive = Some(i);
-                    *primitive_input = primitives[i];
+                    self.gui_state.selected_object = Some(Rc::downgrade(current_object));
                 };
             }
-            // if a primitive from the list was selected, tell primitive_collection
-            if let Some(index) = new_selected_primitive {
-                // if index is invalid, no harm done
-                let _err = primitive_collection.set_selected_index(index);
-            }
+        };
 
+        // add window to egui context
+        egui::Window::new("Objects")
+            .resizable(true)
+            .vscroll(true)
+            .hscroll(true)
+            .show(&self.context, add_contents);
+    }
+
+    fn bug_test_window(&mut self) {
+        let add_contents = |ui: &mut egui::Ui| {
             // TODO TESTING tests GuiRenderer create_texture() functionality for when ImageDelta.pos != None
             // todo add to testing window function and document
             ui.separator();
@@ -311,8 +203,7 @@ impl Gui {
                 self.context.set_style(style);
             }
         };
-        // add window to egui context
-        egui::Window::new("Primitive Editor")
+        egui::Window::new("Gui Bug Test")
             .resizable(true)
             .vscroll(true)
             .hscroll(true)
