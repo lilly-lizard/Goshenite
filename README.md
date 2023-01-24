@@ -2,7 +2,7 @@
 
 SDF rendering engine thingy.
 
-![Goshenite](/assets/Goshenite.webp)
+![Goshenite](/assets/gosh.webp)
 
 If debugging, run with environment variable `RUST_BACKTRACE=1` to see [anyhow](https://github.com/dtolnay/anyhow) error backtrace.
 
