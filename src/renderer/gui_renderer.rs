@@ -173,6 +173,7 @@ impl GuiRenderer {
         is_srgb_framebuffer: bool,
         framebuffer_dimensions: [f32; 2],
     ) -> anyhow::Result<()> {
+        // todo have these as args instead of whole gui?
         let scale_factor = gui.scale_factor();
         let primitives = gui.mesh_primitives();
 

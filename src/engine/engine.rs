@@ -1,5 +1,8 @@
 use super::{
-    object::{object_collection::ObjectCollection, operation::Operation},
+    object::{
+        object_collection::{ObjectCollection, ObjectsDelta},
+        operation::Operation,
+    },
     primitives::{
         null_primitive::NullPrimitive, primitive::new_primitive_ref,
         primitive_references::PrimitiveReferences,
@@ -7,7 +10,10 @@ use super::{
 };
 use crate::{
     config,
-    helper::anyhow_panic::{anyhow_panic, anyhow_unwrap},
+    helper::{
+        anyhow_panic::{anyhow_panic, anyhow_unwrap},
+        unique_id_gen::UniqueId,
+    },
     renderer::render_manager::RenderManager,
     user_interface::camera::Camera,
     user_interface::{
@@ -18,7 +24,7 @@ use crate::{
 use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::sync::Arc;
+use std::{rc::Rc, sync::Arc};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -40,7 +46,7 @@ pub struct Engine {
     renderer: RenderManager,
 
     // model data
-    object_collection: ObjectCollection,
+    object_collection: Rc<ObjectCollection>,
     primitive_references: PrimitiveReferences,
 }
 impl Engine {
@@ -104,7 +110,7 @@ impl Engine {
             gui,
             renderer,
 
-            object_collection,
+            object_collection: Rc::new(object_collection),
             primitive_references,
         }
     }
@@ -185,6 +191,29 @@ impl Engine {
 
         // update camera based on now processed user inputs
         self.update_camera();
+
+        // bruh
+        let objects_delta = ObjectsDelta {
+            object_collection: self.object_collection.clone(),
+            set: self
+                .object_collection
+                .objects()
+                .iter()
+                .map(|(&id, _)| id)
+                .collect::<Vec<UniqueId>>(),
+            free: Vec::new(),
+        };
+        if let Err(e) = self.renderer.update_object_buffers(objects_delta) {
+            anyhow_panic(&e, "updating object buffers");
+        }
+
+        // update gui renderer
+        if let Err(e) = self
+            .renderer
+            .update_gui_textures(self.gui.get_and_clear_textures_delta())
+        {
+            anyhow_panic(&e, "updating gui textures");
+        }
 
         // now that frame processing is done, submit rendering commands
         if let Err(e) =

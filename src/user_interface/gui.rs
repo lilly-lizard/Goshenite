@@ -1,12 +1,17 @@
-use crate::engine::{
-    object::{object::ObjectRef, object_collection::ObjectCollection},
-    primitives::{
-        primitive_ref_types::PrimitiveRefType, primitive_references::PrimitiveReferences,
+use crate::{
+    config,
+    engine::{
+        object::{
+            object::ObjectRef,
+            object_collection::{ObjectCollection, ObjectsDelta},
+        },
+        primitives::{
+            primitive_ref_types::PrimitiveRefType, primitive_references::PrimitiveReferences,
+        },
     },
 };
 use egui::{
-    Button, Checkbox, ComboBox, DragValue, FontFamily::Proportional, FontId, RichText, Sense,
-    TextStyle, TexturesDelta,
+    Button, DragValue, FontFamily::Proportional, FontId, RichText, TextStyle, TexturesDelta,
 };
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
@@ -23,9 +28,6 @@ const DRAG_INC: f64 = 0.02;
 /// Persistend settings
 #[derive(Clone)]
 struct GuiState {
-    /// Live update mode means user input primitive data is continuously updated. Otherwise changes
-    /// are not commited until the 'Update' button is pressed.
-    pub live_update: bool,
     pub selected_object: Option<Weak<ObjectRef>>,
     pub selected_primitive_op_index: Option<usize>,
 }
@@ -39,7 +41,6 @@ impl GuiState {
 impl Default for GuiState {
     fn default() -> Self {
         Self {
-            live_update: false,
             selected_object: None,
             selected_primitive_op_index: None,
         }
@@ -54,8 +55,11 @@ pub struct Gui {
     mesh_primitives: Vec<egui::ClippedPrimitive>,
     state: GuiState,
     textures_delta: Vec<TexturesDelta>,
+    objects_delta: Vec<ObjectsDelta>,
 }
+
 // Public functions
+
 impl Gui {
     /// Creates a new [`Gui`].
     /// * `window`: [`winit`] window
@@ -81,6 +85,7 @@ impl Gui {
             mesh_primitives: Default::default(),
             state: Default::default(),
             textures_delta: Default::default(),
+            objects_delta: Default::default(),
         }
     }
 
@@ -246,7 +251,7 @@ impl Gui {
                                 ui.add(
                                     DragValue::new(&mut sphere.radius)
                                         .speed(DRAG_INC)
-                                        .clamp_range(0..=100),
+                                        .clamp_range(0..=config::MAX_SPHERE_RADIUS),
                                 );
                             });
                         }

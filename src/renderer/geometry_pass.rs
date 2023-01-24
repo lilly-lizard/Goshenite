@@ -7,12 +7,16 @@ use super::{
 };
 use crate::{
     config::SHADER_ENTRY_POINT,
-    engine::object::{object::Object, object_collection::ObjectCollection},
+    engine::object::{
+        object::Object,
+        object_collection::{ObjectCollection, ObjectsDelta},
+    },
+    helper::unique_id_gen::UniqueId,
 };
 use anyhow::Context;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{mem::size_of, sync::Arc};
+use std::{borrow::Borrow, mem::size_of, sync::Arc};
 use vulkano::{
     buffer::{cpu_pool::CpuBufferPoolChunk, BufferAccess, BufferUsage, CpuBufferPool},
     command_buffer::AutoCommandBufferBuilder,
@@ -52,9 +56,10 @@ const INIT_BUFFER_POOL_RESERVE: DeviceSize =
 
 /// Render the scene geometry and write to g-buffers
 pub struct GeometryPass {
+    descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
     pipeline: Arc<GraphicsPipeline>,
     buffer_pool: CpuBufferPool<ObjectDataUnit>,
-    object_buffers: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
+    object_buffers: ObjectBuffers,
     desc_set: Arc<PersistentDescriptorSet>,
 }
 // Public functions
@@ -62,23 +67,28 @@ impl GeometryPass {
     pub fn new(
         device: Arc<Device>,
         memory_allocator: Arc<StandardMemoryAllocator>,
-        descriptor_allocator: &StandardDescriptorSetAllocator,
+        descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
         subpass: Subpass,
         object_collection: &ObjectCollection,
     ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
         let buffer_pool = create_buffer_pool(memory_allocator)?;
 
-        let mut object_buffers: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>> = Vec::new();
-        for (_, object) in object_collection.objects() {
-            object_buffers.push(
-                upload_object(&buffer_pool, &object.borrow())
-                    .context("uploading initial objects to buffer")?,
-            );
+        let mut object_buffers = ObjectBuffers::new();
+        for (&id, object_ref) in object_collection.objects() {
+            let object = &*object_ref.as_ref().borrow();
+            let buffer =
+                upload_object(&buffer_pool, object).context("initial upload object to buffer")?;
+            object_buffers.update_or_push(id, buffer);
         }
 
-        let desc_set = create_desc_set(descriptor_allocator, pipeline.clone(), &object_buffers)?;
+        let desc_set = create_desc_set(
+            descriptor_allocator.borrow(),
+            pipeline.clone(),
+            object_buffers.buffers(),
+        )?;
         Ok(Self {
+            descriptor_allocator,
             pipeline,
             buffer_pool,
             object_buffers,
@@ -104,6 +114,52 @@ impl GeometryPass {
             .push_constants(self.pipeline.layout().clone(), 0, camera_push_constant)
             .draw(3, 1, 0, 0)
             .context("recording geometry pass commands")?;
+        Ok(())
+    }
+
+    pub fn update_object_buffers(&mut self, object_delta: ObjectsDelta) -> anyhow::Result<()> {
+        let mut lowest_changed_index = usize::MAX;
+
+        // freed objects
+        for free_id in object_delta.free {
+            if let Some(removed_index) = self.object_buffers.remove(free_id) {
+                trace!("removing object buffer id = {}", free_id);
+                if removed_index < lowest_changed_index {
+                    lowest_changed_index = removed_index;
+                }
+            } else {
+                debug!(
+                    "object buffer id = {} was requested to be removed but not found!",
+                    free_id
+                );
+            }
+        }
+
+        // added objects
+        for set_id in object_delta.set {
+            if let Some(object_ref) = object_delta.object_collection.get(set_id) {
+                trace!("adding or updating object buffer id = {}", set_id);
+                let object = &*object_ref.as_ref().borrow();
+                let buffer = upload_object(&self.buffer_pool, object)
+                    .context("uploading object data to buffer")?;
+                let set_index = self.object_buffers.update_or_push(set_id, buffer);
+                if set_index < lowest_changed_index {
+                    lowest_changed_index = set_index;
+                }
+            } else {
+                warn!("requsted update for object id = {} but wasn't found in object collection id = {}!", set_id, object_delta.object_collection.id());
+            }
+        }
+
+        // todo bounding box indices
+
+        // update descriptor set
+        self.desc_set = create_desc_set(
+            self.descriptor_allocator.borrow(),
+            self.pipeline.clone(),
+            self.object_buffers.buffers(),
+        )?;
+
         Ok(())
     }
 }
@@ -133,7 +189,7 @@ fn upload_object(
     buffer_pool: &CpuBufferPool<ObjectDataUnit>,
     object: &Object,
 ) -> Result<Arc<CpuBufferPoolChunk<ObjectDataUnit>>, AllocationCreationError> {
-    trace!("uploading object to buffer");
+    trace!("uploading object id = {} to buffer", object.id());
     buffer_pool.from_iter(object.encoded_data())
 }
 
@@ -237,9 +293,59 @@ fn create_desc_set(
             0,
             object_buffers
                 .iter()
-                .map(|buf| buf.clone() as Arc<dyn BufferAccess>) // probably a nicer way to do this conversion but https://stackoverflow.com/questions/58683548/how-to-coerce-a-vec-of-structs-to-a-vec-of-trait-objects
+                .map(|buffer| buffer.clone() as Arc<dyn BufferAccess>) // probably a nicer way to do this conversion but https://stackoverflow.com/questions/58683548/how-to-coerce-a-vec-of-structs-to-a-vec-of-trait-objects
                 .collect::<Vec<Arc<dyn BufferAccess>>>(),
         )],
     )
     .context("creating object buffer desc set")
+}
+
+struct ObjectBuffers {
+    ids: Vec<UniqueId>,
+    buffers: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
+}
+impl ObjectBuffers {
+    pub fn new() -> Self {
+        Self {
+            ids: Vec::new(),
+            buffers: Vec::new(),
+        }
+    }
+
+    /// Returns the index
+    pub fn update_or_push(
+        &mut self,
+        id: UniqueId,
+        buffer: Arc<CpuBufferPoolChunk<ObjectDataUnit>>,
+    ) -> usize {
+        debug_assert!(self.ids.len() == self.buffers.len());
+        if let Some(index) = self.get_index(id) {
+            self.buffers[index] = buffer;
+            index
+        } else {
+            self.ids.push(id);
+            self.buffers.push(buffer);
+            self.ids.len() - 1
+        }
+    }
+
+    /// Returns the vec index if the id was found and removed.
+    pub fn remove(&mut self, id: UniqueId) -> Option<usize> {
+        debug_assert!(self.ids.len() == self.buffers.len());
+        if let Some(index) = self.get_index(id) {
+            self.ids.remove(index);
+            self.buffers.remove(index);
+            Some(index)
+        } else {
+            None
+        }
+    }
+
+    pub fn get_index(&self, id: UniqueId) -> Option<usize> {
+        self.ids.iter().position(|&x| x == id)
+    }
+
+    pub fn buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>> {
+        &self.buffers
+    }
 }

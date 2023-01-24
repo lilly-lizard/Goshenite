@@ -15,9 +15,9 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 		2. overlay pass
 2. organise shaders directory structure and content
 	- would be nice to structure as per how I conceptualize the code i.e. - DONE
-		1. user interface -> intuitive, ux/gui
-		2. backend -> optimized, rendering code
-		3. engine -> abstraction, connecting glue between user interface and backend
+		1. user interface -> intuitive, fast and clear feedback. ux/gui
+		2. backend -> optimized. rendering code
+		3. engine -> abstraction. connecting glue between user interface and backend
 	- clearly defined design goals for each section of the code
 	- could try minimizing the coupling between backend and ui
 3. raster bounding boxes (hard-coded AABB for now)
@@ -37,6 +37,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## cleanup
 
+- gui.rs split window functions into subfunctions!
 - primitive_references to dos
 - Primitive/Operation -> convert from enum to boxed dyn trait collections. have vecs for each type and collection points to them
 - try rust analyzer extract method in render_manager.rs. what would uncle bob do?
@@ -83,6 +84,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - don't recreate buffer pools each frame in geometry_pass.rs
 - FastMemoryAllocator for frequent (per frame) memory allocations (see StandardMemoryAllocator description)
 - gui performance hit when list becomes too big (https://github.com/emilk/egui#cpu-usage) try only laying out part of list in view
+- more elegant solution to contiguous buffer descriptor indices
 
 # Code Guidelines
 

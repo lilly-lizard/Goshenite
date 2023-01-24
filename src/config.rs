@@ -67,3 +67,5 @@ pub const SHADER_ENTRY_POINT: &str = "main";
 /// G-buffer formats. Note that the combined bit total of these should be under 128bits to fit in tile storage on many tile-based architectures.
 pub const G_BUFFER_FORMAT_NORMAL: Format = Format::R8G8B8A8_UNORM;
 pub const G_BUFFER_FORMAT_PRIMITIVE_ID: Format = Format::R32_UINT;
+
+pub const MAX_SPHERE_RADIUS: u32 = 100;

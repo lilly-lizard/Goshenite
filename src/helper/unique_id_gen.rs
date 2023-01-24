@@ -5,9 +5,8 @@ pub type UniqueId = usize;
 pub struct UniqueIdGen {
     counter: AtomicUsize,
 }
-
 impl UniqueIdGen {
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             counter: AtomicUsize::new(1),
         }
@@ -18,3 +17,4 @@ impl UniqueIdGen {
         self.counter.fetch_add(1, Ordering::Relaxed)
     }
 }
+unsafe impl Sync for UniqueIdGen {}

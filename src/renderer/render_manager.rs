@@ -4,11 +4,12 @@ use super::{
 };
 use crate::{
     config,
-    engine::object::object_collection::ObjectCollection,
+    engine::object::object_collection::{ObjectCollection, ObjectsDelta},
     helper::unique_id_gen::UniqueId,
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::{anyhow, Context};
+use egui::TexturesDelta;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
@@ -52,7 +53,7 @@ pub struct RenderManager {
 
     memory_allocator: Arc<StandardMemoryAllocator>,
     command_buffer_allocator: StandardCommandBufferAllocator,
-    descriptor_allocator: StandardDescriptorSetAllocator,
+    descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
 
     viewport: Viewport,
     g_buffer_normal: Arc<ImageView<AttachmentImage>>,
@@ -265,7 +266,7 @@ impl RenderManager {
                 ..StandardCommandBufferAllocatorCreateInfo::default()
             },
         );
-        let descriptor_allocator = StandardDescriptorSetAllocator::new(device.clone());
+        let descriptor_allocator = Arc::new(StandardDescriptorSetAllocator::new(device.clone()));
 
         // g-buffers
         let g_buffer_normal = create_g_buffer(
@@ -300,11 +301,11 @@ impl RenderManager {
             subpass_swapchain.clone(),
         )?;
 
-        // init compute shader geometry pass
+        // init geometry pass
         let geometry_pass = GeometryPass::new(
             device.clone(),
             memory_allocator.clone(),
-            &descriptor_allocator,
+            descriptor_allocator.clone(),
             subpass_gbuffer,
             object_collection,
         )?;
@@ -356,11 +357,28 @@ impl RenderManager {
         })
     }
 
-    pub fn update_object_buffers(
+    pub fn update_object_buffers(&mut self, object_delta: ObjectsDelta) -> anyhow::Result<()> {
+        self.geometry_pass.update_object_buffers(object_delta)
+    }
+
+    pub fn update_gui_textures(
         &mut self,
-        object_collection: &ObjectCollection,
-        objects_to_update: Vec<UniqueId>,
-    ) {
+        textures_delta_vec: Vec<TexturesDelta>,
+    ) -> anyhow::Result<()> {
+        self.wait_and_unlock_previous_frame();
+
+        self.future_previous_frame = Some(
+            self.gui_pass.update_textures(
+                self.future_previous_frame
+                    .take()
+                    .unwrap_or(sync::now(self.device.clone()).boxed()), // should never be None anyway...
+                &self.command_buffer_allocator,
+                &self.descriptor_allocator,
+                textures_delta_vec,
+                self.render_queue.clone(),
+            )?,
+        );
+        Ok(())
     }
 
     /// Submits Vulkan commands for rendering a frame.
@@ -370,23 +388,7 @@ impl RenderManager {
         gui: &mut Gui,
         camera: &mut Camera,
     ) -> anyhow::Result<()> {
-        // checks for submission finish and free locks on gpu resources
-        if let Some(future_previous_frame) = self.future_previous_frame.as_mut() {
-            future_previous_frame.cleanup_finished();
-        }
-
-        // update gui textures
-        self.future_previous_frame = Some(
-            self.gui_pass.update_textures(
-                self.future_previous_frame
-                    .take()
-                    .unwrap_or(sync::now(self.device.clone()).boxed()), // should never be None anyway...
-                &self.command_buffer_allocator,
-                &self.descriptor_allocator,
-                gui.get_and_clear_textures_delta(),
-                self.render_queue.clone(),
-            )?,
-        );
+        self.wait_and_unlock_previous_frame();
 
         self.recreate_swapchain = self.recreate_swapchain || window_resize;
         if self.recreate_swapchain {
@@ -582,5 +584,12 @@ impl RenderManager {
 
         self.recreate_swapchain = false;
         Ok(())
+    }
+
+    /// Checks for submission finish and free locks on gpu resources
+    fn wait_and_unlock_previous_frame(&mut self) {
+        if let Some(future_previous_frame) = self.future_previous_frame.as_mut() {
+            future_previous_frame.cleanup_finished();
+        }
     }
 }
