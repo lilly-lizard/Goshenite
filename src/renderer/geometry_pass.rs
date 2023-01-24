@@ -1,6 +1,6 @@
 use super::{
     common::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
-    shaders::{
+    shader_interfaces::{
         object_buffer::{ObjectDataUnit, OPERATION_UNIT_LEN},
         push_constants::CameraPushConstants,
     },

@@ -1,7 +1,7 @@
 use super::{primitive::Primitive, primitive_ref_types::primitive_names};
 use crate::{
     helper::unique_id_gen::UniqueId,
-    renderer::shaders::object_buffer::{primitive_codes, PrimitiveDataSlice},
+    renderer::shader_interfaces::object_buffer::{primitive_codes, PrimitiveDataSlice},
 };
 use glam::Vec3;
 

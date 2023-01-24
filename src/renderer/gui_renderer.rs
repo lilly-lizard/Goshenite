@@ -1,7 +1,7 @@
 /// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
 use super::{
     common::{CreateDescriptorSetError, CreateShaderError},
-    shaders::{push_constants::GuiPushConstants, vertex_inputs::EguiVertex},
+    shader_interfaces::{push_constants::GuiPushConstants, vertex_inputs::EguiVertex},
 };
 use crate::{
     config::SHADER_ENTRY_POINT, renderer::common::create_shader_module, user_interface::gui::Gui,

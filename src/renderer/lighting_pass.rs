@@ -1,6 +1,6 @@
 use super::{
     common::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
-    shaders::push_constants::CameraPushConstants,
+    shader_interfaces::push_constants::CameraPushConstants,
 };
 use crate::config::SHADER_ENTRY_POINT;
 use anyhow::Context;

@@ -1,6 +1,6 @@
 use super::{
     geometry_pass::GeometryPass, gui_renderer::GuiRenderer, lighting_pass::LightingPass,
-    shaders::push_constants::CameraPushConstants, vulkan_helper::*,
+    shader_interfaces::push_constants::CameraPushConstants, vulkan_helper::*,
 };
 use crate::{
     config,

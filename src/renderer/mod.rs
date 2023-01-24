@@ -4,5 +4,5 @@ mod gui_renderer;
 mod lighting_pass;
 //mod overlay_pass;
 pub mod render_manager;
-pub mod shaders;
+pub mod shader_interfaces;
 mod vulkan_helper;

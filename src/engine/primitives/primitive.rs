@@ -1,7 +1,7 @@
 use std::{cell::RefCell, rc::Rc};
 
 use crate::{
-    helper::unique_id_gen::UniqueId, renderer::shaders::object_buffer::PrimitiveDataSlice,
+    helper::unique_id_gen::UniqueId, renderer::shader_interfaces::object_buffer::PrimitiveDataSlice,
 };
 use glam::Vec3;
 

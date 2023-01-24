@@ -5,7 +5,7 @@ use crate::{
         primitive::{new_primitive_ref, PrimitiveRef},
     },
     helper::unique_id_gen::UniqueId,
-    renderer::shaders::object_buffer::ObjectDataUnit,
+    renderer::shader_interfaces::object_buffer::ObjectDataUnit,
 };
 use glam::Vec3;
 use std::{cell::RefCell, rc::Rc};

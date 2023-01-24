@@ -22,7 +22,6 @@ fn get_shader_dir() -> PathBuf {
     let mut shader_dir = std::env::current_dir().expect("cannot access pwd");
     shader_dir.push("src");
     shader_dir.push("renderer");
-    shader_dir.push("shaders");
     shader_dir.push("glsl");
     shader_dir
 }
