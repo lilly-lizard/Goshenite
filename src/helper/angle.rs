@@ -1,4 +1,5 @@
 /// Shout out to cgmath for the idea https://github.com/rustgd/cgmath
+use std::f64::consts::TAU;
 
 /// Represents a f64 angle in radians or degrees
 #[derive(Copy, Clone, PartialEq, PartialOrd, Debug)]
@@ -41,10 +42,10 @@ impl Default for Angle {
 
 #[inline]
 fn degrees_to_radians(degrees: f64) -> f64 {
-    degrees * std::f64::consts::PI / 180.
+    degrees * TAU / 360.
 }
 
 #[inline]
 fn radians_to_degrees(radians: f64) -> f64 {
-    radians * 180.0 / std::f64::consts::PI
+    radians * 360. / TAU
 }
