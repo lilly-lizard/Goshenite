@@ -192,20 +192,11 @@ impl Engine {
         // update camera based on now processed user inputs
         self.update_camera();
 
-        // bruh
-        let objects_delta = ObjectsDelta {
-            update: self
-                .object_collection
-                .objects()
-                .iter()
-                .map(|(&id, _)| id)
-                .collect::<HashSet<UniqueId>>(),
-            remove: Default::default(),
-        };
-        if let Err(e) = self
-            .renderer
-            .update_object_buffers(&self.object_collection, objects_delta)
-        {
+        // update object buffers
+        if let Err(e) = self.renderer.update_object_buffers(
+            &self.object_collection,
+            self.gui.get_and_clear_objects_delta(),
+        ) {
             anyhow_panic(&e, "updating object buffers");
         }
 

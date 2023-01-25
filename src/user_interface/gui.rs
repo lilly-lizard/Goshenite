@@ -145,9 +145,13 @@ impl Gui {
     }
 
     /// Returns texture update info accumulated since the last call to this function.
-    /// Calling this clears the internal texture delta storage.
     pub fn get_and_clear_textures_delta(&mut self) -> Vec<TexturesDelta> {
         std::mem::take(&mut self.textures_delta)
+    }
+
+    /// Returns a description of the changes to objects since last call to this function.
+    pub fn get_and_clear_objects_delta(&mut self) -> ObjectsDelta {
+        std::mem::take(&mut self.objects_delta)
     }
 
     pub fn selected_object(&self) -> Option<Weak<ObjectRef>> {
