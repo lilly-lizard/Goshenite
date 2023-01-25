@@ -10,27 +10,22 @@ use glam::Vec3;
 use std::{
     cell::RefCell,
     rc::{Rc, Weak},
-    sync::atomic::{AtomicUsize, Ordering},
 };
 
 pub struct PrimitiveReferences {
-    id: usize,
     unique_id_gen: UniqueIdGen,
     pub spheres: AHashMap<UniqueId, Weak<SphereRef>>,
     pub cubes: AHashMap<UniqueId, Weak<CubeRef>>,
 }
 
+/// Should only be one per engine instance.
 impl PrimitiveReferences {
     pub fn new() -> Self {
         Self {
-            id: PRIMITIVE_REFERENCE_ID_COUNTER.fetch_add(1, Ordering::Relaxed),
             unique_id_gen: UniqueIdGen::new(),
             spheres: AHashMap::<UniqueId, Weak<SphereRef>>::default(),
             cubes: AHashMap::<UniqueId, Weak<CubeRef>>::default(),
         }
-    }
-    pub fn id(&self) -> UniqueId {
-        self.id
     }
 
     pub fn new_sphere(&mut self, center: Vec3, radius: f32) -> Rc<SphereRef> {
@@ -81,5 +76,3 @@ fn get_primitive<T>(
         .map(|weak_ref| weak_ref.upgrade())
         .flatten()
 }
-
-static PRIMITIVE_REFERENCE_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);

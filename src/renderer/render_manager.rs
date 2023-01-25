@@ -4,8 +4,7 @@ use super::{
 };
 use crate::{
     config,
-    engine::object::object_collection::{ObjectCollection, ObjectsDelta},
-    helper::unique_id_gen::UniqueId,
+    engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::{anyhow, Context};
@@ -357,8 +356,13 @@ impl RenderManager {
         })
     }
 
-    pub fn update_object_buffers(&mut self, object_delta: ObjectsDelta) -> anyhow::Result<()> {
-        self.geometry_pass.update_object_buffers(object_delta)
+    pub fn update_object_buffers(
+        &mut self,
+        object_collection: &ObjectCollection,
+        object_delta: ObjectsDelta,
+    ) -> anyhow::Result<()> {
+        self.geometry_pass
+            .update_object_buffers(object_collection, object_delta)
     }
 
     pub fn update_gui_textures(

@@ -8,8 +8,7 @@ use super::{
 use crate::{
     config::SHADER_ENTRY_POINT,
     engine::object::{
-        object::Object,
-        object_collection::{ObjectCollection, ObjectsDelta},
+        object::Object, object_collection::ObjectCollection, objects_delta::ObjectsDelta,
     },
     helper::unique_id_gen::UniqueId,
 };
@@ -117,11 +116,15 @@ impl GeometryPass {
         Ok(())
     }
 
-    pub fn update_object_buffers(&mut self, object_delta: ObjectsDelta) -> anyhow::Result<()> {
+    pub fn update_object_buffers(
+        &mut self,
+        object_collection: &ObjectCollection,
+        object_delta: ObjectsDelta,
+    ) -> anyhow::Result<()> {
         let mut lowest_changed_index = usize::MAX;
 
         // freed objects
-        for free_id in object_delta.free {
+        for free_id in object_delta.remove {
             if let Some(removed_index) = self.object_buffers.remove(free_id) {
                 trace!("removing object buffer id = {}", free_id);
                 if removed_index < lowest_changed_index {
@@ -136,8 +139,8 @@ impl GeometryPass {
         }
 
         // added objects
-        for set_id in object_delta.set {
-            if let Some(object_ref) = object_delta.object_collection.get(set_id) {
+        for set_id in object_delta.update {
+            if let Some(object_ref) = object_collection.get(set_id) {
                 trace!("adding or updating object buffer id = {}", set_id);
                 let object = &*object_ref.as_ref().borrow();
                 let buffer = upload_object(&self.buffer_pool, object)
@@ -147,7 +150,10 @@ impl GeometryPass {
                     lowest_changed_index = set_index;
                 }
             } else {
-                warn!("requsted update for object id = {} but wasn't found in object collection id = {}!", set_id, object_delta.object_collection.id());
+                warn!(
+                    "requsted update for object id = {} but wasn't found in object collection!",
+                    set_id
+                );
             }
         }
 

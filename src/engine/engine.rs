@@ -1,7 +1,6 @@
 use super::{
     object::{
-        object_collection::{ObjectCollection, ObjectsDelta},
-        operation::Operation,
+        object_collection::ObjectCollection, objects_delta::ObjectsDelta, operation::Operation,
     },
     primitives::{
         null_primitive::NullPrimitive, primitive::new_primitive_ref,
@@ -21,6 +20,7 @@ use crate::{
         gui::Gui,
     },
 };
+use ahash::HashSet;
 use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -46,7 +46,7 @@ pub struct Engine {
     renderer: RenderManager,
 
     // model data
-    object_collection: Rc<ObjectCollection>,
+    object_collection: ObjectCollection,
     primitive_references: PrimitiveReferences,
 }
 impl Engine {
@@ -110,7 +110,7 @@ impl Engine {
             gui,
             renderer,
 
-            object_collection: Rc::new(object_collection),
+            object_collection: object_collection,
             primitive_references,
         }
     }
@@ -194,16 +194,18 @@ impl Engine {
 
         // bruh
         let objects_delta = ObjectsDelta {
-            object_collection: self.object_collection.clone(),
-            set: self
+            update: self
                 .object_collection
                 .objects()
                 .iter()
                 .map(|(&id, _)| id)
-                .collect::<Vec<UniqueId>>(),
-            free: Vec::new(),
+                .collect::<HashSet<UniqueId>>(),
+            remove: Default::default(),
         };
-        if let Err(e) = self.renderer.update_object_buffers(objects_delta) {
+        if let Err(e) = self
+            .renderer
+            .update_object_buffers(&self.object_collection, objects_delta)
+        {
             anyhow_panic(&e, "updating object buffers");
         }
 

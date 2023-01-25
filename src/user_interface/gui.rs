@@ -2,12 +2,10 @@ use crate::{
     config,
     engine::{
         object::{
-            object::ObjectRef,
-            object_collection::{ObjectCollection, ObjectsDelta},
+            object::ObjectRef, object_collection::ObjectCollection, objects_delta::ObjectsDelta,
         },
         primitives::{
-            cube::Cube, primitive_ref_types::PrimitiveRefType,
-            primitive_references::PrimitiveReferences, sphere::Sphere,
+            primitive_ref_types::PrimitiveRefType, primitive_references::PrimitiveReferences,
         },
     },
 };
@@ -31,14 +29,12 @@ const DRAG_INC: f64 = 0.02;
 struct GuiState {
     pub selected_object: Option<Weak<ObjectRef>>,
     pub selected_primitive_op_index: Option<usize>,
-    pub primitive_store: Option<GuiPrimitiveStore>,
 }
 impl GuiState {
     #[inline]
     pub fn deselect_object(&mut self) {
         self.selected_object = None;
         self.selected_primitive_op_index = None;
-        self.primitive_store = None;
     }
 }
 impl Default for GuiState {
@@ -46,7 +42,6 @@ impl Default for GuiState {
         Self {
             selected_object: None,
             selected_primitive_op_index: None,
-            primitive_store: None,
         }
     }
 }
@@ -59,7 +54,7 @@ pub struct Gui {
     mesh_primitives: Vec<egui::ClippedPrimitive>,
     state: GuiState,
     textures_delta: Vec<TexturesDelta>,
-    objects_delta: Vec<ObjectsDelta>,
+    objects_delta: ObjectsDelta,
 }
 
 // Public functions
@@ -242,39 +237,35 @@ impl Gui {
                             let sphere_ref = primitive_references.get_sphere(sphere_id)
                                 .expect("primitive collection doesn't contain primitive id from object op. this is a bug!");
                             let mut sphere = sphere_ref.borrow_mut();
-
-                            let mut sphere_store = sphere.clone();
-                            let sphere_store_ref = &mut sphere_store;
-                            self.state.primitive_store =
-                                Some(GuiPrimitiveStore::Sphere(sphere_store));
+                            let sphere_original = sphere.clone();
 
                             ui.heading("Edit Sphere");
                             ui.horizontal(|ui| {
                                 ui.label("Center:");
-                                ui.add(
-                                    DragValue::new(&mut sphere_store_ref.center.x).speed(DRAG_INC),
-                                );
-                                ui.add(
-                                    DragValue::new(&mut sphere_store_ref.center.y).speed(DRAG_INC),
-                                );
-                                ui.add(
-                                    DragValue::new(&mut sphere_store_ref.center.z).speed(DRAG_INC),
-                                );
+                                ui.add(DragValue::new(&mut sphere.center.x).speed(DRAG_INC));
+                                ui.add(DragValue::new(&mut sphere.center.y).speed(DRAG_INC));
+                                ui.add(DragValue::new(&mut sphere.center.z).speed(DRAG_INC));
                             });
                             ui.horizontal(|ui| {
                                 ui.label("Radius:");
                                 ui.add(
-                                    DragValue::new(&mut sphere_store_ref.radius)
+                                    DragValue::new(&mut sphere.radius)
                                         .speed(DRAG_INC)
                                         .clamp_range(0..=config::MAX_SPHERE_RADIUS),
                                 );
                             });
+
+                            // if updates performed on this primtive, indicate that object buffer needs updating
+                            if *sphere != sphere_original {
+                                self.objects_delta.update.insert(selected_object.id());
+                            }
                         }
                         PrimitiveRefType::Cube => {
                             let cube_id = selected_primitive_op.prim.borrow().id();
                             let cube_ref = primitive_references.get_cube(cube_id)
                                 .expect("primitive collection doesn't contain primitive id from object op. this is a bug!");
                             let mut cube = cube_ref.borrow_mut();
+                            let cube_original = cube.clone();
 
                             ui.heading("Edit Cube");
                             ui.horizontal(|ui| {
@@ -289,9 +280,13 @@ impl Gui {
                                 ui.add(DragValue::new(&mut cube.dimensions.y).speed(DRAG_INC));
                                 ui.add(DragValue::new(&mut cube.dimensions.z).speed(DRAG_INC));
                             });
+
+                            // if updates performed on this primtive, indicate that object buffer needs updating
+                            if *cube != cube_original {
+                                self.objects_delta.update.insert(selected_object.id());
+                            }
                         }
                         _ => {
-                            self.state.primitive_store = None;
                             ui.heading(format!(
                                 "Primitive Type: {}",
                                 selected_primitive_op.prim.borrow().type_name()
@@ -359,10 +354,4 @@ impl Gui {
             .hscroll(true)
             .show(&self.context, add_contents);
     }
-}
-
-#[derive(Clone)]
-pub enum GuiPrimitiveStore {
-    Sphere(Sphere),
-    Cube(Cube),
 }

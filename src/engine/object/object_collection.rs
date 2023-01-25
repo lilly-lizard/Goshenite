@@ -4,23 +4,10 @@ use crate::{
     helper::unique_id_gen::{UniqueId, UniqueIdGen},
 };
 use glam::Vec3;
-use std::{
-    collections::BTreeMap,
-    rc::Rc,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use std::{collections::BTreeMap, rc::Rc};
 
-pub struct ObjectsDelta {
-    /// Reference to object collection that these object ids are from
-    pub object_collection: Rc<ObjectCollection>,
-    /// New or updated objects
-    pub set: Vec<UniqueId>,
-    /// Deleted objects
-    pub free: Vec<UniqueId>,
-}
-
+/// Should only be one per engine instance.
 pub struct ObjectCollection {
-    id: UniqueId,
     unique_id_gen: UniqueIdGen,
     objects: BTreeMap<UniqueId, Rc<ObjectRef>>,
 }
@@ -28,14 +15,9 @@ pub struct ObjectCollection {
 impl ObjectCollection {
     pub fn new() -> Self {
         Self {
-            id: OBJECT_COLLECTION_ID_COUNTER.fetch_add(1, Ordering::Relaxed),
             unique_id_gen: UniqueIdGen::new(),
             objects: Default::default(),
         }
-    }
-
-    pub fn id(&self) -> UniqueId {
-        self.id
     }
 
     pub fn new_object(
@@ -58,5 +40,3 @@ impl ObjectCollection {
         self.objects.get(&object_id)
     }
 }
-
-static OBJECT_COLLECTION_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);
