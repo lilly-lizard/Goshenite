@@ -332,13 +332,12 @@ impl ObjectBuffers {
     /// Returns the vec index if the id was found and removed.
     pub fn remove(&mut self, id: UniqueId) -> Option<usize> {
         debug_assert!(self.ids.len() == self.buffers.len());
-        if let Some(index) = self.get_index(id) {
+        let index_res = self.get_index(id);
+        if let Some(index) = index_res {
             self.ids.remove(index);
             self.buffers.remove(index);
-            Some(index)
-        } else {
-            None
         }
+        index_res
     }
 
     pub fn get_index(&self, id: UniqueId) -> Option<usize> {

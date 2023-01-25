@@ -15,6 +15,13 @@ impl Sphere {
     pub const fn new(id: UniqueId, center: Vec3, radius: f32) -> Self {
         Self { id, center, radius }
     }
+    pub const fn new_default(id: UniqueId) -> Self {
+        Self {
+            id,
+            center: Vec3::ZERO,
+            radius: 0.,
+        }
+    }
 }
 impl Primitive for Sphere {
     fn id(&self) -> UniqueId {

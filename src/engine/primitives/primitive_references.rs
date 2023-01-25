@@ -1,12 +1,14 @@
 use super::{
     cube::Cube,
-    primitive_ref_types::{new_cube_ref, new_sphere_ref, CubeRef, SphereRef},
+    primitive::Primitive,
+    primitive_ref_types::{new_cube_ref, new_sphere_ref, CubeRef, PrimitiveRefType, SphereRef},
     sphere::Sphere,
 };
 use crate::helper::unique_id_gen::{UniqueId, UniqueIdGen};
 use ahash::AHashMap;
 use glam::Vec3;
 use std::{
+    cell::RefCell,
     rc::{Rc, Weak},
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -26,6 +28,9 @@ impl PrimitiveReferences {
             spheres: AHashMap::<UniqueId, Weak<SphereRef>>::default(),
             cubes: AHashMap::<UniqueId, Weak<CubeRef>>::default(),
         }
+    }
+    pub fn id(&self) -> UniqueId {
+        self.id
     }
 
     pub fn new_sphere(&mut self, center: Vec3, radius: f32) -> Rc<SphereRef> {
@@ -47,17 +52,34 @@ impl PrimitiveReferences {
     pub fn get_cube(&self, primitive_id: UniqueId) -> Option<Rc<CubeRef>> {
         get_primitive::<CubeRef>(primitive_id, &self.cubes)
     }
+
+    /// Ensures at compile time that [`PrimitiveRefType`] cases match what [`PrimitiveReferences`] supports.
+    #[allow(unused)]
+    pub fn get(
+        &self,
+        primitive_type: PrimitiveRefType,
+        primitive_id: UniqueId,
+    ) -> Option<Rc<RefCell<dyn Primitive>>> {
+        match primitive_type {
+            PrimitiveRefType::Sphere => self
+                .get_sphere(primitive_id)
+                .map(|x| x as Rc<RefCell<dyn Primitive>>),
+            PrimitiveRefType::Cube => self
+                .get_cube(primitive_id)
+                .map(|x| x as Rc<RefCell<dyn Primitive>>),
+            PrimitiveRefType::Unknown => None,
+        }
+    }
 }
 
 fn get_primitive<T>(
     primitive_id: UniqueId,
     collection: &AHashMap<UniqueId, Weak<T>>,
 ) -> Option<Rc<T>> {
-    if let Some(weak_ref) = collection.get(&primitive_id) {
-        weak_ref.upgrade()
-    } else {
-        None
-    }
+    collection
+        .get(&primitive_id)
+        .map(|weak_ref| weak_ref.upgrade())
+        .flatten()
 }
 
 static PRIMITIVE_REFERENCE_ID_COUNTER: AtomicUsize = AtomicUsize::new(1);

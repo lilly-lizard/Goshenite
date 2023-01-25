@@ -8,6 +8,7 @@ pub mod primitive_names {
     pub const CUBE: &'static str = "Cube";
 }
 
+/// Possible primitive variations supported by [`PrimitiveReferences`]
 pub enum PrimitiveRefType {
     Unknown,
     Sphere,

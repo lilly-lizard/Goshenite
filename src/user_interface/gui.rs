@@ -6,7 +6,8 @@ use crate::{
             object_collection::{ObjectCollection, ObjectsDelta},
         },
         primitives::{
-            primitive_ref_types::PrimitiveRefType, primitive_references::PrimitiveReferences,
+            cube::Cube, primitive_ref_types::PrimitiveRefType,
+            primitive_references::PrimitiveReferences, sphere::Sphere,
         },
     },
 };
@@ -22,20 +23,22 @@ use std::{
 };
 use winit::{event_loop::EventLoopWindowTarget, window::Window};
 
-/// Ammount to incriment when modifying values via dragging
+/// Amount to increment when modifying values via dragging
 const DRAG_INC: f64 = 0.02;
 
-/// Persistend settings
+/// Persistent settings
 #[derive(Clone)]
 struct GuiState {
     pub selected_object: Option<Weak<ObjectRef>>,
     pub selected_primitive_op_index: Option<usize>,
+    pub primitive_store: Option<GuiPrimitiveStore>,
 }
 impl GuiState {
     #[inline]
     pub fn deselect_object(&mut self) {
         self.selected_object = None;
         self.selected_primitive_op_index = None;
+        self.primitive_store = None;
     }
 }
 impl Default for GuiState {
@@ -43,6 +46,7 @@ impl Default for GuiState {
         Self {
             selected_object: None,
             selected_primitive_op_index: None,
+            primitive_store: None,
         }
     }
 }
@@ -239,17 +243,28 @@ impl Gui {
                                 .expect("primitive collection doesn't contain primitive id from object op. this is a bug!");
                             let mut sphere = sphere_ref.borrow_mut();
 
+                            let mut sphere_store = sphere.clone();
+                            let sphere_store_ref = &mut sphere_store;
+                            self.state.primitive_store =
+                                Some(GuiPrimitiveStore::Sphere(sphere_store));
+
                             ui.heading("Edit Sphere");
                             ui.horizontal(|ui| {
                                 ui.label("Center:");
-                                ui.add(DragValue::new(&mut sphere.center.x).speed(DRAG_INC));
-                                ui.add(DragValue::new(&mut sphere.center.y).speed(DRAG_INC));
-                                ui.add(DragValue::new(&mut sphere.center.z).speed(DRAG_INC));
+                                ui.add(
+                                    DragValue::new(&mut sphere_store_ref.center.x).speed(DRAG_INC),
+                                );
+                                ui.add(
+                                    DragValue::new(&mut sphere_store_ref.center.y).speed(DRAG_INC),
+                                );
+                                ui.add(
+                                    DragValue::new(&mut sphere_store_ref.center.z).speed(DRAG_INC),
+                                );
                             });
                             ui.horizontal(|ui| {
                                 ui.label("Radius:");
                                 ui.add(
-                                    DragValue::new(&mut sphere.radius)
+                                    DragValue::new(&mut sphere_store_ref.radius)
                                         .speed(DRAG_INC)
                                         .clamp_range(0..=config::MAX_SPHERE_RADIUS),
                                 );
@@ -276,6 +291,7 @@ impl Gui {
                             });
                         }
                         _ => {
+                            self.state.primitive_store = None;
                             ui.heading(format!(
                                 "Primitive Type: {}",
                                 selected_primitive_op.prim.borrow().type_name()
@@ -343,4 +359,10 @@ impl Gui {
             .hscroll(true)
             .show(&self.context, add_contents);
     }
+}
+
+#[derive(Clone)]
+pub enum GuiPrimitiveStore {
+    Sphere(Sphere),
+    Cube(Cube),
 }

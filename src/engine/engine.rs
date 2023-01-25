@@ -227,7 +227,6 @@ impl Engine {
 
     fn update_camera(&mut self) {
         // look mode logic
-        // NOTE let_chains still unstable: https://github.com/rust-lang/rust/issues/53667
         if let Some(selected_object_ref) = self.gui.selected_object() {
             // set lock on target to selected primitive
             self.camera.set_lock_on_object(selected_object_ref);
