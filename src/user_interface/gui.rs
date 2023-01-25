@@ -2,12 +2,15 @@ use crate::{
     config,
     engine::{
         object::{
-            object::ObjectRef, object_collection::ObjectCollection, objects_delta::ObjectsDelta,
+            object::{Object, ObjectRef},
+            object_collection::ObjectCollection,
+            objects_delta::ObjectsDelta,
         },
         primitives::{
             primitive_ref_types::PrimitiveRefType, primitive_references::PrimitiveReferences,
         },
     },
+    helper::unique_id_gen::UniqueId,
 };
 use egui::{
     Button, DragValue, FontFamily::Proportional, FontId, RichText, TextStyle, TexturesDelta,
@@ -163,34 +166,12 @@ impl Gui {
 
 impl Gui {
     fn objects_window(&mut self, object_collection: &ObjectCollection) {
+        // because rust (currently) doesn't have a way of borrowing certain members of self https://stackoverflow.com/questions/64921625/closure-requires-unique-access-to-self-but-it-is-already-borrowed
+        let context = std::mem::take(&mut self.context);
+
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
-            // object list
-            let objects = object_collection.objects();
-            for (current_id, current_object) in objects.iter() {
-                let label_text =
-                    RichText::new(format!("{} - {}", current_id, current_object.borrow().name))
-                        .text_style(TextStyle::Monospace);
-
-                let is_selected = if let Some(object_ref) = &self.state.selected_object {
-                    if let Some(selected_object) = object_ref.upgrade() {
-                        selected_object.borrow().id() == current_object.borrow().id()
-                    } else {
-                        debug!("selected object dropped. deselecting object...");
-                        self.state.deselect_object();
-                        false
-                    }
-                } else {
-                    false
-                };
-
-                if ui.selectable_label(is_selected, label_text).clicked() {
-                    if !is_selected {
-                        self.state.selected_object = Some(Rc::downgrade(current_object));
-                        self.state.selected_primitive_op_index = None;
-                    }
-                }
-            }
+            self.object_list(ui, object_collection);
         };
 
         // add window to egui context
@@ -198,10 +179,14 @@ impl Gui {
             .resizable(true)
             .vscroll(true)
             .hscroll(true)
-            .show(&self.context, add_contents);
+            .show(&context, add_contents);
+        self.context = context;
     }
 
     fn object_editor_window(&mut self, primitive_references: &PrimitiveReferences) {
+        // because rust (currently) doesn't have a way of borrowing certain members of self https://stackoverflow.com/questions/64921625/closure-requires-unique-access-to-self-but-it-is-already-borrowed
+        let context = std::mem::take(&mut self.context);
+
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
             let no_object_text = RichText::new("No Object Selected...").italics();
@@ -224,105 +209,8 @@ impl Gui {
             let selected_object = selected_object.borrow();
 
             ui.heading(format!("{}", selected_object.name));
-
-            // primitive op editor
-            if let Some(selected_primitive_op_index) = self.state.selected_primitive_op_index {
-                if selected_primitive_op_index < selected_object.primitive_ops.len() {
-                    let selected_primitive_op =
-                        &selected_object.primitive_ops[selected_primitive_op_index];
-                    let primitive_type = PrimitiveRefType::from_name(
-                        selected_primitive_op.prim.borrow().type_name(),
-                    );
-
-                    ui.separator();
-                    match primitive_type {
-                        PrimitiveRefType::Sphere => {
-                            let sphere_id = selected_primitive_op.prim.borrow().id();
-                            let sphere_ref = primitive_references.get_sphere(sphere_id)
-                                .expect("primitive collection doesn't contain primitive id from object op. this is a bug!");
-                            let mut sphere = sphere_ref.borrow_mut();
-                            let sphere_original = sphere.clone();
-
-                            ui.heading("Edit Sphere");
-                            ui.horizontal(|ui| {
-                                ui.label("Center:");
-                                ui.add(DragValue::new(&mut sphere.center.x).speed(DRAG_INC));
-                                ui.add(DragValue::new(&mut sphere.center.y).speed(DRAG_INC));
-                                ui.add(DragValue::new(&mut sphere.center.z).speed(DRAG_INC));
-                            });
-                            ui.horizontal(|ui| {
-                                ui.label("Radius:");
-                                ui.add(
-                                    DragValue::new(&mut sphere.radius)
-                                        .speed(DRAG_INC)
-                                        .clamp_range(0..=config::MAX_SPHERE_RADIUS),
-                                );
-                            });
-
-                            // if updates performed on this primtive, indicate that object buffer needs updating
-                            if *sphere != sphere_original {
-                                self.objects_delta.update.insert(selected_object.id());
-                            }
-                        }
-                        PrimitiveRefType::Cube => {
-                            let cube_id = selected_primitive_op.prim.borrow().id();
-                            let cube_ref = primitive_references.get_cube(cube_id)
-                                .expect("primitive collection doesn't contain primitive id from object op. this is a bug!");
-                            let mut cube = cube_ref.borrow_mut();
-                            let cube_original = cube.clone();
-
-                            ui.heading("Edit Cube");
-                            ui.horizontal(|ui| {
-                                ui.label("Center:");
-                                ui.add(DragValue::new(&mut cube.center.x).speed(DRAG_INC));
-                                ui.add(DragValue::new(&mut cube.center.y).speed(DRAG_INC));
-                                ui.add(DragValue::new(&mut cube.center.z).speed(DRAG_INC));
-                            });
-                            ui.horizontal(|ui| {
-                                ui.label("Dimensions:");
-                                ui.add(DragValue::new(&mut cube.dimensions.x).speed(DRAG_INC));
-                                ui.add(DragValue::new(&mut cube.dimensions.y).speed(DRAG_INC));
-                                ui.add(DragValue::new(&mut cube.dimensions.z).speed(DRAG_INC));
-                            });
-
-                            // if updates performed on this primtive, indicate that object buffer needs updating
-                            if *cube != cube_original {
-                                self.objects_delta.update.insert(selected_object.id());
-                            }
-                        }
-                        _ => {
-                            ui.heading(format!(
-                                "Primitive Type: {}",
-                                selected_primitive_op.prim.borrow().type_name()
-                            ));
-                        }
-                    }
-                }
-            }
-
-            ui.separator();
-
-            // primitive op list
-            for i in 0..selected_object.primitive_ops.len() {
-                let current_primitive_op = &selected_object.primitive_ops[i];
-
-                let label_text = RichText::new(format!(
-                    "{} - {} {}",
-                    i,
-                    current_primitive_op.op.name(),
-                    current_primitive_op.prim.borrow().type_name()
-                ))
-                .text_style(TextStyle::Monospace);
-
-                let is_selected = if let Some(index) = self.state.selected_primitive_op_index {
-                    index == i
-                } else {
-                    false
-                };
-                if ui.selectable_label(is_selected, label_text).clicked() {
-                    self.state.selected_primitive_op_index = Some(i);
-                }
-            }
+            self.primitive_op_editor(ui, &selected_object, primitive_references);
+            self.primitive_op_list(ui, &selected_object);
         };
 
         // add window to egui context
@@ -330,10 +218,11 @@ impl Gui {
             .resizable(true)
             .vscroll(true)
             .hscroll(true)
-            .show(&self.context, add_contents);
+            .show(&context, add_contents);
+        self.context = context;
     }
 
-    fn bug_test_window(&mut self) {
+    fn _bug_test_window(&mut self) {
         let add_contents = |ui: &mut egui::Ui| {
             // TODO TESTING tests GuiRenderer create_texture() functionality for when ImageDelta.pos != None
             // todo add to testing window function and document
@@ -357,5 +246,164 @@ impl Gui {
             .vscroll(true)
             .hscroll(true)
             .show(&self.context, add_contents);
+    }
+}
+
+// UI layout sub-functions
+
+impl Gui {
+    fn object_list(&mut self, ui: &mut egui::Ui, object_collection: &ObjectCollection) {
+        let objects = object_collection.objects();
+        for (current_id, current_object) in objects.iter() {
+            let label_text =
+                RichText::new(format!("{} - {}", current_id, current_object.borrow().name))
+                    .text_style(TextStyle::Monospace);
+
+            let is_selected = if let Some(object_ref) = &self.state.selected_object {
+                if let Some(selected_object) = object_ref.upgrade() {
+                    selected_object.borrow().id() == current_object.borrow().id()
+                } else {
+                    debug!("selected object dropped. deselecting object...");
+                    self.state.deselect_object();
+                    false
+                }
+            } else {
+                false
+            };
+
+            if ui.selectable_label(is_selected, label_text).clicked() {
+                if !is_selected {
+                    self.state.selected_object = Some(Rc::downgrade(current_object));
+                    self.state.selected_primitive_op_index = None;
+                }
+            }
+        }
+    }
+
+    fn primitive_op_editor(
+        &mut self,
+        ui: &mut egui::Ui,
+        selected_object: &Object,
+        primitive_references: &PrimitiveReferences,
+    ) {
+        if let Some(selected_primitive_op_index) = self.state.selected_primitive_op_index {
+            let object_id = selected_object.id();
+
+            if selected_primitive_op_index < selected_object.primitive_ops.len() {
+                let selected_primitive_op =
+                    &selected_object.primitive_ops[selected_primitive_op_index];
+                let primitive_id = selected_primitive_op.prim.borrow().id();
+                let primitive_type =
+                    PrimitiveRefType::from_name(selected_primitive_op.prim.borrow().type_name());
+
+                ui.separator();
+                match primitive_type {
+                    PrimitiveRefType::Sphere => {
+                        self.sphere_editor(ui, object_id, primitive_references, primitive_id);
+                    }
+                    PrimitiveRefType::Cube => {
+                        self.cube_editor(ui, object_id, primitive_references, primitive_id);
+                    }
+                    _ => {
+                        ui.heading(format!(
+                            "Primitive Type: {}",
+                            selected_primitive_op.prim.borrow().type_name()
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    fn sphere_editor(
+        &mut self,
+        ui: &mut egui::Ui,
+        object_id: UniqueId,
+        primitive_references: &PrimitiveReferences,
+        primitive_id: UniqueId,
+    ) {
+        let sphere_ref = primitive_references.get_sphere(primitive_id).expect(
+            "primitive collection doesn't contain primitive id from object op. this is a bug!",
+        );
+        let mut sphere = sphere_ref.borrow_mut();
+        let sphere_original = sphere.clone();
+
+        ui.heading("Edit Sphere");
+        ui.horizontal(|ui| {
+            ui.label("Center:");
+            ui.add(DragValue::new(&mut sphere.center.x).speed(DRAG_INC));
+            ui.add(DragValue::new(&mut sphere.center.y).speed(DRAG_INC));
+            ui.add(DragValue::new(&mut sphere.center.z).speed(DRAG_INC));
+        });
+        ui.horizontal(|ui| {
+            ui.label("Radius:");
+            ui.add(
+                DragValue::new(&mut sphere.radius)
+                    .speed(DRAG_INC)
+                    .clamp_range(0..=config::MAX_SPHERE_RADIUS),
+            );
+        });
+
+        // if updates performed on this primtive, indicate that object buffer needs updating
+        if *sphere != sphere_original {
+            self.objects_delta.update.insert(object_id);
+        }
+    }
+
+    fn cube_editor(
+        &mut self,
+        ui: &mut egui::Ui,
+        object_id: UniqueId,
+        primitive_references: &PrimitiveReferences,
+        primitive_id: UniqueId,
+    ) {
+        let cube_ref = primitive_references.get_cube(primitive_id).expect(
+            "primitive collection doesn't contain primitive id from object op. this is a bug!",
+        );
+        let mut cube = cube_ref.borrow_mut();
+        let cube_original = cube.clone();
+
+        ui.heading("Edit Cube");
+        ui.horizontal(|ui| {
+            ui.label("Center:");
+            ui.add(DragValue::new(&mut cube.center.x).speed(DRAG_INC));
+            ui.add(DragValue::new(&mut cube.center.y).speed(DRAG_INC));
+            ui.add(DragValue::new(&mut cube.center.z).speed(DRAG_INC));
+        });
+        ui.horizontal(|ui| {
+            ui.label("Dimensions:");
+            ui.add(DragValue::new(&mut cube.dimensions.x).speed(DRAG_INC));
+            ui.add(DragValue::new(&mut cube.dimensions.y).speed(DRAG_INC));
+            ui.add(DragValue::new(&mut cube.dimensions.z).speed(DRAG_INC));
+        });
+
+        // if updates performed on this primtive, indicate that object buffer needs updating
+        if *cube != cube_original {
+            self.objects_delta.update.insert(object_id);
+        }
+    }
+
+    fn primitive_op_list(&mut self, ui: &mut egui::Ui, selected_object: &Object) {
+        ui.separator();
+        for i in 0..selected_object.primitive_ops.len() {
+            let current_primitive_op = &selected_object.primitive_ops[i];
+
+            let label_text = RichText::new(format!(
+                "{} - {} {}",
+                i,
+                current_primitive_op.op.name(),
+                current_primitive_op.prim.borrow().type_name()
+            ))
+            .text_style(TextStyle::Monospace);
+
+            let is_selected = if let Some(index) = self.state.selected_primitive_op_index {
+                index == i
+            } else {
+                false
+            };
+            if ui.selectable_label(is_selected, label_text).clicked() {
+                self.state.selected_primitive_op_index = Some(i);
+            }
+        }
     }
 }

@@ -1,7 +1,5 @@
 use super::{
-    object::{
-        object_collection::ObjectCollection, objects_delta::ObjectsDelta, operation::Operation,
-    },
+    object::{object_collection::ObjectCollection, operation::Operation},
     primitives::{
         null_primitive::NullPrimitive, primitive::new_primitive_ref,
         primitive_references::PrimitiveReferences,
@@ -9,10 +7,7 @@ use super::{
 };
 use crate::{
     config,
-    helper::{
-        anyhow_panic::{anyhow_panic, anyhow_unwrap},
-        unique_id_gen::UniqueId,
-    },
+    helper::anyhow_panic::{anyhow_panic, anyhow_unwrap},
     renderer::render_manager::RenderManager,
     user_interface::camera::Camera,
     user_interface::{
@@ -20,11 +15,10 @@ use crate::{
         gui::Gui,
     },
 };
-use ahash::HashSet;
 use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{rc::Rc, sync::Arc};
+use std::sync::Arc;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
