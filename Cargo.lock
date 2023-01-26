@@ -539,6 +539,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "egui_dnd"
+version = "0.2.0"
+dependencies = [
+ "egui",
+ "epaint",
+]
+
+[[package]]
 name = "emath"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -712,6 +720,7 @@ dependencies = [
  "colored",
  "egui",
  "egui-winit",
+ "egui_dnd",
  "glam",
  "log",
  "shaderc",
