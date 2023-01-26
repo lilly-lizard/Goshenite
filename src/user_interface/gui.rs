@@ -34,9 +34,6 @@ struct GuiState {
     pub selected_object: Option<Weak<ObjectRef>>,
     /// Selected primitive op index in the object editor
     pub selected_primitive_op_index: Option<usize>,
-    /// Source and target indices when dragging a primtive op in the object editor.
-    /// If it is being dragged somewhere invalid, there will be no target index.
-    pub drag_primitive_op_source_target_indices: Option<(usize, Option<usize>)>,
     /// Stores the drag and drop state of the primitive op list for the selected object
     pub primtive_op_list: Option<DragDropUi>,
 }
@@ -45,7 +42,6 @@ impl GuiState {
     pub fn deselect_object(&mut self) {
         self.selected_object = None;
         self.selected_primitive_op_index = None;
-        self.drag_primitive_op_source_target_indices = None;
         self.primtive_op_list = None;
     }
 }
@@ -54,7 +50,6 @@ impl Default for GuiState {
         Self {
             selected_object: None,
             selected_primitive_op_index: None,
-            drag_primitive_op_source_target_indices: None,
             primtive_op_list: None,
         }
     }

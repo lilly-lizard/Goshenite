@@ -543,6 +543,7 @@ name = "egui_dnd"
 version = "0.2.0"
 dependencies = [
  "egui",
+ "epaint",
 ]
 
 [[package]]
