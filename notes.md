@@ -24,9 +24,8 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- checks in object_collection to make sure that you don't have the same primitive ids across multiple primitive ops. put primitive_references inside object_collection?
 - init renderer test
-- weak references or something for Operations e.g. Union
-- switch scene_geometry.frag to hlsl, delete circle (https://alain.xyz/blog/a-review-of-shader-languages, but also https://github.com/KhronosGroup/glslang/wiki/HLSL-FAQ)
 - smooth union op (curved combination)
 - hemisphere (circle) clamps on looking too far up/down (quaternions?)
 - surface noise modifiers
@@ -37,14 +36,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## cleanup
 
-- gui.rs split window functions into subfunctions!
 - primitive_references to dos
-- Primitive/Operation -> convert from enum to boxed dyn trait collections. have vecs for each type and collection points to them
-- try rust analyzer extract method in render_manager.rs. what would uncle bob do?
-- update gui buffers pub fn
-- GuiRenderer::create_texture -> create_textures batch texture creation
-- gui_renderer unwraps/error handling
-- for loops to map
 - support/handle VulkanError cases...
 
 ## always
@@ -55,10 +47,17 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 ## bugz
 
 - CursorState not initialized properly! e.g. cursor position 0,0 at start so start dragging before moving it and a big jump occurs. also check latest winit in case querying was made better?
+- Gui::_bug_test_window
+
+## optimize
+
+- decrease MIN_DIST as distance progresses (need less resolution)
+- FastMemoryAllocator for frequent (per frame) memory allocations (see StandardMemoryAllocator description)
+- gui performance hit when list becomes too big (https://github.com/emilk/egui#cpu-usage) try only laying out part of list in view
+- GuiRenderer::create_texture -> create_textures batch texture creation
 
 ## low priority
 
-- smallvecs
 - clickable primitives
 - coordinate overlay z-buffer
 - attempt to restart renderer on error: e.g. SurfaceLost attempt reinitialization. pop-up dialogue "renderer has crashes. attempt re-initialization? report bug here..."
@@ -78,21 +77,12 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - Bang Wong color palette
 
-### optimize
-
-- decrease MIN_DIST as distance progresses (need less resolution)
-- don't recreate buffer pools each frame in geometry_pass.rs
-- FastMemoryAllocator for frequent (per frame) memory allocations (see StandardMemoryAllocator description)
-- gui performance hit when list becomes too big (https://github.com/emilk/egui#cpu-usage) try only laying out part of list in view
-- more elegant solution to contiguous buffer descriptor indices
-
 # Code Guidelines
 
 - Consider commenting with structure of 'action' followed by 'object' e.g. 'transition
 	image layout (action) for depth buffer (object)'. This makes it easier to search for
 comments by action or object e.g. a search for 'transition image layout' wouldn't find
 	the comment 'transition depth buffer image layout'
-- avoid Box<dyn Error> if possible, just create an enum https://fettblog.eu/rust-enums-wrapping-errors/
 - https://rust-lang.github.io/api-guidelines yeet
 
 ## logging
