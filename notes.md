@@ -12,6 +12,9 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 		2. multiple objects - DONE
 	4. gui/engine
 		1. gui
+			- object list - DONE
+			- edit primitives - DONE
+			- add/remove objects/primitives
 		2. overlay pass
 2. organise shaders directory structure and content
 	- would be nice to structure as per how I conceptualize the code i.e. - DONE
@@ -24,6 +27,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- can we do without Rc<RefCell<>>?
 - init renderer test
 - weak references or something for Operations e.g. Union
 - switch scene_geometry.frag to hlsl, delete circle (https://alain.xyz/blog/a-review-of-shader-languages, but also https://github.com/KhronosGroup/glslang/wiki/HLSL-FAQ)
