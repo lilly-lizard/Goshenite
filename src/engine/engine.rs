@@ -64,10 +64,13 @@ impl Engine {
 
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
+        // todo put inside object_collection??
+        // todo checks in object_collection to make sure that you don't have the same primitive ids across multiple primitive ops
         let mut primitive_references = PrimitiveReferences::new();
 
         let sphere = primitive_references.new_sphere(Vec3::new(0., 0., 0.), 0.5);
         let cube = primitive_references.new_cube(Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8));
+        let another_sphere = primitive_references.new_sphere(Vec3::new(0.2, -0.2, 0.), 0.4);
 
         let mut object_collection = ObjectCollection::new();
 
@@ -76,6 +79,9 @@ impl Engine {
         object
             .borrow_mut()
             .push_op(Operation::Union, sphere.clone());
+        object
+            .borrow_mut()
+            .push_op(Operation::Intersection, another_sphere);
 
         let another_object = object_collection.new_object(
             "Another Bruh".to_string(),

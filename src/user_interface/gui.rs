@@ -2,7 +2,7 @@ use crate::{
     config,
     engine::{
         object::{
-            object::{Object, ObjectRef},
+            object::{Object, ObjectRef, PrimitiveOp},
             object_collection::ObjectCollection,
             objects_delta::ObjectsDelta,
         },
@@ -15,6 +15,7 @@ use crate::{
 use egui::{
     Button, DragValue, FontFamily::Proportional, FontId, RichText, TextStyle, TexturesDelta,
 };
+use egui_dnd::{DragDropItem, DragDropUi};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -27,17 +28,25 @@ use winit::{event_loop::EventLoopWindowTarget, window::Window};
 /// Amount to increment when modifying values via dragging
 const DRAG_INC: f64 = 0.02;
 
-/// Persistent settings
+/// State persisting between frames
 #[derive(Clone)]
 struct GuiState {
     pub selected_object: Option<Weak<ObjectRef>>,
+    /// Selected primitive op index in the object editor
     pub selected_primitive_op_index: Option<usize>,
+    /// Source and target indices when dragging a primtive op in the object editor.
+    /// If it is being dragged somewhere invalid, there will be no target index.
+    pub drag_primitive_op_source_target_indices: Option<(usize, Option<usize>)>,
+    /// Stores the drag and drop state of the primitive op list for the selected object
+    pub primtive_op_list: Option<DragDropUi>,
 }
 impl GuiState {
     #[inline]
     pub fn deselect_object(&mut self) {
         self.selected_object = None;
         self.selected_primitive_op_index = None;
+        self.drag_primitive_op_source_target_indices = None;
+        self.primtive_op_list = None;
     }
 }
 impl Default for GuiState {
@@ -45,6 +54,8 @@ impl Default for GuiState {
         Self {
             selected_object: None,
             selected_primitive_op_index: None,
+            drag_primitive_op_source_target_indices: None,
+            primtive_op_list: None,
         }
     }
 }
@@ -183,14 +194,14 @@ impl Gui {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
             let no_object_text = RichText::new("No Object Selected...").italics();
-            let selected_object_ref = match &self.state.selected_object {
+            let selected_object_weak = match &self.state.selected_object {
                 Some(o) => o.clone(),
                 None => {
                     ui.label(no_object_text);
                     return;
                 }
             };
-            let selected_object = match selected_object_ref.upgrade() {
+            let selected_object_ref = match selected_object_weak.upgrade() {
                 Some(o) => o,
                 None => {
                     debug!("selected object dropped. deselecting object...");
@@ -199,17 +210,21 @@ impl Gui {
                     return;
                 }
             };
-            let selected_object = selected_object.borrow();
 
-            ui.heading(format!("{}", selected_object.name));
+            ui.heading(format!("{}", selected_object_ref.borrow().name));
             primitive_op_editor(
                 ui,
                 &mut self.state,
                 &mut self.objects_delta,
-                &selected_object,
+                &selected_object_ref.borrow(),
                 primitive_references,
             );
-            primitive_op_list(ui, &mut self.state, &selected_object);
+            primitive_op_list(
+                ui,
+                &mut self.state,
+                &mut self.objects_delta,
+                &mut selected_object_ref.borrow_mut(),
+            );
         };
 
         // add window to egui context
@@ -392,26 +407,70 @@ fn cube_editor(
     }
 }
 
-fn primitive_op_list(ui: &mut egui::Ui, gui_state: &mut GuiState, selected_object: &Object) {
-    ui.separator();
-    for i in 0..selected_object.primitive_ops.len() {
-        let current_primitive_op = &selected_object.primitive_ops[i];
-
-        let label_text = RichText::new(format!(
-            "{} - {} {}",
-            i,
-            current_primitive_op.op.name(),
-            current_primitive_op.prim.borrow().type_name()
-        ))
-        .text_style(TextStyle::Monospace);
-
-        let is_selected = if let Some(index) = gui_state.selected_primitive_op_index {
-            index == i
-        } else {
-            false
-        };
-        if ui.selectable_label(is_selected, label_text).clicked() {
-            gui_state.selected_primitive_op_index = Some(i);
-        }
+impl DragDropItem for PrimitiveOp {
+    fn id(&self) -> egui::Id {
+        egui::Id::new(self.prim.borrow().id())
     }
+}
+
+/// Draw the primitive op list. each list element can be dragged/dropped elsewhere in the list,
+/// or selected with a button for editing.
+fn primitive_op_list(
+    ui: &mut egui::Ui,
+    gui_state: &mut GuiState,
+    objects_delta: &mut ObjectsDelta,
+    selected_object: &mut Object,
+) {
+    let mut list_drag_state = gui_state.primtive_op_list.clone().unwrap_or_default();
+
+    ui.separator();
+
+    // draw each item in the primitive op list
+    let drag_drop_response = list_drag_state.ui::<PrimitiveOp>(
+        ui,
+        selected_object.primitive_ops.iter(),
+        // function to draw a single item in the list
+        |ui, handle, index, primitive_op| {
+            let draggable_text =
+                RichText::new(format!("{}", index)).text_style(TextStyle::Monospace);
+
+            let button_text = RichText::new(format!(
+                "{} {}",
+                primitive_op.op.name(),
+                primitive_op.prim.borrow().type_name()
+            ))
+            .text_style(TextStyle::Monospace);
+
+            let is_selected = if let Some(selected_index) = gui_state.selected_primitive_op_index {
+                selected_index == index
+            } else {
+                false
+            };
+
+            // draw ui for this primitive op
+            ui.horizontal(|ui_h| {
+                // anything inside the handle can be used to drag the item
+                handle.ui(ui_h, primitive_op, |handle_ui| {
+                    handle_ui.label(draggable_text);
+                });
+
+                // label to select this primitive op
+                if ui_h.selectable_label(is_selected, button_text).clicked() {
+                    gui_state.selected_primitive_op_index = Some(index);
+                }
+            });
+        },
+    );
+
+    // if an item has been dropped after being dragged, re-arrange the primtive ops list
+    if let Some(response) = drag_drop_response.completed {
+        egui_dnd::utils::shift_vec(
+            response.from,
+            response.to,
+            &mut selected_object.primitive_ops,
+        );
+        objects_delta.update.insert(selected_object.id());
+    }
+
+    gui_state.primtive_op_list = Some(list_drag_state);
 }
