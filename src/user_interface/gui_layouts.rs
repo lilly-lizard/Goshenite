@@ -1,4 +1,5 @@
 /// UI layout sub-functions
+use super::gui_state::{GuiState, DRAG_INC};
 use crate::{
     config,
     engine::{
@@ -18,8 +19,6 @@ use egui_dnd::DragDropItem;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::rc::Rc;
-
-use super::gui_state::{GuiState, DRAG_INC};
 
 pub fn object_list(
     ui: &mut egui::Ui,
@@ -47,7 +46,7 @@ pub fn object_list(
         if ui.selectable_label(is_selected, label_text).clicked() {
             if !is_selected {
                 gui_state.selected_object = Some(Rc::downgrade(current_object));
-                gui_state.selected_primitive_op_index = None;
+                gui_state.selected_primitive_op_id = None;
             }
         }
     }
@@ -60,8 +59,17 @@ pub fn primitive_op_editor(
     selected_object: &Object,
     primitive_references: &PrimitiveReferences,
 ) {
-    if let Some(selected_primitive_op_index) = gui_state.selected_primitive_op_index {
+    if let Some(selected_primitive_op_id) = gui_state.selected_primitive_op_id {
         let object_id = selected_object.id();
+
+        let selected_primitive_op = match selected_object.get_primitive_op(selected_primitive_op_id)
+        {
+            Some(prim_op) => prim_op,
+            None => {
+                gui_state.selected_primitive_op_id = None;
+                return;
+            }
+        };
 
         if selected_primitive_op_index < selected_object.primitive_ops.len() {
             let selected_primitive_op = &selected_object.primitive_ops[selected_primitive_op_index];

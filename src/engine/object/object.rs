@@ -4,7 +4,7 @@ use crate::{
         null_primitive::NullPrimitive,
         primitive::{new_primitive_ref, PrimitiveRef},
     },
-    helper::unique_id_gen::UniqueId,
+    helper::unique_id_gen::{UniqueId, UniqueIdGen},
     renderer::shader_interfaces::object_buffer::ObjectDataUnit,
 };
 use glam::Vec3;
@@ -21,34 +21,46 @@ pub fn new_object_ref(object: Object) -> Rc<ObjectRef> {
 const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
 
 pub struct PrimitiveOp {
+    id: UniqueId,
     pub op: Operation,
     pub prim: Rc<PrimitiveRef>,
 }
-impl Default for PrimitiveOp {
-    fn default() -> Self {
+impl PrimitiveOp {
+    pub fn new(id: UniqueId, op: Operation, primitive: Rc<PrimitiveRef>) -> Self {
         Self {
-            op: Operation::NOP,
-            prim: new_primitive_ref(NullPrimitive {}),
+            id,
+            op,
+            prim: primitive,
         }
+    }
+    pub fn new_default(id: UniqueId) -> Self {
+        Self::new(id, Operation::NOP, new_primitive_ref(NullPrimitive {}))
+    }
+    pub fn id(&self) -> UniqueId {
+        self.id
     }
 }
 
 pub struct Object {
     id: UniqueId,
+    primitive_op_id_gen: UniqueIdGen,
     pub name: String,
     pub origin: Vec3,
     pub primitive_ops: Vec<PrimitiveOp>,
 }
 impl Object {
     pub fn new(id: UniqueId, name: String, origin: Vec3, base_primitive: Rc<PrimitiveRef>) -> Self {
+        let primitive_op_id_gen = UniqueIdGen::new();
         Self {
             id,
+            primitive_op_id_gen,
             name,
             origin,
-            primitive_ops: vec![PrimitiveOp {
-                op: Operation::Union,
-                prim: base_primitive,
-            }],
+            primitive_ops: vec![PrimitiveOp::new(
+                primitive_op_id_gen.new_id(),
+                Operation::Union,
+                base_primitive,
+            )],
         }
     }
 
@@ -56,11 +68,22 @@ impl Object {
         self.id
     }
 
+    pub fn get_primitive_op(&self, id: UniqueId) -> Option<&PrimitiveOp> {
+        self.primitive_ops.iter().find_map(|prim_op| {
+            if prim_op.id() == id {
+                Some(prim_op)
+            } else {
+                None
+            }
+        })
+    }
+
     pub fn push_op(&mut self, operation: Operation, primitive: Rc<PrimitiveRef>) {
-        self.primitive_ops.push(PrimitiveOp {
-            op: operation,
-            prim: primitive,
-        });
+        self.primitive_ops.push(PrimitiveOp::new(
+            self.primitive_op_id_gen.new_id(),
+            operation,
+            primitive,
+        ));
     }
 
     pub fn encoded_data(&self) -> Vec<ObjectDataUnit> {
