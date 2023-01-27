@@ -50,10 +50,9 @@ pub struct Object {
 }
 impl Object {
     pub fn new(id: UniqueId, name: String, origin: Vec3, base_primitive: Rc<PrimitiveRef>) -> Self {
-        let primitive_op_id_gen = UniqueIdGen::new();
+        let mut primitive_op_id_gen = UniqueIdGen::new();
         Self {
             id,
-            primitive_op_id_gen,
             name,
             origin,
             primitive_ops: vec![PrimitiveOp::new(
@@ -61,6 +60,7 @@ impl Object {
                 Operation::Union,
                 base_primitive,
             )],
+            primitive_op_id_gen,
         }
     }
 

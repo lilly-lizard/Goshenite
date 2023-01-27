@@ -60,49 +60,47 @@ pub fn primitive_op_editor(
     primitive_references: &PrimitiveReferences,
 ) {
     if let Some(selected_primitive_op_id) = gui_state.selected_primitive_op_id {
-        let object_id = selected_object.id();
-
         let selected_primitive_op = match selected_object.get_primitive_op(selected_primitive_op_id)
         {
             Some(prim_op) => prim_op,
             None => {
+                // selected_primitive_op_id not in selected_obejct! invalid id so we set to none
                 gui_state.selected_primitive_op_id = None;
                 return;
             }
         };
 
-        if selected_primitive_op_index < selected_object.primitive_ops.len() {
-            let selected_primitive_op = &selected_object.primitive_ops[selected_primitive_op_index];
-            let primitive_id = selected_primitive_op.prim.borrow().id();
-            let primitive_type =
-                PrimitiveRefType::from_name(selected_primitive_op.prim.borrow().type_name());
+        let object_id = selected_object.id();
+        let primitive_id = selected_primitive_op.prim.borrow().id();
+        let primitive_type =
+            PrimitiveRefType::from_name(selected_primitive_op.prim.borrow().type_name());
 
-            ui.separator();
-            match primitive_type {
-                PrimitiveRefType::Sphere => {
-                    sphere_editor(
-                        ui,
-                        objects_delta,
-                        object_id,
-                        primitive_references,
-                        primitive_id,
-                    );
-                }
-                PrimitiveRefType::Cube => {
-                    cube_editor(
-                        ui,
-                        objects_delta,
-                        object_id,
-                        primitive_references,
-                        primitive_id,
-                    );
-                }
-                _ => {
-                    ui.heading(format!(
-                        "Primitive Type: {}",
-                        selected_primitive_op.prim.borrow().type_name()
-                    ));
-                }
+        ui.separator();
+
+        match primitive_type {
+            PrimitiveRefType::Sphere => {
+                sphere_editor(
+                    ui,
+                    objects_delta,
+                    object_id,
+                    primitive_references,
+                    primitive_id,
+                );
+            }
+            PrimitiveRefType::Cube => {
+                cube_editor(
+                    ui,
+                    objects_delta,
+                    object_id,
+                    primitive_references,
+                    primitive_id,
+                );
+            }
+            _ => {
+                ui.heading(format!(
+                    "Primitive Type: {}",
+                    selected_primitive_op.prim.borrow().type_name()
+                ));
             }
         }
     }
@@ -191,6 +189,19 @@ pub fn primitive_op_list(
     selected_object: &mut Object,
 ) {
     let mut list_drag_state = gui_state.primtive_op_list.clone().unwrap_or_default();
+    let selected_primitive_op = match gui_state.selected_primitive_op_id {
+        Some(selected_primitive_op_id) => {
+            match selected_object.get_primitive_op(selected_primitive_op_id) {
+                Some(selected_primitive_op) => Some(selected_primitive_op),
+                None => {
+                    // selected_primitive_op_id not in selected_obejct! invalid id so we set to none
+                    gui_state.selected_primitive_op_id = None;
+                    None
+                }
+            }
+        }
+        None => None,
+    };
 
     ui.separator();
 
@@ -210,10 +221,9 @@ pub fn primitive_op_list(
             ))
             .text_style(TextStyle::Monospace);
 
-            let is_selected = if let Some(selected_index) = gui_state.selected_primitive_op_index {
-                selected_index == index
-            } else {
-                false
+            let is_selected = match selected_primitive_op {
+                Some(selected_primitive_op) => selected_primitive_op.id() == primitive_op.id(),
+                None => false,
             };
 
             // draw ui for this primitive op
@@ -225,7 +235,7 @@ pub fn primitive_op_list(
 
                 // label to select this primitive op
                 if ui_h.selectable_label(is_selected, button_text).clicked() {
-                    gui_state.selected_primitive_op_index = Some(index);
+                    gui_state.selected_primitive_op_id = Some(primitive_op.id());
                 }
             });
         },
