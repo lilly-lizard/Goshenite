@@ -32,7 +32,7 @@ bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
 egui = "0.20"
 egui-winit = "0.20"
-egui_dnd = { git = "https://github.com/lilly-lizard/egui_dnd-fork/" }
+egui_dnd = { git = "https://github.com/lilly-lizard/egui_dnd-fork/", ref = "3541c52" }
 # hash library used by egui (fast af boii)
 ahash = { version = "0.8", default-features = false, features = [
     "no-rng", # we don't need DOS-protection, so we let users opt-in to it instead
