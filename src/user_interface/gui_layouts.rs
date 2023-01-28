@@ -15,7 +15,7 @@ use crate::{
     helper::unique_id_gen::UniqueId,
 };
 use egui::{DragValue, RichText, TextStyle};
-use egui_dnd::{DragDropItem, DragDropResponse};
+use egui_dnd::{DragableItem, DragDropResponse};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::rc::Rc;
@@ -174,7 +174,7 @@ pub fn cube_editor(
     }
 }
 
-impl DragDropItem for PrimitiveOp {
+impl DragableItem for PrimitiveOp {
     fn id(&self) -> egui::Id {
         egui::Id::new(self.prim.borrow().id())
     }
