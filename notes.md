@@ -4,6 +4,8 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # big todo
 
+- remove cursor_icon = CursorIcon::Grabbing; so that engine can call winit instead...
+
 1. objects refactor
 	1. object struct - DONE
 	2. shaders - DONE
@@ -56,6 +58,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## optimize
 
+- user_interface stuff in its own thread e.g. wait cursor
 - decrease MIN_DIST as distance progresses (need less resolution)
 - FastMemoryAllocator for frequent (per frame) memory allocations (see StandardMemoryAllocator description)
 - gui performance hit when list becomes too big (https://github.com/emilk/egui#cpu-usage) try only laying out part of list in view
