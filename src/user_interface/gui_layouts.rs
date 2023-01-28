@@ -15,7 +15,7 @@ use crate::{
     helper::unique_id_gen::UniqueId,
 };
 use egui::{DragValue, RichText, TextStyle};
-use egui_dnd::DragDropItem;
+use egui_dnd::{DragDropItem, DragDropResponse};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::rc::Rc;
@@ -242,10 +242,10 @@ pub fn primitive_op_list(
     );
 
     // if an item has been dropped after being dragged, re-arrange the primtive ops list
-    if let Some(response) = drag_drop_response.completed {
+    if let DragDropResponse::Completed(drag_indices) = drag_drop_response {
         egui_dnd::utils::shift_vec(
-            response.from,
-            response.to,
+            drag_indices.source,
+            drag_indices.target,
             &mut selected_object.primitive_ops,
         );
         objects_delta.update.insert(selected_object.id());
