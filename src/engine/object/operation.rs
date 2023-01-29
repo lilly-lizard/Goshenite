@@ -1,5 +1,6 @@
 use crate::renderer::shader_interfaces::object_buffer::{op_codes, ObjectDataUnit};
 
+#[derive(PartialEq, Clone, Copy)]
 pub enum Operation {
     /// No-op
     NOP,
@@ -10,6 +11,13 @@ pub enum Operation {
     /// Subtract this primitive from current shape.
     Subtraction,
 }
+
+static VARIANTS: &[Operation] = &[
+    Operation::NOP,
+    Operation::Union,
+    Operation::Intersection,
+    Operation::Subtraction,
+];
 
 impl Operation {
     pub fn op_code(&self) -> ObjectDataUnit {
@@ -28,5 +36,12 @@ impl Operation {
             Self::Intersection => "Intersection",
             Self::Subtraction => "Subtraction",
         }
+    }
+
+    pub fn names() -> Vec<(Self, &'static str)> {
+        VARIANTS
+            .iter()
+            .map(|op| (*op, op.name()))
+            .collect::<Vec<(Self, &'static str)>>()
     }
 }

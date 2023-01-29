@@ -7,6 +7,7 @@ use crate::{
             object::{Object, ObjectId, PrimitiveOp},
             object_collection::ObjectCollection,
             objects_delta::ObjectsDelta,
+            operation::Operation,
         },
         primitives::{
             primitive::PrimitiveId, primitive_ref_types::PrimitiveRefType,
@@ -14,7 +15,7 @@ use crate::{
         },
     },
 };
-use egui::{DragValue, RichText, TextStyle};
+use egui::{ComboBox, DragValue, RichText, TextStyle};
 use egui_dnd::{DragDropResponse, DragableItem};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -56,12 +57,14 @@ pub fn primitive_op_editor(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
-    selected_object: &Object,
+    selected_object: &mut Object,
     primitive_references: &PrimitiveReferences,
 ) {
     if let Some(selected_primitive_op_id) = gui_state.selected_primitive_op_id {
+        let object_id = selected_object.id();
+
         let (primitive_op_index, selected_primitive_op) =
-            match selected_object.get_primitive_op(selected_primitive_op_id) {
+            match selected_object.get_primitive_op_mut(selected_primitive_op_id) {
                 Some(prim_op) => prim_op,
                 None => {
                     // selected_primitive_op_id not in selected_obejct! invalid id so we set to none
@@ -70,7 +73,6 @@ pub fn primitive_op_editor(
                 }
             };
 
-        let object_id = selected_object.id();
         let primitive_id = selected_primitive_op.prim.borrow().id();
         let primitive_type =
             PrimitiveRefType::from_name(selected_primitive_op.prim.borrow().type_name());
@@ -78,6 +80,21 @@ pub fn primitive_op_editor(
         ui.separator();
 
         ui.label(format!("Primitive Op {}:", primitive_op_index));
+
+        // op drop down menu
+        let mut new_op = selected_primitive_op.op.clone();
+        ComboBox::from_label("Op:")
+            .selected_text(selected_primitive_op.op.name())
+            .show_ui(ui, |ui_op| {
+                for (op, op_name) in Operation::names() {
+                    ui_op.selectable_value(&mut new_op, op, op_name);
+                }
+            });
+        if selected_primitive_op.op != new_op {
+            // update op
+            selected_primitive_op.op = new_op;
+            objects_delta.update.insert(object_id);
+        }
 
         match primitive_type {
             PrimitiveRefType::Sphere => {

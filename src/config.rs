@@ -6,6 +6,7 @@ use vulkano::format::Format;
 pub const ENGINE_NAME: &str = "Goshenite";
 
 /// Environment variables that can be used to configure the engine
+#[allow(non_snake_case)]
 pub mod ENV {
     /// Set to a float number to override the scale factor
     pub const SCALE_FACTOR: &str = "GOSH_SCALE_FACTOR";

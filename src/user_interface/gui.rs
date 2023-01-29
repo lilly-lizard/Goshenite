@@ -178,7 +178,7 @@ impl Gui {
                 ui,
                 &mut self.state,
                 &mut self.objects_delta,
-                &selected_object_ref.borrow(),
+                &mut selected_object_ref.borrow_mut(),
                 primitive_references,
             );
             primitive_op_list(

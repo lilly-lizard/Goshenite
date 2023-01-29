@@ -75,7 +75,7 @@ impl Engine {
 
         let sphere = primitive_references.new_sphere(Vec3::new(0., 0., 0.), 0.5);
         let cube = primitive_references.new_cube(Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8));
-        let another_sphere = primitive_references.new_sphere(Vec3::new(0.2, -0.2, 0.), 0.4);
+        let another_sphere = primitive_references.new_sphere(Vec3::new(0.2, -0.2, 0.), 0.83);
 
         let mut object_collection = ObjectCollection::new();
 

@@ -85,6 +85,20 @@ impl Object {
             })
     }
 
+    /// If found, returns a tuple with the vec index and a ref to the primitive op
+    pub fn get_primitive_op_mut(&mut self, id: PrimitiveOpId) -> Option<(usize, &mut PrimitiveOp)> {
+        self.primitive_ops
+            .iter_mut()
+            .enumerate()
+            .find_map(|(index, prim_op)| {
+                if prim_op.id() == id {
+                    Some((index, prim_op))
+                } else {
+                    None
+                }
+            })
+    }
+
     pub fn push_op(&mut self, operation: Operation, primitive: Rc<PrimitiveRef>) {
         self.primitive_ops.push(PrimitiveOp::new(
             self.primitive_op_id_gen.new_id(),
