@@ -82,20 +82,13 @@ pub fn primitive_op_editor(
         ui.label(format!("Primitive Op {}:", primitive_op_index));
 
         // op drop down menu
-        let mut new_op = selected_primitive_op.op.clone();
-        ComboBox::from_label("Op:")
-            .selected_text(selected_primitive_op.op.name())
-            .show_ui(ui, |ui_op| {
-                for (op, op_name) in Operation::names() {
-                    ui_op.selectable_value(&mut new_op, op, op_name);
-                }
-            });
-        if selected_primitive_op.op != new_op {
-            // update op
-            selected_primitive_op.op = new_op;
-            objects_delta.update.insert(object_id);
-        }
+        op_drop_down(ui, objects_delta, object_id, selected_primitive_op);
 
+        // primitive type drop down menu
+        //ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
+        //    .selected_text(selected_text)
+
+        // primitive editor
         match primitive_type {
             PrimitiveRefType::Sphere => {
                 sphere_editor(
@@ -116,12 +109,34 @@ pub fn primitive_op_editor(
                 );
             }
             _ => {
+                // todo delete
                 ui.heading(format!(
                     "Primitive Type: {}",
                     selected_primitive_op.prim.borrow().type_name()
                 ));
             }
         }
+    }
+}
+
+fn op_drop_down(
+    ui: &mut egui::Ui,
+    objects_delta: &mut ObjectsDelta,
+    object_id: usize,
+    selected_primitive_op: &mut PrimitiveOp,
+) {
+    let mut new_op = selected_primitive_op.op.clone();
+    ComboBox::from_id_source(format!("op drop down {}", object_id))
+        .selected_text(selected_primitive_op.op.name())
+        .show_ui(ui, |ui_op| {
+            for (op, op_name) in Operation::names() {
+                ui_op.selectable_value(&mut new_op, op, op_name);
+            }
+        });
+    if selected_primitive_op.op != new_op {
+        // update op
+        selected_primitive_op.op = new_op;
+        objects_delta.update.insert(object_id);
     }
 }
 
@@ -138,7 +153,6 @@ pub fn sphere_editor(
     let mut sphere = sphere_ref.borrow_mut();
     let sphere_original = sphere.clone();
 
-    ui.label("Edit Sphere:");
     ui.horizontal(|ui| {
         ui.label("Center:");
         ui.add(DragValue::new(&mut sphere.center.x).speed(DRAG_INC));
@@ -173,7 +187,6 @@ pub fn cube_editor(
     let mut cube = cube_ref.borrow_mut();
     let cube_original = cube.clone();
 
-    ui.label("Edit Cube:");
     ui.horizontal(|ui| {
         ui.label("Center:");
         ui.add(DragValue::new(&mut cube.center.x).speed(DRAG_INC));
