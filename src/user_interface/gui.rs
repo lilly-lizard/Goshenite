@@ -35,6 +35,7 @@ impl Gui {
     pub fn new<T>(
         event_loop: &EventLoopWindowTarget<T>,
         window: Arc<winit::window::Window>,
+        scale_factor: f32,
     ) -> Self {
         let context = egui::Context::default();
         context.set_style(egui::Style {
@@ -44,7 +45,7 @@ impl Gui {
         });
         let mut window_state = egui_winit::State::new(event_loop);
         // set egui scale factor to platform dpi (by default)
-        window_state.set_pixels_per_point(window.scale_factor() as f32);
+        window_state.set_pixels_per_point(scale_factor);
         Self {
             window: window.clone(),
             context,
@@ -74,6 +75,10 @@ impl Gui {
 
     pub fn scale_factor(&self) -> f32 {
         self.window_state.pixels_per_point()
+    }
+
+    pub fn set_scale_factor(&mut self, scale_factor: f32) {
+        self.window_state.set_pixels_per_point(scale_factor);
     }
 
     pub fn update_gui(
@@ -165,7 +170,10 @@ impl Gui {
                 }
             };
 
-            ui.heading(format!("{}", selected_object_ref.borrow().name));
+            ui.horizontal(|ui| {
+                ui.label("Name:");
+                ui.text_edit_singleline(&mut selected_object_ref.borrow_mut().name);
+            });
             primitive_op_editor(
                 ui,
                 &mut self.state,

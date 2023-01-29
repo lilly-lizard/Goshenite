@@ -1,18 +1,18 @@
-use super::{primitive::Primitive, primitive_ref_types::primitive_names};
-use crate::{
-    helper::unique_id_gen::UniqueId,
-    renderer::shader_interfaces::object_buffer::{primitive_codes, PrimitiveDataSlice},
+use super::{
+    primitive::{Primitive, PrimitiveId},
+    primitive_ref_types::primitive_names,
 };
+use crate::renderer::shader_interfaces::object_buffer::{primitive_codes, PrimitiveDataSlice};
 use glam::Vec3;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cube {
-    id: UniqueId,
+    id: PrimitiveId,
     pub center: Vec3,
     pub dimensions: Vec3,
 }
 impl Cube {
-    pub const fn new(id: UniqueId, center: Vec3, dimensions: Vec3) -> Self {
+    pub const fn new(id: PrimitiveId, center: Vec3, dimensions: Vec3) -> Self {
         Self {
             id,
             center,
@@ -21,7 +21,7 @@ impl Cube {
     }
 }
 impl Primitive for Cube {
-    fn id(&self) -> UniqueId {
+    fn id(&self) -> PrimitiveId {
         self.id
     }
     fn encode(&self, parent_origin: Vec3) -> PrimitiveDataSlice {

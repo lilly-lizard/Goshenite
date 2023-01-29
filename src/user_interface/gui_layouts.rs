@@ -4,18 +4,18 @@ use crate::{
     config,
     engine::{
         object::{
-            object::{Object, PrimitiveOp},
+            object::{Object, ObjectId, PrimitiveOp},
             object_collection::ObjectCollection,
             objects_delta::ObjectsDelta,
         },
         primitives::{
-            primitive_ref_types::PrimitiveRefType, primitive_references::PrimitiveReferences,
+            primitive::PrimitiveId, primitive_ref_types::PrimitiveRefType,
+            primitive_references::PrimitiveReferences,
         },
     },
-    helper::unique_id_gen::UniqueId,
 };
 use egui::{DragValue, RichText, TextStyle};
-use egui_dnd::{DragableItem, DragDropResponse};
+use egui_dnd::{DragDropResponse, DragableItem};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::rc::Rc;
@@ -60,15 +60,15 @@ pub fn primitive_op_editor(
     primitive_references: &PrimitiveReferences,
 ) {
     if let Some(selected_primitive_op_id) = gui_state.selected_primitive_op_id {
-        let selected_primitive_op = match selected_object.get_primitive_op(selected_primitive_op_id)
-        {
-            Some(prim_op) => prim_op,
-            None => {
-                // selected_primitive_op_id not in selected_obejct! invalid id so we set to none
-                gui_state.selected_primitive_op_id = None;
-                return;
-            }
-        };
+        let (primitive_op_index, selected_primitive_op) =
+            match selected_object.get_primitive_op(selected_primitive_op_id) {
+                Some(prim_op) => prim_op,
+                None => {
+                    // selected_primitive_op_id not in selected_obejct! invalid id so we set to none
+                    gui_state.selected_primitive_op_id = None;
+                    return;
+                }
+            };
 
         let object_id = selected_object.id();
         let primitive_id = selected_primitive_op.prim.borrow().id();
@@ -76,6 +76,8 @@ pub fn primitive_op_editor(
             PrimitiveRefType::from_name(selected_primitive_op.prim.borrow().type_name());
 
         ui.separator();
+
+        ui.label(format!("Primitive Op {}:", primitive_op_index));
 
         match primitive_type {
             PrimitiveRefType::Sphere => {
@@ -109,9 +111,9 @@ pub fn primitive_op_editor(
 pub fn sphere_editor(
     ui: &mut egui::Ui,
     objects_delta: &mut ObjectsDelta,
-    object_id: UniqueId,
+    object_id: ObjectId,
     primitive_references: &PrimitiveReferences,
-    primitive_id: UniqueId,
+    primitive_id: PrimitiveId,
 ) {
     let sphere_ref = primitive_references
         .get_sphere(primitive_id)
@@ -119,7 +121,7 @@ pub fn sphere_editor(
     let mut sphere = sphere_ref.borrow_mut();
     let sphere_original = sphere.clone();
 
-    ui.heading("Edit Sphere");
+    ui.label("Edit Sphere:");
     ui.horizontal(|ui| {
         ui.label("Center:");
         ui.add(DragValue::new(&mut sphere.center.x).speed(DRAG_INC));
@@ -144,9 +146,9 @@ pub fn sphere_editor(
 pub fn cube_editor(
     ui: &mut egui::Ui,
     objects_delta: &mut ObjectsDelta,
-    object_id: UniqueId,
+    object_id: ObjectId,
     primitive_references: &PrimitiveReferences,
-    primitive_id: UniqueId,
+    primitive_id: PrimitiveId,
 ) {
     let cube_ref = primitive_references
         .get_cube(primitive_id)
@@ -154,7 +156,7 @@ pub fn cube_editor(
     let mut cube = cube_ref.borrow_mut();
     let cube_original = cube.clone();
 
-    ui.heading("Edit Cube");
+    ui.label("Edit Cube:");
     ui.horizontal(|ui| {
         ui.label("Center:");
         ui.add(DragValue::new(&mut cube.center.x).speed(DRAG_INC));
@@ -203,8 +205,6 @@ pub fn primitive_op_list(
         None => None,
     };
 
-    ui.separator();
-
     // draw each item in the primitive op list
     let drag_drop_response = list_drag_state.ui::<PrimitiveOp>(
         ui,
@@ -222,7 +222,9 @@ pub fn primitive_op_list(
             .text_style(TextStyle::Monospace);
 
             let is_selected = match selected_primitive_op {
-                Some(selected_primitive_op) => selected_primitive_op.id() == primitive_op.id(),
+                Some((_i, selected_primitive_op)) => {
+                    selected_primitive_op.id() == primitive_op.id()
+                }
                 None => false,
             };
 

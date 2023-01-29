@@ -1,15 +1,12 @@
-use super::object::{new_object_ref, Object, ObjectRef};
-use crate::{
-    engine::primitives::primitive::PrimitiveRef,
-    helper::unique_id_gen::{UniqueId, UniqueIdGen},
-};
+use super::object::{new_object_ref, Object, ObjectId, ObjectRef};
+use crate::{engine::primitives::primitive::PrimitiveRef, helper::unique_id_gen::UniqueIdGen};
 use glam::Vec3;
 use std::{collections::BTreeMap, rc::Rc};
 
 /// Should only be one per engine instance.
 pub struct ObjectCollection {
     unique_id_gen: UniqueIdGen,
-    objects: BTreeMap<UniqueId, Rc<ObjectRef>>,
+    objects: BTreeMap<ObjectId, Rc<ObjectRef>>,
 }
 
 impl ObjectCollection {
@@ -32,11 +29,11 @@ impl ObjectCollection {
         object
     }
 
-    pub fn objects(&self) -> &BTreeMap<UniqueId, Rc<ObjectRef>> {
+    pub fn objects(&self) -> &BTreeMap<ObjectId, Rc<ObjectRef>> {
         &self.objects
     }
 
-    pub fn get(&self, object_id: UniqueId) -> Option<&Rc<ObjectRef>> {
+    pub fn get(&self, object_id: ObjectId) -> Option<&Rc<ObjectRef>> {
         self.objects.get(&object_id)
     }
 }

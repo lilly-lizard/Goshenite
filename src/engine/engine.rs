@@ -18,7 +18,7 @@ use crate::{
 use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::sync::Arc;
+use std::{env, sync::Arc};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -59,7 +59,12 @@ impl Engine {
                 .build(event_loop)
                 .expect("failed to instanciate window due to os error"),
         );
-        let scale_factor = window.scale_factor();
+
+        let scale_factor_override: Option<f64> = match env::var(config::ENV::SCALE_FACTOR) {
+            Ok(s) => s.parse::<f64>().ok(),
+            _ => None,
+        };
+        let scale_factor = scale_factor_override.unwrap_or(window.scale_factor());
         let cursor_state = CursorState::new(window.clone());
 
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
@@ -97,7 +102,7 @@ impl Engine {
             "initialize renderer",
         );
 
-        let gui = Gui::new(&event_loop, window.clone());
+        let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32);
 
         Engine {
             _window: window,
@@ -170,6 +175,7 @@ impl Engine {
             } => {
                 self.scale_factor = scale_factor;
                 self.window_resize = true;
+                self.gui.set_scale_factor(self.scale_factor as f32);
                 self.camera.set_aspect_ratio((*new_inner_size).into())
             }
             _ => (),

@@ -5,6 +5,12 @@ use vulkano::format::Format;
 
 pub const ENGINE_NAME: &str = "Goshenite";
 
+/// Environment variables that can be used to configure the engine
+pub mod ENV {
+    /// Set to a float number to override the scale factor
+    pub const SCALE_FACTOR: &str = "GOSH_SCALE_FACTOR";
+}
+
 /// Log level filter. Logs of levels lower than this will not be displayed.
 pub const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Debug;
 

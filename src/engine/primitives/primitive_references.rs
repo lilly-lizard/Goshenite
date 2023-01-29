@@ -1,10 +1,10 @@
 use super::{
     cube::Cube,
-    primitive::Primitive,
+    primitive::{Primitive, PrimitiveId},
     primitive_ref_types::{new_cube_ref, new_sphere_ref, CubeRef, PrimitiveRefType, SphereRef},
     sphere::Sphere,
 };
-use crate::helper::unique_id_gen::{UniqueId, UniqueIdGen};
+use crate::helper::unique_id_gen::UniqueIdGen;
 use ahash::AHashMap;
 use glam::Vec3;
 use std::{
@@ -14,8 +14,8 @@ use std::{
 
 pub struct PrimitiveReferences {
     unique_id_gen: UniqueIdGen,
-    pub spheres: AHashMap<UniqueId, Weak<SphereRef>>,
-    pub cubes: AHashMap<UniqueId, Weak<CubeRef>>,
+    pub spheres: AHashMap<PrimitiveId, Weak<SphereRef>>,
+    pub cubes: AHashMap<PrimitiveId, Weak<CubeRef>>,
 }
 
 /// Should only be one per engine instance.
@@ -23,8 +23,8 @@ impl PrimitiveReferences {
     pub fn new() -> Self {
         Self {
             unique_id_gen: UniqueIdGen::new(),
-            spheres: AHashMap::<UniqueId, Weak<SphereRef>>::default(),
-            cubes: AHashMap::<UniqueId, Weak<CubeRef>>::default(),
+            spheres: AHashMap::<PrimitiveId, Weak<SphereRef>>::default(),
+            cubes: AHashMap::<PrimitiveId, Weak<CubeRef>>::default(),
         }
     }
 
@@ -41,10 +41,10 @@ impl PrimitiveReferences {
         cube
     }
 
-    pub fn get_sphere(&self, primitive_id: UniqueId) -> Option<Rc<SphereRef>> {
+    pub fn get_sphere(&self, primitive_id: PrimitiveId) -> Option<Rc<SphereRef>> {
         get_primitive::<SphereRef>(primitive_id, &self.spheres)
     }
-    pub fn get_cube(&self, primitive_id: UniqueId) -> Option<Rc<CubeRef>> {
+    pub fn get_cube(&self, primitive_id: PrimitiveId) -> Option<Rc<CubeRef>> {
         get_primitive::<CubeRef>(primitive_id, &self.cubes)
     }
 
@@ -53,7 +53,7 @@ impl PrimitiveReferences {
     pub fn get(
         &self,
         primitive_type: PrimitiveRefType,
-        primitive_id: UniqueId,
+        primitive_id: PrimitiveId,
     ) -> Option<Rc<RefCell<dyn Primitive>>> {
         match primitive_type {
             PrimitiveRefType::Sphere => self
@@ -68,8 +68,8 @@ impl PrimitiveReferences {
 }
 
 fn get_primitive<T>(
-    primitive_id: UniqueId,
-    collection: &AHashMap<UniqueId, Weak<T>>,
+    primitive_id: PrimitiveId,
+    collection: &AHashMap<PrimitiveId, Weak<T>>,
 ) -> Option<Rc<T>> {
     collection
         .get(&primitive_id)

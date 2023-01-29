@@ -4,8 +4,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # big todo
 
-- remove cursor_icon = CursorIcon::Grabbing; so that engine can call winit instead...
-
 1. objects refactor
 	1. object struct - DONE
 	2. shaders - DONE
@@ -29,6 +27,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- replace UniqueId type aliases with structs or enums to have explicit conversions and rules
 - can we do without Rc<RefCell<>>?
 - checks in object_collection to make sure that you don't have the same primitive ids across multiple primitive ops. put primitive_references inside object_collection?
 - init renderer test

@@ -8,9 +8,10 @@ use super::{
 use crate::{
     config::SHADER_ENTRY_POINT,
     engine::object::{
-        object::Object, object_collection::ObjectCollection, objects_delta::ObjectsDelta,
+        object::{Object, ObjectId},
+        object_collection::ObjectCollection,
+        objects_delta::ObjectsDelta,
     },
-    helper::unique_id_gen::UniqueId,
 };
 use anyhow::Context;
 #[allow(unused_imports)]
@@ -307,7 +308,7 @@ fn create_desc_set(
 }
 
 struct ObjectBuffers {
-    ids: Vec<UniqueId>,
+    ids: Vec<ObjectId>,
     buffers: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
 }
 impl ObjectBuffers {
@@ -321,7 +322,7 @@ impl ObjectBuffers {
     /// Returns the index
     pub fn update_or_push(
         &mut self,
-        id: UniqueId,
+        id: ObjectId,
         buffer: Arc<CpuBufferPoolChunk<ObjectDataUnit>>,
     ) -> usize {
         debug_assert!(self.ids.len() == self.buffers.len());
@@ -336,7 +337,7 @@ impl ObjectBuffers {
     }
 
     /// Returns the vec index if the id was found and removed.
-    pub fn remove(&mut self, id: UniqueId) -> Option<usize> {
+    pub fn remove(&mut self, id: ObjectId) -> Option<usize> {
         debug_assert!(self.ids.len() == self.buffers.len());
         let index_res = self.get_index(id);
         if let Some(index) = index_res {
@@ -346,7 +347,7 @@ impl ObjectBuffers {
         index_res
     }
 
-    pub fn get_index(&self, id: UniqueId) -> Option<usize> {
+    pub fn get_index(&self, id: ObjectId) -> Option<usize> {
         self.ids.iter().position(|&x| x == id)
     }
 
