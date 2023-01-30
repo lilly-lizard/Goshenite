@@ -1,3 +1,8 @@
+use super::{
+    gui_layouts::{object_list, primitive_op_editor, primitive_op_list},
+    gui_state::GuiState,
+    theme::Theme,
+};
 use crate::engine::{
     object::{object::ObjectRef, object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     primitives::primitive_references::PrimitiveReferences,
@@ -10,12 +15,6 @@ use egui_winit::EventResponse;
 use log::{debug, error, info, trace, warn};
 use std::{rc::Weak, sync::Arc};
 use winit::{event_loop::EventLoopWindowTarget, window::Window};
-
-use super::{
-    gui_layouts::{object_list, primitive_op_editor, primitive_op_list},
-    gui_state::GuiState,
-    theme::Theme,
-};
 
 /// Controller for an [`egui`] immediate-mode gui
 pub struct Gui {

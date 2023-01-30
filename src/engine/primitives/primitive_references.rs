@@ -25,7 +25,7 @@ impl PrimitiveReferences {
     pub fn new() -> Self {
         Self {
             unique_id_gen: UniqueIdGen::new(),
-            null_primitive: Rc::new(RefCell::new(NullPrimitive {})),
+            null_primitive: NullPrimitive::new_ref(),
             spheres: Default::default(),
             cubes: Default::default(),
         }

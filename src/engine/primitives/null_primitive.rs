@@ -3,9 +3,11 @@ use crate::renderer::shader_interfaces::object_buffer::{
     primitive_codes, PrimitiveDataSlice, PRIMITIVE_UNIT_LEN,
 };
 use glam::Vec3;
+use std::{cell::RefCell, rc::Rc};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NullPrimitive {}
+
 impl Primitive for NullPrimitive {
     fn id(&self) -> usize {
         usize::MAX
@@ -23,6 +25,13 @@ impl Primitive for NullPrimitive {
         "Null-Primitive"
     }
 }
+
+impl NullPrimitive {
+    pub fn new_ref() -> Rc<RefCell<NullPrimitive>> {
+        Rc::new(RefCell::new(NullPrimitive {}))
+    }
+}
+
 impl Default for NullPrimitive {
     fn default() -> Self {
         Self {}

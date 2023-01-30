@@ -10,7 +10,8 @@ use crate::{
             operation::Operation,
         },
         primitives::{
-            primitive::PrimitiveId, primitive_ref_types::PrimitiveRefType,
+            primitive::{PrimitiveId, PrimitiveRef},
+            primitive_ref_types::PrimitiveRefType,
             primitive_references::PrimitiveReferences,
         },
     },
@@ -60,6 +61,9 @@ pub fn primitive_op_editor(
     selected_object: &mut Object,
     primitive_references: &mut PrimitiveReferences,
 ) {
+    // todo when gui_state.selected_primitive_op_id == None, new primtive op stuff
+    // todo 'add primtive op' button to confirm new primtive op
+
     if let Some(selected_primitive_op_id) = gui_state.selected_primitive_op_id {
         let object_id = selected_object.id();
 
@@ -82,7 +86,12 @@ pub fn primitive_op_editor(
 
         ui.horizontal(|ui_h| {
             // op drop down menu
-            op_drop_down(ui_h, objects_delta, object_id, selected_primitive_op);
+            op_drop_down(
+                ui_h,
+                objects_delta,
+                object_id,
+                &mut selected_primitive_op.op,
+            );
 
             // primitive type drop down menu
             primtive_drop_down(
@@ -91,7 +100,7 @@ pub fn primitive_op_editor(
                 primitive_references,
                 objects_delta,
                 &mut primitive_type,
-                selected_primitive_op,
+                &mut selected_primitive_op.prim,
                 &mut primitive_id,
             );
         });
@@ -127,12 +136,12 @@ fn primtive_drop_down(
     primitive_references: &mut PrimitiveReferences,
     objects_delta: &mut ObjectsDelta,
     primitive_type: &mut PrimitiveRefType,
-    selected_primitive_op: &mut PrimitiveOp,
+    selected_primitive: &mut Rc<PrimitiveRef>,
     primitive_id: &mut PrimitiveId,
 ) {
     let mut new_primitive_type = *primitive_type;
     ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
-        .selected_text(selected_primitive_op.prim.borrow().type_name())
+        .selected_text(selected_primitive.borrow().type_name())
         .show_ui(ui, |ui_p| {
             for (p_type, p_name) in PrimitiveRefType::variant_names() {
                 ui_p.selectable_value(&mut new_primitive_type, p_type, p_name);
@@ -140,8 +149,8 @@ fn primtive_drop_down(
         });
     if *primitive_type != new_primitive_type {
         *primitive_type = new_primitive_type;
-        selected_primitive_op.prim = primitive_references.new_default(new_primitive_type);
-        *primitive_id = selected_primitive_op.prim.borrow().id();
+        *selected_primitive = primitive_references.new_default(new_primitive_type);
+        *primitive_id = selected_primitive.borrow().id();
         objects_delta.update.insert(object_id);
     }
 }
@@ -150,19 +159,19 @@ fn op_drop_down(
     ui: &mut egui::Ui,
     objects_delta: &mut ObjectsDelta,
     object_id: ObjectId,
-    selected_primitive_op: &mut PrimitiveOp,
+    selected_op: &mut Operation,
 ) {
-    let mut new_op = selected_primitive_op.op.clone();
+    let mut new_op = selected_op.clone();
     ComboBox::from_id_source(format!("op drop down {}", object_id))
-        .selected_text(selected_primitive_op.op.name())
+        .selected_text(selected_op.name())
         .show_ui(ui, |ui_op| {
             for (op, op_name) in Operation::variant_names() {
                 ui_op.selectable_value(&mut new_op, op, op_name);
             }
         });
-    if selected_primitive_op.op != new_op {
+    if *selected_op != new_op {
         // update op
-        selected_primitive_op.op = new_op;
+        *selected_op = new_op;
         objects_delta.update.insert(object_id);
     }
 }
@@ -247,6 +256,16 @@ pub fn primitive_op_list(
     objects_delta: &mut ObjectsDelta,
     selected_object: &mut Object,
 ) {
+    ui.separator();
+
+    // new primitive op button
+    let new_op_text = RichText::new("New Primitive Op").text_style(TextStyle::Monospace);
+    let new_op_response =
+        ui.selectable_label(gui_state.selected_primitive_op_id.is_none(), new_op_text);
+    if new_op_response.clicked() {
+        gui_state.selected_primitive_op_id = None;
+    }
+
     let mut list_drag_state = gui_state.primtive_op_list.clone().unwrap_or_default();
     let selected_primitive_op = match gui_state.selected_primitive_op_id {
         Some(selected_primitive_op_id) => {
