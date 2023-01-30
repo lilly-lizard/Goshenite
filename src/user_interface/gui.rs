@@ -134,7 +134,7 @@ impl Gui {
     }
 
     pub fn selected_object(&self) -> Option<Weak<ObjectRef>> {
-        self.state.selected_object.clone()
+        self.state.selected_object().clone()
     }
 
     pub fn set_theme(&self, theme: Theme) {
@@ -163,7 +163,7 @@ impl Gui {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
             let no_object_text = RichText::new("No Object Selected...").italics();
-            let selected_object_weak = match &self.state.selected_object {
+            let selected_object_weak = match self.state.selected_object() {
                 Some(o) => o.clone(),
                 None => {
                     ui.label(no_object_text);

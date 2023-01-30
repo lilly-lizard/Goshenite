@@ -1,5 +1,8 @@
 /// UI layout sub-functions
-use super::gui_state::{GuiState, DRAG_INC};
+use super::{
+    gui_state::{GuiState, DRAG_INC},
+    ui_config,
+};
 use crate::{
     config,
     engine::{
@@ -33,7 +36,7 @@ pub fn object_list(
             RichText::new(format!("{} - {}", current_id, current_object.borrow().name))
                 .text_style(TextStyle::Monospace);
 
-        let is_selected = if let Some(object_ref) = &gui_state.selected_object {
+        let is_selected = if let Some(object_ref) = gui_state.selected_object() {
             if let Some(selected_object) = object_ref.upgrade() {
                 selected_object.borrow().id() == current_object.borrow().id()
             } else {
@@ -47,7 +50,7 @@ pub fn object_list(
 
         if ui.selectable_label(is_selected, label_text).clicked() {
             if !is_selected {
-                gui_state.selected_object = Some(Rc::downgrade(current_object));
+                gui_state.set_selected_object(Rc::downgrade(current_object));
                 gui_state.deselect_primitive_op();
             }
         }
@@ -63,7 +66,7 @@ pub fn primitive_op_editor(
 ) {
     let object_id = selected_object.id();
 
-    if let Some(selected_prim_op_id) = gui_state.selected_primitive_op_id {
+    if let Some(selected_prim_op_id) = gui_state.selected_primitive_op_id() {
         match selected_object.get_primitive_op_mut(selected_prim_op_id) {
             Some((index, prim_op)) => {
                 existing_primitive_op_editor(
@@ -190,33 +193,39 @@ fn new_primitive_op_editor(
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        op_drop_down(ui_h, objects_delta, object_id, &mut gui_state.new_op);
+        op_drop_down(ui_h, objects_delta, object_id, gui_state.op_field_mut());
 
         // primitive type drop down menu
-        let primitive_type_name: &str = gui_state.new_primitive.p_type.into();
+        let primitive_type_name: &str = gui_state.primitive_fields().p_type.into();
         ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
             .selected_text(primitive_type_name)
             .show_ui(ui_h, |ui_p| {
                 for (p_type, p_name) in PrimitiveRefType::variant_names() {
-                    ui_p.selectable_value(&mut gui_state.new_primitive.p_type, p_type, p_name);
+                    ui_p.selectable_value(
+                        &mut gui_state.primitive_fields_mut().p_type,
+                        p_type,
+                        p_name,
+                    );
                 }
             });
     });
 
     // primitive editor
-    match gui_state.new_primitive.p_type {
+    match gui_state.primitive_fields().p_type {
         PrimitiveRefType::Sphere => {
+            let primitive_fields = gui_state.primitive_fields_mut();
             sphere_editor_ui(
                 ui,
-                &mut gui_state.new_primitive.center,
-                &mut gui_state.new_primitive.radius,
+                &mut primitive_fields.center,
+                &mut primitive_fields.radius,
             );
         }
         PrimitiveRefType::Cube => {
+            let primitive_fields = gui_state.primitive_fields_mut();
             cube_editor_ui(
                 ui,
-                &mut gui_state.new_primitive.center,
-                &mut gui_state.new_primitive.dimensions,
+                &mut primitive_fields.center,
+                &mut primitive_fields.dimensions,
             );
         }
         _ => (),
@@ -231,21 +240,25 @@ fn new_primitive_op_editor(
     });
     if clicked_add {
         // create primitive
-        let new_primitive: Rc<PrimitiveRef> = match gui_state.new_primitive.p_type {
+        let new_primitive: Rc<PrimitiveRef> = match gui_state.primitive_fields().p_type {
             PrimitiveRefType::Sphere => primitive_references.new_sphere(
-                gui_state.new_primitive.center,
-                gui_state.new_primitive.radius,
+                gui_state.primitive_fields().center,
+                gui_state.primitive_fields().radius,
             ),
             PrimitiveRefType::Cube => primitive_references.new_cube(
-                gui_state.new_primitive.center,
-                gui_state.new_primitive.dimensions,
+                gui_state.primitive_fields().center,
+                gui_state.primitive_fields().dimensions,
             ),
-            _ => primitive_references.new_default(gui_state.new_primitive.p_type),
+            _ => primitive_references.new_default(gui_state.primitive_fields().p_type),
         };
 
         // append primitive op to selected object and mark for updating
-        selected_object.push_op(gui_state.new_op, new_primitive);
+        let p_op_id = selected_object.push_op(gui_state.op_field(), new_primitive);
         objects_delta.update.insert(object_id);
+
+        if ui_config::select_primitive_op_after_add {
+            gui_state.set_selected_primitive_op_id(p_op_id);
+        }
     }
     if clicked_reset {
         gui_state.reset_primitive_op_fields();
@@ -331,13 +344,13 @@ pub fn primitive_op_list(
     // new primitive op button
     let new_op_text = RichText::new("New Primitive Op").text_style(TextStyle::Monospace);
     let new_op_response =
-        ui.selectable_label(gui_state.selected_primitive_op_id.is_none(), new_op_text);
+        ui.selectable_label(gui_state.selected_primitive_op_id().is_none(), new_op_text);
     if new_op_response.clicked() {
         gui_state.deselect_primitive_op();
     }
 
-    let mut list_drag_state = gui_state.primtive_op_list.clone().unwrap_or_default();
-    let selected_primitive_op = match gui_state.selected_primitive_op_id {
+    let mut list_drag_state = gui_state.primtive_op_list().clone().unwrap_or_default();
+    let selected_primitive_op = match gui_state.selected_primitive_op_id() {
         Some(selected_primitive_op_id) => {
             match selected_object.get_primitive_op(selected_primitive_op_id) {
                 Some(selected_primitive_op) => Some(selected_primitive_op),
@@ -383,7 +396,7 @@ pub fn primitive_op_list(
 
                 // label to select this primitive op
                 if ui_h.selectable_label(is_selected, button_text).clicked() {
-                    gui_state.selected_primitive_op_id = Some(primitive_op.id());
+                    gui_state.set_selected_primitive_op_id(primitive_op.id());
                 }
             });
         },
@@ -399,5 +412,5 @@ pub fn primitive_op_list(
         objects_delta.update.insert(selected_object.id());
     }
 
-    gui_state.primtive_op_list = Some(list_drag_state);
+    gui_state.set_primitive_op_list(list_drag_state);
 }

@@ -99,12 +99,12 @@ impl Object {
             })
     }
 
-    pub fn push_op(&mut self, operation: Operation, primitive: Rc<PrimitiveRef>) {
-        self.primitive_ops.push(PrimitiveOp::new(
-            self.primitive_op_id_gen.new_id(),
-            operation,
-            primitive,
-        ));
+    /// Returns the id of the newly created primitive op
+    pub fn push_op(&mut self, operation: Operation, primitive: Rc<PrimitiveRef>) -> PrimitiveOpId {
+        let id = self.primitive_op_id_gen.new_id();
+        self.primitive_ops
+            .push(PrimitiveOp::new(id, operation, primitive));
+        id
     }
 
     pub fn encoded_data(&self) -> Vec<ObjectDataUnit> {

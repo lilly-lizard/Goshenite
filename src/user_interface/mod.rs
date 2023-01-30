@@ -4,3 +4,4 @@ pub mod gui;
 mod gui_layouts;
 mod gui_state;
 pub mod theme;
+pub mod ui_config;
