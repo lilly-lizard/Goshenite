@@ -11,6 +11,7 @@ pub struct Cube {
     pub center: Vec3,
     pub dimensions: Vec3,
 }
+
 impl Cube {
     pub const fn new(id: PrimitiveId, center: Vec3, dimensions: Vec3) -> Self {
         Self {
@@ -20,6 +21,7 @@ impl Cube {
         }
     }
 }
+
 impl Primitive for Cube {
     fn id(&self) -> PrimitiveId {
         self.id

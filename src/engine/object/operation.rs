@@ -38,7 +38,7 @@ impl Operation {
         }
     }
 
-    pub fn names() -> Vec<(Self, &'static str)> {
+    pub fn variant_names() -> Vec<(Self, &'static str)> {
         VARIANTS
             .iter()
             .map(|op| (*op, op.name()))

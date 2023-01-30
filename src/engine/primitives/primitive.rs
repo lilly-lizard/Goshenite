@@ -29,3 +29,15 @@ pub trait Primitive {
     /// Returns the primitive type as a str
     fn type_name(&self) -> &'static str;
 }
+
+pub fn default_center() -> Vec3 {
+    Vec3::ZERO
+}
+
+pub fn default_radius() -> f32 {
+    1.
+}
+
+pub fn default_dimensions() -> Vec3 {
+    Vec3::ONE
+}

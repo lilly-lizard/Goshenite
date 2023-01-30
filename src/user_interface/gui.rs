@@ -2,7 +2,9 @@ use crate::engine::{
     object::{object::ObjectRef, object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     primitives::primitive_references::PrimitiveReferences,
 };
-use egui::{Button, FontFamily::Proportional, FontId, RichText, TextStyle, TexturesDelta};
+use egui::{
+    Button, Context, FontFamily::Proportional, FontId, RichText, TextStyle, TexturesDelta, Visuals,
+};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -12,6 +14,7 @@ use winit::{event_loop::EventLoopWindowTarget, window::Window};
 use super::{
     gui_layouts::{object_list, primitive_op_editor, primitive_op_list},
     gui_state::GuiState,
+    theme::Theme,
 };
 
 /// Controller for an [`egui`] immediate-mode gui
@@ -36,6 +39,7 @@ impl Gui {
         event_loop: &EventLoopWindowTarget<T>,
         window: Arc<winit::window::Window>,
         scale_factor: f32,
+        theme: Theme,
     ) -> Self {
         let context = egui::Context::default();
         context.set_style(egui::Style {
@@ -43,9 +47,12 @@ impl Gui {
             wrap: Some(false),
             ..Default::default()
         });
+        set_theme(&context, theme);
+
         let mut window_state = egui_winit::State::new(event_loop);
         // set egui scale factor to platform dpi (by default)
         window_state.set_pixels_per_point(scale_factor);
+
         Self {
             window: window.clone(),
             context,
@@ -84,7 +91,7 @@ impl Gui {
     pub fn update_gui(
         &mut self,
         object_collection: &ObjectCollection,
-        primitive_references: &PrimitiveReferences,
+        primitive_references: &mut PrimitiveReferences,
     ) -> anyhow::Result<()> {
         // begin frame
         let raw_input = self.window_state.take_egui_input(self.window.as_ref());
@@ -130,6 +137,10 @@ impl Gui {
     pub fn selected_object(&self) -> Option<Weak<ObjectRef>> {
         self.state.selected_object.clone()
     }
+
+    pub fn set_theme(&self, theme: Theme) {
+        set_theme(&self.context, theme);
+    }
 }
 
 // Private functions
@@ -149,7 +160,7 @@ impl Gui {
             .show(&self.context, add_contents);
     }
 
-    fn object_editor_window(&mut self, primitive_references: &PrimitiveReferences) {
+    fn object_editor_window(&mut self, primitive_references: &mut PrimitiveReferences) {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
             let no_object_text = RichText::new("No Object Selected...").italics();
@@ -222,4 +233,12 @@ impl Gui {
             .hscroll(true)
             .show(&self.context, add_contents);
     }
+}
+
+fn set_theme(context: &Context, theme: Theme) {
+    let visuals = match theme {
+        Theme::Dark => Visuals::dark(),
+        Theme::Light => Visuals::light(),
+    };
+    context.set_visuals(visuals);
 }

@@ -13,6 +13,7 @@ use crate::{
     user_interface::{
         cursor_state::{CursorState, MouseButton},
         gui::Gui,
+        theme::Theme,
     },
 };
 use glam::Vec3;
@@ -33,6 +34,7 @@ pub struct Engine {
     window_resize: bool,
     scale_factor: f64,
     cursor_state: CursorState,
+    theme: Theme,
 
     // specialized controllers
     camera: Camera,
@@ -102,7 +104,8 @@ impl Engine {
             "initialize renderer",
         );
 
-        let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32);
+        let theme = Theme::Dark;
+        let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32, theme);
 
         Engine {
             _window: window,
@@ -110,6 +113,7 @@ impl Engine {
             window_resize: false,
             scale_factor,
             cursor_state,
+            theme,
 
             camera,
             gui,
@@ -151,6 +155,7 @@ impl Engine {
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_state.set_position(position.into())
             }
+
             // send mouse button events to input manager
             WindowEvent::MouseInput { state, button, .. } => {
                 self.cursor_state
@@ -159,15 +164,19 @@ impl Engine {
             WindowEvent::MouseWheel { delta, .. } => self
                 .cursor_state
                 .accumulate_scroll_delta(delta, captured_by_gui),
+
             // cursor entered window
             WindowEvent::CursorEntered { .. } => self.cursor_state.set_in_window_state(true),
+
             // cursor left window
             WindowEvent::CursorLeft { .. } => self.cursor_state.set_in_window_state(false),
+
             // window resize
             WindowEvent::Resized(new_inner_size) => {
                 self.window_resize = true;
                 self.camera.set_aspect_ratio(new_inner_size.into())
             }
+
             // dpi change
             WindowEvent::ScaleFactorChanged {
                 scale_factor,
@@ -177,6 +186,11 @@ impl Engine {
                 self.window_resize = true;
                 self.gui.set_scale_factor(self.scale_factor as f32);
                 self.camera.set_aspect_ratio((*new_inner_size).into())
+            }
+
+            WindowEvent::ThemeChanged(winit_theme) => {
+                self.theme = winit_theme.into();
+                self.gui.set_theme(self.theme);
             }
             _ => (),
         }
@@ -190,7 +204,7 @@ impl Engine {
         // process gui inputs and update layout
         if let Err(e) = self
             .gui
-            .update_gui(&self.object_collection, &self.primitive_references)
+            .update_gui(&self.object_collection, &mut self.primitive_references)
         {
             anyhow_panic(&e, "update gui");
         }

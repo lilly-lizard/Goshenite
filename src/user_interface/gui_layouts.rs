@@ -58,7 +58,7 @@ pub fn primitive_op_editor(
     gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
     selected_object: &mut Object,
-    primitive_references: &PrimitiveReferences,
+    primitive_references: &mut PrimitiveReferences,
 ) {
     if let Some(selected_primitive_op_id) = gui_state.selected_primitive_op_id {
         let object_id = selected_object.id();
@@ -73,10 +73,6 @@ pub fn primitive_op_editor(
                 }
             };
 
-        let primitive_id = selected_primitive_op.prim.borrow().id();
-        let primitive_type =
-            PrimitiveRefType::from_name(selected_primitive_op.prim.borrow().type_name());
-
         ui.separator();
 
         ui.label(format!("Primitive Op {}:", primitive_op_index));
@@ -84,9 +80,24 @@ pub fn primitive_op_editor(
         // op drop down menu
         op_drop_down(ui, objects_delta, object_id, selected_primitive_op);
 
+        let mut primitive_id = selected_primitive_op.prim.borrow().id();
+        let mut primitive_type = selected_primitive_op.prim.borrow().type_name().into();
+
         // primitive type drop down menu
-        //ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
-        //    .selected_text(selected_text)
+        let mut new_primitive_type = primitive_type;
+        ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
+            .selected_text(selected_primitive_op.prim.borrow().type_name())
+            .show_ui(ui, |ui_p| {
+                for (p_type, p_name) in PrimitiveRefType::variant_names() {
+                    ui_p.selectable_value(&mut new_primitive_type, p_type, p_name);
+                }
+            });
+        if primitive_type != new_primitive_type {
+            primitive_type = new_primitive_type;
+            selected_primitive_op.prim = primitive_references.new_default(new_primitive_type);
+            primitive_id = selected_primitive_op.prim.borrow().id();
+            objects_delta.update.insert(object_id);
+        }
 
         // primitive editor
         match primitive_type {
@@ -108,13 +119,7 @@ pub fn primitive_op_editor(
                     primitive_id,
                 );
             }
-            _ => {
-                // todo delete
-                ui.heading(format!(
-                    "Primitive Type: {}",
-                    selected_primitive_op.prim.borrow().type_name()
-                ));
-            }
+            _ => (),
         }
     }
 }
@@ -129,7 +134,7 @@ fn op_drop_down(
     ComboBox::from_id_source(format!("op drop down {}", object_id))
         .selected_text(selected_primitive_op.op.name())
         .show_ui(ui, |ui_op| {
-            for (op, op_name) in Operation::names() {
+            for (op, op_name) in Operation::variant_names() {
                 ui_op.selectable_value(&mut new_op, op, op_name);
             }
         });

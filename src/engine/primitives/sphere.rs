@@ -11,11 +11,13 @@ pub struct Sphere {
     pub center: Vec3,
     pub radius: f32,
 }
+
 impl Sphere {
     pub const fn new(id: PrimitiveId, center: Vec3, radius: f32) -> Self {
         Self { id, center, radius }
     }
 }
+
 impl Primitive for Sphere {
     fn id(&self) -> PrimitiveId {
         self.id

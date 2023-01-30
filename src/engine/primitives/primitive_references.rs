@@ -1,6 +1,7 @@
 use super::{
     cube::Cube,
-    primitive::{Primitive, PrimitiveId},
+    null_primitive::NullPrimitive,
+    primitive::{default_center, default_dimensions, default_radius, Primitive, PrimitiveId},
     primitive_ref_types::{new_cube_ref, new_sphere_ref, CubeRef, PrimitiveRefType, SphereRef},
     sphere::Sphere,
 };
@@ -14,6 +15,7 @@ use std::{
 
 pub struct PrimitiveReferences {
     unique_id_gen: UniqueIdGen,
+    pub null_primitive: Rc<RefCell<NullPrimitive>>,
     pub spheres: AHashMap<PrimitiveId, Weak<SphereRef>>,
     pub cubes: AHashMap<PrimitiveId, Weak<CubeRef>>,
 }
@@ -23,8 +25,24 @@ impl PrimitiveReferences {
     pub fn new() -> Self {
         Self {
             unique_id_gen: UniqueIdGen::new(),
-            spheres: AHashMap::<PrimitiveId, Weak<SphereRef>>::default(),
-            cubes: AHashMap::<PrimitiveId, Weak<CubeRef>>::default(),
+            null_primitive: Rc::new(RefCell::new(NullPrimitive {})),
+            spheres: Default::default(),
+            cubes: Default::default(),
+        }
+    }
+
+    pub fn null_primitive(&self) -> Rc<RefCell<NullPrimitive>> {
+        self.null_primitive.clone()
+    }
+
+    /// Creates a new default primitive of type `primitive_type`. If type `PrimitiveRefType::Unknown`
+    /// requested, returns a `NullPrimitive`.
+    pub fn new_default(&mut self, primitive_type: PrimitiveRefType) -> Rc<RefCell<dyn Primitive>> {
+        match primitive_type {
+            PrimitiveRefType::Null => self.null_primitive(),
+            PrimitiveRefType::Sphere => self.new_sphere(default_center(), default_radius()),
+            PrimitiveRefType::Cube => self.new_cube(default_center(), default_dimensions()),
+            PrimitiveRefType::Unknown => self.null_primitive(),
         }
     }
 
@@ -56,6 +74,7 @@ impl PrimitiveReferences {
         primitive_id: PrimitiveId,
     ) -> Option<Rc<RefCell<dyn Primitive>>> {
         match primitive_type {
+            PrimitiveRefType::Null => Some(self.null_primitive() as Rc<RefCell<dyn Primitive>>),
             PrimitiveRefType::Sphere => self
                 .get_sphere(primitive_id)
                 .map(|x| x as Rc<RefCell<dyn Primitive>>),
