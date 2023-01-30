@@ -1,1 +1,1 @@
-pub const select_primitive_op_after_add: bool = true;
+pub const SELECT_PRIMITIVE_OP_AFTER_ADD: bool = true;
