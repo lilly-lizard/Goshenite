@@ -10,9 +10,11 @@ use crate::{
             operation::Operation,
         },
         primitives::{
+            cube::Cube,
             primitive::{PrimitiveId, PrimitiveRef},
             primitive_ref_types::PrimitiveRefType,
             primitive_references::PrimitiveReferences,
+            sphere::Sphere,
         },
     },
 };
@@ -61,98 +63,123 @@ pub fn primitive_op_editor(
     selected_object: &mut Object,
     primitive_references: &mut PrimitiveReferences,
 ) {
+    let object_id = selected_object.id();
+
     // todo when gui_state.selected_primitive_op_id == None, new primtive op stuff
     // todo 'add primtive op' button to confirm new primtive op
 
-    if let Some(selected_primitive_op_id) = gui_state.selected_primitive_op_id {
-        let object_id = selected_object.id();
+    if let Some(selected_prim_op_id) = gui_state.selected_primitive_op_id {
+        match selected_object.get_primitive_op_mut(selected_prim_op_id) {
+            Some((index, prim_op)) => {
+                existing_primitive_op_editor(
+                    ui,
+                    gui_state,
+                    objects_delta,
+                    selected_object,
+                    primitive_references,
+                );
+            }
+            None => {
+                // selected_primitive_op_id not in selected_obejct! invalid id so we deselect primitive op.
+                gui_state.deselect_primitive_op();
+                new_primitive_op_editor(
+                    ui,
+                    gui_state,
+                    objects_delta,
+                    selected_object,
+                    primitive_references,
+                );
+            }
+        };
+    } else {
+        new_primitive_op_editor(
+            ui,
+            gui_state,
+            objects_delta,
+            selected_object,
+            primitive_references,
+        );
+    };
+}
 
-        let (primitive_op_index, selected_primitive_op) =
-            match selected_object.get_primitive_op_mut(selected_primitive_op_id) {
-                Some(prim_op) => prim_op,
-                None => {
-                    // selected_primitive_op_id not in selected_obejct! invalid id so we set to none
-                    gui_state.selected_primitive_op_id = None;
-                    return;
+fn existing_primitive_op_editor(
+    ui: &mut egui::Ui,
+    gui_state: &mut GuiState,
+    objects_delta: &mut ObjectsDelta,
+    selected_object: &mut Object,
+    primitive_references: &mut PrimitiveReferences,
+) {
+    let object_id = selected_object.id();
+
+    ui.separator();
+
+    match selected_prim_op_index {
+        Some(index) => ui.label(format!("Primitive Op {}:", index)),
+        None => ui.label("New Primitive Op"),
+    };
+
+    ui.horizontal(|ui_h| {
+        // op drop down menu
+        op_drop_down(ui_h, objects_delta, object_id, target_op);
+
+        // primitive type drop down menu
+        let mut new_primitive_type = primitive_type;
+        ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
+            .selected_text(new_primitive_type.into())
+            .show_ui(ui, |ui_p| {
+                for (p_type, p_name) in PrimitiveRefType::variant_names() {
+                    ui_p.selectable_value(&mut new_primitive_type, p_type, p_name);
                 }
-            };
-
-        ui.separator();
-
-        ui.label(format!("Primitive Op {}:", primitive_op_index));
-
-        let mut primitive_id = selected_primitive_op.prim.borrow().id();
-        let mut primitive_type = selected_primitive_op.prim.borrow().type_name().into();
-
-        ui.horizontal(|ui_h| {
-            // op drop down menu
-            op_drop_down(
-                ui_h,
-                objects_delta,
-                object_id,
-                &mut selected_primitive_op.op,
-            );
-
-            // primitive type drop down menu
-            primtive_drop_down(
-                ui_h,
-                object_id,
-                primitive_references,
-                objects_delta,
-                &mut primitive_type,
-                &mut selected_primitive_op.prim,
-                &mut primitive_id,
-            );
-        });
-
-        // primitive editor
-        match primitive_type {
-            PrimitiveRefType::Sphere => {
-                sphere_editor(
-                    ui,
-                    objects_delta,
-                    object_id,
-                    primitive_references,
-                    primitive_id,
-                );
-            }
-            PrimitiveRefType::Cube => {
-                cube_editor(
-                    ui,
-                    objects_delta,
-                    object_id,
-                    primitive_references,
-                    primitive_id,
-                );
-            }
-            _ => (),
+            });
+        if primitive_type != new_primitive_type {
+            primitive_type = new_primitive_type;
+            selected_primitive = primitive_references.new_default(new_primitive_type);
+            primitive_id = selected_primitive.borrow().id();
+            objects_delta.update.insert(object_id);
         }
+    });
+
+    // primitive editor
+    match primitive_type {
+        PrimitiveRefType::Sphere => {
+            let sphere_ref = primitive_references.get_sphere(primitive_id).expect(
+                "primitive collection doesn't contain primitive id from object op. this is a bug!",
+            );
+            let mut sphere = sphere_ref.borrow_mut();
+            let sphere_original = sphere.clone();
+
+            sphere_editor_ui(ui, &mut sphere);
+
+            // if updates performed on this primtive, indicate that object buffer needs updating
+            if *sphere != sphere_original {
+                objects_delta.update.insert(object_id);
+            }
+        }
+        PrimitiveRefType::Cube => {
+            let cube_ref = primitive_references.get_cube(primitive_id).expect(
+                "primitive collection doesn't contain primitive id from object op. this is a bug!",
+            );
+            let mut cube = cube_ref.borrow_mut();
+            let cube_original = cube.clone();
+
+            cube_editor_ui(ui, &mut cube);
+
+            // if updates performed on this primtive, indicate that object buffer needs updating
+            if *cube != cube_original {
+                objects_delta.update.insert(object_id);
+            }
+        }
+        _ => (),
     }
 }
 
-fn primtive_drop_down(
+fn new_primitive_op_editor(
     ui: &mut egui::Ui,
-    object_id: ObjectId,
-    primitive_references: &mut PrimitiveReferences,
+    gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
-    primitive_type: &mut PrimitiveRefType,
-    selected_primitive: &mut Rc<PrimitiveRef>,
-    primitive_id: &mut PrimitiveId,
+    selected_object: &mut Object,
+    primitive_references: &mut PrimitiveReferences,
 ) {
-    let mut new_primitive_type = *primitive_type;
-    ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
-        .selected_text(selected_primitive.borrow().type_name())
-        .show_ui(ui, |ui_p| {
-            for (p_type, p_name) in PrimitiveRefType::variant_names() {
-                ui_p.selectable_value(&mut new_primitive_type, p_type, p_name);
-            }
-        });
-    if *primitive_type != new_primitive_type {
-        *primitive_type = new_primitive_type;
-        *selected_primitive = primitive_references.new_default(new_primitive_type);
-        *primitive_id = selected_primitive.borrow().id();
-        objects_delta.update.insert(object_id);
-    }
 }
 
 fn op_drop_down(
@@ -176,19 +203,7 @@ fn op_drop_down(
     }
 }
 
-pub fn sphere_editor(
-    ui: &mut egui::Ui,
-    objects_delta: &mut ObjectsDelta,
-    object_id: ObjectId,
-    primitive_references: &PrimitiveReferences,
-    primitive_id: PrimitiveId,
-) {
-    let sphere_ref = primitive_references
-        .get_sphere(primitive_id)
-        .expect("primitive collection doesn't contain primitive id from object op. this is a bug!");
-    let mut sphere = sphere_ref.borrow_mut();
-    let sphere_original = sphere.clone();
-
+pub fn sphere_editor_ui(ui: &mut egui::Ui, sphere: &mut Sphere) {
     ui.horizontal(|ui| {
         ui.label("Center:");
         ui.add(DragValue::new(&mut sphere.center.x).speed(DRAG_INC));
@@ -203,26 +218,9 @@ pub fn sphere_editor(
                 .clamp_range(0..=config::MAX_SPHERE_RADIUS),
         );
     });
-
-    // if updates performed on this primtive, indicate that object buffer needs updating
-    if *sphere != sphere_original {
-        objects_delta.update.insert(object_id);
-    }
 }
 
-pub fn cube_editor(
-    ui: &mut egui::Ui,
-    objects_delta: &mut ObjectsDelta,
-    object_id: ObjectId,
-    primitive_references: &PrimitiveReferences,
-    primitive_id: PrimitiveId,
-) {
-    let cube_ref = primitive_references
-        .get_cube(primitive_id)
-        .expect("primitive collection doesn't contain primitive id from object op. this is a bug!");
-    let mut cube = cube_ref.borrow_mut();
-    let cube_original = cube.clone();
-
+pub fn cube_editor_ui(ui: &mut egui::Ui, cube: &mut Cube) {
     ui.horizontal(|ui| {
         ui.label("Center:");
         ui.add(DragValue::new(&mut cube.center.x).speed(DRAG_INC));
@@ -235,11 +233,6 @@ pub fn cube_editor(
         ui.add(DragValue::new(&mut cube.dimensions.y).speed(DRAG_INC));
         ui.add(DragValue::new(&mut cube.dimensions.z).speed(DRAG_INC));
     });
-
-    // if updates performed on this primtive, indicate that object buffer needs updating
-    if *cube != cube_original {
-        objects_delta.update.insert(object_id);
-    }
 }
 
 impl DragableItem for PrimitiveOp {
