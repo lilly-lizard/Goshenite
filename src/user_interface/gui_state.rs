@@ -33,7 +33,10 @@ impl GuiState {
 
     pub fn deselect_primitive_op(&mut self) {
         self.selected_primitive_op_id = None;
-        self.new_op = Operation::NOP;
+    }
+
+    pub fn reset_primitive_op_fields(&mut self) {
+        self.new_op = Default::default();
         self.new_primitive = Default::default();
     }
 }

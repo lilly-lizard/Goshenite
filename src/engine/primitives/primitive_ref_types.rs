@@ -57,7 +57,7 @@ impl From<&str> for PrimitiveRefType {
 
 impl Default for PrimitiveRefType {
     fn default() -> Self {
-        Self::Unknown
+        Self::Null
     }
 }
 

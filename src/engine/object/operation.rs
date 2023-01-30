@@ -45,3 +45,9 @@ impl Operation {
             .collect::<Vec<(Self, &'static str)>>()
     }
 }
+
+impl Default for Operation {
+    fn default() -> Self {
+        Self::NOP
+    }
+}

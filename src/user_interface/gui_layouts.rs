@@ -10,16 +10,14 @@ use crate::{
             operation::Operation,
         },
         primitives::{
-            cube::Cube,
-            primitive::{PrimitiveId, PrimitiveRef},
-            primitive_ref_types::PrimitiveRefType,
-            primitive_references::PrimitiveReferences,
-            sphere::Sphere,
+            cube::Cube, primitive::PrimitiveRef, primitive_ref_types::PrimitiveRefType,
+            primitive_references::PrimitiveReferences, sphere::Sphere,
         },
     },
 };
 use egui::{ComboBox, DragValue, RichText, TextStyle};
 use egui_dnd::{DragDropResponse, DragableItem};
+use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::rc::Rc;
@@ -65,9 +63,6 @@ pub fn primitive_op_editor(
 ) {
     let object_id = selected_object.id();
 
-    // todo when gui_state.selected_primitive_op_id == None, new primtive op stuff
-    // todo 'add primtive op' button to confirm new primtive op
-
     if let Some(selected_prim_op_id) = gui_state.selected_primitive_op_id {
         match selected_object.get_primitive_op_mut(selected_prim_op_id) {
             Some((index, prim_op)) => {
@@ -87,6 +82,7 @@ pub fn primitive_op_editor(
                     ui,
                     gui_state,
                     objects_delta,
+                    object_id,
                     selected_object,
                     primitive_references,
                 );
@@ -97,6 +93,7 @@ pub fn primitive_op_editor(
             ui,
             gui_state,
             objects_delta,
+            object_id,
             selected_object,
             primitive_references,
         );
@@ -154,7 +151,7 @@ fn existing_primitive_op_editor(
             let mut sphere = sphere_ref.borrow_mut();
             let sphere_original = sphere.clone();
 
-            sphere_editor_ui(ui, &mut sphere);
+            sphere_struct_ui(ui, &mut sphere);
 
             // if updates performed on this primtive, indicate that object buffer needs updating
             if *sphere != sphere_original {
@@ -168,7 +165,7 @@ fn existing_primitive_op_editor(
             let mut cube = cube_ref.borrow_mut();
             let cube_original = cube.clone();
 
-            cube_editor_ui(ui, &mut cube);
+            cube_struct_ui(ui, &mut cube);
 
             // if updates performed on this primtive, indicate that object buffer needs updating
             if *cube != cube_original {
@@ -183,9 +180,76 @@ fn new_primitive_op_editor(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
+    object_id: usize,
     selected_object: &mut Object,
     primitive_references: &mut PrimitiveReferences,
 ) {
+    ui.separator();
+
+    ui.label("New Primitive");
+
+    ui.horizontal(|ui_h| {
+        // op drop down menu
+        op_drop_down(ui_h, objects_delta, object_id, &mut gui_state.new_op);
+
+        // primitive type drop down menu
+        let primitive_type_name: &str = gui_state.new_primitive.p_type.into();
+        ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
+            .selected_text(primitive_type_name)
+            .show_ui(ui_h, |ui_p| {
+                for (p_type, p_name) in PrimitiveRefType::variant_names() {
+                    ui_p.selectable_value(&mut gui_state.new_primitive.p_type, p_type, p_name);
+                }
+            });
+    });
+
+    // primitive editor
+    match gui_state.new_primitive.p_type {
+        PrimitiveRefType::Sphere => {
+            sphere_editor_ui(
+                ui,
+                &mut gui_state.new_primitive.center,
+                &mut gui_state.new_primitive.radius,
+            );
+        }
+        PrimitiveRefType::Cube => {
+            cube_editor_ui(
+                ui,
+                &mut gui_state.new_primitive.center,
+                &mut gui_state.new_primitive.dimensions,
+            );
+        }
+        _ => (),
+    }
+
+    // Add and Reset buttons
+    let mut clicked_add = false;
+    let mut clicked_reset = false;
+    ui.horizontal(|ui_h| {
+        clicked_add = ui_h.button("Add").clicked();
+        clicked_reset = ui_h.button("Reset").clicked();
+    });
+    if clicked_add {
+        // create primitive
+        let new_primitive: Rc<PrimitiveRef> = match gui_state.new_primitive.p_type {
+            PrimitiveRefType::Sphere => primitive_references.new_sphere(
+                gui_state.new_primitive.center,
+                gui_state.new_primitive.radius,
+            ),
+            PrimitiveRefType::Cube => primitive_references.new_cube(
+                gui_state.new_primitive.center,
+                gui_state.new_primitive.dimensions,
+            ),
+            _ => primitive_references.new_default(gui_state.new_primitive.p_type),
+        };
+
+        // append primitive op to selected object and mark for updating
+        selected_object.push_op(gui_state.new_op, new_primitive);
+        objects_delta.update.insert(object_id);
+    }
+    if clicked_reset {
+        gui_state.reset_primitive_op_fields();
+    }
 }
 
 fn op_drop_down(
@@ -209,35 +273,43 @@ fn op_drop_down(
     }
 }
 
-pub fn sphere_editor_ui(ui: &mut egui::Ui, sphere: &mut Sphere) {
+/// Same as `sphere_editor_ui` but takes a `Sphere` as arg
+pub fn sphere_struct_ui(ui: &mut egui::Ui, sphere: &mut Sphere) {
+    sphere_editor_ui(ui, &mut sphere.center, &mut sphere.radius);
+}
+pub fn sphere_editor_ui(ui: &mut egui::Ui, center: &mut Vec3, radius: &mut f32) {
     ui.horizontal(|ui| {
         ui.label("Center:");
-        ui.add(DragValue::new(&mut sphere.center.x).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut sphere.center.y).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut sphere.center.z).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut center.x).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut center.y).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut center.z).speed(DRAG_INC));
     });
     ui.horizontal(|ui| {
         ui.label("Radius:");
         ui.add(
-            DragValue::new(&mut sphere.radius)
+            DragValue::new(radius)
                 .speed(DRAG_INC)
                 .clamp_range(0..=config::MAX_SPHERE_RADIUS),
         );
     });
 }
 
-pub fn cube_editor_ui(ui: &mut egui::Ui, cube: &mut Cube) {
+/// Same as `cube_editor_ui` but takes a `Cube` as arg
+pub fn cube_struct_ui(ui: &mut egui::Ui, cube: &mut Cube) {
+    cube_editor_ui(ui, &mut cube.center, &mut cube.dimensions);
+}
+pub fn cube_editor_ui(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &mut Vec3) {
     ui.horizontal(|ui| {
         ui.label("Center:");
-        ui.add(DragValue::new(&mut cube.center.x).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut cube.center.y).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut cube.center.z).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut center.x).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut center.y).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut center.z).speed(DRAG_INC));
     });
     ui.horizontal(|ui| {
         ui.label("Dimensions:");
-        ui.add(DragValue::new(&mut cube.dimensions.x).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut cube.dimensions.y).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut cube.dimensions.z).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut dimensions.x).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut dimensions.y).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut dimensions.z).speed(DRAG_INC));
     });
 }
 
