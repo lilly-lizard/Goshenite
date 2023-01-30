@@ -84,6 +84,11 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - Bang Wong color palette
 
+## gui additions
+
+- see egui_demo_app for ideas
+- button for light/dark theme
+
 # Code Guidelines
 
 - Consider commenting with structure of 'action' followed by 'object' e.g. 'transition

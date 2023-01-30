@@ -71,6 +71,8 @@ impl Engine {
 
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
+        // TESTING OBJECTS START
+
         // todo put inside object_collection??
         // todo checks in object_collection to make sure that you don't have the same primitive ids across multiple primitive ops
         let mut primitive_references = PrimitiveReferences::new();
@@ -99,12 +101,14 @@ impl Engine {
             .borrow_mut()
             .push_op(Operation::NOP, new_primitive_ref(NullPrimitive {}));
 
+        // TESTING OBJECTS END
+
         let renderer = anyhow_unwrap(
             RenderManager::new(window.clone(), &object_collection),
             "initialize renderer",
         );
 
-        let theme = Theme::Dark;
+        let theme = Theme::Light;
         let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32, theme);
 
         Engine {

@@ -77,27 +77,24 @@ pub fn primitive_op_editor(
 
         ui.label(format!("Primitive Op {}:", primitive_op_index));
 
-        // op drop down menu
-        op_drop_down(ui, objects_delta, object_id, selected_primitive_op);
-
         let mut primitive_id = selected_primitive_op.prim.borrow().id();
         let mut primitive_type = selected_primitive_op.prim.borrow().type_name().into();
 
-        // primitive type drop down menu
-        let mut new_primitive_type = primitive_type;
-        ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
-            .selected_text(selected_primitive_op.prim.borrow().type_name())
-            .show_ui(ui, |ui_p| {
-                for (p_type, p_name) in PrimitiveRefType::variant_names() {
-                    ui_p.selectable_value(&mut new_primitive_type, p_type, p_name);
-                }
-            });
-        if primitive_type != new_primitive_type {
-            primitive_type = new_primitive_type;
-            selected_primitive_op.prim = primitive_references.new_default(new_primitive_type);
-            primitive_id = selected_primitive_op.prim.borrow().id();
-            objects_delta.update.insert(object_id);
-        }
+        ui.horizontal(|ui_h| {
+            // op drop down menu
+            op_drop_down(ui_h, objects_delta, object_id, selected_primitive_op);
+
+            // primitive type drop down menu
+            primtive_drop_down(
+                ui_h,
+                object_id,
+                primitive_references,
+                objects_delta,
+                &mut primitive_type,
+                selected_primitive_op,
+                &mut primitive_id,
+            );
+        });
 
         // primitive editor
         match primitive_type {
@@ -124,10 +121,35 @@ pub fn primitive_op_editor(
     }
 }
 
+fn primtive_drop_down(
+    ui: &mut egui::Ui,
+    object_id: ObjectId,
+    primitive_references: &mut PrimitiveReferences,
+    objects_delta: &mut ObjectsDelta,
+    primitive_type: &mut PrimitiveRefType,
+    selected_primitive_op: &mut PrimitiveOp,
+    primitive_id: &mut PrimitiveId,
+) {
+    let mut new_primitive_type = *primitive_type;
+    ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
+        .selected_text(selected_primitive_op.prim.borrow().type_name())
+        .show_ui(ui, |ui_p| {
+            for (p_type, p_name) in PrimitiveRefType::variant_names() {
+                ui_p.selectable_value(&mut new_primitive_type, p_type, p_name);
+            }
+        });
+    if *primitive_type != new_primitive_type {
+        *primitive_type = new_primitive_type;
+        selected_primitive_op.prim = primitive_references.new_default(new_primitive_type);
+        *primitive_id = selected_primitive_op.prim.borrow().id();
+        objects_delta.update.insert(object_id);
+    }
+}
+
 fn op_drop_down(
     ui: &mut egui::Ui,
     objects_delta: &mut ObjectsDelta,
-    object_id: usize,
+    object_id: ObjectId,
     selected_primitive_op: &mut PrimitiveOp,
 ) {
     let mut new_op = selected_primitive_op.op.clone();
