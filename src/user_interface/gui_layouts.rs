@@ -73,10 +73,11 @@ pub fn primitive_op_editor(
             Some((index, prim_op)) => {
                 existing_primitive_op_editor(
                     ui,
-                    gui_state,
                     objects_delta,
-                    selected_object,
+                    object_id,
                     primitive_references,
+                    index,
+                    prim_op,
                 );
             }
             None => {
@@ -104,37 +105,42 @@ pub fn primitive_op_editor(
 
 fn existing_primitive_op_editor(
     ui: &mut egui::Ui,
-    gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
-    selected_object: &mut Object,
+    object_id: usize,
     primitive_references: &mut PrimitiveReferences,
+    selected_prim_op_index: usize,
+    selected_primitive_op: &mut PrimitiveOp,
 ) {
-    let object_id = selected_object.id();
-
     ui.separator();
 
-    match selected_prim_op_index {
-        Some(index) => ui.label(format!("Primitive Op {}:", index)),
-        None => ui.label("New Primitive Op"),
-    };
+    ui.label(format!("Primitive Op {}:", selected_prim_op_index));
+
+    let mut primitive_id = selected_primitive_op.prim.borrow().id();
+    let primitive_type_name = selected_primitive_op.prim.borrow().type_name();
+    let mut primitive_type: PrimitiveRefType = primitive_type_name.into();
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        op_drop_down(ui_h, objects_delta, object_id, target_op);
+        op_drop_down(
+            ui_h,
+            objects_delta,
+            object_id,
+            &mut selected_primitive_op.op,
+        );
 
         // primitive type drop down menu
         let mut new_primitive_type = primitive_type;
         ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
-            .selected_text(new_primitive_type.into())
-            .show_ui(ui, |ui_p| {
+            .selected_text(primitive_type_name)
+            .show_ui(ui_h, |ui_p| {
                 for (p_type, p_name) in PrimitiveRefType::variant_names() {
                     ui_p.selectable_value(&mut new_primitive_type, p_type, p_name);
                 }
             });
         if primitive_type != new_primitive_type {
             primitive_type = new_primitive_type;
-            selected_primitive = primitive_references.new_default(new_primitive_type);
-            primitive_id = selected_primitive.borrow().id();
+            selected_primitive_op.prim = primitive_references.new_default(new_primitive_type);
+            primitive_id = selected_primitive_op.prim.borrow().id();
             objects_delta.update.insert(object_id);
         }
     });
