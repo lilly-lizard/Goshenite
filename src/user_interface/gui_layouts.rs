@@ -48,7 +48,7 @@ pub fn object_list(
         if ui.selectable_label(is_selected, label_text).clicked() {
             if !is_selected {
                 gui_state.selected_object = Some(Rc::downgrade(current_object));
-                gui_state.selected_primitive_op_id = None;
+                gui_state.deselect_primitive_op();
             }
         }
     }
@@ -69,8 +69,8 @@ pub fn primitive_op_editor(
                 existing_primitive_op_editor(
                     ui,
                     objects_delta,
-                    object_id,
                     primitive_references,
+                    object_id,
                     index,
                     prim_op,
                 );
@@ -82,9 +82,9 @@ pub fn primitive_op_editor(
                     ui,
                     gui_state,
                     objects_delta,
+                    primitive_references,
                     object_id,
                     selected_object,
-                    primitive_references,
                 );
             }
         };
@@ -93,9 +93,9 @@ pub fn primitive_op_editor(
             ui,
             gui_state,
             objects_delta,
+            primitive_references,
             object_id,
             selected_object,
-            primitive_references,
         );
     };
 }
@@ -103,8 +103,8 @@ pub fn primitive_op_editor(
 fn existing_primitive_op_editor(
     ui: &mut egui::Ui,
     objects_delta: &mut ObjectsDelta,
-    object_id: usize,
     primitive_references: &mut PrimitiveReferences,
+    object_id: usize,
     selected_prim_op_index: usize,
     selected_primitive_op: &mut PrimitiveOp,
 ) {
@@ -180,9 +180,9 @@ fn new_primitive_op_editor(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
+    primitive_references: &mut PrimitiveReferences,
     object_id: usize,
     selected_object: &mut Object,
-    primitive_references: &mut PrimitiveReferences,
 ) {
     ui.separator();
 
@@ -318,7 +318,6 @@ impl DragableItem for PrimitiveOp {
         egui::Id::new(self.prim.borrow().id())
     }
 }
-
 /// Draw the primitive op list. each list element can be dragged/dropped elsewhere in the list,
 /// or selected with a button for editing.
 pub fn primitive_op_list(
@@ -334,7 +333,7 @@ pub fn primitive_op_list(
     let new_op_response =
         ui.selectable_label(gui_state.selected_primitive_op_id.is_none(), new_op_text);
     if new_op_response.clicked() {
-        gui_state.selected_primitive_op_id = None;
+        gui_state.deselect_primitive_op();
     }
 
     let mut list_drag_state = gui_state.primtive_op_list.clone().unwrap_or_default();
@@ -344,7 +343,7 @@ pub fn primitive_op_list(
                 Some(selected_primitive_op) => Some(selected_primitive_op),
                 None => {
                     // selected_primitive_op_id not in selected_obejct! invalid id so we set to none
-                    gui_state.selected_primitive_op_id = None;
+                    gui_state.deselect_primitive_op();
                     None
                 }
             }
