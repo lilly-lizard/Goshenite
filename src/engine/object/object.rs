@@ -1,8 +1,11 @@
 use super::operation::Operation;
 use crate::{
-    engine::primitives::{
-        null_primitive::NullPrimitive,
-        primitive::{new_primitive_ref, Primitive, PrimitiveRef},
+    engine::{
+        aabb::Aabb,
+        primitives::{
+            null_primitive::NullPrimitive,
+            primitive::{new_primitive_ref, Primitive, PrimitiveRef},
+        },
     },
     helper::{
         more_errors::CollectionError,
@@ -126,6 +129,14 @@ impl Object {
             encoded.extend_from_slice(&null_prim.encode(self.origin));
         }
         encoded
+    }
+
+    pub fn aabb(&self) -> Aabb {
+        let mut aabb = Aabb::new_zero();
+        for primitive_op in &self.primitive_ops {
+            aabb.union(primitive_op.prim.borrow().aabb());
+        }
+        aabb
     }
 }
 
