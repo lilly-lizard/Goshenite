@@ -1,38 +1,19 @@
+use super::unique_id_gen::UniqueId;
 use std::{error, fmt};
 
-use super::from_enum_impl::from_enum_impl;
-
 #[derive(Debug)]
-pub enum IndexError {
+pub enum CollectionError {
     OutOfBounds { index: usize, size: usize },
-    Invalid,
+    InvalidId { id: UniqueId },
 }
-impl fmt::Display for IndexError {
+impl fmt::Display for CollectionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Self::OutOfBounds { index, size } => {
                 write!(f, "index {} out of bounds. size = {}", index, size)
             }
-            Self::Invalid => write!(f, "invalid index"),
-        }
-    }
-}
-impl error::Error for IndexError {}
-
-#[derive(Debug)]
-pub enum CollectionError {
-    IndexError(IndexError),
-    /// The encoded data length doesn't match the collection. Indicates a bug.
-    MismatchedDataLength,
-}
-impl fmt::Display for CollectionError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::IndexError(e) => e.fmt(f),
-            Self::MismatchedDataLength =>
-                write!(f, "the encoded data vector length doesn't match the collection. this is a PrimitiveCollection or OperationCollection bug!!!"), // todo test
+            Self::InvalidId { id } => write!(f, "invalid id {}", id),
         }
     }
 }
 impl error::Error for CollectionError {}
-from_enum_impl!(CollectionError, IndexError);

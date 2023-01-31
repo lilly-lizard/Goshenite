@@ -1,6 +1,6 @@
 use super::{
-    gui_layouts::{object_list, primitive_op_editor, primitive_op_list},
     gui_state::GuiState,
+    object_editor::{object_list, primitive_op_editor, primitive_op_list},
     theme::Theme,
 };
 use crate::engine::{
@@ -182,7 +182,7 @@ impl Gui {
 
             ui.horizontal(|ui| {
                 ui.label("Name:");
-                ui.text_edit_singleline(&mut selected_object_ref.borrow_mut().name);
+                ui.text_edit_singleline(selected_object_ref.borrow_mut().name_mut());
             });
             primitive_op_editor(
                 ui,

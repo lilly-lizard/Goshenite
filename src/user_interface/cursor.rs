@@ -8,27 +8,28 @@ use winit::{
 };
 
 /// Records and processes the state of the mouse cursor
-pub struct CursorState {
+pub struct Cursor {
     window: Arc<Window>,
     /// Describes wherver the cursur is currently within the window bounds
     in_window: bool,
     /// The current cursor position. None if the cursor position is unknown
     /// (waiting for first [`WindowEvent::CursorMoved`](winit::event::WindowEvent::CursorMoved) event)
     position: Option<DVec2>,
-    /// The cursor position in the previous frame. Used to calculate [`CursorState::position_frame_change`]
+    /// The cursor position in the previous frame. Used to calculate [`Cursor::position_frame_change`]
     position_previous: Option<DVec2>,
     /// The change in cursor position since the previous frame
     position_frame_change: DVec2,
     /// Describes wherever each mouse button is pressed
     is_pressed: ButtonStates,
-    /// Describes the state of the mouse buttons in the previous frame. Used to determine [`CursorState::which_dragging`]
+    /// Describes the state of the mouse buttons in the previous frame. Used to determine [`Cursor::which_dragging`]
     is_pressed_previous: ButtonStates,
     /// Which button (if any) is currently dragging (if multiple, set to the first)
     which_dragging: Option<MouseButton>,
     /// Horizontal/vertical scrolling since last call to [`get_and_clear_scroll_delta`](Self::get_and_clear_scroll_delta).
     scroll_delta: DVec2,
 }
-impl CursorState {
+
+impl Cursor {
     pub fn new(window: Arc<Window>) -> Self {
         Self {
             window,
@@ -152,6 +153,7 @@ pub enum MouseButton {
     //Button4,
     //Button5,
 }
+
 /// List of available [`MouseButton`] enum variations. Note that the order affects the priority for things like dragging logic.
 static MOUSE_BUTTONS: [MouseButton; 3] =
     [MouseButton::Left, MouseButton::Right, MouseButton::Middle];

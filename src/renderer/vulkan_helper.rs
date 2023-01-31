@@ -1,4 +1,7 @@
-use crate::config;
+use crate::{
+    config,
+    renderer::renderer_config::{G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID},
+};
 use anyhow::{bail, ensure, Context};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -25,6 +28,8 @@ use vulkano::{
     VulkanLibrary,
 };
 use winit::window::Window;
+
+use super::renderer_config::{VULKAN_VER_MAJ, VULKAN_VER_MIN};
 
 pub fn required_device_extensions() -> DeviceExtensions {
     DeviceExtensions {
@@ -141,8 +146,7 @@ pub fn choose_physical_device(
         .context("enumerating physical devices")?
         // filter for vulkan version support
         .filter(|p| {
-            p.api_version()
-                >= vulkano::Version::major_minor(config::VULKAN_VER_MAJ, config::VULKAN_VER_MIN)
+            p.api_version() >= vulkano::Version::major_minor(VULKAN_VER_MAJ, VULKAN_VER_MIN)
         })
         // filter for required device extensions
         .filter(|p| p.supported_extensions().contains(device_extensions))
@@ -216,9 +220,7 @@ pub fn choose_physical_device(
             \t- must support minimum vulkan version {}.{}\n
             \t- must contain queue family supporting graphics, transfer and surface operations\n
             \t- must support device extensions: {:?}",
-                config::VULKAN_VER_MAJ,
-                config::VULKAN_VER_MIN,
-                device_extensions
+                VULKAN_VER_MAJ, VULKAN_VER_MIN, device_extensions
             )
         })
 }
@@ -350,14 +352,14 @@ pub fn create_render_pass(
             g_buffer_normal: {
                 load: Clear,
                 store: DontCare,
-                format: config::G_BUFFER_FORMAT_NORMAL,
+                format: G_BUFFER_FORMAT_NORMAL,
                 samples: sample_count,
             },
             // primitive-id g-buffer
             g_buffer_primitive_id: {
                 load: Clear,
                 store: DontCare,
-                format: config::G_BUFFER_FORMAT_PRIMITIVE_ID,
+                format: G_BUFFER_FORMAT_PRIMITIVE_ID,
                 samples: sample_count,
             }
         },

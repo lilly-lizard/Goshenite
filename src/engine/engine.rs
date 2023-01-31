@@ -11,7 +11,7 @@ use crate::{
     renderer::render_manager::RenderManager,
     user_interface::camera::Camera,
     user_interface::{
-        cursor_state::{CursorState, MouseButton},
+        cursor::{Cursor, MouseButton},
         gui::Gui,
         theme::Theme,
     },
@@ -33,7 +33,7 @@ pub struct Engine {
     // state
     window_resize: bool,
     scale_factor: f64,
-    cursor_state: CursorState,
+    cursor_state: Cursor,
     theme: Theme,
 
     // specialized controllers
@@ -67,7 +67,7 @@ impl Engine {
             _ => None,
         };
         let scale_factor = scale_factor_override.unwrap_or(window.scale_factor());
-        let cursor_state = CursorState::new(window.clone());
+        let cursor_state = Cursor::new(window.clone());
 
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 

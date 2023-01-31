@@ -1,7 +1,7 @@
 pub mod camera;
-pub mod cursor_state;
+pub mod cursor;
 pub mod gui;
-mod gui_layouts;
 mod gui_state;
+mod object_editor;
 pub mod theme;
 pub mod ui_config;

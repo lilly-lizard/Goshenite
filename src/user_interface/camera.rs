@@ -258,7 +258,7 @@ fn target_pos(target_type: LookTargetType) -> Option<DVec3> {
         LookTargetType::Position(position) => Some(position),
         LookTargetType::Object(object_ref) => {
             if let Some(object) = object_ref.upgrade() {
-                Some(object.borrow().origin.as_dvec3())
+                Some(object.borrow().origin().as_dvec3())
             } else {
                 debug!("camera target object reference no longer present...");
                 None

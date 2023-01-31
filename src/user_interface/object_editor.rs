@@ -32,9 +32,12 @@ pub fn object_list(
 ) {
     let objects = object_collection.objects();
     for (current_id, current_object) in objects.iter() {
-        let label_text =
-            RichText::new(format!("{} - {}", current_id, current_object.borrow().name))
-                .text_style(TextStyle::Monospace);
+        let label_text = RichText::new(format!(
+            "{} - {}",
+            current_id,
+            current_object.borrow().name()
+        ))
+        .text_style(TextStyle::Monospace);
 
         let is_selected = if let Some(object_ref) = gui_state.selected_object() {
             if let Some(selected_object) = object_ref.upgrade() {
@@ -72,10 +75,9 @@ pub fn primitive_op_editor(
                 existing_primitive_op_editor(
                     ui,
                     objects_delta,
+                    selected_object,
                     primitive_references,
-                    object_id,
                     index,
-                    prim_op,
                 );
             }
             None => {
@@ -85,9 +87,8 @@ pub fn primitive_op_editor(
                     ui,
                     gui_state,
                     objects_delta,
-                    primitive_references,
-                    object_id,
                     selected_object,
+                    primitive_references,
                 );
             }
         };
@@ -96,9 +97,8 @@ pub fn primitive_op_editor(
             ui,
             gui_state,
             objects_delta,
-            primitive_references,
-            object_id,
             selected_object,
+            primitive_references,
         );
     };
 }
@@ -106,18 +106,20 @@ pub fn primitive_op_editor(
 fn existing_primitive_op_editor(
     ui: &mut egui::Ui,
     objects_delta: &mut ObjectsDelta,
+    selected_object: &mut Object,
     primitive_references: &mut PrimitiveReferences,
-    object_id: usize,
     selected_prim_op_index: usize,
-    selected_primitive_op: &mut PrimitiveOp,
 ) {
+    let object_id = selected_object.id();
+
     ui.separator();
 
     ui.label(format!("Primitive Op {}:", selected_prim_op_index));
 
+    let selected_primitive_op = &mut selected_object.primitive_ops[selected_prim_op_index];
     let mut primitive_id = selected_primitive_op.prim.borrow().id();
-    let primitive_type_name = selected_primitive_op.prim.borrow().type_name();
-    let mut primitive_type: PrimitiveRefType = primitive_type_name.into();
+    let old_primitive_type_name = selected_primitive_op.prim.borrow().type_name();
+    let mut primitive_type: PrimitiveRefType = old_primitive_type_name.into();
 
     ui.horizontal(|ui_h| {
         // op drop down menu
@@ -131,17 +133,21 @@ fn existing_primitive_op_editor(
         // primitive type drop down menu
         let mut new_primitive_type = primitive_type;
         ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
-            .selected_text(primitive_type_name)
+            .selected_text(old_primitive_type_name)
             .show_ui(ui_h, |ui_p| {
                 for (p_type, p_name) in PrimitiveRefType::variant_names() {
                     ui_p.selectable_value(&mut new_primitive_type, p_type, p_name);
                 }
             });
+
         if primitive_type != new_primitive_type {
-            primitive_type = new_primitive_type;
+            // replace old primitive according to new type
             selected_primitive_op.prim = primitive_references.new_default(new_primitive_type);
-            primitive_id = selected_primitive_op.prim.borrow().id();
             objects_delta.update.insert(object_id);
+
+            // update local vars for primitive editor
+            primitive_type = new_primitive_type;
+            primitive_id = selected_primitive_op.prim.borrow().id();
         }
     });
 
@@ -156,8 +162,8 @@ fn existing_primitive_op_editor(
 
             sphere_struct_ui(ui, &mut sphere);
 
-            // if updates performed on this primtive, indicate that object buffer needs updating
             if *sphere != sphere_original {
+                // object buffer needs updating
                 objects_delta.update.insert(object_id);
             }
         }
@@ -170,12 +176,27 @@ fn existing_primitive_op_editor(
 
             cube_struct_ui(ui, &mut cube);
 
-            // if updates performed on this primtive, indicate that object buffer needs updating
             if *cube != cube_original {
+                // object buffer needs updating
                 objects_delta.update.insert(object_id);
             }
         }
         _ => (),
+    }
+
+    // Delete button
+    let delete_clicked = ui.button("Delete").clicked();
+    if delete_clicked {
+        let remove_res = selected_object.remove_primitive_op_index(selected_prim_op_index);
+        if let Err(_) = remove_res {
+            // invalid index! what's going on??
+            todo!();
+            warn!(
+                "invalid index {} when attempting to remove primitive op from object {}",
+                selected_prim_op_index, object_id
+            );
+        }
+        objects_delta.update.insert(object_id);
     }
 }
 
@@ -183,10 +204,11 @@ fn new_primitive_op_editor(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
-    primitive_references: &mut PrimitiveReferences,
-    object_id: usize,
     selected_object: &mut Object,
+    primitive_references: &mut PrimitiveReferences,
 ) {
+    let object_id = selected_object.id();
+
     ui.separator();
 
     ui.label("New Primitive");
@@ -367,7 +389,7 @@ pub fn primitive_op_list(
     // draw each item in the primitive op list
     let drag_drop_response = list_drag_state.ui::<PrimitiveOp>(
         ui,
-        selected_object.primitive_ops.iter(),
+        selected_object.primitive_ops().iter(),
         // function to draw a single item in the list
         |ui, handle, index, primitive_op| {
             let draggable_text =
@@ -404,11 +426,7 @@ pub fn primitive_op_list(
 
     // if an item has been dropped after being dragged, re-arrange the primtive ops list
     if let DragDropResponse::Completed(drag_indices) = drag_drop_response {
-        egui_dnd::utils::shift_vec(
-            drag_indices.source,
-            drag_indices.target,
-            &mut selected_object.primitive_ops,
-        );
+        selected_object.shift_primitive_ops(drag_indices.source, drag_indices.target);
         objects_delta.update.insert(selected_object.id());
     }
 

@@ -1,8 +1,8 @@
 use super::{
     common::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
+    renderer_config::SHADER_ENTRY_POINT,
     shader_interfaces::push_constants::CameraPushConstants,
 };
-use crate::config::SHADER_ENTRY_POINT;
 use anyhow::Context;
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};

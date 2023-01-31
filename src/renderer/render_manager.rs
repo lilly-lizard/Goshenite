@@ -5,6 +5,9 @@ use super::{
 use crate::{
     config,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
+    renderer::renderer_config::{
+        ENABLE_VULKAN_VALIDATION, G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID,
+    },
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::{anyhow, Context};
@@ -87,7 +90,7 @@ impl RenderManager {
         let mut instance_layers: Vec<String> = Vec::new();
 
         // check for validation layer/debug callback support
-        let enable_debug_callback = if config::ENABLE_VULKAN_VALIDATION {
+        let enable_debug_callback = if ENABLE_VULKAN_VALIDATION {
             if add_debug_validation(
                 vulkan_library.clone(),
                 &mut instance_extensions,
@@ -271,12 +274,12 @@ impl RenderManager {
         let g_buffer_normal = create_g_buffer(
             &memory_allocator,
             swapchain_images[0].dimensions().width_height(),
-            config::G_BUFFER_FORMAT_NORMAL,
+            G_BUFFER_FORMAT_NORMAL,
         )?;
         let g_buffer_primitive_id = create_g_buffer(
             &memory_allocator,
             swapchain_images[0].dimensions().width_height(),
-            config::G_BUFFER_FORMAT_PRIMITIVE_ID,
+            G_BUFFER_FORMAT_PRIMITIVE_ID,
         )?;
 
         // create framebuffers
@@ -563,12 +566,12 @@ impl RenderManager {
         self.g_buffer_normal = create_g_buffer(
             &self.memory_allocator,
             swapchain_images[0].dimensions().width_height(),
-            config::G_BUFFER_FORMAT_NORMAL,
+            G_BUFFER_FORMAT_NORMAL,
         )?;
         self.g_buffer_primitive_id = create_g_buffer(
             &self.memory_allocator,
             swapchain_images[0].dimensions().width_height(),
-            config::G_BUFFER_FORMAT_PRIMITIVE_ID,
+            G_BUFFER_FORMAT_PRIMITIVE_ID,
         )?;
 
         self.framebuffers = create_framebuffers(
