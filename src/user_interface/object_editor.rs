@@ -67,31 +67,15 @@ pub fn primitive_op_editor(
     selected_object: &mut Object,
     primitive_references: &mut PrimitiveReferences,
 ) {
-    let object_id = selected_object.id();
-
     if let Some(selected_prim_op_id) = gui_state.selected_primitive_op_id() {
-        match selected_object.get_primitive_op_mut(selected_prim_op_id) {
-            Some((index, prim_op)) => {
-                existing_primitive_op_editor(
-                    ui,
-                    objects_delta,
-                    selected_object,
-                    primitive_references,
-                    index,
-                );
-            }
-            None => {
-                // selected_primitive_op_id not in selected_obejct! invalid id so we deselect primitive op.
-                gui_state.deselect_primitive_op();
-                new_primitive_op_editor(
-                    ui,
-                    gui_state,
-                    objects_delta,
-                    selected_object,
-                    primitive_references,
-                );
-            }
-        };
+        existing_primitive_op_editor(
+            ui,
+            gui_state,
+            objects_delta,
+            selected_object,
+            primitive_references,
+            selected_prim_op_id,
+        );
     } else {
         new_primitive_op_editor(
             ui,
@@ -105,30 +89,41 @@ pub fn primitive_op_editor(
 
 fn existing_primitive_op_editor(
     ui: &mut egui::Ui,
+    gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
     selected_object: &mut Object,
     primitive_references: &mut PrimitiveReferences,
-    selected_prim_op_index: usize,
+    selected_prim_op_id: usize,
 ) {
     let object_id = selected_object.id();
+    let (selected_prim_op_index, selected_prim_op) =
+        match selected_object.get_primitive_op_mut(selected_prim_op_id) {
+            Some((index, prim_op)) => (index, prim_op),
+            None => {
+                // selected_prim_op_id not in selected_obejct! invalid id so we deselect primitive op.
+                gui_state.deselect_primitive_op();
+                new_primitive_op_editor(
+                    ui,
+                    gui_state,
+                    objects_delta,
+                    selected_object,
+                    primitive_references,
+                );
+                return;
+            }
+        };
 
     ui.separator();
 
     ui.label(format!("Primitive Op {}:", selected_prim_op_index));
 
-    let selected_primitive_op = &mut selected_object.primitive_ops[selected_prim_op_index];
-    let mut primitive_id = selected_primitive_op.prim.borrow().id();
-    let old_primitive_type_name = selected_primitive_op.prim.borrow().type_name();
+    let mut primitive_id = selected_prim_op.prim.borrow().id();
+    let old_primitive_type_name = selected_prim_op.prim.borrow().type_name();
     let mut primitive_type: PrimitiveRefType = old_primitive_type_name.into();
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        op_drop_down(
-            ui_h,
-            objects_delta,
-            object_id,
-            &mut selected_primitive_op.op,
-        );
+        op_drop_down(ui_h, objects_delta, object_id, &mut selected_prim_op.op);
 
         // primitive type drop down menu
         let mut new_primitive_type = primitive_type;
@@ -142,12 +137,12 @@ fn existing_primitive_op_editor(
 
         if primitive_type != new_primitive_type {
             // replace old primitive according to new type
-            selected_primitive_op.prim = primitive_references.new_default(new_primitive_type);
+            selected_prim_op.prim = primitive_references.new_default(new_primitive_type);
             objects_delta.update.insert(object_id);
 
             // update local vars for primitive editor
             primitive_type = new_primitive_type;
-            primitive_id = selected_primitive_op.prim.borrow().id();
+            primitive_id = selected_prim_op.prim.borrow().id();
         }
     });
 
@@ -190,11 +185,11 @@ fn existing_primitive_op_editor(
         let remove_res = selected_object.remove_primitive_op_index(selected_prim_op_index);
         if let Err(_) = remove_res {
             // invalid index! what's going on??
-            todo!();
             warn!(
                 "invalid index {} when attempting to remove primitive op from object {}",
                 selected_prim_op_index, object_id
             );
+            gui_state.deselect_primitive_op();
         }
         objects_delta.update.insert(object_id);
     }
@@ -372,12 +367,12 @@ pub fn primitive_op_list(
     }
 
     let mut list_drag_state = gui_state.primtive_op_list().clone().unwrap_or_default();
-    let selected_primitive_op = match gui_state.selected_primitive_op_id() {
-        Some(selected_primitive_op_id) => {
-            match selected_object.get_primitive_op(selected_primitive_op_id) {
-                Some(selected_primitive_op) => Some(selected_primitive_op),
+    let selected_prim_op = match gui_state.selected_primitive_op_id() {
+        Some(selected_prim_op_id) => {
+            match selected_object.get_primitive_op(selected_prim_op_id) {
+                Some(selected_prim_op) => Some(selected_prim_op),
                 None => {
-                    // selected_primitive_op_id not in selected_obejct! invalid id so we set to none
+                    // selected_prim_op_id not in selected_obejct! invalid id so we set to none
                     gui_state.deselect_primitive_op();
                     None
                 }
@@ -402,10 +397,8 @@ pub fn primitive_op_list(
             ))
             .text_style(TextStyle::Monospace);
 
-            let is_selected = match selected_primitive_op {
-                Some((_i, selected_primitive_op)) => {
-                    selected_primitive_op.id() == primitive_op.id()
-                }
+            let is_selected = match selected_prim_op {
+                Some((_i, selected_prim_op)) => selected_prim_op.id() == primitive_op.id(),
                 None => false,
             };
 

@@ -27,4 +27,3 @@ macro_rules! from_enum_impl {
         }
     };
 }
-pub(crate) use from_enum_impl;

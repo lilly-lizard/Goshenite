@@ -2,8 +2,7 @@ use super::operation::Operation;
 use crate::{
     engine::primitives::{
         null_primitive::NullPrimitive,
-        primitive::{new_primitive_ref, PrimitiveRef},
-        primitive_references::PrimitiveReferences,
+        primitive::{new_primitive_ref, Primitive, PrimitiveRef},
     },
     helper::{
         more_errors::CollectionError,
@@ -40,9 +39,11 @@ impl PrimitiveOp {
             prim: primitive,
         }
     }
+
     pub fn new_default(id: PrimitiveOpId) -> Self {
         Self::new(id, Operation::NOP, new_primitive_ref(NullPrimitive {}))
     }
+
     pub fn id(&self) -> PrimitiveOpId {
         self.id
     }
@@ -87,18 +88,11 @@ impl Object {
         let op_count = self.primitive_ops.len();
         if index >= op_count {
             return Err(CollectionError::OutOfBounds {
-                index: index,
+                index,
                 size: op_count,
             });
         }
-
         self.primitive_ops.remove(index);
-
-        if self.primitive_ops.len() == 0 {
-            // having no primitive ops will probably mess something up... lets add a NOP
-            self.push_op(Operation::NOP, NullPrimitive::new_ref());
-        }
-
         Ok(())
     }
 
@@ -125,6 +119,12 @@ impl Object {
             encoded.push(primitive_op.op.op_code());
             encoded.extend_from_slice(&primitive_op.prim.borrow().encode(self.origin));
         }
+        if self.primitive_ops.len() == 0 {
+            // having no primitive ops would probably break something so lets put a NOP here...
+            let null_prim = NullPrimitive {};
+            encoded.push(Operation::NOP.op_code());
+            encoded.extend_from_slice(&null_prim.encode(self.origin));
+        }
         encoded
     }
 }
@@ -136,11 +136,11 @@ impl Object {
         self.id
     }
 
-    pub fn name(&self) -> &mut String {
-        &mut self.name
+    pub fn name(&self) -> &String {
+        &self.name
     }
 
-    pub fn name_mut(&self) -> &mut String {
+    pub fn name_mut(&mut self) -> &mut String {
         &mut self.name
     }
 

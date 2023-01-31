@@ -1,7 +1,6 @@
 use crate::helper::angle::Angle;
 use glam::DVec3;
 use log::LevelFilter;
-use vulkano::format::Format;
 
 pub const ENGINE_NAME: &str = "Goshenite";
 

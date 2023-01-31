@@ -1,7 +1,4 @@
-use crate::{
-    config,
-    renderer::renderer_config::{G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID},
-};
+use crate::renderer::renderer_config::{G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID};
 use anyhow::{bail, ensure, Context};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};

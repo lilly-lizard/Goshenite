@@ -3,7 +3,6 @@ use super::{
     shader_interfaces::push_constants::CameraPushConstants, vulkan_helper::*,
 };
 use crate::{
-    config,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     renderer::renderer_config::{
         ENABLE_VULKAN_VALIDATION, G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID,
