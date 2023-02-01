@@ -26,8 +26,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
-- replace UniqueId type aliases with structs or enums to have explicit conversions and rules
-- can we do without Rc<RefCell<>>?
 - checks in object_collection to make sure that you don't have the same primitive ids across multiple primitive ops. put primitive_references inside object_collection?
 - init renderer test
 - smooth union op (curved combination)
@@ -35,8 +33,12 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - surface noise modifiers
 - render outline on selected object
 - output render png (write tests using this?)
+- can we do without Rc<RefCell<>>?
 - save model as file
 - curl noise field
+- scroll zoom proportional to distance (try scrolling on trackpad) and don't want to scroll out other side
+- anti-aliased ui
+- replace UniqueId type aliases with structs or enums to have explicit conversions and rules
 
 ## cleanup
 
@@ -87,6 +89,10 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - see egui_demo_app for ideas
 - button for light/dark theme
+
+## commands
+
+- flip to other side of focused object
 
 # Code Guidelines
 

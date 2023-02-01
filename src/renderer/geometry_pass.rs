@@ -56,7 +56,8 @@ const INIT_BUFFER_POOL_RESERVE: DeviceSize =
 pub struct GeometryPass {
     descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
     pipeline: Arc<GraphicsPipeline>,
-    buffer_pool: CpuBufferPool<ObjectDataUnit>,
+
+    object_buffer_pool: CpuBufferPool<ObjectDataUnit>,
     object_buffers: ObjectBuffers,
     desc_set: Arc<PersistentDescriptorSet>,
 }
@@ -70,13 +71,13 @@ impl GeometryPass {
         object_collection: &ObjectCollection,
     ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
-        let buffer_pool = create_buffer_pool(memory_allocator)?;
+        let object_buffer_pool = create_object_buffer_pool(memory_allocator)?;
 
         let mut object_buffers = ObjectBuffers::new();
         for (&id, object_ref) in object_collection.objects() {
             let object = &*object_ref.as_ref().borrow();
-            let buffer =
-                upload_object(&buffer_pool, object).context("initial upload object to buffer")?;
+            let buffer = upload_object(&object_buffer_pool, object)
+                .context("initial upload object to buffer")?;
             object_buffers.update_or_push(id, buffer);
         }
 
@@ -88,7 +89,7 @@ impl GeometryPass {
         Ok(Self {
             descriptor_allocator,
             pipeline,
-            buffer_pool,
+            object_buffer_pool,
             object_buffers,
             desc_set,
         })
@@ -142,7 +143,7 @@ impl GeometryPass {
             if let Some(object_ref) = object_collection.get(set_id) {
                 trace!("adding or updating object buffer id = {}", set_id);
                 let object = &*object_ref.as_ref().borrow();
-                let buffer = upload_object(&self.buffer_pool, object)
+                let buffer = upload_object(&self.object_buffer_pool, object)
                     .context("uploading object data to buffer")?;
                 let set_index = self.object_buffers.update_or_push(set_id, buffer);
                 if set_index < lowest_changed_index {
@@ -169,14 +170,14 @@ impl GeometryPass {
     }
 }
 
-fn create_buffer_pool(
+fn create_object_buffer_pool(
     memory_allocator: Arc<StandardMemoryAllocator>,
 ) -> anyhow::Result<CpuBufferPool<ObjectDataUnit>> {
     debug!(
         "reserving {} bytes for object buffer pool",
         INIT_BUFFER_POOL_RESERVE
     );
-    let buffer_pool: CpuBufferPool<ObjectDataUnit> = CpuBufferPool::new(
+    let object_buffer_pool: CpuBufferPool<ObjectDataUnit> = CpuBufferPool::new(
         memory_allocator,
         BufferUsage {
             storage_buffer: true,
@@ -184,18 +185,18 @@ fn create_buffer_pool(
         },
         MemoryUsage::Upload,
     );
-    buffer_pool
+    object_buffer_pool
         .reserve(INIT_BUFFER_POOL_RESERVE as u64)
         .context("reserving object buffer pool")?;
-    Ok(buffer_pool)
+    Ok(object_buffer_pool)
 }
 
 fn upload_object(
-    buffer_pool: &CpuBufferPool<ObjectDataUnit>,
+    object_buffer_pool: &CpuBufferPool<ObjectDataUnit>,
     object: &Object,
 ) -> Result<Arc<CpuBufferPoolChunk<ObjectDataUnit>>, AllocationCreationError> {
     trace!("uploading object id = {} to buffer", object.id());
-    buffer_pool.from_iter(object.encoded_data())
+    object_buffer_pool.from_iter(object.encoded_data())
 }
 
 fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<GraphicsPipeline>> {

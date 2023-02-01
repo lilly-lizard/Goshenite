@@ -10,8 +10,9 @@ const float MAX_DIST = 1000.;
 // Minimum distance to travel (epsilon)
 const float MIN_DIST = 0.0001;
 
+// ~~~ IO ~~~
+
 layout (location = 0) in flat uint in_object_index;
-layout (location = 1) in vec2 in_uv;
 
 layout (location = 0) out vec4 out_normal;
 // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side
@@ -22,9 +23,11 @@ layout (set = 0, binding = 0, std430) readonly buffer Object {
 	uint op_count;
 	uint data[];
 } objects[];
+
 layout (push_constant) uniform Camera {
 	mat4 proj_view_inverse;
 	vec4 position;
+	vec2 
 } cam;
 
 // ~~~ Signed Distance Fields ~~~
@@ -195,9 +198,9 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint obj
 void main()
 {
 	// clip space position in frame (between -1 and 1)
-	vec2 pos_uv = in_uv * 2. - 1.;
+	vec2 pos_uv = gl_FragCoord.xy * 2. - 1.;
 	// ray direction in world space
-	vec3 ray_d = normalize((cam.proj_view_inverse * vec4(pos_uv.x, -pos_uv.y, 1., 1.)).xyz);
+	vec3 ray_d = normalize((cam.proj_view_inverse * vec4(pos_uv.x, -pos_uv.y, 1., 1.)).xyz); // todo remove normalize calls?
 
 	// render scene
 	vec3 normal;

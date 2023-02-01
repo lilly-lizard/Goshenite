@@ -432,6 +432,7 @@ impl RenderManager {
         let camera_push_constants = CameraPushConstants::new(
             glam::DMat4::inverse(&(camera.proj_matrix() * camera.view_matrix())).as_mat4(),
             camera.position().as_vec3(),
+            self.viewport.dimensions,
         );
 
         // record command buffer

@@ -1,6 +1,7 @@
 use glam::Vec3;
 
-/// Axis aligned bounding box bro
+/// Axis aligned bounding box
+#[derive(Clone, PartialEq)]
 pub struct Aabb {
     pub px_py_pz: Vec3,
     pub nx_ny_nz: Vec3,
