@@ -4,6 +4,7 @@ use super::{
     shader_interfaces::{
         object_buffer::{ObjectDataUnit, OPERATION_UNIT_LEN},
         push_constants::CameraPushConstants,
+        vertex_inputs::BoundingBoxVertex,
     },
 };
 use crate::engine::object::{
@@ -16,7 +17,9 @@ use anyhow::Context;
 use log::{debug, error, info, trace, warn};
 use std::{borrow::Borrow, mem::size_of, sync::Arc};
 use vulkano::{
-    buffer::{cpu_pool::CpuBufferPoolChunk, BufferAccess, BufferUsage, CpuBufferPool},
+    buffer::{
+        cpu_pool::CpuBufferPoolChunk, BufferAccess, BufferUsage, CpuAccessibleBuffer, CpuBufferPool,
+    },
     command_buffer::AutoCommandBufferBuilder,
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator,
@@ -28,7 +31,12 @@ use vulkano::{
     device::Device,
     memory::allocator::{AllocationCreationError, MemoryUsage, StandardMemoryAllocator},
     pipeline::{
-        graphics::viewport::{Viewport, ViewportState},
+        graphics::{
+            input_assembly::{InputAssemblyState, PrimitiveTopology},
+            rasterization::{CullMode, FrontFace, RasterizationState},
+            vertex_input::BuffersDefinition,
+            viewport::{Viewport, ViewportState},
+        },
         layout::PipelineLayoutCreateInfo,
         GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
@@ -52,6 +60,62 @@ mod descriptor {
 const INIT_BUFFER_POOL_RESERVE: DeviceSize =
     (1024 * OPERATION_UNIT_LEN * size_of::<ObjectDataUnit>()) as DeviceSize;
 
+struct ObjectBuffers {
+    ids: Vec<ObjectId>,
+    bounding_boxes: Vec<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>>,
+    object_data: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
+}
+impl ObjectBuffers {
+    pub fn new() -> Self {
+        Self {
+            ids: Vec::new(),
+            bounding_boxes: Vec::new(),
+            object_data: Vec::new(),
+        }
+    }
+
+    /// Returns the index
+    pub fn update_or_push(
+        &mut self,
+        id: ObjectId,
+        buffer: Arc<CpuBufferPoolChunk<ObjectDataUnit>>,
+    ) -> usize {
+        todo!("bounding_boxes");
+        debug_assert!(self.ids.len() == self.object_data.len());
+        if let Some(index) = self.get_index(id) {
+            self.object_data[index] = buffer;
+            index
+        } else {
+            self.ids.push(id);
+            self.object_data.push(buffer);
+            self.ids.len() - 1
+        }
+    }
+
+    /// Returns the vec index if the id was found and removed.
+    pub fn remove(&mut self, id: ObjectId) -> Option<usize> {
+        debug_assert!(self.ids.len() == self.object_data.len());
+        let index_res = self.get_index(id);
+        if let Some(index) = index_res {
+            self.ids.remove(index);
+            self.object_data.remove(index);
+        }
+        index_res
+    }
+
+    pub fn get_index(&self, id: ObjectId) -> Option<usize> {
+        self.ids.iter().position(|&x| x == id)
+    }
+
+    pub fn object_data_buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>> {
+        &self.object_data
+    }
+
+    pub fn bounding_box_buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>> {
+        &self.bounding_boxes
+    }
+}
+
 /// Render the scene geometry and write to g-buffers
 pub struct GeometryPass {
     descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
@@ -61,6 +125,7 @@ pub struct GeometryPass {
     object_buffers: ObjectBuffers,
     desc_set: Arc<PersistentDescriptorSet>,
 }
+
 // Public functions
 impl GeometryPass {
     pub fn new(
@@ -84,7 +149,7 @@ impl GeometryPass {
         let desc_set = create_desc_set(
             descriptor_allocator.borrow(),
             pipeline.clone(),
-            object_buffers.buffers(),
+            object_buffers.object_data_buffers(),
         )?;
         Ok(Self {
             descriptor_allocator,
@@ -219,10 +284,18 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
         .context("creating geometry pipeline layout")?;
 
     Ok(GraphicsPipeline::start()
-        .render_pass(subpass)
-        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .vertex_input_state(BuffersDefinition::new().vertex::<BoundingBoxVertex>())
+        .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::TriangleList))
         .vertex_shader(vert_shader, ())
+        .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
+        .rasterization_state(
+            RasterizationState::new()
+                .cull_mode(CullMode::Back)
+                .front_face(FrontFace::CounterClockwise),
+        )
         .fragment_shader(frag_shader, ())
+        // todo .color_blend_state(ColorBlendState::new(1))
+        .render_pass(subpass)
         .with_pipeline_layout(device.clone(), pipeline_layout)
         .context("creating geometry pass pipeline")?)
 }
@@ -304,53 +377,4 @@ fn create_desc_set(
         )],
     )
     .context("creating object buffer desc set")
-}
-
-struct ObjectBuffers {
-    ids: Vec<ObjectId>,
-    buffers: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
-}
-impl ObjectBuffers {
-    pub fn new() -> Self {
-        Self {
-            ids: Vec::new(),
-            buffers: Vec::new(),
-        }
-    }
-
-    /// Returns the index
-    pub fn update_or_push(
-        &mut self,
-        id: ObjectId,
-        buffer: Arc<CpuBufferPoolChunk<ObjectDataUnit>>,
-    ) -> usize {
-        debug_assert!(self.ids.len() == self.buffers.len());
-        if let Some(index) = self.get_index(id) {
-            self.buffers[index] = buffer;
-            index
-        } else {
-            self.ids.push(id);
-            self.buffers.push(buffer);
-            self.ids.len() - 1
-        }
-    }
-
-    /// Returns the vec index if the id was found and removed.
-    pub fn remove(&mut self, id: ObjectId) -> Option<usize> {
-        debug_assert!(self.ids.len() == self.buffers.len());
-        let index_res = self.get_index(id);
-        if let Some(index) = index_res {
-            self.ids.remove(index);
-            self.buffers.remove(index);
-        }
-        index_res
-    }
-
-    pub fn get_index(&self, id: ObjectId) -> Option<usize> {
-        self.ids.iter().position(|&x| x == id)
-    }
-
-    pub fn buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>> {
-        &self.buffers
-    }
 }

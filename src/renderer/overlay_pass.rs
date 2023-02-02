@@ -93,8 +93,8 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
             ))?;
     GraphicsPipeline::start()
         .vertex_input_state(BuffersDefinition::new().vertex::<OverlayVertex>())
-        .vertex_shader(vert_shader, ())
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::TriangleList))
+        .vertex_shader(vert_shader, ())
         .fragment_shader(frag_shader, ())
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
         .color_blend_state(ColorBlendState::new(1))

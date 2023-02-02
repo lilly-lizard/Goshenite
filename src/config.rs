@@ -21,7 +21,8 @@ pub const DEFAULT_WINDOW_SIZE: [u32; 2] = [1000, 700];
 
 /// Describes which direction is up in the world space coordinate system, set to Z by default
 pub const WORLD_SPACE_UP: WorldSpaceUp = WorldSpaceUp::Z;
-/// Describes which direction is up in the world space coordinate system
+/// Describes which direction is up in the world space coordinate system.
+/// This engine uses right hand coordinates, so when set to Z, X will be forward and Y will be left.
 #[derive(Clone, Copy)]
 pub enum WorldSpaceUp {
     Y,
