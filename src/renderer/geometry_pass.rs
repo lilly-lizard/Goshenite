@@ -61,34 +61,46 @@ const INIT_BUFFER_POOL_RESERVE: DeviceSize =
     (1024 * OPERATION_UNIT_LEN * size_of::<ObjectDataUnit>()) as DeviceSize;
 
 struct ObjectBuffers {
+    primitive_op_buffer_pool: CpuBufferPool<ObjectDataUnit>,
+    vertex_buffer_pool: CpuBufferPool<BoundingBoxVertex>,
+
     ids: Vec<ObjectId>,
     bounding_boxes: Vec<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>>,
     primitive_ops: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
 }
 impl ObjectBuffers {
-    pub fn new() -> Self {
-        Self {
+    pub fn new(memory_allocator: Arc<StandardMemoryAllocator>) -> anyhow::Result<Self> {
+        let primitive_op_buffer_pool = create_object_buffer_pool(memory_allocator)?;
+
+        Ok(Self {
+            primitive_op_buffer_pool,
+            vertex_buffer_pool,
             ids: Vec::new(),
             bounding_boxes: Vec::new(),
             primitive_ops: Vec::new(),
-        }
+        })
     }
 
     /// Returns the index
-    pub fn update_or_push(
-        &mut self,
-        id: ObjectId,
-        buffer: Arc<CpuBufferPoolChunk<ObjectDataUnit>>,
-    ) -> usize {
-        todo!("bounding_boxes");
+    pub fn update_or_push(&mut self, object: &Object) -> anyhow::Result<usize> {
         debug_assert!(self.ids.len() == self.primitive_ops.len());
+        debug_assert!(self.ids.len() == self.bounding_boxes.len());
+
+        let id = object.id();
+
+        let bounding_box_buffer: Arc<CpuBufferPoolChunk<BoundingBoxVertex>>;
+        let primitive_ops_buffer = upload_primitive_ops(&self.primitive_op_buffer_pool, object)
+            .context("initial upload object to buffer")?;
+
         if let Some(index) = self.get_index(id) {
-            self.primitive_ops[index] = buffer;
-            index
+            self.bounding_boxes[index] = bounding_box_buffer;
+            self.primitive_ops[index] = primitive_ops_buffer;
+            Ok(index)
         } else {
             self.ids.push(id);
-            self.primitive_ops.push(buffer);
-            self.ids.len() - 1
+            self.bounding_boxes.push(bounding_box_buffer);
+            self.primitive_ops.push(primitive_ops_buffer);
+            Ok(self.ids.len() - 1)
         }
     }
 
@@ -121,9 +133,7 @@ pub struct GeometryPass {
     descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
     pipeline: Arc<GraphicsPipeline>,
 
-    primitive_op_buffer_pool: CpuBufferPool<ObjectDataUnit>,
-    vertex_buffer_pool: CpuBufferPool<BoundingBoxVertex>,
-    objects: ObjectBuffers,
+    object_buffers: ObjectBuffers,
     desc_set: Arc<PersistentDescriptorSet>,
 }
 
@@ -137,26 +147,22 @@ impl GeometryPass {
         object_collection: &ObjectCollection,
     ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
-        let object_buffer_pool = create_object_buffer_pool(memory_allocator)?;
 
-        let mut object_buffers = ObjectBuffers::new();
-        for (&id, object_ref) in object_collection.objects() {
+        let mut object_buffers = ObjectBuffers::new(memory_allocator)?;
+        for (_id, object_ref) in object_collection.objects() {
             let object = &*object_ref.as_ref().borrow();
-            let buffer = upload_object(&object_buffer_pool, object)
-                .context("initial upload object to buffer")?;
-            object_buffers.update_or_push(id, buffer);
+            object_buffers.update_or_push(object);
         }
 
         let desc_set = create_desc_set(
             descriptor_allocator.borrow(),
             pipeline.clone(),
-            object_buffers.object_data_buffers(),
+            object_buffers.primitive_op_buffers(),
         )?;
 
         Ok(Self {
             descriptor_allocator,
             pipeline,
-            object_buffer_pool,
             object_buffers,
             desc_set,
         })
@@ -210,9 +216,10 @@ impl GeometryPass {
             if let Some(object_ref) = object_collection.get(set_id) {
                 trace!("adding or updating object buffer id = {}", set_id);
                 let object = &*object_ref.as_ref().borrow();
-                let buffer = upload_object(&self.object_buffer_pool, object)
-                    .context("uploading object data to buffer")?;
-                let set_index = self.object_buffers.update_or_push(set_id, buffer);
+                let primitive_ops_buffer =
+                    upload_primitive_ops(&self.primitive_op_buffer_pool, object)
+                        .context("uploading object data to buffer")?;
+                let set_index = self.object_buffers.update_or_push(object)?;
                 if set_index < lowest_changed_index {
                     lowest_changed_index = set_index;
                 }
@@ -230,7 +237,7 @@ impl GeometryPass {
         self.desc_set = create_desc_set(
             self.descriptor_allocator.borrow(),
             self.pipeline.clone(),
-            self.object_buffers.buffers(),
+            self.object_buffers.primitive_op_buffers(),
         )?;
 
         todo!("what lowest_changed_index for?");
@@ -261,12 +268,15 @@ fn create_object_buffer_pool(
     Ok(object_buffer_pool)
 }
 
-fn upload_object(
-    object_buffer_pool: &CpuBufferPool<ObjectDataUnit>,
+fn upload_primitive_ops(
+    primtive_op_buffer_pool: &CpuBufferPool<ObjectDataUnit>,
     object: &Object,
 ) -> Result<Arc<CpuBufferPoolChunk<ObjectDataUnit>>, AllocationCreationError> {
-    trace!("uploading object id = {} to buffer", object.id());
-    object_buffer_pool.from_iter(object.encoded_data())
+    trace!(
+        "uploading primitive ops for object id = {} to gpu buffer",
+        object.id()
+    );
+    primtive_op_buffer_pool.from_iter(object.encoded_data())
 }
 
 fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<GraphicsPipeline>> {
