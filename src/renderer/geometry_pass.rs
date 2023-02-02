@@ -63,14 +63,14 @@ const INIT_BUFFER_POOL_RESERVE: DeviceSize =
 struct ObjectBuffers {
     ids: Vec<ObjectId>,
     bounding_boxes: Vec<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>>,
-    object_data: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
+    primitive_ops: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
 }
 impl ObjectBuffers {
     pub fn new() -> Self {
         Self {
             ids: Vec::new(),
             bounding_boxes: Vec::new(),
-            object_data: Vec::new(),
+            primitive_ops: Vec::new(),
         }
     }
 
@@ -81,24 +81,24 @@ impl ObjectBuffers {
         buffer: Arc<CpuBufferPoolChunk<ObjectDataUnit>>,
     ) -> usize {
         todo!("bounding_boxes");
-        debug_assert!(self.ids.len() == self.object_data.len());
+        debug_assert!(self.ids.len() == self.primitive_ops.len());
         if let Some(index) = self.get_index(id) {
-            self.object_data[index] = buffer;
+            self.primitive_ops[index] = buffer;
             index
         } else {
             self.ids.push(id);
-            self.object_data.push(buffer);
+            self.primitive_ops.push(buffer);
             self.ids.len() - 1
         }
     }
 
     /// Returns the vec index if the id was found and removed.
     pub fn remove(&mut self, id: ObjectId) -> Option<usize> {
-        debug_assert!(self.ids.len() == self.object_data.len());
+        debug_assert!(self.ids.len() == self.primitive_ops.len());
         let index_res = self.get_index(id);
         if let Some(index) = index_res {
             self.ids.remove(index);
-            self.object_data.remove(index);
+            self.primitive_ops.remove(index);
         }
         index_res
     }
@@ -107,8 +107,8 @@ impl ObjectBuffers {
         self.ids.iter().position(|&x| x == id)
     }
 
-    pub fn object_data_buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>> {
-        &self.object_data
+    pub fn primitive_op_buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>> {
+        &self.primitive_ops
     }
 
     pub fn bounding_box_buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>> {
@@ -121,8 +121,9 @@ pub struct GeometryPass {
     descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
     pipeline: Arc<GraphicsPipeline>,
 
-    object_buffer_pool: CpuBufferPool<ObjectDataUnit>,
-    object_buffers: ObjectBuffers,
+    primitive_op_buffer_pool: CpuBufferPool<ObjectDataUnit>,
+    vertex_buffer_pool: CpuBufferPool<BoundingBoxVertex>,
+    objects: ObjectBuffers,
     desc_set: Arc<PersistentDescriptorSet>,
 }
 
@@ -151,6 +152,7 @@ impl GeometryPass {
             pipeline.clone(),
             object_buffers.object_data_buffers(),
         )?;
+
         Ok(Self {
             descriptor_allocator,
             pipeline,
@@ -231,6 +233,8 @@ impl GeometryPass {
             self.object_buffers.buffers(),
         )?;
 
+        todo!("what lowest_changed_index for?");
+
         Ok(())
     }
 }
@@ -253,6 +257,7 @@ fn create_object_buffer_pool(
     object_buffer_pool
         .reserve(INIT_BUFFER_POOL_RESERVE as u64)
         .context("reserving object buffer pool")?;
+
     Ok(object_buffer_pool)
 }
 
@@ -272,6 +277,7 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
             .ok_or(CreateShaderError::MissingEntryPoint(
                 VERT_SHADER_PATH.to_owned(),
             ))?;
+
     let frag_module = create_shader_module(device.clone(), FRAG_SHADER_PATH)?;
     let frag_shader =
         frag_module
@@ -345,13 +351,14 @@ fn set_object_buffer_variable_descriptor_count(
         .context("missing object buffer descriptor binding for geometry shader")?;
     binding.variable_descriptor_count = true;
     binding.descriptor_count = MAX_OBJECT_BUFFERS;
+
     Ok(())
 }
 
 fn create_desc_set(
     descriptor_allocator: &StandardDescriptorSetAllocator,
     geometry_pipeline: Arc<GraphicsPipeline>,
-    object_buffers: &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
+    primitive_op_buffers: &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
     let set_layout = geometry_pipeline
         .layout()
@@ -363,14 +370,15 @@ fn create_desc_set(
         })
         .context("creating object buffer desc set")?
         .to_owned();
+
     PersistentDescriptorSet::new_variable(
         descriptor_allocator,
         set_layout,
-        object_buffers.len() as u32,
+        primitive_op_buffers.len() as u32,
         [WriteDescriptorSet::buffer_array(
             descriptor::BINDING_OBJECTS,
             0,
-            object_buffers
+            primitive_op_buffers
                 .iter()
                 .map(|buffer| buffer.clone() as Arc<dyn BufferAccess>) // probably a nicer way to do this conversion but https://stackoverflow.com/questions/58683548/how-to-coerce-a-vec-of-structs-to-a-vec-of-trait-objects
                 .collect::<Vec<Arc<dyn BufferAccess>>>(),

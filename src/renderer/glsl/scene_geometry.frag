@@ -21,7 +21,7 @@ layout (location = 1) out uint out_object_id; // upper 16 bits = object index; l
 layout (set = 0, binding = 0, std430) readonly buffer Object {
 	uint id;
 	uint op_count;
-	uint data[];
+	uint primitive_ops[];
 } objects[];
 
 layout (push_constant) uniform Camera {
@@ -60,30 +60,30 @@ float sdf_box(vec3 pos, vec3 center, vec3 dimensions)
 
 SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 {
-	uint primitive_type = objects[in_object_index].data[buffer_index++];
+	uint primitive_type = objects[in_object_index].primitive_ops[buffer_index++];
 	SdfResult res = { MAX_DIST, op_index };
 
 	if (primitive_type == PRIMITIVE_SPHERE)
 	{
 		vec3 center = vec3(
-			uintBitsToFloat(objects[in_object_index].data[buffer_index++]),
-			uintBitsToFloat(objects[in_object_index].data[buffer_index++]),
-			uintBitsToFloat(objects[in_object_index].data[buffer_index++])
+			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]),
+			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]),
+			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++])
 		);
-		float radius = uintBitsToFloat(objects[in_object_index].data[buffer_index++]);
+		float radius = uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]);
 		res.d = sdf_sphere(pos, center, radius);
 	}
 	else if (primitive_type == PRIMITIVE_CUBE)
 	{
 		vec3 center = vec3(
-			uintBitsToFloat(objects[in_object_index].data[buffer_index++]),
-			uintBitsToFloat(objects[in_object_index].data[buffer_index++]),
-			uintBitsToFloat(objects[in_object_index].data[buffer_index++])
+			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]),
+			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]),
+			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++])
 		);
 		vec3 dimensions = vec3(
-			uintBitsToFloat(objects[in_object_index].data[buffer_index++]),
-			uintBitsToFloat(objects[in_object_index].data[buffer_index++]),
-			uintBitsToFloat(objects[in_object_index].data[buffer_index++])
+			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]),
+			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]),
+			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++])
 		);
 		res.d = sdf_box(pos, center, dimensions);
 	}
@@ -140,7 +140,7 @@ SdfResult map(vec3 pos)
 	uint op_index = 0;
 	while (op_index < objects[in_object_index].op_count) {
 		uint buffer_index = op_index * OP_UNIT_LENGTH;
-		uint op = objects[in_object_index].data[buffer_index++];
+		uint op = objects[in_object_index].primitive_ops[buffer_index++];
 
 		SdfResult primitive_res = process_primitive(buffer_index, op_index, pos);
 		closest_res = process_op(op, closest_res, primitive_res);
