@@ -1,16 +1,19 @@
 use super::{
     renderer_config::SHADER_ENTRY_POINT,
     shader_interfaces::{
-        object_buffer::{ObjectDataUnit, OPERATION_UNIT_LEN},
+        primitive_op_buffer::{PrimitiveOpBufferUnit, PRIMITIVE_OP_UNIT_LEN},
         push_constants::CameraPushConstants,
         vertex_inputs::BoundingBoxVertex,
     },
     vulkan_helper::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
-use crate::engine::object::{
-    object::{Object, ObjectId},
-    object_collection::ObjectCollection,
-    objects_delta::ObjectsDelta,
+use crate::engine::{
+    aabb::AABB_VERTEX_COUNT,
+    object::{
+        object::{Object, ObjectId},
+        object_collection::ObjectCollection,
+        objects_delta::ObjectsDelta,
+    },
 };
 use anyhow::Context;
 #[allow(unused_imports)]
@@ -56,25 +59,30 @@ mod descriptor {
     pub const BINDING_OBJECTS: u32 = 0;
 }
 
-/// start out with 1024 operations
-const INIT_BUFFER_POOL_RESERVE: DeviceSize =
-    (1024 * OPERATION_UNIT_LEN * size_of::<ObjectDataUnit>()) as DeviceSize;
+/// Reserve for 1024 operations
+const INIT_PRIMITIVE_OP_POOL_RESERVE: DeviceSize =
+    (1024 * PRIMITIVE_OP_UNIT_LEN * size_of::<PrimitiveOpBufferUnit>()) as DeviceSize;
+
+/// Reserve for 16 AABBs
+const INIT_BOUNDING_BOX_POOL_RESERVE: DeviceSize =
+    (16 * AABB_VERTEX_COUNT * size_of::<BoundingBoxVertex>()) as DeviceSize;
 
 struct ObjectBuffers {
-    primitive_op_buffer_pool: CpuBufferPool<ObjectDataUnit>,
-    vertex_buffer_pool: CpuBufferPool<BoundingBoxVertex>,
+    bounding_box_buffer_pool: CpuBufferPool<BoundingBoxVertex>,
+    primitive_op_buffer_pool: CpuBufferPool<PrimitiveOpBufferUnit>,
 
     ids: Vec<ObjectId>,
     bounding_boxes: Vec<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>>,
-    primitive_ops: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
+    primitive_ops: Vec<Arc<CpuBufferPoolChunk<PrimitiveOpBufferUnit>>>,
 }
 impl ObjectBuffers {
     pub fn new(memory_allocator: Arc<StandardMemoryAllocator>) -> anyhow::Result<Self> {
-        let primitive_op_buffer_pool = create_object_buffer_pool(memory_allocator)?;
+        let bounding_box_buffer_pool = create_bounding_box_buffer_pool(memory_allocator)?;
+        let primitive_op_buffer_pool = create_primitive_op_buffer_pool(memory_allocator)?;
 
         Ok(Self {
+            bounding_box_buffer_pool,
             primitive_op_buffer_pool,
-            vertex_buffer_pool,
             ids: Vec::new(),
             bounding_boxes: Vec::new(),
             primitive_ops: Vec::new(),
@@ -88,19 +96,27 @@ impl ObjectBuffers {
 
         let id = object.id();
 
-        let bounding_box_buffer: Arc<CpuBufferPoolChunk<BoundingBoxVertex>>;
         let primitive_ops_buffer = upload_primitive_ops(&self.primitive_op_buffer_pool, object)
             .context("initial upload object to buffer")?;
 
         if let Some(index) = self.get_index(id) {
+            let bounding_box_buffer =
+                upload_bounding_box(&self.bounding_box_buffer_pool, object, index as u32)?;
+
             self.bounding_boxes[index] = bounding_box_buffer;
             self.primitive_ops[index] = primitive_ops_buffer;
+
             Ok(index)
         } else {
+            let index = self.ids.len();
+            let bounding_box_buffer =
+                upload_bounding_box(&self.bounding_box_buffer_pool, object, index as u32)?;
+
             self.ids.push(id);
             self.bounding_boxes.push(bounding_box_buffer);
             self.primitive_ops.push(primitive_ops_buffer);
-            Ok(self.ids.len() - 1)
+
+            Ok(index)
         }
     }
 
@@ -119,7 +135,7 @@ impl ObjectBuffers {
         self.ids.iter().position(|&x| x == id)
     }
 
-    pub fn primitive_op_buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>> {
+    pub fn primitive_op_buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<PrimitiveOpBufferUnit>>> {
         &self.primitive_ops
     }
 
@@ -216,9 +232,6 @@ impl GeometryPass {
             if let Some(object_ref) = object_collection.get(set_id) {
                 trace!("adding or updating object buffer id = {}", set_id);
                 let object = &*object_ref.as_ref().borrow();
-                let primitive_ops_buffer =
-                    upload_primitive_ops(&self.primitive_op_buffer_pool, object)
-                        .context("uploading object data to buffer")?;
                 let set_index = self.object_buffers.update_or_push(object)?;
                 if set_index < lowest_changed_index {
                     lowest_changed_index = set_index;
@@ -231,7 +244,7 @@ impl GeometryPass {
             }
         }
 
-        // todo bounding box indices
+        todo!("bounding box indices");
 
         // update descriptor set
         self.desc_set = create_desc_set(
@@ -240,20 +253,40 @@ impl GeometryPass {
             self.object_buffers.primitive_op_buffers(),
         )?;
 
-        todo!("what lowest_changed_index for?");
-
         Ok(())
     }
 }
 
-fn create_object_buffer_pool(
+fn create_bounding_box_buffer_pool(
     memory_allocator: Arc<StandardMemoryAllocator>,
-) -> anyhow::Result<CpuBufferPool<ObjectDataUnit>> {
+) -> anyhow::Result<CpuBufferPool<BoundingBoxVertex>> {
     debug!(
-        "reserving {} bytes for object buffer pool",
-        INIT_BUFFER_POOL_RESERVE
+        "reserving {} bytes for bounding box buffer pool",
+        INIT_BOUNDING_BOX_POOL_RESERVE
     );
-    let object_buffer_pool: CpuBufferPool<ObjectDataUnit> = CpuBufferPool::new(
+    let buffer_pool: CpuBufferPool<BoundingBoxVertex> = CpuBufferPool::new(
+        memory_allocator,
+        BufferUsage {
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
+        MemoryUsage::Upload,
+    );
+    buffer_pool
+        .reserve(INIT_BOUNDING_BOX_POOL_RESERVE)
+        .context("reserving bounding box buffer pool")?;
+
+    Ok(buffer_pool)
+}
+
+fn create_primitive_op_buffer_pool(
+    memory_allocator: Arc<StandardMemoryAllocator>,
+) -> anyhow::Result<CpuBufferPool<PrimitiveOpBufferUnit>> {
+    debug!(
+        "reserving {} bytes for primitive op buffer pool",
+        INIT_PRIMITIVE_OP_POOL_RESERVE
+    );
+    let buffer_pool: CpuBufferPool<PrimitiveOpBufferUnit> = CpuBufferPool::new(
         memory_allocator,
         BufferUsage {
             storage_buffer: true,
@@ -261,22 +294,34 @@ fn create_object_buffer_pool(
         },
         MemoryUsage::Upload,
     );
-    object_buffer_pool
-        .reserve(INIT_BUFFER_POOL_RESERVE as u64)
-        .context("reserving object buffer pool")?;
+    buffer_pool
+        .reserve(INIT_PRIMITIVE_OP_POOL_RESERVE)
+        .context("reserving primitive op buffer pool")?;
 
-    Ok(object_buffer_pool)
+    Ok(buffer_pool)
+}
+
+fn upload_bounding_box(
+    bounding_box_buffer_pool: &CpuBufferPool<BoundingBoxVertex>,
+    object: &Object,
+    object_index: u32,
+) -> Result<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>, AllocationCreationError> {
+    trace!(
+        "uploading bounding box vertices for object id = {} to gpu buffer",
+        object.id()
+    );
+    bounding_box_buffer_pool.from_iter(object.aabb().vertices(object_index))
 }
 
 fn upload_primitive_ops(
-    primtive_op_buffer_pool: &CpuBufferPool<ObjectDataUnit>,
+    primtive_op_buffer_pool: &CpuBufferPool<PrimitiveOpBufferUnit>,
     object: &Object,
-) -> Result<Arc<CpuBufferPoolChunk<ObjectDataUnit>>, AllocationCreationError> {
+) -> Result<Arc<CpuBufferPoolChunk<PrimitiveOpBufferUnit>>, AllocationCreationError> {
     trace!(
         "uploading primitive ops for object id = {} to gpu buffer",
         object.id()
     );
-    primtive_op_buffer_pool.from_iter(object.encoded_data())
+    primtive_op_buffer_pool.from_iter(object.encoded_primitive_ops())
 }
 
 fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<GraphicsPipeline>> {
@@ -322,7 +367,7 @@ fn create_pipeline_layout(
 ) -> anyhow::Result<Arc<PipelineLayout>> {
     let mut layout_create_infos =
         DescriptorSetLayoutCreateInfo::from_requirements(frag_entry.descriptor_requirements());
-    set_object_buffer_variable_descriptor_count(&mut layout_create_infos)?;
+    set_primitive_op_buffer_variable_descriptor_count(&mut layout_create_infos)?;
 
     let set_layouts = layout_create_infos
         .into_iter()
@@ -346,7 +391,7 @@ fn create_pipeline_layout(
 }
 
 /// We need to update the binding info generated by vulkano to have a variable descriptor count for the object buffers
-fn set_object_buffer_variable_descriptor_count(
+fn set_primitive_op_buffer_variable_descriptor_count(
     layout_create_infos: &mut Vec<DescriptorSetLayoutCreateInfo>,
 ) -> anyhow::Result<()> {
     let binding = layout_create_infos
@@ -355,10 +400,10 @@ fn set_object_buffer_variable_descriptor_count(
             index: descriptor::SET_BUFFERS,
             shader_path: FRAG_SHADER_PATH,
         })
-        .context("missing object buffer descriptor set layout ci for geometry shader")?
+        .context("missing primitive_op buffer descriptor set layout ci for geometry shader")?
         .bindings
         .get_mut(&descriptor::BINDING_OBJECTS)
-        .context("missing object buffer descriptor binding for geometry shader")?;
+        .context("missing primitive_op buffer descriptor binding for geometry shader")?;
     binding.variable_descriptor_count = true;
     binding.descriptor_count = MAX_OBJECT_BUFFERS;
 
@@ -368,7 +413,7 @@ fn set_object_buffer_variable_descriptor_count(
 fn create_desc_set(
     descriptor_allocator: &StandardDescriptorSetAllocator,
     geometry_pipeline: Arc<GraphicsPipeline>,
-    primitive_op_buffers: &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
+    primitive_op_buffers: &Vec<Arc<CpuBufferPoolChunk<PrimitiveOpBufferUnit>>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
     let set_layout = geometry_pipeline
         .layout()
@@ -378,7 +423,7 @@ fn create_desc_set(
             index: descriptor::SET_BUFFERS,
             shader_path: FRAG_SHADER_PATH,
         })
-        .context("creating object buffer desc set")?
+        .context("creating primitive op buffer desc set")?
         .to_owned();
 
     PersistentDescriptorSet::new_variable(
@@ -394,5 +439,5 @@ fn create_desc_set(
                 .collect::<Vec<Arc<dyn BufferAccess>>>(),
         )],
     )
-    .context("creating object buffer desc set")
+    .context("creating primitive op buffer desc set")
 }

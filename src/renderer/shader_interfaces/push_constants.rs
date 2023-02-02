@@ -1,34 +1,28 @@
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat4, Vec3, Vec4};
+use glam::{Mat4, Vec4};
 
-/// Render compute shader push constant struct. Size should be no more than 128 bytes for full vulkan coverage
+/// Should match definition in `bounding_box.vert`
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
-pub struct CameraPushConstants {
-    /// Inverse of projection matrix multiplied by view matrix. Converts clip space coordinates to world space
-    pub proj_view_inverse: [f32; 16],
-    /// Camera position in world space (w component unused)
-    pub position: [f32; 4],
+pub struct ObjectIndexPushConstant {
+    pub object_index: u32,
 }
-impl CameraPushConstants {
-    pub fn new(proj_view_inverse: Mat4, position: Vec3) -> Self {
-        Self {
-            proj_view_inverse: proj_view_inverse.to_cols_array(),
-            position: [position.x, position.y, position.z, 0.0],
-        }
+impl ObjectIndexPushConstant {
+    pub fn new(object_index: u32) -> Self {
+        Self { object_index }
     }
 }
 
-/// Gui shader push constants. Should match definitions in `gui.vert` and `gui.frag`.
+/// Should match definitions in `gui.vert` and `gui.frag`.
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
-pub struct GuiPushConstants {
+pub struct GuiPushConstant {
     /// Framebuffer dimensions.
     pub screen_size: [f32; 2],
     /// Wherver the render target is in srgb format.
     pub need_srgb_conv: u32,
 }
-impl GuiPushConstants {
+impl GuiPushConstant {
     pub fn new(screen_size: [f32; 2], need_srgb_conv: bool) -> Self {
         Self {
             screen_size,
@@ -40,11 +34,11 @@ impl GuiPushConstants {
 /// Should match definition in `overlay.vert`
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
-pub struct OverlayPushConstants {
+pub struct OverlayPushConstant {
     pub proj_view: [f32; 16],
     pub offset: [f32; 4],
 }
-impl OverlayPushConstants {
+impl OverlayPushConstant {
     pub fn new(proj_view: Mat4, offset: Vec4) -> Self {
         Self {
             proj_view: proj_view.to_cols_array(),

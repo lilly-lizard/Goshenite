@@ -1,6 +1,6 @@
 use super::{
     renderer_config::SHADER_ENTRY_POINT,
-    shader_interfaces::push_constants::CameraPushConstants,
+    shader_interfaces::uniform_buffers::CameraUniformBuffer,
     vulkan_helper::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
 use anyhow::Context;
@@ -8,6 +8,7 @@ use anyhow::Context;
 use log::{debug, error, info, warn};
 use std::sync::Arc;
 use vulkano::{
+    buffer::CpuAccessibleBuffer,
     command_buffer::AutoCommandBufferBuilder,
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
@@ -26,18 +27,20 @@ const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_lighting.frag.spv";
 
 /// Describes descriptor set indices
 mod descriptor {
-    /// descriptor set index in `scene_lighting.frag`
-    pub const SET_LIGHTING_FRAG: usize = 0;
-    /// normal g-buffer input attachment binding in `scene_lighting.frag`
+    pub const SET_G_BUFFERS: usize = 0;
     pub const BINDING_NORMAL: u32 = 0;
-    /// primitive-id g-buffer input attachment binding in `scene_lighting.frag`
     pub const BINDING_PRIMITIVE_ID: u32 = 1;
+
+    pub const SET_CAMERA: usize = 1;
+    pub const BINDING_CAMERA: u32 = 0;
 }
 
 /// Defines functionality for reading the g-buffers and calculating the scene color values
 pub struct LightingPass {
     pipeline: Arc<GraphicsPipeline>,
-    desc_set: Arc<PersistentDescriptorSet>,
+    desc_set_g_buffers: Arc<PersistentDescriptorSet>,
+    desc_set_camera: Arc<PersistentDescriptorSet>,
+    camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
 }
 // Public functions
 impl LightingPass {
@@ -49,16 +52,25 @@ impl LightingPass {
         subpass: Subpass,
     ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
-        let desc_set = create_desc_set_gbuffers(
+
+        let desc_set_g_buffers = create_desc_set_gbuffers(
             descriptor_allocator,
             pipeline.clone(),
             g_buffer_normal,
             g_buffer_primitive_id,
         )?;
-        Ok(Self { pipeline, desc_set })
+
+        let desc_set_camera =
+            create_desc_set_camera(descriptor_allocator, pipeline.clone(), camera_buffer)?;
+
+        Ok(Self {
+            pipeline,
+            desc_set_g_buffers,
+            desc_set_camera,
+            camera_buffer,
+        })
     }
 
-    /// Updates g-buffer data e.g. when it has been resized
     pub fn update_g_buffers(
         &mut self,
         descriptor_allocator: &StandardDescriptorSetAllocator,
@@ -71,6 +83,13 @@ impl LightingPass {
             g_buffer_normal,
             g_buffer_primitive_id,
         )?;
+
+        Ok(())
+    }
+
+    pub fn update_camera_ubo(&mut self, camera_data: CameraUniformBuffer) -> anyhow::Result<()> {
+        todo!();
+
         Ok(())
     }
 
@@ -79,7 +98,6 @@ impl LightingPass {
     pub fn record_commands<L>(
         &self,
         command_buffer: &mut AutoCommandBufferBuilder<L>,
-        camera_push_constants: CameraPushConstants,
         viewport: Viewport,
     ) -> anyhow::Result<()> {
         command_buffer
@@ -91,9 +109,9 @@ impl LightingPass {
                 0,
                 self.desc_set.clone(),
             )
-            .push_constants(self.pipeline.layout().clone(), 0, camera_push_constants)
             .draw(3, 1, 0, 0)
             .context("recording lighting pass commands")?;
+
         Ok(())
     }
 }
@@ -106,6 +124,7 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
             .ok_or(CreateShaderError::MissingEntryPoint(
                 VERT_SHADER_PATH.to_owned(),
             ))?;
+
     let frag_module = create_shader_module(device.clone(), FRAG_SHADER_PATH)?;
     let frag_shader =
         frag_module
@@ -113,6 +132,7 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
             .ok_or(CreateShaderError::MissingEntryPoint(
                 FRAG_SHADER_PATH.to_owned(),
             ))?;
+
     Ok(GraphicsPipeline::start()
         .render_pass(subpass)
         .viewport_state(ViewportState::viewport_dynamic_scissor_irrelevant())
@@ -131,12 +151,13 @@ fn create_desc_set_gbuffers(
     let set_layout = lighting_pipeline
         .layout()
         .set_layouts()
-        .get(descriptor::SET_LIGHTING_FRAG)
+        .get(descriptor::SET_G_BUFFERS)
         .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
-            index: descriptor::SET_LIGHTING_FRAG,
+            index: descriptor::SET_G_BUFFERS,
             shader_path: FRAG_SHADER_PATH,
         })?
         .to_owned();
+
     PersistentDescriptorSet::new(
         descriptor_allocator,
         set_layout,
@@ -145,5 +166,33 @@ fn create_desc_set_gbuffers(
             WriteDescriptorSet::image_view(descriptor::BINDING_PRIMITIVE_ID, g_buffer_primitive_id),
         ],
     )
-    .context("creating lighting pass desc set")
+    .context("creating lighting pass g-buffer desc set")
 }
+
+fn create_desc_set_camera(
+    descriptor_allocator: &StandardDescriptorSetAllocator,
+    lighting_pipeline: Arc<GraphicsPipeline>,
+    camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
+) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
+    let set_layout = lighting_pipeline
+        .layout()
+        .set_layouts()
+        .get(descriptor::SET_CAMERA)
+        .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+            index: descriptor::SET_CAMERA,
+            shader_path: FRAG_SHADER_PATH,
+        })?
+        .to_owned();
+
+    PersistentDescriptorSet::new(
+        descriptor_allocator,
+        set_layout,
+        [WriteDescriptorSet::buffer(
+            descriptor::BINDING_CAMERA,
+            camera_buffer,
+        )],
+    )
+    .context("creating lighting pass camera desc set")
+}
+
+fn create_camera_buffer() -> anyhow::Result<Arc<CpuAccessibleBuffer<CameraUniformBuffer>>> {}

@@ -2,7 +2,7 @@ use super::common::{create_shader_module, CreateShaderError};
 use crate::{
     config::SHADER_ENTRY_POINT,
     engine::camera::Camera,
-    shaders::{push_constants::OverlayPushConstants, vertex_inputs::OverlayVertex},
+    shaders::{push_constants::OverlayPushConstant, vertex_inputs::OverlayVertex},
 };
 use anyhow::Context;
 use glam::{Vec3, Vec4};
@@ -59,7 +59,7 @@ impl OverlayPass {
         /* todo
         // if a primitive is selected, render the xyz coordinate indicator at its center
         if let Some(selected_primitive) = primitive_collection.selected_primitive() {
-            let push_constants = OverlayPushConstants::new(
+            let push_constants = OverlayPushConstant::new(
                 (camera.proj_matrix() * camera.view_matrix()).as_mat4(),
                 Vec4::from((selected_primitive.center(), 0.0)),
             );

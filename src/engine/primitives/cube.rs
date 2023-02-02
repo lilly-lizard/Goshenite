@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     engine::aabb::Aabb,
-    renderer::shader_interfaces::object_buffer::{primitive_codes, PrimitiveDataSlice},
+    renderer::shader_interfaces::primitive_op_buffer::{primitive_codes, PrimitiveDataSlice},
 };
 use glam::Vec3;
 

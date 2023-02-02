@@ -1,7 +1,7 @@
 /// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
 use super::{
     renderer_config::SHADER_ENTRY_POINT,
-    shader_interfaces::{push_constants::GuiPushConstants, vertex_inputs::EguiVertex},
+    shader_interfaces::{push_constants::GuiPushConstant, vertex_inputs::EguiVertex},
     vulkan_helper::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
 use crate::user_interface::gui::Gui;
@@ -176,7 +176,7 @@ impl GuiRenderer {
         let scale_factor = gui.scale_factor();
         let primitives = gui.mesh_primitives();
 
-        let push_constants = GuiPushConstants::new(
+        let push_constants = GuiPushConstant::new(
             [
                 framebuffer_dimensions[0] / scale_factor,
                 framebuffer_dimensions[1] / scale_factor,

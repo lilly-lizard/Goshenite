@@ -1,6 +1,6 @@
 use crate::{
     engine::aabb::Aabb, helper::unique_id_gen::UniqueId,
-    renderer::shader_interfaces::object_buffer::PrimitiveDataSlice,
+    renderer::shader_interfaces::primitive_op_buffer::PrimitiveDataSlice,
 };
 use glam::Vec3;
 use std::{cell::RefCell, rc::Rc};
