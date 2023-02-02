@@ -9,14 +9,12 @@ pub struct CameraPushConstants {
     pub proj_view_inverse: [f32; 16],
     /// Camera position in world space (w component unused)
     pub position: [f32; 4],
-    pub framebuffer_dimensions: [f32; 2],
 }
 impl CameraPushConstants {
-    pub fn new(proj_view_inverse: Mat4, position: Vec3, framebuffer_dimensions: [f32; 2]) -> Self {
+    pub fn new(proj_view_inverse: Mat4, position: Vec3) -> Self {
         Self {
             proj_view_inverse: proj_view_inverse.to_cols_array(),
             position: [position.x, position.y, position.z, 0.0],
-            framebuffer_dimensions,
         }
     }
 }

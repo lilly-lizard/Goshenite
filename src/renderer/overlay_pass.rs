@@ -25,6 +25,8 @@ use vulkano::{
     render_pass::Subpass,
 };
 
+// todo lines with arrows https://registry.khronos.org/OpenGL-Refpages/gl4/html/glLineWidth.xhtml
+
 const VERT_SHADER_PATH: &str = "assets/shader_binaries/overlay.vert.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/overlay.frag.spv";
 

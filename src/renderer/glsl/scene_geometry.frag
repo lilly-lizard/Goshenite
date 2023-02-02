@@ -13,10 +13,10 @@ const float MIN_DIST = 0.0001;
 // ~~~ IO ~~~
 
 layout (location = 0) in flat uint in_object_index;
+layout (location = 1) in vec2 in_uv; // clip space xy position (between -1 and 1)
 
 layout (location = 0) out vec4 out_normal;
-// upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side
-layout (location = 1) out uint out_object_id;
+layout (location = 1) out uint out_object_id; // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side
 
 layout (set = 0, binding = 0, std430) readonly buffer Object {
 	uint id;
@@ -27,8 +27,7 @@ layout (set = 0, binding = 0, std430) readonly buffer Object {
 layout (push_constant) uniform Camera {
 	mat4 proj_view_inverse;
 	vec4 position;
-	vec2 
-} cam;
+} pc;
 
 // ~~~ Signed Distance Fields ~~~
 
@@ -197,15 +196,13 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint obj
 
 void main()
 {
-	// clip space position in frame (between -1 and 1)
-	vec2 pos_uv = gl_FragCoord.xy * 2. - 1.;
 	// ray direction in world space
-	vec3 ray_d = normalize((cam.proj_view_inverse * vec4(pos_uv.x, -pos_uv.y, 1., 1.)).xyz); // todo remove normalize calls?
+	vec3 ray_d = normalize((pc.proj_view_inverse * vec4(in_uv.x, -in_uv.y, 1., 1.)).xyz); // todo remove normalize calls?
 
 	// render scene
 	vec3 normal;
 	uint object_id;
-	ray_march(cam.position.xyz, ray_d, normal, object_id);
+	ray_march(pc.position.xyz, ray_d, normal, object_id);
 
 	out_normal = vec4(normal, 0.);
 	out_object_id = object_id;

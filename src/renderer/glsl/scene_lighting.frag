@@ -15,7 +15,7 @@ layout (location = 0) out vec4 out_color;
 layout (push_constant) uniform Camera {
 	mat4 proj_view_inverse;
 	vec4 position;
-} cam;
+} pc;
 
 /// Returns a sky color for a ray miss
 /// * `ray_d` - ray direction
@@ -36,7 +36,7 @@ void main()
 		// clip space position in frame (between -1 and 1)
 		vec2 pos_uv = in_uv * 2. - 1.;
 		// ray direction in world space
-		vec3 ray_d = normalize((cam.proj_view_inverse * vec4(pos_uv.x, -pos_uv.y, 1., 1.)).xyz);
+		vec3 ray_d = normalize((pc.proj_view_inverse * vec4(pos_uv.x, -pos_uv.y, 1., 1.)).xyz);
 		out_color = vec4(background(ray_d), 1.);
 	} else {
 		// ray hit: just output normal as color for now
