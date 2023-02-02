@@ -1,7 +1,7 @@
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 
-/// Should match inputs to `overlay.vert`
+/// Should match inputs in `overlay.vert`
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, Zeroable, Pod)]
 pub struct OverlayVertex {
@@ -13,9 +13,9 @@ vulkano::impl_vertex!(OverlayVertex, in_position, in_normal, in_color);
 impl OverlayVertex {
     pub const fn new(position: Vec3, normal: Vec3, color: Vec3) -> Self {
         Self {
-            in_position: [position.x, position.y, position.z, 1.0],
-            in_normal: [normal.x, normal.y, normal.z, 1.0],
-            in_color: [color.x, color.y, color.z, 1.0],
+            in_position: [position.x, position.y, position.z, 1.],
+            in_normal: [normal.x, normal.y, normal.z, 1.],
+            in_color: [color.x, color.y, color.z, 1.],
         }
     }
 }
@@ -29,3 +29,20 @@ pub struct EguiVertex {
     pub in_color: [f32; 4],
 }
 vulkano::impl_vertex!(EguiVertex, in_position, in_tex_coords, in_color);
+
+/// Should match inputs in `bounding_box.vert`
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, Zeroable, Pod)]
+pub struct BoundingBoxVertex {
+    pub in_position: [f32; 4],
+    pub in_object_index: u32,
+}
+vulkano::impl_vertex!(BoundingBoxVertex, in_position, in_object_index);
+impl BoundingBoxVertex {
+    pub const fn new(position: Vec3, object_index: u32) -> Self {
+        Self {
+            in_position: [position.x, position.y, position.z, 1.],
+            in_object_index: object_index,
+        }
+    }
+}

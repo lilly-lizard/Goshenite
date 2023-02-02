@@ -7,14 +7,14 @@ layout (location = 2) in vec4 in_color;
 layout (location = 0) out vec4 out_color;
 layout (location = 1) out vec4 out_normal;
 
-layout (push_constant) uniform OverlayParams {
+layout (push_constant) uniform Transform {
 	mat4 proj_view;
 	vec4 offset;
 } pc;
 
 void main() {
 	gl_Position = pc.proj_view * (in_position + pc.offset);
-	gl_Position.y = -gl_Position.y; // fuck knows why. do this cpu side to save a couple of gpu instructions?
+	gl_Position.y = -gl_Position.y; // fuck knows why. fix this cpu side to save a couple of cycles?
 
 	out_color = in_color;
 	
