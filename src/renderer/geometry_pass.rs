@@ -1,10 +1,10 @@
 use super::{
-    common::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
     renderer_config::SHADER_ENTRY_POINT,
     shader_interfaces::{
         object_buffer::{ObjectDataUnit, OPERATION_UNIT_LEN},
         push_constants::CameraPushConstants,
     },
+    vulkan_helper::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
 use crate::engine::object::{
     object::{Object, ObjectId},

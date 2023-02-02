@@ -1,10 +1,10 @@
 /// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
 use super::{
-    common::{CreateDescriptorSetError, CreateShaderError},
     renderer_config::SHADER_ENTRY_POINT,
     shader_interfaces::{push_constants::GuiPushConstants, vertex_inputs::EguiVertex},
+    vulkan_helper::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
-use crate::{renderer::common::create_shader_module, user_interface::gui::Gui};
+use crate::user_interface::gui::Gui;
 use ahash::AHashMap;
 use anyhow::Context;
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
