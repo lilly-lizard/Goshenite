@@ -8,13 +8,14 @@ use anyhow::Context;
 use log::{debug, error, info, warn};
 use std::sync::Arc;
 use vulkano::{
-    buffer::CpuAccessibleBuffer,
+    buffer::{BufferUsage, CpuAccessibleBuffer},
     command_buffer::AutoCommandBufferBuilder,
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Device,
     image::ImageViewAbstract,
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::viewport::{Viewport, ViewportState},
         GraphicsPipeline, Pipeline, PipelineBindPoint,
@@ -38,15 +39,16 @@ mod descriptor {
 /// Defines functionality for reading the g-buffers and calculating the scene color values
 pub struct LightingPass {
     pipeline: Arc<GraphicsPipeline>,
+
     desc_set_g_buffers: Arc<PersistentDescriptorSet>,
     desc_set_camera: Arc<PersistentDescriptorSet>,
-    camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
 }
 // Public functions
 impl LightingPass {
     pub fn new(
         device: Arc<Device>,
         descriptor_allocator: &StandardDescriptorSetAllocator,
+        camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
         g_buffer_normal: Arc<impl ImageViewAbstract + 'static>,
         g_buffer_primitive_id: Arc<impl ImageViewAbstract + 'static>,
         subpass: Subpass,
@@ -67,7 +69,6 @@ impl LightingPass {
             pipeline,
             desc_set_g_buffers,
             desc_set_camera,
-            camera_buffer,
         })
     }
 
@@ -77,7 +78,7 @@ impl LightingPass {
         g_buffer_normal: Arc<impl ImageViewAbstract + 'static>,
         g_buffer_primitive_id: Arc<impl ImageViewAbstract + 'static>,
     ) -> anyhow::Result<()> {
-        self.desc_set = create_desc_set_gbuffers(
+        self.desc_set_g_buffers = create_desc_set_gbuffers(
             descriptor_allocator,
             self.pipeline.clone(),
             g_buffer_normal,
@@ -100,6 +101,11 @@ impl LightingPass {
         command_buffer: &mut AutoCommandBufferBuilder<L>,
         viewport: Viewport,
     ) -> anyhow::Result<()> {
+        let desc_sets = vec![
+            self.desc_set_g_buffers.clone(),
+            self.desc_set_camera.clone(),
+        ];
+
         command_buffer
             .set_viewport(0, [viewport])
             .bind_pipeline_graphics(self.pipeline.clone())
@@ -107,7 +113,7 @@ impl LightingPass {
                 PipelineBindPoint::Graphics,
                 self.pipeline.layout().clone(),
                 0,
-                self.desc_set.clone(),
+                desc_sets,
             )
             .draw(3, 1, 0, 0)
             .context("recording lighting pass commands")?;
@@ -171,10 +177,10 @@ fn create_desc_set_gbuffers(
 
 fn create_desc_set_camera(
     descriptor_allocator: &StandardDescriptorSetAllocator,
-    lighting_pipeline: Arc<GraphicsPipeline>,
+    pipeline: Arc<GraphicsPipeline>,
     camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
-    let set_layout = lighting_pipeline
+    let set_layout = pipeline
         .layout()
         .set_layouts()
         .get(descriptor::SET_CAMERA)
@@ -194,5 +200,3 @@ fn create_desc_set_camera(
     )
     .context("creating lighting pass camera desc set")
 }
-
-fn create_camera_buffer() -> anyhow::Result<Arc<CpuAccessibleBuffer<CameraUniformBuffer>>> {}

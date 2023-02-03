@@ -1,3 +1,4 @@
+use crate::user_interface::camera::Camera;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
@@ -15,5 +16,12 @@ impl CameraUniformBuffer {
             proj_view_inverse: proj_view_inverse.to_cols_array(),
             position: [position.x, position.y, position.z, 0.0],
         }
+    }
+
+    pub fn from_camera(camera: &Camera) -> Self {
+        Self::new(
+            glam::DMat4::inverse(&(camera.proj_matrix() * camera.view_matrix())).as_mat4(),
+            camera.position().as_vec3(),
+        )
     }
 }
