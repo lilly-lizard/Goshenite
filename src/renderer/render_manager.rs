@@ -1,6 +1,7 @@
 use super::{
     config_renderer::{
-        ENABLE_VULKAN_VALIDATION, G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID,
+        ENABLE_VULKAN_VALIDATION, FRAMES_IN_FLIGHT, G_BUFFER_FORMAT_NORMAL,
+        G_BUFFER_FORMAT_PRIMITIVE_ID,
     },
     geometry_pass::GeometryPass,
     gui_renderer::GuiRenderer,
@@ -18,7 +19,6 @@ use egui::TexturesDelta;
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
 use vulkano::{
-    buffer::CpuAccessibleBuffer,
     command_buffer::{
         self,
         allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
@@ -67,13 +67,15 @@ pub struct RenderManager {
     framebuffers: Vec<Arc<Framebuffer>>,
     clear_values: [Option<ClearValue>; 3],
 
-    camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
-
     geometry_pass: GeometryPass,
     lighting_pass: LightingPass,
     //overlay_pass: OverlayPass,
     gui_pass: GuiRenderer,
 
+    /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
+    /// without conflicting with commands currently being processed. This variable indicates
+    /// which index to will be next submitted to the GPU.
+    next_frame: usize,
     /// Can be used to synchronize commands with the submission for the previous frame
     future_previous_frame: Option<Box<dyn GpuFuture>>,
     /// Indicates that the swapchain needs to be recreated next frame
@@ -84,11 +86,7 @@ pub struct RenderManager {
 
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
-    pub fn new(
-        window: Arc<Window>,
-        object_collection: &ObjectCollection,
-        camera: &mut Camera,
-    ) -> anyhow::Result<Self> {
+    pub fn new(window: Arc<Window>, object_collection: &ObjectCollection) -> anyhow::Result<Self> {
         let vulkan_library = VulkanLibrary::new().context("loading vulkan library")?;
         info!(
             "loaded vulkan library, api version = {}",
@@ -280,10 +278,6 @@ impl RenderManager {
         );
         let descriptor_allocator = Arc::new(StandardDescriptorSetAllocator::new(device.clone()));
 
-        // camera ubo
-        let camera_buffer =
-            create_camera_buffer(&memory_allocator, CameraUniformBuffer::from_camera(camera))?;
-
         // g-buffers
         let g_buffer_normal = create_g_buffer(
             &memory_allocator,
@@ -311,8 +305,7 @@ impl RenderManager {
         // init lighting pass
         let lighting_pass = LightingPass::new(
             device.clone(),
-            &descriptor_allocator,
-            camera_buffer.clone(),
+            descriptor_allocator.clone(),
             g_buffer_normal.clone(),
             g_buffer_primitive_id.clone(),
             subpass_swapchain.clone(),
@@ -324,7 +317,6 @@ impl RenderManager {
             memory_allocator.clone(),
             descriptor_allocator.clone(),
             object_collection,
-            camera_buffer.clone(),
             subpass_gbuffer,
         )?;
 
@@ -343,7 +335,7 @@ impl RenderManager {
         // create futures used for frame synchronization
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
 
-        Ok(RenderManager {
+        Ok(Self {
             device,
             render_queue,
             _transfer_queue: transfer_queue,
@@ -366,13 +358,12 @@ impl RenderManager {
             framebuffers,
             clear_values,
 
-            camera_buffer,
-
             geometry_pass,
             lighting_pass,
             //overlay_pass,
             gui_pass,
 
+            next_frame: 0,
             future_previous_frame,
             recreate_swapchain: false,
         })
@@ -408,7 +399,17 @@ impl RenderManager {
     }
 
     /// Submits Vulkan commands for rendering a frame.
-    pub fn render_frame(&mut self, window_resize: bool, gui: &mut Gui) -> anyhow::Result<()> {
+    pub fn render_frame(
+        &mut self,
+        window_resize: bool,
+        gui: &mut Gui,
+        camera: &mut Camera,
+    ) -> anyhow::Result<()> {
+        let camera_buffer = create_camera_buffer(
+            &self.memory_allocator,
+            CameraUniformBuffer::from_camera(camera),
+        )?;
+
         self.wait_and_unlock_previous_frame();
 
         self.recreate_swapchain = self.recreate_swapchain || window_resize;
@@ -461,16 +462,22 @@ impl RenderManager {
             .context("recording begin render pass command")?;
 
         // geometry ray-marching pass (outputs to g-buffer)
-        self.geometry_pass
-            .record_commands(&mut builder, self.viewport.clone())?;
+        self.geometry_pass.record_commands(
+            &mut builder,
+            self.viewport.clone(),
+            camera_buffer.clone(),
+        )?;
 
         builder
             .next_subpass(SubpassContents::Inline)
             .context("recording next subpass command")?;
 
         // execute deferred lighting pass (reads from g-buffer)
-        self.lighting_pass
-            .record_commands(&mut builder, self.viewport.clone())?;
+        self.lighting_pass.record_commands(
+            &mut builder,
+            self.viewport.clone(),
+            camera_buffer.clone(),
+        )?;
 
         // draw editor overlay
         //self.overlay_pass
@@ -520,6 +527,8 @@ impl RenderManager {
                 self.future_previous_frame = Some(sync::now(self.device.clone()).boxed());
             }
         }
+
+        self.next_frame = (self.next_frame + 1) % FRAMES_IN_FLIGHT;
         Ok(())
     }
 }

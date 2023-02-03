@@ -38,16 +38,14 @@ mod descriptor {
 /// Defines functionality for reading the g-buffers and calculating the scene color values
 pub struct LightingPass {
     pipeline: Arc<GraphicsPipeline>,
-
+    descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
     desc_set_g_buffers: Arc<PersistentDescriptorSet>,
-    desc_set_camera: Arc<PersistentDescriptorSet>,
 }
 // Public functions
 impl LightingPass {
     pub fn new(
         device: Arc<Device>,
-        descriptor_allocator: &StandardDescriptorSetAllocator,
-        camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
+        descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
         g_buffer_normal: Arc<impl ImageViewAbstract + 'static>,
         g_buffer_primitive_id: Arc<impl ImageViewAbstract + 'static>,
         subpass: Subpass,
@@ -55,19 +53,16 @@ impl LightingPass {
         let pipeline = create_pipeline(device.clone(), subpass)?;
 
         let desc_set_g_buffers = create_desc_set_gbuffers(
-            descriptor_allocator,
+            &descriptor_allocator,
             pipeline.clone(),
             g_buffer_normal,
             g_buffer_primitive_id,
         )?;
 
-        let desc_set_camera =
-            create_desc_set_camera(descriptor_allocator, pipeline.clone(), camera_buffer)?;
-
         Ok(Self {
+            descriptor_allocator,
             pipeline,
             desc_set_g_buffers,
-            desc_set_camera,
         })
     }
 
@@ -87,23 +82,21 @@ impl LightingPass {
         Ok(())
     }
 
-    pub fn update_camera_ubo(&mut self, camera_data: CameraUniformBuffer) -> anyhow::Result<()> {
-        todo!();
-
-        Ok(())
-    }
-
     /// Records draw commands to a command buffer. Assumes that the command buffer is
     /// already in a render pass state, otherwise an error will be returned.
     pub fn record_commands<L>(
         &self,
         command_buffer: &mut AutoCommandBufferBuilder<L>,
         viewport: Viewport,
+        camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
     ) -> anyhow::Result<()> {
-        let desc_sets = vec![
-            self.desc_set_g_buffers.clone(),
-            self.desc_set_camera.clone(),
-        ];
+        let desc_set_camera = create_desc_set_camera(
+            &self.descriptor_allocator,
+            self.pipeline.clone(),
+            camera_buffer,
+        )?;
+
+        let desc_sets = vec![self.desc_set_g_buffers.clone(), desc_set_camera];
 
         command_buffer
             .set_viewport(0, [viewport])

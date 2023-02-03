@@ -6,6 +6,8 @@ pub const VULKAN_VER_MIN: u32 = 2;
 /// is installed on the system, a debug callback will be created to log layer messages.
 pub const ENABLE_VULKAN_VALIDATION: bool = cfg!(debug_assertions); // pending https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/4891
 
+pub const FRAMES_IN_FLIGHT: usize = 2;
+
 /// Function name of the entry point for shaders
 pub const SHADER_ENTRY_POINT: &str = "main";
 

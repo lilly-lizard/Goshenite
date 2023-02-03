@@ -69,8 +69,7 @@ impl Engine {
         let scale_factor = scale_factor_override.unwrap_or(window.scale_factor());
         let cursor_state = Cursor::new(window.clone());
 
-        let mut camera =
-            anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
+        let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
         // TESTING OBJECTS START
 
@@ -105,7 +104,7 @@ impl Engine {
         // TESTING OBJECTS END
 
         let renderer = anyhow_unwrap(
-            RenderManager::new(window.clone(), &object_collection, &mut camera),
+            RenderManager::new(window.clone(), &object_collection),
             "initialize renderer",
         );
 
@@ -222,7 +221,7 @@ impl Engine {
             &self.object_collection,
             self.gui.get_and_clear_objects_delta(),
         ) {
-            anyhow_panic(&e, "updating object buffers");
+            anyhow_panic(&e, "update object buffers");
         }
 
         // update gui renderer
@@ -230,13 +229,13 @@ impl Engine {
             .renderer
             .update_gui_textures(self.gui.get_and_clear_textures_delta())
         {
-            anyhow_panic(&e, "updating gui textures");
+            anyhow_panic(&e, "update gui textures");
         }
 
         // now that frame processing is done, submit rendering commands
-        if let Err(e) = self
-            .renderer
-            .render_frame(self.window_resize, &mut self.gui)
+        if let Err(e) =
+            self.renderer
+                .render_frame(self.window_resize, &mut self.gui, &mut self.camera)
         {
             anyhow_panic(&e, "render frame");
         }

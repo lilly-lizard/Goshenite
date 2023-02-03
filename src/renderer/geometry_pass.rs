@@ -1,5 +1,5 @@
 use super::{
-    config_renderer::SHADER_ENTRY_POINT,
+    config_renderer::{FRAMES_IN_FLIGHT, SHADER_ENTRY_POINT},
     shader_interfaces::{
         primitive_op_buffer::{PrimitiveOpBufferUnit, PRIMITIVE_OP_UNIT_LEN},
         push_constants::ObjectIndexPushConstant,
@@ -150,10 +150,7 @@ impl ObjectBuffers {
 pub struct GeometryPass {
     descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
     pipeline: Arc<GraphicsPipeline>,
-
-    desc_set_camera: Arc<PersistentDescriptorSet>,
     desc_set_primitive_ops: Arc<PersistentDescriptorSet>,
-
     object_buffers: ObjectBuffers,
 }
 
@@ -164,7 +161,6 @@ impl GeometryPass {
         memory_allocator: Arc<StandardMemoryAllocator>,
         descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
         object_collection: &ObjectCollection,
-        camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
         subpass: Subpass,
     ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
@@ -181,16 +177,10 @@ impl GeometryPass {
             object_buffers.primitive_op_buffers(),
         )?;
 
-        let desc_set_camera =
-            create_desc_set_camera(&descriptor_allocator, pipeline.clone(), camera_buffer)?;
-
         Ok(Self {
             descriptor_allocator,
             pipeline,
-
-            desc_set_camera,
             desc_set_primitive_ops,
-
             object_buffers,
         })
     }
@@ -199,13 +189,18 @@ impl GeometryPass {
         &self,
         command_buffer: &mut AutoCommandBufferBuilder<L>,
         viewport: Viewport,
+        camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
     ) -> anyhow::Result<()> {
         // todo hardcoded!
         let object_index_push_constant = ObjectIndexPushConstant::new(0);
-        let desc_sets = vec![
-            self.desc_set_camera.clone(),
-            self.desc_set_primitive_ops.clone(),
-        ];
+
+        let desc_set_camera = create_desc_set_camera(
+            &self.descriptor_allocator,
+            self.pipeline.clone(),
+            camera_buffer,
+        )?;
+
+        let desc_sets = vec![desc_set_camera, self.desc_set_primitive_ops.clone()];
 
         command_buffer
             .set_viewport(0, [viewport])
