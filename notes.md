@@ -26,6 +26,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- frame time display
 - checks in object_collection to make sure that you don't have the same primitive ids across multiple primitive ops. put primitive_references inside object_collection?
 - init renderer test
 - smooth union op (curved combination)
