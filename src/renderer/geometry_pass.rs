@@ -1,16 +1,20 @@
 use super::{
-    renderer_config::SHADER_ENTRY_POINT,
+    config_renderer::SHADER_ENTRY_POINT,
     shader_interfaces::{
-        object_buffer::{ObjectDataUnit, OPERATION_UNIT_LEN},
-        push_constants::CameraPushConstants,
+        primitive_op_buffer::{PrimitiveOpBufferUnit, PRIMITIVE_OP_UNIT_LEN},
+        push_constants::ObjectIndexPushConstant,
+        uniform_buffers::CameraUniformBuffer,
         vertex_inputs::BoundingBoxVertex,
     },
     vulkan_helper::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
-use crate::engine::object::{
-    object::{Object, ObjectId},
-    object_collection::ObjectCollection,
-    objects_delta::ObjectsDelta,
+use crate::engine::{
+    aabb::AABB_VERTEX_COUNT,
+    object::{
+        object::{Object, ObjectId},
+        object_collection::ObjectCollection,
+        objects_delta::ObjectsDelta,
+    },
 };
 use anyhow::Context;
 #[allow(unused_imports)]
@@ -52,55 +56,69 @@ const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
 
 // descriptor set and binding indices
 mod descriptor {
-    pub const SET_BUFFERS: usize = 0;
-    pub const BINDING_OBJECTS: u32 = 0;
+    pub const SET_CAMERA: usize = 0;
+    pub const BINDING_CAMERA: u32 = 0;
+
+    pub const SET_PRIMITIVE_OPS: usize = 1;
+    pub const BINDING_PRIMITIVE_OPS: u32 = 0;
 }
 
-/// start out with 1024 operations
-const INIT_BUFFER_POOL_RESERVE: DeviceSize =
-    (1024 * OPERATION_UNIT_LEN * size_of::<ObjectDataUnit>()) as DeviceSize;
+/// Reserve for 1024 operations
+const INIT_PRIMITIVE_OP_POOL_RESERVE: DeviceSize =
+    (1024 * PRIMITIVE_OP_UNIT_LEN * size_of::<PrimitiveOpBufferUnit>()) as DeviceSize;
 
+/// Reserve for 16 AABBs
+const INIT_BOUNDING_BOX_POOL_RESERVE: DeviceSize =
+    (16 * AABB_VERTEX_COUNT * size_of::<BoundingBoxVertex>()) as DeviceSize;
+
+/// Manages per-object resources
 struct ObjectBuffers {
-    primitive_op_buffer_pool: CpuBufferPool<ObjectDataUnit>,
-    vertex_buffer_pool: CpuBufferPool<BoundingBoxVertex>,
+    bounding_box_buffer_pool: CpuBufferPool<BoundingBoxVertex>,
+    primitive_op_buffer_pool: CpuBufferPool<PrimitiveOpBufferUnit>,
 
     ids: Vec<ObjectId>,
     bounding_boxes: Vec<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>>,
-    primitive_ops: Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
+    primitive_ops: Vec<Arc<CpuBufferPoolChunk<PrimitiveOpBufferUnit>>>,
 }
+
 impl ObjectBuffers {
     pub fn new(memory_allocator: Arc<StandardMemoryAllocator>) -> anyhow::Result<Self> {
-        let primitive_op_buffer_pool = create_object_buffer_pool(memory_allocator)?;
+        let bounding_box_buffer_pool = create_bounding_box_buffer_pool(memory_allocator.clone())?;
+        let primitive_op_buffer_pool = create_primitive_op_buffer_pool(memory_allocator)?;
 
         Ok(Self {
+            bounding_box_buffer_pool,
             primitive_op_buffer_pool,
-            vertex_buffer_pool,
             ids: Vec::new(),
             bounding_boxes: Vec::new(),
             primitive_ops: Vec::new(),
         })
     }
 
-    /// Returns the index
-    pub fn update_or_push(&mut self, object: &Object) -> anyhow::Result<usize> {
+    pub fn update_or_push(&mut self, object: &Object) -> anyhow::Result<()> {
         debug_assert!(self.ids.len() == self.primitive_ops.len());
         debug_assert!(self.ids.len() == self.bounding_boxes.len());
 
         let id = object.id();
 
-        let bounding_box_buffer: Arc<CpuBufferPoolChunk<BoundingBoxVertex>>;
         let primitive_ops_buffer = upload_primitive_ops(&self.primitive_op_buffer_pool, object)
             .context("initial upload object to buffer")?;
 
         if let Some(index) = self.get_index(id) {
+            let bounding_box_buffer = upload_bounding_box(&self.bounding_box_buffer_pool, object)?;
+
             self.bounding_boxes[index] = bounding_box_buffer;
             self.primitive_ops[index] = primitive_ops_buffer;
-            Ok(index)
+
+            Ok(())
         } else {
+            let bounding_box_buffer = upload_bounding_box(&self.bounding_box_buffer_pool, object)?;
+
             self.ids.push(id);
             self.bounding_boxes.push(bounding_box_buffer);
             self.primitive_ops.push(primitive_ops_buffer);
-            Ok(self.ids.len() - 1)
+
+            Ok(())
         }
     }
 
@@ -119,7 +137,7 @@ impl ObjectBuffers {
         self.ids.iter().position(|&x| x == id)
     }
 
-    pub fn primitive_op_buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>> {
+    pub fn primitive_op_buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<PrimitiveOpBufferUnit>>> {
         &self.primitive_ops
     }
 
@@ -133,8 +151,10 @@ pub struct GeometryPass {
     descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
     pipeline: Arc<GraphicsPipeline>,
 
+    desc_set_camera: Arc<PersistentDescriptorSet>,
+    desc_set_primitive_ops: Arc<PersistentDescriptorSet>,
+
     object_buffers: ObjectBuffers,
-    desc_set: Arc<PersistentDescriptorSet>,
 }
 
 // Public functions
@@ -143,37 +163,50 @@ impl GeometryPass {
         device: Arc<Device>,
         memory_allocator: Arc<StandardMemoryAllocator>,
         descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
-        subpass: Subpass,
         object_collection: &ObjectCollection,
+        camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
+        subpass: Subpass,
     ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
 
         let mut object_buffers = ObjectBuffers::new(memory_allocator)?;
         for (_id, object_ref) in object_collection.objects() {
             let object = &*object_ref.as_ref().borrow();
-            object_buffers.update_or_push(object);
+            object_buffers.update_or_push(object)?;
         }
 
-        let desc_set = create_desc_set(
+        let desc_set_primitive_ops = create_desc_set_primitive_ops(
             descriptor_allocator.borrow(),
             pipeline.clone(),
             object_buffers.primitive_op_buffers(),
         )?;
 
+        let desc_set_camera =
+            create_desc_set_camera(&descriptor_allocator, pipeline.clone(), camera_buffer)?;
+
         Ok(Self {
             descriptor_allocator,
             pipeline,
+
+            desc_set_camera,
+            desc_set_primitive_ops,
+
             object_buffers,
-            desc_set,
         })
     }
 
     pub fn record_commands<L>(
         &self,
         command_buffer: &mut AutoCommandBufferBuilder<L>,
-        camera_push_constant: CameraPushConstants,
         viewport: Viewport,
     ) -> anyhow::Result<()> {
+        // todo hardcoded!
+        let object_index_push_constant = ObjectIndexPushConstant::new(0);
+        let desc_sets = vec![
+            self.desc_set_camera.clone(),
+            self.desc_set_primitive_ops.clone(),
+        ];
+
         command_buffer
             .set_viewport(0, [viewport])
             .bind_pipeline_graphics(self.pipeline.clone())
@@ -181,11 +214,17 @@ impl GeometryPass {
                 PipelineBindPoint::Graphics,
                 self.pipeline.layout().clone(),
                 0,
-                self.desc_set.clone(),
+                desc_sets,
             )
-            .push_constants(self.pipeline.layout().clone(), 0, camera_push_constant)
+            .push_constants(
+                self.pipeline.layout().clone(),
+                0,
+                object_index_push_constant,
+            )
+            .bind_vertex_buffers(0, self.object_buffers.bounding_box_buffers()[0].clone())
             .draw(3, 1, 0, 0)
             .context("recording geometry pass commands")?;
+
         Ok(())
     }
 
@@ -194,15 +233,10 @@ impl GeometryPass {
         object_collection: &ObjectCollection,
         object_delta: ObjectsDelta,
     ) -> anyhow::Result<()> {
-        let mut lowest_changed_index = usize::MAX;
-
         // freed objects
         for free_id in object_delta.remove {
-            if let Some(removed_index) = self.object_buffers.remove(free_id) {
+            if let Some(_removed_index) = self.object_buffers.remove(free_id) {
                 trace!("removing object buffer id = {}", free_id);
-                if removed_index < lowest_changed_index {
-                    lowest_changed_index = removed_index;
-                }
             } else {
                 debug!(
                     "object buffer id = {} was requested to be removed but not found!",
@@ -216,13 +250,7 @@ impl GeometryPass {
             if let Some(object_ref) = object_collection.get(set_id) {
                 trace!("adding or updating object buffer id = {}", set_id);
                 let object = &*object_ref.as_ref().borrow();
-                let primitive_ops_buffer =
-                    upload_primitive_ops(&self.primitive_op_buffer_pool, object)
-                        .context("uploading object data to buffer")?;
-                let set_index = self.object_buffers.update_or_push(object)?;
-                if set_index < lowest_changed_index {
-                    lowest_changed_index = set_index;
-                }
+                self.object_buffers.update_or_push(object)?;
             } else {
                 warn!(
                     "requsted update for object id = {} but wasn't found in object collection!",
@@ -231,29 +259,47 @@ impl GeometryPass {
             }
         }
 
-        // todo bounding box indices
-
         // update descriptor set
-        self.desc_set = create_desc_set(
+        self.desc_set_primitive_ops = create_desc_set_primitive_ops(
             self.descriptor_allocator.borrow(),
             self.pipeline.clone(),
             self.object_buffers.primitive_op_buffers(),
         )?;
 
-        todo!("what lowest_changed_index for?");
-
         Ok(())
     }
 }
 
-fn create_object_buffer_pool(
+fn create_bounding_box_buffer_pool(
     memory_allocator: Arc<StandardMemoryAllocator>,
-) -> anyhow::Result<CpuBufferPool<ObjectDataUnit>> {
+) -> anyhow::Result<CpuBufferPool<BoundingBoxVertex>> {
     debug!(
-        "reserving {} bytes for object buffer pool",
-        INIT_BUFFER_POOL_RESERVE
+        "reserving {} bytes for bounding box buffer pool",
+        INIT_BOUNDING_BOX_POOL_RESERVE
     );
-    let object_buffer_pool: CpuBufferPool<ObjectDataUnit> = CpuBufferPool::new(
+    let buffer_pool: CpuBufferPool<BoundingBoxVertex> = CpuBufferPool::new(
+        memory_allocator,
+        BufferUsage {
+            vertex_buffer: true,
+            ..BufferUsage::empty()
+        },
+        MemoryUsage::Upload,
+    );
+    buffer_pool
+        .reserve(INIT_BOUNDING_BOX_POOL_RESERVE)
+        .context("reserving bounding box buffer pool")?;
+
+    Ok(buffer_pool)
+}
+
+fn create_primitive_op_buffer_pool(
+    memory_allocator: Arc<StandardMemoryAllocator>,
+) -> anyhow::Result<CpuBufferPool<PrimitiveOpBufferUnit>> {
+    debug!(
+        "reserving {} bytes for primitive op buffer pool",
+        INIT_PRIMITIVE_OP_POOL_RESERVE
+    );
+    let buffer_pool: CpuBufferPool<PrimitiveOpBufferUnit> = CpuBufferPool::new(
         memory_allocator,
         BufferUsage {
             storage_buffer: true,
@@ -261,22 +307,34 @@ fn create_object_buffer_pool(
         },
         MemoryUsage::Upload,
     );
-    object_buffer_pool
-        .reserve(INIT_BUFFER_POOL_RESERVE as u64)
-        .context("reserving object buffer pool")?;
+    buffer_pool
+        .reserve(INIT_PRIMITIVE_OP_POOL_RESERVE)
+        .context("reserving primitive op buffer pool")?;
 
-    Ok(object_buffer_pool)
+    Ok(buffer_pool)
+}
+
+fn upload_bounding_box(
+    bounding_box_buffer_pool: &CpuBufferPool<BoundingBoxVertex>,
+    object: &Object,
+) -> Result<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>, AllocationCreationError> {
+    let object_id = object.id();
+    trace!(
+        "uploading bounding box vertices for object id = {} to gpu buffer",
+        object_id
+    );
+    bounding_box_buffer_pool.from_iter(object.aabb().vertices(object_id))
 }
 
 fn upload_primitive_ops(
-    primtive_op_buffer_pool: &CpuBufferPool<ObjectDataUnit>,
+    primtive_op_buffer_pool: &CpuBufferPool<PrimitiveOpBufferUnit>,
     object: &Object,
-) -> Result<Arc<CpuBufferPoolChunk<ObjectDataUnit>>, AllocationCreationError> {
+) -> Result<Arc<CpuBufferPoolChunk<PrimitiveOpBufferUnit>>, AllocationCreationError> {
     trace!(
         "uploading primitive ops for object id = {} to gpu buffer",
         object.id()
     );
-    primtive_op_buffer_pool.from_iter(object.encoded_data())
+    primtive_op_buffer_pool.from_iter(object.encoded_primitive_ops())
 }
 
 fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<GraphicsPipeline>> {
@@ -296,7 +354,7 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
                 FRAG_SHADER_PATH.to_owned(),
             ))?;
 
-    let pipeline_layout = create_pipeline_layout(device.clone(), &frag_shader)
+    let pipeline_layout = create_pipeline_layout(device.clone(), &vert_shader, &frag_shader)
         .context("creating geometry pipeline layout")?;
 
     Ok(GraphicsPipeline::start()
@@ -318,11 +376,16 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
 
 fn create_pipeline_layout(
     device: Arc<Device>,
+    vert_entry: &EntryPoint,
     frag_entry: &EntryPoint,
 ) -> anyhow::Result<Arc<PipelineLayout>> {
+    let desc_requirements = vert_entry
+        .descriptor_requirements()
+        .chain(frag_entry.descriptor_requirements());
+
     let mut layout_create_infos =
-        DescriptorSetLayoutCreateInfo::from_requirements(frag_entry.descriptor_requirements());
-    set_object_buffer_variable_descriptor_count(&mut layout_create_infos)?;
+        DescriptorSetLayoutCreateInfo::from_requirements(desc_requirements);
+    set_primitive_op_buffer_variable_descriptor_count(&mut layout_create_infos)?;
 
     let set_layouts = layout_create_infos
         .into_iter()
@@ -334,7 +397,7 @@ fn create_pipeline_layout(
         device.clone(),
         PipelineLayoutCreateInfo {
             set_layouts,
-            push_constant_ranges: frag_entry
+            push_constant_ranges: vert_entry
                 .push_constant_requirements()
                 .cloned()
                 .into_iter()
@@ -345,40 +408,46 @@ fn create_pipeline_layout(
     .context("creating scene geometry pipeline layout")
 }
 
-/// We need to update the binding info generated by vulkano to have a variable descriptor count for the object buffers
-fn set_object_buffer_variable_descriptor_count(
-    layout_create_infos: &mut Vec<DescriptorSetLayoutCreateInfo>,
-) -> anyhow::Result<()> {
-    let binding = layout_create_infos
-        .get_mut(descriptor::SET_BUFFERS)
-        .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
-            index: descriptor::SET_BUFFERS,
-            shader_path: FRAG_SHADER_PATH,
-        })
-        .context("missing object buffer descriptor set layout ci for geometry shader")?
-        .bindings
-        .get_mut(&descriptor::BINDING_OBJECTS)
-        .context("missing object buffer descriptor binding for geometry shader")?;
-    binding.variable_descriptor_count = true;
-    binding.descriptor_count = MAX_OBJECT_BUFFERS;
-
-    Ok(())
-}
-
-fn create_desc_set(
+fn create_desc_set_camera(
     descriptor_allocator: &StandardDescriptorSetAllocator,
-    geometry_pipeline: Arc<GraphicsPipeline>,
-    primitive_op_buffers: &Vec<Arc<CpuBufferPoolChunk<ObjectDataUnit>>>,
+    pipeline: Arc<GraphicsPipeline>,
+    camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
 ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
-    let set_layout = geometry_pipeline
+    let set_layout = pipeline
         .layout()
         .set_layouts()
-        .get(descriptor::SET_BUFFERS)
+        .get(descriptor::SET_CAMERA)
         .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
-            index: descriptor::SET_BUFFERS,
+            index: descriptor::SET_CAMERA,
+            shader_path: FRAG_SHADER_PATH,
+        })?
+        .to_owned();
+
+    PersistentDescriptorSet::new(
+        descriptor_allocator,
+        set_layout,
+        [WriteDescriptorSet::buffer(
+            descriptor::BINDING_CAMERA,
+            camera_buffer,
+        )],
+    )
+    .context("creating geometry pass camera desc set")
+}
+
+fn create_desc_set_primitive_ops(
+    descriptor_allocator: &StandardDescriptorSetAllocator,
+    pipeline: Arc<GraphicsPipeline>,
+    primitive_op_buffers: &Vec<Arc<CpuBufferPoolChunk<PrimitiveOpBufferUnit>>>,
+) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
+    let set_layout = pipeline
+        .layout()
+        .set_layouts()
+        .get(descriptor::SET_PRIMITIVE_OPS)
+        .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+            index: descriptor::SET_PRIMITIVE_OPS,
             shader_path: FRAG_SHADER_PATH,
         })
-        .context("creating object buffer desc set")?
+        .context("creating primitive op buffer desc set")?
         .to_owned();
 
     PersistentDescriptorSet::new_variable(
@@ -386,7 +455,7 @@ fn create_desc_set(
         set_layout,
         primitive_op_buffers.len() as u32,
         [WriteDescriptorSet::buffer_array(
-            descriptor::BINDING_OBJECTS,
+            descriptor::BINDING_PRIMITIVE_OPS,
             0,
             primitive_op_buffers
                 .iter()
@@ -394,5 +463,25 @@ fn create_desc_set(
                 .collect::<Vec<Arc<dyn BufferAccess>>>(),
         )],
     )
-    .context("creating object buffer desc set")
+    .context("creating primitive op buffer desc set")
+}
+
+/// We need to update the binding info generated by vulkano to have a variable descriptor count for the object buffers
+fn set_primitive_op_buffer_variable_descriptor_count(
+    layout_create_infos: &mut Vec<DescriptorSetLayoutCreateInfo>,
+) -> anyhow::Result<()> {
+    let binding = layout_create_infos
+        .get_mut(descriptor::SET_PRIMITIVE_OPS)
+        .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
+            index: descriptor::SET_PRIMITIVE_OPS,
+            shader_path: FRAG_SHADER_PATH,
+        })
+        .context("missing primitive_op buffer descriptor set layout ci for geometry shader")?
+        .bindings
+        .get_mut(&descriptor::BINDING_PRIMITIVE_OPS)
+        .context("missing primitive_op buffer descriptor binding for geometry shader")?;
+    binding.variable_descriptor_count = true;
+    binding.descriptor_count = MAX_OBJECT_BUFFERS;
+
+    Ok(())
 }

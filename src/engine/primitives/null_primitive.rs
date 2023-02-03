@@ -1,7 +1,7 @@
 use super::primitive::Primitive;
 use crate::{
     engine::aabb::Aabb,
-    renderer::shader_interfaces::object_buffer::{
+    renderer::shader_interfaces::primitive_op_buffer::{
         primitive_codes, PrimitiveDataSlice, PRIMITIVE_UNIT_LEN,
     },
 };

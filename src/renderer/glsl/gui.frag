@@ -6,7 +6,7 @@ layout (location = 1) in vec2 in_tex_coords;
 layout (location = 0) out vec4 out_color;
 
 layout (binding = 0, set = 0) uniform sampler2D font_texture;
-layout (push_constant) uniform GuiPushConstants {
+layout (push_constant) uniform GuiPushConstant {
     vec2 screen_size;
     uint srgb_framebuffer;
 } push_constants;

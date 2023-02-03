@@ -122,6 +122,7 @@ possibilities:
 ## ideas
 
 - defer shading to raster pass? render to g-buffer, including shadow info (e.g. bitmap of light sources for primitive?)
+- file storage (and memory arragement too?) https://github.com/quelsolaar/HxA
 
 # Resources
 

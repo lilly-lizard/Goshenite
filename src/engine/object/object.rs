@@ -11,7 +11,7 @@ use crate::{
         more_errors::CollectionError,
         unique_id_gen::{UniqueId, UniqueIdGen},
     },
-    renderer::shader_interfaces::object_buffer::ObjectDataUnit,
+    renderer::shader_interfaces::primitive_op_buffer::PrimitiveOpBufferUnit,
 };
 use glam::Vec3;
 use std::{cell::RefCell, rc::Rc};
@@ -111,12 +111,12 @@ impl Object {
         egui_dnd::utils::shift_vec(source_index, target_index, &mut self.primitive_ops);
     }
 
-    pub fn encoded_data(&self) -> Vec<ObjectDataUnit> {
+    pub fn encoded_primitive_ops(&self) -> Vec<PrimitiveOpBufferUnit> {
         // avoiding this case should be the responsibility of the functions adding to `primtive_ops`
         debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);
         let mut encoded = vec![
-            self.id as ObjectDataUnit,
-            self.primitive_ops.len() as ObjectDataUnit,
+            self.id as PrimitiveOpBufferUnit,
+            self.primitive_ops.len() as PrimitiveOpBufferUnit,
         ];
         for primitive_op in &self.primitive_ops {
             encoded.push(primitive_op.op.op_code());

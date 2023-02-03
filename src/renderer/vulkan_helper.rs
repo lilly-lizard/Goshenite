@@ -1,10 +1,13 @@
-use super::renderer_config::SHADER_ENTRY_POINT;
-use crate::renderer::renderer_config::{G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID};
+use super::{
+    config_renderer::SHADER_ENTRY_POINT, shader_interfaces::uniform_buffers::CameraUniformBuffer,
+};
+use crate::renderer::config_renderer::{G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID};
 use anyhow::{bail, ensure, Context};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{fmt, sync::Arc};
 use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer},
     device::{
         self,
         physical::{PhysicalDevice, PhysicalDeviceType},
@@ -20,7 +23,7 @@ use vulkano::{
         DebugUtilsMessengerCreateInfo,
     },
     instance::{Instance, InstanceExtensions},
-    memory::allocator::MemoryAllocator,
+    memory::allocator::{MemoryAllocator, StandardMemoryAllocator},
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
     shader::{ShaderCreationError, ShaderModule},
     swapchain::{self, Surface, Swapchain},
@@ -28,7 +31,7 @@ use vulkano::{
 };
 use winit::window::Window;
 
-use super::renderer_config::{VULKAN_VER_MAJ, VULKAN_VER_MIN};
+use super::config_renderer::{VULKAN_VER_MAJ, VULKAN_VER_MIN};
 
 pub fn required_device_extensions() -> DeviceExtensions {
     DeviceExtensions {
@@ -316,6 +319,22 @@ pub fn create_g_buffer(
         .context("creating g-buffer")?,
     )
     .context("creating g-buffer image view")
+}
+
+pub fn create_camera_buffer(
+    memory_allocator: &StandardMemoryAllocator,
+    camera_data: CameraUniformBuffer,
+) -> anyhow::Result<Arc<CpuAccessibleBuffer<CameraUniformBuffer>>> {
+    CpuAccessibleBuffer::from_data(
+        memory_allocator,
+        BufferUsage {
+            uniform_buffer: true,
+            ..BufferUsage::empty()
+        },
+        false, // we'll be uploading to gpu
+        camera_data,
+    )
+    .context("creating camera uniform buffer")
 }
 
 pub fn create_render_pass(
