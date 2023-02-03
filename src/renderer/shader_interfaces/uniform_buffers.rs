@@ -18,7 +18,7 @@ impl CameraUniformBuffer {
         }
     }
 
-    pub fn from_camera(camera: &Camera) -> Self {
+    pub fn from_camera(camera: &mut Camera) -> Self {
         Self::new(
             glam::DMat4::inverse(&(camera.proj_matrix() * camera.view_matrix())).as_mat4(),
             camera.position().as_vec3(),

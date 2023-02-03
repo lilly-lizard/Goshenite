@@ -69,7 +69,8 @@ impl Engine {
         let scale_factor = scale_factor_override.unwrap_or(window.scale_factor());
         let cursor_state = Cursor::new(window.clone());
 
-        let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
+        let mut camera =
+            anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
         // TESTING OBJECTS START
 
@@ -104,7 +105,7 @@ impl Engine {
         // TESTING OBJECTS END
 
         let renderer = anyhow_unwrap(
-            RenderManager::new(window.clone(), &object_collection),
+            RenderManager::new(window.clone(), &object_collection, &mut camera),
             "initialize renderer",
         );
 
@@ -233,9 +234,9 @@ impl Engine {
         }
 
         // now that frame processing is done, submit rendering commands
-        if let Err(e) =
-            self.renderer
-                .render_frame(self.window_resize, &mut self.gui, &mut self.camera)
+        if let Err(e) = self
+            .renderer
+            .render_frame(self.window_resize, &mut self.gui)
         {
             anyhow_panic(&e, "render frame");
         }

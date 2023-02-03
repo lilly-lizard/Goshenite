@@ -1,5 +1,5 @@
 use super::{
-    renderer_config::SHADER_ENTRY_POINT,
+    config_renderer::SHADER_ENTRY_POINT,
     shader_interfaces::{
         primitive_op_buffer::{PrimitiveOpBufferUnit, PRIMITIVE_OP_UNIT_LEN},
         push_constants::ObjectIndexPushConstant,
@@ -83,7 +83,7 @@ struct ObjectBuffers {
 
 impl ObjectBuffers {
     pub fn new(memory_allocator: Arc<StandardMemoryAllocator>) -> anyhow::Result<Self> {
-        let bounding_box_buffer_pool = create_bounding_box_buffer_pool(memory_allocator)?;
+        let bounding_box_buffer_pool = create_bounding_box_buffer_pool(memory_allocator.clone())?;
         let primitive_op_buffer_pool = create_primitive_op_buffer_pool(memory_allocator)?;
 
         Ok(Self {
@@ -95,8 +95,7 @@ impl ObjectBuffers {
         })
     }
 
-    /// Returns the index
-    pub fn update_or_push(&mut self, object: &Object) -> anyhow::Result<usize> {
+    pub fn update_or_push(&mut self, object: &Object) -> anyhow::Result<()> {
         debug_assert!(self.ids.len() == self.primitive_ops.len());
         debug_assert!(self.ids.len() == self.bounding_boxes.len());
 
@@ -106,23 +105,20 @@ impl ObjectBuffers {
             .context("initial upload object to buffer")?;
 
         if let Some(index) = self.get_index(id) {
-            let bounding_box_buffer =
-                upload_bounding_box(&self.bounding_box_buffer_pool, object, index as u32)?;
+            let bounding_box_buffer = upload_bounding_box(&self.bounding_box_buffer_pool, object)?;
 
             self.bounding_boxes[index] = bounding_box_buffer;
             self.primitive_ops[index] = primitive_ops_buffer;
 
-            Ok(index)
+            Ok(())
         } else {
-            let index = self.ids.len();
-            let bounding_box_buffer =
-                upload_bounding_box(&self.bounding_box_buffer_pool, object, index as u32)?;
+            let bounding_box_buffer = upload_bounding_box(&self.bounding_box_buffer_pool, object)?;
 
             self.ids.push(id);
             self.bounding_boxes.push(bounding_box_buffer);
             self.primitive_ops.push(primitive_ops_buffer);
 
-            Ok(index)
+            Ok(())
         }
     }
 
@@ -176,7 +172,7 @@ impl GeometryPass {
         let mut object_buffers = ObjectBuffers::new(memory_allocator)?;
         for (_id, object_ref) in object_collection.objects() {
             let object = &*object_ref.as_ref().borrow();
-            object_buffers.update_or_push(object);
+            object_buffers.update_or_push(object)?;
         }
 
         let desc_set_primitive_ops = create_desc_set_primitive_ops(
@@ -186,7 +182,7 @@ impl GeometryPass {
         )?;
 
         let desc_set_camera =
-            create_desc_set_camera(&descriptor_allocator, pipeline, camera_buffer)?;
+            create_desc_set_camera(&descriptor_allocator, pipeline.clone(), camera_buffer)?;
 
         Ok(Self {
             descriptor_allocator,
@@ -206,7 +202,10 @@ impl GeometryPass {
     ) -> anyhow::Result<()> {
         // todo hardcoded!
         let object_index_push_constant = ObjectIndexPushConstant::new(0);
-        let desc_sets = vec![self.desc_set_camera, self.desc_set_primitive_ops];
+        let desc_sets = vec![
+            self.desc_set_camera.clone(),
+            self.desc_set_primitive_ops.clone(),
+        ];
 
         command_buffer
             .set_viewport(0, [viewport])
@@ -222,7 +221,7 @@ impl GeometryPass {
                 0,
                 object_index_push_constant,
             )
-            //.bind_vertex_buffers(0, self.object_buffers.bounding_box_buffers()[0])
+            .bind_vertex_buffers(0, self.object_buffers.bounding_box_buffers()[0].clone())
             .draw(3, 1, 0, 0)
             .context("recording geometry pass commands")?;
 
@@ -236,7 +235,7 @@ impl GeometryPass {
     ) -> anyhow::Result<()> {
         // freed objects
         for free_id in object_delta.remove {
-            if let Some(removed_index) = self.object_buffers.remove(free_id) {
+            if let Some(_removed_index) = self.object_buffers.remove(free_id) {
                 trace!("removing object buffer id = {}", free_id);
             } else {
                 debug!(
@@ -251,7 +250,7 @@ impl GeometryPass {
             if let Some(object_ref) = object_collection.get(set_id) {
                 trace!("adding or updating object buffer id = {}", set_id);
                 let object = &*object_ref.as_ref().borrow();
-                let set_index = self.object_buffers.update_or_push(object)?;
+                self.object_buffers.update_or_push(object)?;
             } else {
                 warn!(
                     "requsted update for object id = {} but wasn't found in object collection!",
@@ -318,7 +317,6 @@ fn create_primitive_op_buffer_pool(
 fn upload_bounding_box(
     bounding_box_buffer_pool: &CpuBufferPool<BoundingBoxVertex>,
     object: &Object,
-    object_index: u32,
 ) -> Result<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>, AllocationCreationError> {
     let object_id = object.id();
     trace!(
@@ -356,7 +354,7 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
                 FRAG_SHADER_PATH.to_owned(),
             ))?;
 
-    let pipeline_layout = create_pipeline_layout(device.clone(), &frag_shader)
+    let pipeline_layout = create_pipeline_layout(device.clone(), &vert_shader, &frag_shader)
         .context("creating geometry pipeline layout")?;
 
     Ok(GraphicsPipeline::start()
@@ -378,10 +376,15 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
 
 fn create_pipeline_layout(
     device: Arc<Device>,
+    vert_entry: &EntryPoint,
     frag_entry: &EntryPoint,
 ) -> anyhow::Result<Arc<PipelineLayout>> {
+    let desc_requirements = vert_entry
+        .descriptor_requirements()
+        .chain(frag_entry.descriptor_requirements());
+
     let mut layout_create_infos =
-        DescriptorSetLayoutCreateInfo::from_requirements(frag_entry.descriptor_requirements());
+        DescriptorSetLayoutCreateInfo::from_requirements(desc_requirements);
     set_primitive_op_buffer_variable_descriptor_count(&mut layout_create_infos)?;
 
     let set_layouts = layout_create_infos
@@ -394,7 +397,7 @@ fn create_pipeline_layout(
         device.clone(),
         PipelineLayoutCreateInfo {
             set_layouts,
-            push_constant_ranges: frag_entry
+            push_constant_ranges: vert_entry
                 .push_constant_requirements()
                 .cloned()
                 .into_iter()

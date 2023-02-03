@@ -1,10 +1,10 @@
 use super::{
+    config_renderer::{
+        ENABLE_VULKAN_VALIDATION, G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID,
+    },
     geometry_pass::GeometryPass,
     gui_renderer::GuiRenderer,
     lighting_pass::LightingPass,
-    renderer_config::{
-        ENABLE_VULKAN_VALIDATION, G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID,
-    },
     shader_interfaces::uniform_buffers::CameraUniformBuffer,
     vulkan_helper::*,
 };
@@ -87,7 +87,7 @@ impl RenderManager {
     pub fn new(
         window: Arc<Window>,
         object_collection: &ObjectCollection,
-        camera: &Camera,
+        camera: &mut Camera,
     ) -> anyhow::Result<Self> {
         let vulkan_library = VulkanLibrary::new().context("loading vulkan library")?;
         info!(
@@ -311,7 +311,6 @@ impl RenderManager {
         // init lighting pass
         let lighting_pass = LightingPass::new(
             device.clone(),
-            &memory_allocator,
             &descriptor_allocator,
             camera_buffer.clone(),
             g_buffer_normal.clone(),
@@ -324,8 +323,9 @@ impl RenderManager {
             device.clone(),
             memory_allocator.clone(),
             descriptor_allocator.clone(),
-            subpass_gbuffer,
             object_collection,
+            camera_buffer.clone(),
+            subpass_gbuffer,
         )?;
 
         // init overlay pass
@@ -408,12 +408,7 @@ impl RenderManager {
     }
 
     /// Submits Vulkan commands for rendering a frame.
-    pub fn render_frame(
-        &mut self,
-        window_resize: bool,
-        gui: &mut Gui,
-        camera: &Camera,
-    ) -> anyhow::Result<()> {
+    pub fn render_frame(&mut self, window_resize: bool, gui: &mut Gui) -> anyhow::Result<()> {
         self.wait_and_unlock_previous_frame();
 
         self.recreate_swapchain = self.recreate_swapchain || window_resize;

@@ -1,5 +1,5 @@
 use super::{
-    renderer_config::SHADER_ENTRY_POINT,
+    config_renderer::SHADER_ENTRY_POINT,
     shader_interfaces::uniform_buffers::CameraUniformBuffer,
     vulkan_helper::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
@@ -8,14 +8,13 @@ use anyhow::Context;
 use log::{debug, error, info, warn};
 use std::sync::Arc;
 use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
+    buffer::CpuAccessibleBuffer,
     command_buffer::AutoCommandBufferBuilder,
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Device,
     image::ImageViewAbstract,
-    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::viewport::{Viewport, ViewportState},
         GraphicsPipeline, Pipeline, PipelineBindPoint,

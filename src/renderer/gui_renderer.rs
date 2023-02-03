@@ -1,6 +1,6 @@
 /// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
 use super::{
-    renderer_config::SHADER_ENTRY_POINT,
+    config_renderer::SHADER_ENTRY_POINT,
     shader_interfaces::{push_constants::GuiPushConstant, vertex_inputs::EguiVertex},
     vulkan_helper::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
