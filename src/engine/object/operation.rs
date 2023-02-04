@@ -1,4 +1,4 @@
-use crate::renderer::shader_interfaces::object_buffer::{op_codes, ObjectDataUnit};
+use crate::renderer::shader_interfaces::primitive_op_buffer::{op_codes, PrimitiveOpBufferUnit};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum Operation {
@@ -20,7 +20,7 @@ static VARIANTS: &[Operation] = &[
 ];
 
 impl Operation {
-    pub fn op_code(&self) -> ObjectDataUnit {
+    pub fn op_code(&self) -> PrimitiveOpBufferUnit {
         match *self {
             Self::NOP => op_codes::NOP,
             Self::Union => op_codes::UNION,

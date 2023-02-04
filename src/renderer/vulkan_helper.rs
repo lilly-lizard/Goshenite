@@ -1,9 +1,13 @@
-use crate::renderer::renderer_config::{G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID};
+use super::{
+    config_renderer::SHADER_ENTRY_POINT, shader_interfaces::uniform_buffers::CameraUniformBuffer,
+};
+use crate::renderer::config_renderer::{G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID};
 use anyhow::{bail, ensure, Context};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::sync::Arc;
+use std::{fmt, sync::Arc};
 use vulkano::{
+    buffer::{BufferUsage, CpuAccessibleBuffer},
     device::{
         self,
         physical::{PhysicalDevice, PhysicalDeviceType},
@@ -19,14 +23,15 @@ use vulkano::{
         DebugUtilsMessengerCreateInfo,
     },
     instance::{Instance, InstanceExtensions},
-    memory::allocator::MemoryAllocator,
+    memory::allocator::{MemoryAllocator, StandardMemoryAllocator},
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
+    shader::{ShaderCreationError, ShaderModule},
     swapchain::{self, Surface, Swapchain},
     VulkanLibrary,
 };
 use winit::window::Window;
 
-use super::renderer_config::{VULKAN_VER_MAJ, VULKAN_VER_MIN};
+use super::config_renderer::{VULKAN_VER_MAJ, VULKAN_VER_MIN};
 
 pub fn required_device_extensions() -> DeviceExtensions {
     DeviceExtensions {
@@ -316,6 +321,22 @@ pub fn create_g_buffer(
     .context("creating g-buffer image view")
 }
 
+pub fn create_camera_buffer(
+    memory_allocator: &StandardMemoryAllocator,
+    camera_data: CameraUniformBuffer,
+) -> anyhow::Result<Arc<CpuAccessibleBuffer<CameraUniformBuffer>>> {
+    CpuAccessibleBuffer::from_data(
+        memory_allocator,
+        BufferUsage {
+            uniform_buffer: true,
+            ..BufferUsage::empty()
+        },
+        false, // we'll be uploading to gpu
+        camera_data,
+    )
+    .context("creating camera uniform buffer")
+}
+
 pub fn create_render_pass(
     device: Arc<Device>,
     swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
@@ -413,6 +434,34 @@ pub fn create_framebuffers(
         .collect::<anyhow::Result<Vec<_>>>()
 }
 
+/// Creates a Vulkan shader module given a spirv path (relative to crate root)
+pub fn create_shader_module(
+    device: Arc<Device>,
+    spirv_path: &str,
+) -> Result<Arc<ShaderModule>, CreateShaderError> {
+    // read spirv bytes
+    let bytes = match std::fs::read(spirv_path) {
+        Ok(x) => x,
+        Err(e) => {
+            return Err(CreateShaderError::IOError {
+                e,
+                path: spirv_path.to_owned(),
+            })
+        }
+    };
+    // create shader module
+    // todo conv to &[u32] and use from_words (guarentees 4 byte multiple)
+    match unsafe { ShaderModule::from_bytes(device.clone(), bytes.as_slice()) } {
+        Ok(x) => Ok(x),
+        Err(e) => {
+            return Err(CreateShaderError::ShaderCreationError {
+                e,
+                path: spirv_path.to_owned(),
+            })
+        }
+    }
+}
+
 /// This mod just makes the module path unique for debug callbacks in the log
 pub mod vulkan_callback {
     use log::{debug, error, warn};
@@ -439,5 +488,65 @@ pub mod vulkan_callback {
         } else {
             debug!("Vulkan [{}] (SEVERITY-UNKONWN):\n{}", ty, msg.description);
         };
+    }
+}
+
+// ~~~ Errors ~~~
+
+/// Errors encountered when preparing shader
+#[derive(Debug)]
+pub enum CreateShaderError {
+    /// Shader SPIR-V read failed. The string should contain the shader file path.
+    IOError { e: std::io::Error, path: String },
+    /// Shader module creation failed. The string should contain the shader file path.
+    ShaderCreationError {
+        e: ShaderCreationError,
+        path: String,
+    },
+    /// Shader is missing entry point `main`. String should contain shader path
+    MissingEntryPoint(String),
+}
+impl fmt::Display for CreateShaderError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::IOError { e, path } => write!(f, "failed to read shader file {}: {}", path, e),
+            Self::ShaderCreationError { e, path } => {
+                write!(f, "failed to create shader module from {}: {}", path, e)
+            }
+            Self::MissingEntryPoint(path) => {
+                write!(
+                    f,
+                    "shader {} is missing entry point `{}`",
+                    path, SHADER_ENTRY_POINT
+                )
+            }
+        }
+    }
+}
+impl std::error::Error for CreateShaderError {}
+
+/// Errors encountered when creating a descriptor set
+#[derive(Debug)]
+pub enum CreateDescriptorSetError {
+    /// Descriptor set index not found in the pipeline layout
+    InvalidDescriptorSetIndex {
+        /// Descriptor set index
+        index: usize,
+        /// A shader where this descriptor set is expected to be found, to assist with debugging
+        shader_path: &'static str,
+    },
+}
+impl std::error::Error for CreateDescriptorSetError {}
+impl fmt::Display for CreateDescriptorSetError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Self::InvalidDescriptorSetIndex { index, shader_path } => {
+                write!(
+                    f,
+                    "descriptor set index {} not found in pipeline layout. possibly relavent shader {}",
+                    index, shader_path
+                )
+            }
+        }
     }
 }

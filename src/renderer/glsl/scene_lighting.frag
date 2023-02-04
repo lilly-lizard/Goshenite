@@ -11,10 +11,9 @@ layout (location = 0) in vec2 in_uv;
 // output color to swapchain image
 layout (location = 0) out vec4 out_color;
 
-// push constant with camera data
-layout (push_constant) uniform Camera {
+layout (set = 1, binding = 0) uniform Camera {
 	mat4 proj_view_inverse;
-	vec4 position;
+	vec4 _position;
 } cam;
 
 /// Returns a sky color for a ray miss

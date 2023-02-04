@@ -1,6 +1,9 @@
 use super::primitive::Primitive;
-use crate::renderer::shader_interfaces::object_buffer::{
-    primitive_codes, PrimitiveDataSlice, PRIMITIVE_UNIT_LEN,
+use crate::{
+    engine::aabb::Aabb,
+    renderer::shader_interfaces::primitive_op_buffer::{
+        primitive_codes, PrimitiveDataSlice, PRIMITIVE_UNIT_LEN,
+    },
 };
 use glam::Vec3;
 use std::{cell::RefCell, rc::Rc};
@@ -23,6 +26,10 @@ impl Primitive for NullPrimitive {
 
     fn type_name(&self) -> &'static str {
         "Null-Primitive"
+    }
+
+    fn aabb(&self) -> Aabb {
+        Aabb::new_zero()
     }
 }
 

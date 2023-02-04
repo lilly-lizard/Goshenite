@@ -14,7 +14,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 		1. gui
 			- object list - DONE
 			- edit primitives - DONE
-			- add/remove objects/primitives
+			- add/remove objects/primitives - DONE
 		2. overlay pass
 2. organise shaders directory structure and content
 	- would be nice to structure as per how I conceptualize the code i.e. - DONE
@@ -22,13 +22,12 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 		2. backend -> optimized. rendering code
 		3. engine -> abstraction. connecting glue between user interface and backend
 	- clearly defined design goals for each section of the code
-	- could try minimizing the coupling between backend and ui
 3. raster bounding boxes (hard-coded AABB for now)
 
 # todo
 
-- replace UniqueId type aliases with structs or enums to have explicit conversions and rules
-- can we do without Rc<RefCell<>>?
+- switch from vulkano to ash
+- frame time display
 - checks in object_collection to make sure that you don't have the same primitive ids across multiple primitive ops. put primitive_references inside object_collection?
 - init renderer test
 - smooth union op (curved combination)
@@ -36,8 +35,14 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - surface noise modifiers
 - render outline on selected object
 - output render png (write tests using this?)
+- can we do without Rc<RefCell<>>?
 - save model as file
 - curl noise field
+- scroll zoom proportional to distance (try scrolling on trackpad) and don't want to scroll out other side
+- anti-aliased ui
+- replace UniqueId type aliases with structs or enums to have explicit conversions and rules
+- object bounding box viewer
+- custom bounding boxes
 
 ## cleanup
 
@@ -62,6 +67,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - FastMemoryAllocator for frequent (per frame) memory allocations (see StandardMemoryAllocator description)
 - gui performance hit when list becomes too big (https://github.com/emilk/egui#cpu-usage) try only laying out part of list in view
 - GuiRenderer::create_texture -> create_textures batch texture creation
+- double buffering
 
 ## low priority
 
@@ -88,6 +94,10 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - see egui_demo_app for ideas
 - button for light/dark theme
+
+## commands
+
+- flip to other side of focused object
 
 # Code Guidelines
 
@@ -116,6 +126,7 @@ possibilities:
 ## ideas
 
 - defer shading to raster pass? render to g-buffer, including shadow info (e.g. bitmap of light sources for primitive?)
+- file storage (and memory arragement too?) https://github.com/quelsolaar/HxA
 
 # Resources
 

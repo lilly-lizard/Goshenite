@@ -1,5 +1,6 @@
 use crate::{
-    helper::unique_id_gen::UniqueId, renderer::shader_interfaces::object_buffer::PrimitiveDataSlice,
+    engine::aabb::Aabb, helper::unique_id_gen::UniqueId,
+    renderer::shader_interfaces::primitive_op_buffer::PrimitiveDataSlice,
 };
 use glam::Vec3;
 use std::{cell::RefCell, rc::Rc};
@@ -28,6 +29,8 @@ pub trait Primitive {
     fn center(&self) -> Vec3;
     /// Returns the primitive type as a str
     fn type_name(&self) -> &'static str;
+    /// Axis aligned bounding box
+    fn aabb(&self) -> Aabb;
 }
 
 pub fn default_center() -> Vec3 {

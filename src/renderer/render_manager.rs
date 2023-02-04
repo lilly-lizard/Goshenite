@@ -1,12 +1,17 @@
 use super::{
-    geometry_pass::GeometryPass, gui_renderer::GuiRenderer, lighting_pass::LightingPass,
-    shader_interfaces::push_constants::CameraPushConstants, vulkan_helper::*,
+    config_renderer::{
+        ENABLE_VULKAN_VALIDATION, FRAMES_IN_FLIGHT, G_BUFFER_FORMAT_NORMAL,
+        G_BUFFER_FORMAT_PRIMITIVE_ID,
+    },
+    geometry_pass::GeometryPass,
+    gui_renderer::GuiRenderer,
+    lighting_pass::LightingPass,
+    shader_interfaces::uniform_buffers::CameraUniformBuffer,
+    vulkan_helper::*,
 };
 use crate::{
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
-    renderer::renderer_config::{
-        ENABLE_VULKAN_VALIDATION, G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID,
-    },
+    renderer::shader_interfaces::primitive_op_buffer::primitive_codes,
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::{anyhow, Context};
@@ -67,6 +72,11 @@ pub struct RenderManager {
     lighting_pass: LightingPass,
     //overlay_pass: OverlayPass,
     gui_pass: GuiRenderer,
+
+    /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
+    /// without conflicting with commands currently being processed. This variable indicates
+    /// which index to will be next submitted to the GPU.
+    next_frame: usize,
     /// Can be used to synchronize commands with the submission for the previous frame
     future_previous_frame: Option<Box<dyn GpuFuture>>,
     /// Indicates that the swapchain needs to be recreated next frame
@@ -291,12 +301,13 @@ impl RenderManager {
         let mut clear_values: [Option<ClearValue>; 3] = Default::default();
         clear_values[render_pass_indices::ATTACHMENT_SWAPCHAIN] = Some([0.0, 0.0, 0.0, 1.0].into());
         clear_values[render_pass_indices::ATTACHMENT_NORMAL] = Some([0.0; 4].into());
-        clear_values[render_pass_indices::ATTACHMENT_PRIMITIVE_ID] = Some([0u32; 4].into());
+        clear_values[render_pass_indices::ATTACHMENT_PRIMITIVE_ID] =
+            Some([primitive_codes::INVALID; 4].into());
 
         // init lighting pass
         let lighting_pass = LightingPass::new(
             device.clone(),
-            &descriptor_allocator,
+            descriptor_allocator.clone(),
             g_buffer_normal.clone(),
             g_buffer_primitive_id.clone(),
             subpass_swapchain.clone(),
@@ -307,8 +318,8 @@ impl RenderManager {
             device.clone(),
             memory_allocator.clone(),
             descriptor_allocator.clone(),
-            subpass_gbuffer,
             object_collection,
+            subpass_gbuffer,
         )?;
 
         // init overlay pass
@@ -326,7 +337,7 @@ impl RenderManager {
         // create futures used for frame synchronization
         let future_previous_frame = Some(sync::now(device.clone()).boxed());
 
-        Ok(RenderManager {
+        Ok(Self {
             device,
             render_queue,
             _transfer_queue: transfer_queue,
@@ -353,6 +364,8 @@ impl RenderManager {
             lighting_pass,
             //overlay_pass,
             gui_pass,
+
+            next_frame: 0,
             future_previous_frame,
             recreate_swapchain: false,
         })
@@ -394,6 +407,11 @@ impl RenderManager {
         gui: &mut Gui,
         camera: &mut Camera,
     ) -> anyhow::Result<()> {
+        let camera_buffer = create_camera_buffer(
+            &self.memory_allocator,
+            CameraUniformBuffer::from_camera(camera, self.viewport.dimensions),
+        )?;
+
         self.wait_and_unlock_previous_frame();
 
         self.recreate_swapchain = self.recreate_swapchain || window_resize;
@@ -424,16 +442,6 @@ impl RenderManager {
             self.recreate_swapchain = true;
         }
 
-        // todo shouldn't need to recreate each frame?
-        //self.geometry_pass
-        //    .update_buffers(&self.descriptor_allocator)?;
-
-        // camera data used in geometry and lighting passes
-        let camera_push_constants = CameraPushConstants::new(
-            glam::DMat4::inverse(&(camera.proj_matrix() * camera.view_matrix())).as_mat4(),
-            camera.position().as_vec3(),
-        );
-
         // record command buffer
         let mut builder = command_buffer::AutoCommandBufferBuilder::primary(
             &self.command_buffer_allocator,
@@ -458,8 +466,8 @@ impl RenderManager {
         // geometry ray-marching pass (outputs to g-buffer)
         self.geometry_pass.record_commands(
             &mut builder,
-            camera_push_constants,
             self.viewport.clone(),
+            camera_buffer.clone(),
         )?;
 
         builder
@@ -469,8 +477,8 @@ impl RenderManager {
         // execute deferred lighting pass (reads from g-buffer)
         self.lighting_pass.record_commands(
             &mut builder,
-            camera_push_constants,
             self.viewport.clone(),
+            camera_buffer.clone(),
         )?;
 
         // draw editor overlay
@@ -521,6 +529,8 @@ impl RenderManager {
                 self.future_previous_frame = Some(sync::now(self.device.clone()).boxed());
             }
         }
+
+        self.next_frame = (self.next_frame + 1) % FRAMES_IN_FLIGHT;
         Ok(())
     }
 }

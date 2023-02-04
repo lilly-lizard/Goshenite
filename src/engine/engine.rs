@@ -99,7 +99,7 @@ impl Engine {
         );
         another_object
             .borrow_mut()
-            .push_op(Operation::NOP, new_primitive_ref(NullPrimitive {}));
+            .push_op(Operation::Union, new_primitive_ref(NullPrimitive {}));
 
         // TESTING OBJECTS END
 
@@ -221,7 +221,7 @@ impl Engine {
             &self.object_collection,
             self.gui.get_and_clear_objects_delta(),
         ) {
-            anyhow_panic(&e, "updating object buffers");
+            anyhow_panic(&e, "update object buffers");
         }
 
         // update gui renderer
@@ -229,7 +229,7 @@ impl Engine {
             .renderer
             .update_gui_textures(self.gui.get_and_clear_textures_delta())
         {
-            anyhow_panic(&e, "updating gui textures");
+            anyhow_panic(&e, "update gui textures");
         }
 
         // now that frame processing is done, submit rendering commands

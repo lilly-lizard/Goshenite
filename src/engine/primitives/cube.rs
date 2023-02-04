@@ -2,7 +2,10 @@ use super::{
     primitive::{Primitive, PrimitiveId},
     primitive_ref_types::primitive_names,
 };
-use crate::renderer::shader_interfaces::object_buffer::{primitive_codes, PrimitiveDataSlice};
+use crate::{
+    engine::aabb::Aabb,
+    renderer::shader_interfaces::primitive_op_buffer::{primitive_codes, PrimitiveDataSlice},
+};
 use glam::Vec3;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,6 +29,7 @@ impl Primitive for Cube {
     fn id(&self) -> PrimitiveId {
         self.id
     }
+
     fn encode(&self, parent_origin: Vec3) -> PrimitiveDataSlice {
         let world_center = self.center + parent_origin;
         [
@@ -38,10 +42,16 @@ impl Primitive for Cube {
             self.dimensions.z.to_bits(),
         ]
     }
+
     fn center(&self) -> Vec3 {
         self.center
     }
+
     fn type_name(&self) -> &'static str {
         primitive_names::CUBE
+    }
+
+    fn aabb(&self) -> Aabb {
+        Aabb::new(self.center, self.dimensions)
     }
 }

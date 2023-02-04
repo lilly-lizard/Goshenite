@@ -1,7 +1,7 @@
 /// UI layout sub-functions
 use super::{
+    config_ui,
     gui_state::{GuiState, DRAG_INC},
-    ui_config,
 };
 use crate::{
     config,
@@ -273,7 +273,7 @@ fn new_primitive_op_editor(
         let p_op_id = selected_object.push_op(gui_state.op_field(), new_primitive);
         objects_delta.update.insert(object_id);
 
-        if ui_config::SELECT_PRIMITIVE_OP_AFTER_ADD {
+        if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
             gui_state.set_selected_primitive_op_id(p_op_id);
         }
     }
