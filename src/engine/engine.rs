@@ -99,7 +99,7 @@ impl Engine {
         );
         another_object
             .borrow_mut()
-            .push_op(Operation::NOP, new_primitive_ref(NullPrimitive {}));
+            .push_op(Operation::Union, new_primitive_ref(NullPrimitive {}));
 
         // TESTING OBJECTS END
 

@@ -16,7 +16,7 @@ layout (location = 0) in flat uint in_object_index;
 layout (location = 1) in flat uint in_object_id;
 
 layout (location = 0) out vec4 out_normal;
-layout (location = 1) out uint out_object_id; // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side
+layout (location = 1) out uint out_object_id; // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side??
 
 layout (set = 0, binding = 0) uniform Camera {
 	mat4 proj_view_inverse;
@@ -116,14 +116,14 @@ SdfResult op_subtraction(SdfResult p1, SdfResult p2)
 
 SdfResult process_op(uint op, SdfResult p1_res, SdfResult p2_res)
 {
-	SdfResult res = { MAX_DIST, ID_INVALID };
-
+	SdfResult res;
+	
 	switch(op)
 	{
 	case OP_UNION: 			res = op_union(p1_res, p2_res); break;
 	case OP_INTERSECTION: 	res = op_intersection(p1_res, p2_res); break;
 	case OP_SUBTRACTION: 	res = op_subtraction(p1_res, p2_res); break;
-	// else do nothing e.g. OP_NULL
+	default:				res = p1_res; // else do nothing e.g. OP_NULL
 	}
 
 	return res;
