@@ -1,4 +1,3 @@
-/// UI layout sub-functions
 use super::{
     config_ui,
     gui_state::{GuiState, DRAG_INC},
@@ -24,6 +23,48 @@ use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::rc::Rc;
+
+pub fn object_editor(
+    ui: &mut egui::Ui,
+    gui_state: &mut GuiState,
+    objects_delta: &mut ObjectsDelta,
+    primitive_references: &mut PrimitiveReferences,
+) {
+    let no_object_text = RichText::new("No Object Selected...").italics();
+    let selected_object_weak = match gui_state.selected_object() {
+        Some(o) => o.clone(),
+        None => {
+            ui.label(no_object_text);
+            return;
+        }
+    };
+    let selected_object_ref = match selected_object_weak.upgrade() {
+        Some(o) => o,
+        None => {
+            debug!("selected object dropped. deselecting object...");
+            gui_state.deselect_object();
+            ui.label(no_object_text);
+            return;
+        }
+    };
+    ui.horizontal(|ui| {
+        ui.label("Name:");
+        ui.text_edit_singleline(selected_object_ref.borrow_mut().name_mut());
+    });
+    primitive_op_editor(
+        ui,
+        gui_state,
+        objects_delta,
+        &mut selected_object_ref.borrow_mut(),
+        primitive_references,
+    );
+    primitive_op_list(
+        ui,
+        gui_state,
+        objects_delta,
+        &mut selected_object_ref.borrow_mut(),
+    );
+}
 
 pub fn object_list(
     ui: &mut egui::Ui,

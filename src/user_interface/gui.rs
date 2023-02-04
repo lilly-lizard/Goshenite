@@ -1,15 +1,13 @@
 use super::{
     gui_state::GuiState,
-    object_editor::{object_list, primitive_op_editor, primitive_op_list},
+    layouts_object_editor::{object_editor, object_list},
     theme::Theme,
 };
 use crate::engine::{
     object::{object::ObjectRef, object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     primitives::primitive_references::PrimitiveReferences,
 };
-use egui::{
-    Button, Context, FontFamily::Proportional, FontId, RichText, TextStyle, TexturesDelta, Visuals,
-};
+use egui::{Button, Context, FontFamily::Proportional, FontId, TextStyle, TexturesDelta, Visuals};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -166,40 +164,11 @@ impl Gui {
     fn object_editor_window(&mut self, primitive_references: &mut PrimitiveReferences) {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
-            let no_object_text = RichText::new("No Object Selected...").italics();
-            let selected_object_weak = match self.state.selected_object() {
-                Some(o) => o.clone(),
-                None => {
-                    ui.label(no_object_text);
-                    return;
-                }
-            };
-            let selected_object_ref = match selected_object_weak.upgrade() {
-                Some(o) => o,
-                None => {
-                    debug!("selected object dropped. deselecting object...");
-                    self.state.deselect_object();
-                    ui.label(no_object_text);
-                    return;
-                }
-            };
-
-            ui.horizontal(|ui| {
-                ui.label("Name:");
-                ui.text_edit_singleline(selected_object_ref.borrow_mut().name_mut());
-            });
-            primitive_op_editor(
+            object_editor(
                 ui,
                 &mut self.state,
                 &mut self.objects_delta,
-                &mut selected_object_ref.borrow_mut(),
                 primitive_references,
-            );
-            primitive_op_list(
-                ui,
-                &mut self.state,
-                &mut self.objects_delta,
-                &mut selected_object_ref.borrow_mut(),
             );
         };
 
