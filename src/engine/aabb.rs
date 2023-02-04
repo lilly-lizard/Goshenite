@@ -64,6 +64,19 @@ impl Aabb {
         self.xn_yp_zn = outer_point(self.xn_yp_zn, aabb.xn_yp_zn, Vec3::new(-1., 1., -1.));
     }
 
+    pub fn offset(&mut self, offset: Vec3) {
+        self.xp_yp_zp += offset;
+        self.xn_yn_zn += offset;
+
+        self.xn_yp_zp += offset;
+        self.xp_yn_zp += offset;
+        self.xp_yp_zn += offset;
+
+        self.xn_yn_zp += offset;
+        self.xp_yn_zn += offset;
+        self.xn_yp_zn += offset;
+    }
+
     pub fn vertices(&self, object_id: ObjectId) -> [BoundingBoxVertex; AABB_VERTEX_COUNT] {
         [
             // positive x face 1

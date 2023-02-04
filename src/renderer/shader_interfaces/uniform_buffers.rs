@@ -9,19 +9,23 @@ pub struct CameraUniformBuffer {
     pub proj_view_inverse: [f32; 16],
     /// Camera position in world space (w component unused)
     pub position: [f32; 4],
+    /// Framebuffer dimensions
+    pub framebuffer_dims: [f32; 2],
 }
 impl CameraUniformBuffer {
-    pub fn new(proj_view_inverse: Mat4, position: Vec3) -> Self {
+    pub fn new(proj_view_inverse: Mat4, position: Vec3, framebuffer_dimensions: [f32; 2]) -> Self {
         Self {
             proj_view_inverse: proj_view_inverse.to_cols_array(),
             position: [position.x, position.y, position.z, 0.0],
+            framebuffer_dims: framebuffer_dimensions,
         }
     }
 
-    pub fn from_camera(camera: &mut Camera) -> Self {
+    pub fn from_camera(camera: &mut Camera, framebuffer_dimensions: [f32; 2]) -> Self {
         Self::new(
             glam::DMat4::inverse(&(camera.proj_matrix() * camera.view_matrix())).as_mat4(),
             camera.position().as_vec3(),
+            framebuffer_dimensions,
         )
     }
 }

@@ -136,6 +136,7 @@ impl Object {
         for primitive_op in &self.primitive_ops {
             aabb.union(primitive_op.prim.borrow().aabb());
         }
+        aabb.offset(self.origin);
         aabb
     }
 }

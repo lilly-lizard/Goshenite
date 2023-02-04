@@ -26,6 +26,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- switch from vulkano to ash
 - frame time display
 - checks in object_collection to make sure that you don't have the same primitive ids across multiple primitive ops. put primitive_references inside object_collection?
 - init renderer test
@@ -40,6 +41,8 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - scroll zoom proportional to distance (try scrolling on trackpad) and don't want to scroll out other side
 - anti-aliased ui
 - replace UniqueId type aliases with structs or enums to have explicit conversions and rules
+- object bounding box viewer
+- custom bounding boxes
 
 ## cleanup
 

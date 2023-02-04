@@ -11,6 +11,7 @@ use super::{
 };
 use crate::{
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
+    renderer::shader_interfaces::primitive_op_buffer::primitive_codes,
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::{anyhow, Context};
@@ -300,7 +301,8 @@ impl RenderManager {
         let mut clear_values: [Option<ClearValue>; 3] = Default::default();
         clear_values[render_pass_indices::ATTACHMENT_SWAPCHAIN] = Some([0.0, 0.0, 0.0, 1.0].into());
         clear_values[render_pass_indices::ATTACHMENT_NORMAL] = Some([0.0; 4].into());
-        clear_values[render_pass_indices::ATTACHMENT_PRIMITIVE_ID] = Some([0u32; 4].into());
+        clear_values[render_pass_indices::ATTACHMENT_PRIMITIVE_ID] =
+            Some([primitive_codes::INVALID; 4].into());
 
         // init lighting pass
         let lighting_pass = LightingPass::new(
@@ -407,7 +409,7 @@ impl RenderManager {
     ) -> anyhow::Result<()> {
         let camera_buffer = create_camera_buffer(
             &self.memory_allocator,
-            CameraUniformBuffer::from_camera(camera),
+            CameraUniformBuffer::from_camera(camera, self.viewport.dimensions),
         )?;
 
         self.wait_and_unlock_previous_frame();

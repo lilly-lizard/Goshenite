@@ -1,5 +1,5 @@
 use super::{
-    config_renderer::{FRAMES_IN_FLIGHT, SHADER_ENTRY_POINT},
+    config_renderer::SHADER_ENTRY_POINT,
     shader_interfaces::{
         primitive_op_buffer::{PrimitiveOpBufferUnit, PRIMITIVE_OP_UNIT_LEN},
         push_constants::ObjectIndexPushConstant,
@@ -45,7 +45,7 @@ use vulkano::{
         GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
     },
     render_pass::Subpass,
-    shader::EntryPoint,
+    shader::{DescriptorRequirements, EntryPoint},
     DeviceSize,
 };
 
@@ -78,6 +78,7 @@ struct ObjectBuffers {
 
     ids: Vec<ObjectId>,
     bounding_boxes: Vec<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>>,
+    bounding_box_vertex_counts: Vec<u32>,
     primitive_ops: Vec<Arc<CpuBufferPoolChunk<PrimitiveOpBufferUnit>>>,
 }
 
@@ -91,13 +92,13 @@ impl ObjectBuffers {
             primitive_op_buffer_pool,
             ids: Vec::new(),
             bounding_boxes: Vec::new(),
+            bounding_box_vertex_counts: Vec::new(),
             primitive_ops: Vec::new(),
         })
     }
 
     pub fn update_or_push(&mut self, object: &Object) -> anyhow::Result<()> {
-        debug_assert!(self.ids.len() == self.primitive_ops.len());
-        debug_assert!(self.ids.len() == self.bounding_boxes.len());
+        self.debug_assert_per_object_resource_count();
 
         let id = object.id();
 
@@ -108,6 +109,7 @@ impl ObjectBuffers {
             let bounding_box_buffer = upload_bounding_box(&self.bounding_box_buffer_pool, object)?;
 
             self.bounding_boxes[index] = bounding_box_buffer;
+            self.bounding_box_vertex_counts[index] = AABB_VERTEX_COUNT as u32;
             self.primitive_ops[index] = primitive_ops_buffer;
 
             Ok(())
@@ -116,18 +118,43 @@ impl ObjectBuffers {
 
             self.ids.push(id);
             self.bounding_boxes.push(bounding_box_buffer);
+            self.bounding_box_vertex_counts
+                .push(AABB_VERTEX_COUNT as u32);
             self.primitive_ops.push(primitive_ops_buffer);
 
             Ok(())
         }
     }
 
+    pub fn draw_commands<L>(
+        &self,
+        command_buffer: &mut AutoCommandBufferBuilder<L>,
+        pipeline: Arc<GraphicsPipeline>,
+    ) -> anyhow::Result<()> {
+        self.debug_assert_per_object_resource_count();
+
+        // for each object
+        for index in 0..self.ids.len() {
+            let object_index_push_constant = ObjectIndexPushConstant::new(index as u32);
+            command_buffer
+                .push_constants(pipeline.layout().clone(), 0, object_index_push_constant)
+                .bind_vertex_buffers(0, self.bounding_boxes[index].clone())
+                .draw(self.bounding_box_vertex_counts[index], 1, 0, 0)
+                .context("recording geometry pass commands")?;
+        }
+
+        Ok(())
+    }
+
     /// Returns the vec index if the id was found and removed.
     pub fn remove(&mut self, id: ObjectId) -> Option<usize> {
-        debug_assert!(self.ids.len() == self.primitive_ops.len());
+        self.debug_assert_per_object_resource_count();
+
         let index_res = self.get_index(id);
         if let Some(index) = index_res {
             self.ids.remove(index);
+            self.bounding_boxes.remove(index);
+            self.bounding_box_vertex_counts.remove(index);
             self.primitive_ops.remove(index);
         }
         index_res
@@ -143,6 +170,13 @@ impl ObjectBuffers {
 
     pub fn bounding_box_buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>> {
         &self.bounding_boxes
+    }
+
+    #[inline]
+    fn debug_assert_per_object_resource_count(&self) {
+        debug_assert!(self.ids.len() == self.primitive_ops.len());
+        debug_assert!(self.ids.len() == self.bounding_boxes.len());
+        debug_assert!(self.ids.len() == self.bounding_box_vertex_counts.len());
     }
 }
 
@@ -191,9 +225,6 @@ impl GeometryPass {
         viewport: Viewport,
         camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
     ) -> anyhow::Result<()> {
-        // todo hardcoded!
-        let object_index_push_constant = ObjectIndexPushConstant::new(0);
-
         let desc_set_camera = create_desc_set_camera(
             &self.descriptor_allocator,
             self.pipeline.clone(),
@@ -210,15 +241,9 @@ impl GeometryPass {
                 self.pipeline.layout().clone(),
                 0,
                 desc_sets,
-            )
-            .push_constants(
-                self.pipeline.layout().clone(),
-                0,
-                object_index_push_constant,
-            )
-            .bind_vertex_buffers(0, self.object_buffers.bounding_box_buffers()[0].clone())
-            .draw(3, 1, 0, 0)
-            .context("recording geometry pass commands")?;
+            );
+        self.object_buffers
+            .draw_commands(command_buffer, self.pipeline.clone())?;
 
         Ok(())
     }
@@ -363,7 +388,6 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
                 .front_face(FrontFace::CounterClockwise),
         )
         .fragment_shader(frag_shader, ())
-        // todo .color_blend_state(ColorBlendState::new(1))
         .render_pass(subpass)
         .with_pipeline_layout(device.clone(), pipeline_layout)
         .context("creating geometry pass pipeline")?)
@@ -374,9 +398,23 @@ fn create_pipeline_layout(
     vert_entry: &EntryPoint,
     frag_entry: &EntryPoint,
 ) -> anyhow::Result<Arc<PipelineLayout>> {
-    let desc_requirements = vert_entry
+    // yeah it's gross. will be moving to ash at some point anyway...
+    let desc_requirements = frag_entry
         .descriptor_requirements()
-        .chain(frag_entry.descriptor_requirements());
+        .map(|((set_f, binding_f), reqs_f)| {
+            let mut ret = ((set_f, binding_f), reqs_f.clone());
+            for ((set_v, binding_v), reqs_v) in vert_entry.descriptor_requirements() {
+                if set_v == set_f && binding_v == binding_f {
+                    if let Ok(reqs_vf) = reqs_v.intersection(reqs_f) {
+                        ret = ((set_f, binding_f), reqs_vf);
+                        break;
+                    }
+                }
+            }
+            ret
+        })
+        .collect::<Vec<((u32, u32), DescriptorRequirements)>>();
+    let desc_requirements = desc_requirements.iter().map(|(k, v)| (*k, v));
 
     let mut layout_create_infos =
         DescriptorSetLayoutCreateInfo::from_requirements(desc_requirements);
