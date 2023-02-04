@@ -30,11 +30,11 @@ subpass ┆ subpass       ┆
 	- vert shader - full screen quad
 	- frag shader - shading
 	- reads input attachment g-buffers
-3. __O__ - Overlay pass - misc ui elements e.g. coordinates
+3. __O__ - Overlay pass - rendered ui elements e.g. coordinate indicators
 4. __E__ - Egui pass - egui menus
 
 Subpass outputs:
 1. Subpass 0 - g-buffers:
-	- rgba8 [normal.xyz, 0]
-	- u32 [primitive-id]
+	- rgba8 - normal.xyz, 0
+	- u32 - object-id, primitive-id
 2. Subpass 1 - swapchain image
