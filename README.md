@@ -24,7 +24,7 @@ subpass ┆ subpass       ┆
 ```
 
 1. __G__ - Geometry pass
-	- vert shader - full screen quad
+	- vert shader - bounding boxes
 	- frag shader - signed distance field ray marching
 2. __L__ - Lighting pass
 	- vert shader - full screen quad
