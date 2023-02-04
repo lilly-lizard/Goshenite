@@ -67,7 +67,7 @@ impl Engine {
             _ => None,
         };
         let scale_factor = scale_factor_override.unwrap_or(window.scale_factor());
-        let cursor_state = Cursor::new(window.clone());
+        let cursor_state = Cursor::new();
 
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
@@ -206,6 +206,9 @@ impl Engine {
         self.cursor_state.process_frame();
 
         // process gui inputs and update layout
+        if let Some(cursor_icon) = self.cursor_state.get_cursor_icon() {
+            self.gui.set_cursor_icon(cursor_icon);
+        }
         if let Err(e) = self
             .gui
             .update_gui(&self.object_collection, &mut self.primitive_references)

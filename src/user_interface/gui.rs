@@ -123,6 +123,10 @@ impl Gui {
         Ok(())
     }
 
+    pub fn set_cursor_icon(&self, cursor_icon: egui::CursorIcon) {
+        self.context.output().cursor_icon = cursor_icon;
+    }
+
     /// Returns texture update info accumulated since the last call to this function.
     pub fn get_and_clear_textures_delta(&mut self) -> Vec<TexturesDelta> {
         std::mem::take(&mut self.textures_delta)
