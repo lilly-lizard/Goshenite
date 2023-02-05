@@ -24,10 +24,9 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - add/remove objects
 - comand palette and keyboard shortcuts
 - undo (egui::undoer)
-- Bang Wong color palette
+- serde save gui state (start with theme)
 - see egui_demo_app for ideas
-- button for light/dark theme
-- serde save gui state
+- Bang Wong color palette
 
 ## bugz
 
@@ -38,6 +37,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## optimize
 
+- log depth function
 - user_interface stuff in its own thread e.g. wait cursor
 - decrease MIN_DIST as distance progresses (need less resolution)
 - FastMemoryAllocator for frequent (per frame) memory allocations (see StandardMemoryAllocator description)

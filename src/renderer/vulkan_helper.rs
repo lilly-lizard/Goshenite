@@ -1,7 +1,10 @@
 use super::{
-    config_renderer::SHADER_ENTRY_POINT, shader_interfaces::uniform_buffers::CameraUniformBuffer,
+    config_renderer::{
+        FORMAT_DEPTH_BUFFER, FORMAT_G_BUFFER_NORMAL, FORMAT_G_BUFFER_PRIMITIVE_ID,
+        SHADER_ENTRY_POINT,
+    },
+    shader_interfaces::uniform_buffers::CameraUniformBuffer,
 };
-use crate::renderer::config_renderer::{G_BUFFER_FORMAT_NORMAL, G_BUFFER_FORMAT_PRIMITIVE_ID};
 use anyhow::{bail, ensure, Context};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -13,7 +16,7 @@ use vulkano::{
         physical::{PhysicalDevice, PhysicalDeviceType},
         Device, DeviceExtensions,
     },
-    format::{Format, NumericType},
+    format::NumericType,
     image::{
         view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract, SampleCount,
         SwapchainImage,
@@ -23,7 +26,7 @@ use vulkano::{
         DebugUtilsMessengerCreateInfo,
     },
     instance::{Instance, InstanceExtensions},
-    memory::allocator::{MemoryAllocator, StandardMemoryAllocator},
+    memory::allocator::StandardMemoryAllocator,
     render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
     shader::{ShaderCreationError, ShaderModule},
     swapchain::{self, Surface, Swapchain},
@@ -56,6 +59,10 @@ pub mod render_pass_indices {
     pub const ATTACHMENT_SWAPCHAIN: usize = 0;
     pub const ATTACHMENT_NORMAL: usize = 1;
     pub const ATTACHMENT_PRIMITIVE_ID: usize = 2;
+    pub const ATTACHMENT_DEPTH_BUFFER: usize = 3;
+    /// Number of attachments
+    pub const ATTACHMENT_COUNT: usize = 4;
+
     pub const SUBPASS_GBUFFER: usize = 0;
     pub const SUBPASS_SWAPCHAIN: usize = 1;
 }
@@ -298,29 +305,6 @@ pub fn is_srgb_framebuffer(swapchain_image: Arc<SwapchainImage>) -> bool {
         == NumericType::SRGB
 }
 
-/// Creates the render target for the scene render. _Note that the value of `access_queue` isn't actually used
-/// in the vulkan image creation create info._
-pub fn create_g_buffer(
-    memory_allocator: &impl MemoryAllocator,
-    size: [u32; 2],
-    format: Format,
-) -> anyhow::Result<Arc<ImageView<AttachmentImage>>> {
-    ImageView::new_default(
-        AttachmentImage::with_usage(
-            memory_allocator,
-            size,
-            format,
-            ImageUsage {
-                transient_attachment: true,
-                input_attachment: true,
-                ..ImageUsage::empty()
-            },
-        )
-        .context("creating g-buffer")?,
-    )
-    .context("creating g-buffer image view")
-}
-
 pub fn create_camera_buffer(
     memory_allocator: &StandardMemoryAllocator,
     camera_data: CameraUniformBuffer,
@@ -353,6 +337,7 @@ pub fn create_render_pass(
     debug_assert!(render_pass_indices::ATTACHMENT_SWAPCHAIN == 0, "{}", msg);
     debug_assert!(render_pass_indices::ATTACHMENT_NORMAL == 1, "{}", msg);
     debug_assert!(render_pass_indices::ATTACHMENT_PRIMITIVE_ID == 2, "{}", msg);
+    debug_assert!(render_pass_indices::ATTACHMENT_DEPTH_BUFFER == 3, "{}", msg);
     debug_assert!(render_pass_indices::SUBPASS_GBUFFER == 0, "{}", msg);
     debug_assert!(render_pass_indices::SUBPASS_SWAPCHAIN == 1, "{}", msg);
 
@@ -370,14 +355,21 @@ pub fn create_render_pass(
             g_buffer_normal: {
                 load: Clear,
                 store: DontCare,
-                format: G_BUFFER_FORMAT_NORMAL,
+                format: FORMAT_G_BUFFER_NORMAL,
                 samples: sample_count,
             },
             // primitive-id g-buffer
             g_buffer_primitive_id: {
                 load: Clear,
+                store: Store,
+                format: FORMAT_G_BUFFER_PRIMITIVE_ID,
+                samples: sample_count,
+            },
+            // depth buffer
+            depth_buffer: {
+                load: Clear,
                 store: DontCare,
-                format: G_BUFFER_FORMAT_PRIMITIVE_ID,
+                format: FORMAT_DEPTH_BUFFER,
                 samples: sample_count,
             }
         },
@@ -385,7 +377,7 @@ pub fn create_render_pass(
             // gbuffer subpass
             {
                 color: [g_buffer_normal, g_buffer_primitive_id],
-                depth_stencil: {},
+                depth_stencil: {depth_buffer},
                 input: []
             },
             // swapchain subpass
@@ -404,6 +396,7 @@ pub fn create_framebuffers(
     swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
     g_buffer_normal: Arc<ImageView<AttachmentImage>>,
     g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
+    depth_buffer: Arc<ImageView<AttachmentImage>>,
 ) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
     // 1 for each swapchain image
     swapchain_image_views
@@ -422,6 +415,10 @@ pub fn create_framebuffers(
                 render_pass_indices::ATTACHMENT_PRIMITIVE_ID,
                 g_buffer_primitive_id.clone(),
             );
+            attachments.insert(
+                render_pass_indices::ATTACHMENT_DEPTH_BUFFER,
+                depth_buffer.clone(),
+            );
             Framebuffer::new(
                 render_pass.clone(),
                 FramebufferCreateInfo {
@@ -429,7 +426,7 @@ pub fn create_framebuffers(
                     ..Default::default()
                 },
             )
-            .context("creating vulkan framebuffer")
+            .context("creating framebuffer")
         })
         .collect::<anyhow::Result<Vec<_>>>()
 }

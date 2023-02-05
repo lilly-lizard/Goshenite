@@ -22,6 +22,8 @@ layout (set = 0, binding = 0) uniform Camera {
 	mat4 proj_view_inverse;
 	vec4 position;
 	vec2 framebuffer_dims;
+	float near;
+	float far;
 } cam;
 
 layout (set = 1, binding = 0, std430) readonly buffer Object {
@@ -41,18 +43,12 @@ struct SdfResult {
 };
 
 // Signed distance function for a sphere
-// * `pos` - pos in space to calculate for
-// * `center` - sphere center
-// * `radius` - sphere radius
 float sdf_sphere(vec3 pos, vec3 center, float radius)
 {
 	return length(pos - center) - radius;
 }
 
 // Signed distance function for a box
-// * `pos` - pos in space to calculate for
-// * `center` - center of the box
-// * `dimensions` - width, length and height of the box
 float sdf_box(vec3 pos, vec3 center, vec3 dimensions)
 {
 	vec3 d = abs(pos - center) - dimensions / 2.;
@@ -164,10 +160,10 @@ vec3 calcNormal(vec3 pos)
 					 e.xxx * map(pos + e.xxx).d);
 }
 
-// Render the scene and return the color
-// * `ray_d` - ray direction
+// Render the scene and return the color. Returns the depth of a hit primitive.
+// When the ray misses, calls discard.
 //https://michaelwalczyk.com/blog-ray-marching.html
-void ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint object_id)
+float ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint object_id)
 {
 	// total distance traveled
 	float dist = 0.;
@@ -181,7 +177,7 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint obj
 		if (closest_primitive.d < MIN_DIST) {
 			normal = calcNormal(current_pos) / 2. + .5;
 			object_id = closest_primitive.op_index | (in_object_id << 16);
-			return;
+			return dist;
 		}
 
 		// incriment the distance travelled by the distance to the closest primitive
@@ -205,8 +201,9 @@ void main()
 	// render scene
 	vec3 normal;
 	uint object_id;
-	ray_march(cam.position.xyz, ray_d_norm, normal, object_id);
+	float depth = ray_march(cam.position.xyz, ray_d_norm, normal, object_id);
 
+	//gl_FragDepth = mix(cam.near, cam.far, depth);
 	out_normal = vec4(normal, 0.);
 	out_object_id = object_id;
 }

@@ -1,4 +1,7 @@
-use super::object::object_collection::ObjectCollection;
+use super::{
+    object::{object_collection::ObjectCollection, operation::Operation},
+    primitives::null_primitive::NullPrimitive,
+};
 use crate::{
     config,
     helper::anyhow_panic::anyhow_unwrap,
@@ -64,10 +67,11 @@ impl Engine {
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
         let mut object_collection = ObjectCollection::new();
-        object_collection.new_empty_object("no bruh".to_string(), Vec3::ZERO);
 
         // TESTING OBJECTS START
-        /*
+
+        //object_collection.new_empty_object("no bruh".to_string(), Vec3::ZERO);
+
         let sphere = object_collection
             .primitive_references_mut()
             .new_sphere(Vec3::new(0., 0., 0.), 0.5);
@@ -78,8 +82,11 @@ impl Engine {
             .primitive_references_mut()
             .new_sphere(Vec3::new(0.2, -0.2, 0.), 0.83);
 
-        let object =
-            object_collection.new_object("Bruh".to_string(), Vec3::new(-1., 1., 0.), cube.clone());
+        let object = object_collection.new_object(
+            "Bruh".to_string(),
+            Vec3::new(-0.2, 0.2, 0.),
+            cube.clone(),
+        );
         object
             .borrow_mut()
             .push_op(Operation::Union, sphere.clone());
@@ -89,13 +96,13 @@ impl Engine {
 
         let another_object = object_collection.new_object(
             "Another Bruh".to_string(),
-            Vec3::new(1., -1., 0.),
+            Vec3::new(0.2, -0.2, 0.),
             sphere.clone(),
         );
         another_object
             .borrow_mut()
-            .push_op(Operation::Union, new_primitive_ref(NullPrimitive {}));
-        */
+            .push_op(Operation::Union, NullPrimitive::new_ref());
+
         // TESTING OBJECTS END
 
         let renderer = anyhow_unwrap(

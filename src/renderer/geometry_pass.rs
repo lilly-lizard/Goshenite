@@ -23,6 +23,8 @@ use vulkano::{
         PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Device,
+    format::Format,
+    image::{view::ImageView, AttachmentImage},
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
@@ -54,9 +56,11 @@ mod descriptor {
 
 /// Render the scene geometry and write to g-buffers
 pub struct GeometryPass {
-    descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
     pipeline: Arc<GraphicsPipeline>,
+
+    descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
     desc_set_primitive_ops: Arc<PersistentDescriptorSet>,
+
     object_buffers: ObjectBuffers,
 }
 
@@ -84,8 +88,8 @@ impl GeometryPass {
         )?;
 
         Ok(Self {
-            descriptor_allocator,
             pipeline,
+            descriptor_allocator,
             desc_set_primitive_ops,
             object_buffers,
         })

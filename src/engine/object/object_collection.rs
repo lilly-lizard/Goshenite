@@ -1,9 +1,6 @@
 use super::object::{new_object_ref, Object, ObjectId, ObjectRef};
 use crate::{
-    engine::primitives::{
-        null_primitive::NullPrimitive, primitive::PrimitiveRef,
-        primitive_references::PrimitiveReferences,
-    },
+    engine::primitives::{primitive::PrimitiveRef, primitive_references::PrimitiveReferences},
     helper::unique_id_gen::UniqueIdGen,
 };
 use glam::Vec3;
@@ -43,7 +40,7 @@ impl ObjectCollection {
             object_id,
             name,
             origin,
-            NullPrimitive::new_ref(),
+            self.primitive_references.null_primitive(),
         ));
         self.objects.insert(object_id, object.clone());
         object

@@ -1,17 +1,18 @@
 use super::{
     config_renderer::{
-        ENABLE_VULKAN_VALIDATION, FRAMES_IN_FLIGHT, G_BUFFER_FORMAT_NORMAL,
-        G_BUFFER_FORMAT_PRIMITIVE_ID,
+        ENABLE_VULKAN_VALIDATION, FORMAT_DEPTH_BUFFER, FORMAT_G_BUFFER_NORMAL, FRAMES_IN_FLIGHT,
     },
     geometry_pass::GeometryPass,
     gui_renderer::GuiRenderer,
     lighting_pass::LightingPass,
-    shader_interfaces::uniform_buffers::CameraUniformBuffer,
-    vulkan_helper::*,
+    shader_interfaces::{
+        primitive_op_buffer::primitive_codes, uniform_buffers::CameraUniformBuffer,
+    },
+    vulkan_helper::{render_pass_indices::ATTACHMENT_COUNT, *},
 };
 use crate::{
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
-    renderer::shader_interfaces::primitive_op_buffer::primitive_codes,
+    renderer::config_renderer::FORMAT_G_BUFFER_PRIMITIVE_ID,
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::{anyhow, Context};
@@ -28,7 +29,9 @@ use vulkano::{
     descriptor_set::allocator::StandardDescriptorSetAllocator,
     device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo},
     format::ClearValue,
-    image::{view::ImageView, AttachmentImage, ImageAccess, SampleCount, SwapchainImage},
+    image::{
+        view::ImageView, AttachmentImage, ImageAccess, ImageUsage, SampleCount, SwapchainImage,
+    },
     instance::debug::DebugUtilsMessenger,
     instance::{Instance, InstanceCreateInfo},
     memory::allocator::StandardMemoryAllocator,
@@ -61,12 +64,14 @@ pub struct RenderManager {
     command_buffer_allocator: StandardCommandBufferAllocator,
     descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
 
-    viewport: Viewport,
+    depth_buffer: Arc<ImageView<AttachmentImage>>,
     g_buffer_normal: Arc<ImageView<AttachmentImage>>,
     g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
+
+    viewport: Viewport,
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
-    clear_values: [Option<ClearValue>; 3],
+    clear_values: [Option<ClearValue>; ATTACHMENT_COUNT],
 
     geometry_pass: GeometryPass,
     lighting_pass: LightingPass,
@@ -236,11 +241,12 @@ impl RenderManager {
             .context("creating swapchain image views")?;
 
         // dynamic viewport
+        let framebuffer_dimensions = swapchain_images[0].dimensions().width_height();
         let viewport = Viewport {
             origin: [0.0, 0.0],
             dimensions: [
-                swapchain_images[0].dimensions().width() as f32,
-                swapchain_images[0].dimensions().height() as f32,
+                framebuffer_dimensions[0] as f32,
+                framebuffer_dimensions[1] as f32,
             ],
             depth_range: 0.0..1.0,
         };
@@ -279,17 +285,13 @@ impl RenderManager {
         );
         let descriptor_allocator = Arc::new(StandardDescriptorSetAllocator::new(device.clone()));
 
+        // depth buffer
+        let depth_buffer = create_depth_buffer(&memory_allocator, framebuffer_dimensions)?;
+
         // g-buffers
-        let g_buffer_normal = create_g_buffer(
-            &memory_allocator,
-            swapchain_images[0].dimensions().width_height(),
-            G_BUFFER_FORMAT_NORMAL,
-        )?;
-        let g_buffer_primitive_id = create_g_buffer(
-            &memory_allocator,
-            swapchain_images[0].dimensions().width_height(),
-            G_BUFFER_FORMAT_PRIMITIVE_ID,
-        )?;
+        let g_buffer_normal = create_g_buffer_normals(&memory_allocator, framebuffer_dimensions)?;
+        let g_buffer_primitive_id =
+            create_g_buffer_primitive_ids(&memory_allocator, framebuffer_dimensions)?;
 
         // create framebuffers
         let framebuffers = create_framebuffers(
@@ -297,12 +299,14 @@ impl RenderManager {
             &swapchain_image_views,
             g_buffer_normal.clone(),
             g_buffer_primitive_id.clone(),
+            depth_buffer.clone(),
         )?;
-        let mut clear_values: [Option<ClearValue>; 3] = Default::default();
-        clear_values[render_pass_indices::ATTACHMENT_SWAPCHAIN] = Some([0.0, 0.0, 0.0, 1.0].into());
-        clear_values[render_pass_indices::ATTACHMENT_NORMAL] = Some([0.0; 4].into());
+        let mut clear_values: [Option<ClearValue>; ATTACHMENT_COUNT] = Default::default();
+        clear_values[render_pass_indices::ATTACHMENT_SWAPCHAIN] = Some([0., 0., 0., 1.].into());
+        clear_values[render_pass_indices::ATTACHMENT_NORMAL] = Some([0.; 4].into());
         clear_values[render_pass_indices::ATTACHMENT_PRIMITIVE_ID] =
             Some([primitive_codes::INVALID; 4].into());
+        clear_values[render_pass_indices::ATTACHMENT_DEPTH_BUFFER] = Some(ClearValue::Depth(1.));
 
         // init lighting pass
         let lighting_pass = LightingPass::new(
@@ -353,9 +357,11 @@ impl RenderManager {
             command_buffer_allocator,
             descriptor_allocator,
 
-            viewport,
+            depth_buffer,
             g_buffer_normal,
             g_buffer_primitive_id,
+
+            viewport,
             render_pass,
             framebuffers,
             clear_values,
@@ -572,22 +578,20 @@ impl RenderManager {
         let resolution = swapchain_images[0].dimensions().width_height();
         self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
 
-        self.g_buffer_normal = create_g_buffer(
-            &self.memory_allocator,
-            swapchain_images[0].dimensions().width_height(),
-            G_BUFFER_FORMAT_NORMAL,
-        )?;
-        self.g_buffer_primitive_id = create_g_buffer(
-            &self.memory_allocator,
-            swapchain_images[0].dimensions().width_height(),
-            G_BUFFER_FORMAT_PRIMITIVE_ID,
-        )?;
+        // depth buffer
+        self.depth_buffer = create_depth_buffer(&self.memory_allocator, resolution)?;
+
+        // g-buffers
+        self.g_buffer_normal = create_g_buffer_normals(&self.memory_allocator, resolution)?;
+        self.g_buffer_primitive_id =
+            create_g_buffer_primitive_ids(&self.memory_allocator, resolution)?;
 
         self.framebuffers = create_framebuffers(
             self.render_pass.clone(),
             &self.swapchain_image_views,
             self.g_buffer_normal.clone(),
             self.g_buffer_primitive_id.clone(),
+            self.depth_buffer.clone(),
         )?;
 
         self.lighting_pass.update_g_buffers(
@@ -608,4 +612,55 @@ impl RenderManager {
             future_previous_frame.cleanup_finished();
         }
     }
+}
+
+fn create_depth_buffer(
+    memory_allocator: &StandardMemoryAllocator,
+    dimensions: [u32; 2],
+) -> Result<Arc<ImageView<AttachmentImage>>, anyhow::Error> {
+    ImageView::new_default(
+        AttachmentImage::transient(memory_allocator, dimensions, FORMAT_DEPTH_BUFFER)
+            .context("creating depth buffer image")?,
+    )
+    .context("creating depth buffer image view")
+}
+
+fn create_g_buffer_normals(
+    memory_allocator: &StandardMemoryAllocator,
+    dimensions: [u32; 2],
+) -> Result<Arc<ImageView<AttachmentImage>>, anyhow::Error> {
+    ImageView::new_default(
+        AttachmentImage::with_usage(
+            memory_allocator,
+            dimensions,
+            FORMAT_G_BUFFER_NORMAL,
+            ImageUsage {
+                transient_attachment: true,
+                input_attachment: true,
+                ..ImageUsage::empty()
+            },
+        )
+        .context("creating normal g-buffer image")?,
+    )
+    .context("creating normal g-buffer image view")
+}
+
+fn create_g_buffer_primitive_ids(
+    memory_allocator: &StandardMemoryAllocator,
+    dimensions: [u32; 2],
+) -> Result<Arc<ImageView<AttachmentImage>>, anyhow::Error> {
+    ImageView::new_default(
+        AttachmentImage::with_usage(
+            memory_allocator,
+            dimensions,
+            FORMAT_G_BUFFER_PRIMITIVE_ID,
+            ImageUsage {
+                transient_attachment: false,
+                input_attachment: true,
+                ..ImageUsage::empty()
+            },
+        )
+        .context("creating g-buffer")?,
+    )
+    .context("creating g-buffer image view")
 }

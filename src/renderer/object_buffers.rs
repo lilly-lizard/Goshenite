@@ -27,7 +27,7 @@ const INIT_PRIMITIVE_OP_POOL_RESERVE: DeviceSize =
 const INIT_BOUNDING_BOX_POOL_RESERVE: DeviceSize =
     (16 * AABB_VERTEX_COUNT * size_of::<BoundingBoxVertex>()) as DeviceSize;
 
-/// Manages per-object resources
+/// Manages per-object resources for the geometry pass
 pub struct ObjectBuffers {
     bounding_box_buffer_pool: CpuBufferPool<BoundingBoxVertex>,
     primitive_op_buffer_pool: CpuBufferPool<PrimitiveOpBufferUnit>,
