@@ -1,9 +1,6 @@
 use super::{
     object::{object_collection::ObjectCollection, operation::Operation},
-    primitives::{
-        null_primitive::NullPrimitive, primitive::new_primitive_ref,
-        primitive_references::PrimitiveReferences,
-    },
+    primitives::{null_primitive::NullPrimitive, primitive::new_primitive_ref},
 };
 use crate::{
     config,
@@ -43,7 +40,6 @@ pub struct Engine {
 
     // model data
     object_collection: ObjectCollection,
-    primitive_references: PrimitiveReferences,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
@@ -73,15 +69,17 @@ impl Engine {
 
         // TESTING OBJECTS START
 
-        // todo put inside object_collection??
-        // todo checks in object_collection to make sure that you don't have the same primitive ids across multiple primitive ops
-        let mut primitive_references = PrimitiveReferences::new();
-
-        let sphere = primitive_references.new_sphere(Vec3::new(0., 0., 0.), 0.5);
-        let cube = primitive_references.new_cube(Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8));
-        let another_sphere = primitive_references.new_sphere(Vec3::new(0.2, -0.2, 0.), 0.83);
-
         let mut object_collection = ObjectCollection::new();
+
+        let sphere = object_collection
+            .primitive_references_mut()
+            .new_sphere(Vec3::new(0., 0., 0.), 0.5);
+        let cube = object_collection
+            .primitive_references_mut()
+            .new_cube(Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8));
+        let another_sphere = object_collection
+            .primitive_references_mut()
+            .new_sphere(Vec3::new(0.2, -0.2, 0.), 0.83);
 
         let object =
             object_collection.new_object("Bruh".to_string(), Vec3::new(-1., 1., 0.), cube.clone());
@@ -124,7 +122,6 @@ impl Engine {
             renderer,
 
             object_collection: object_collection,
-            primitive_references,
         }
     }
 
@@ -209,10 +206,7 @@ impl Engine {
         if let Some(cursor_icon) = self.cursor_state.get_cursor_icon() {
             self.gui.set_cursor_icon(cursor_icon);
         }
-        if let Err(e) = self
-            .gui
-            .update_gui(&self.object_collection, &mut self.primitive_references)
-        {
+        if let Err(e) = self.gui.update_gui(&mut self.object_collection) {
             anyhow_panic(&e, "update gui");
         }
 

@@ -85,17 +85,13 @@ impl Gui {
         self.window_state.set_pixels_per_point(scale_factor);
     }
 
-    pub fn update_gui(
-        &mut self,
-        object_collection: &ObjectCollection,
-        primitive_references: &mut PrimitiveReferences,
-    ) -> anyhow::Result<()> {
+    pub fn update_gui(&mut self, object_collection: &mut ObjectCollection) -> anyhow::Result<()> {
         // begin frame
         let raw_input = self.window_state.take_egui_input(self.window.as_ref());
         self.context.begin_frame(raw_input);
 
         self.objects_window(object_collection);
-        self.object_editor_window(primitive_references);
+        self.object_editor_window(object_collection.primitive_references_mut());
 
         // end frame
         let egui::FullOutput {
