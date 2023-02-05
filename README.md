@@ -23,18 +23,25 @@ subpass ┆ subpass       ┆
    0    ┆    1         gui
 ```
 
-1. __G__ - Geometry pass
-	- vert shader - full screen quad
+1. __G__ -> Geometry pass
+	- vert shader - bounding boxes
 	- frag shader - signed distance field ray marching
-2. __L__ - Lighting pass
+2. __L__ -> Lighting pass
 	- vert shader - full screen quad
 	- frag shader - shading
 	- reads input attachment g-buffers
-3. __O__ - Overlay pass - misc ui elements e.g. coordinates
-4. __E__ - Egui pass - egui menus
+3. __O__ -> Overlay pass - rendered ui elements e.g. coordinate indicators
+4. __E__ -> Egui pass - egui menus
 
 Subpass outputs:
-1. Subpass 0 - g-buffers:
-	- rgba8 [normal.xyz, 0]
-	- u32 [primitive-id]
-2. Subpass 1 - swapchain image
+1. Subpass 0 -> g-buffers:
+	- rgba8 -> normal.xyz, 0
+	- u32 -> object-id, primitive-id
+2. Subpass 1 -> swapchain image
+
+## Design objectives
+
+Source split into three directories:
+1. user interface -> intuitive, responsive and clear feedback.
+2. renderer -> optimized and portable.
+3. engine -> idk tbh. extensible? low-coupling? connecting glue between user interface and backend.

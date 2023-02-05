@@ -1,16 +1,11 @@
 use crate::config;
 use glam::DVec2;
 use log::debug;
-use std::sync::Arc;
-use winit::{
-    event::{ElementState, MouseScrollDelta},
-    window::{CursorIcon, Window},
-};
+use winit::event::{ElementState, MouseScrollDelta};
 
 /// Records and processes the state of the mouse cursor
 pub struct Cursor {
-    window: Arc<Window>,
-    /// Describes wherver the cursur is currently within the window bounds
+    /// Describes wherver the cursor is currently within the window bounds
     in_window: bool,
     /// The current cursor position. None if the cursor position is unknown
     /// (waiting for first [`WindowEvent::CursorMoved`](winit::event::WindowEvent::CursorMoved) event)
@@ -27,12 +22,13 @@ pub struct Cursor {
     which_dragging: Option<MouseButton>,
     /// Horizontal/vertical scrolling since last call to [`get_and_clear_scroll_delta`](Self::get_and_clear_scroll_delta).
     scroll_delta: DVec2,
+    /// None indicates 'no preference'
+    cursor_icon: Option<egui::CursorIcon>,
 }
 
 impl Cursor {
-    pub fn new(window: Arc<Window>) -> Self {
+    pub fn new() -> Self {
         Self {
-            window,
             in_window: false,
             position: None, // because there's (currenlty) no way to know the initial cursor position until the first `WindowEvent::CursorMoved` event
             position_previous: None,
@@ -41,6 +37,7 @@ impl Cursor {
             is_pressed_previous: Default::default(),
             which_dragging: None,
             scroll_delta: DVec2::ZERO,
+            cursor_icon: None,
         }
     }
 
@@ -109,7 +106,7 @@ impl Cursor {
             // if which_dragging set but button released, unset which_dragging
             if !self.is_pressed.get(dragging_button) {
                 self.which_dragging = None;
-                self.window.set_cursor_icon(CursorIcon::Default);
+                self.cursor_icon = None;
             }
         } else {
             // check each button
@@ -118,13 +115,17 @@ impl Cursor {
                 if self.is_pressed.get(button) && self.is_pressed_previous.get(button) && has_moved
                 {
                     self.which_dragging = Some(button);
-                    self.window.set_cursor_icon(CursorIcon::Grabbing);
+                    self.cursor_icon = Some(egui::CursorIcon::Grabbing);
                     break; // priority given to the order of `MOUSE_BUTTONS`
                 }
             }
         }
         // update previous pressed state
         self.is_pressed_previous = self.is_pressed;
+    }
+
+    pub fn get_cursor_icon(&self) -> Option<egui::CursorIcon> {
+        self.cursor_icon
     }
 
     /// Returns the change in cursor pixel position between the previous 2 [`Self::process_frame`] calls

@@ -11,13 +11,25 @@ pub struct CameraUniformBuffer {
     pub position: [f32; 4],
     /// Framebuffer dimensions
     pub framebuffer_dims: [f32; 2],
+    /// Near plane
+    pub near: f32,
+    /// Far plane
+    pub far: f32,
 }
 impl CameraUniformBuffer {
-    pub fn new(proj_view_inverse: Mat4, position: Vec3, framebuffer_dimensions: [f32; 2]) -> Self {
+    pub fn new(
+        proj_view_inverse: Mat4,
+        position: Vec3,
+        framebuffer_dimensions: [f32; 2],
+        near: f32,
+        far: f32,
+    ) -> Self {
         Self {
             proj_view_inverse: proj_view_inverse.to_cols_array(),
             position: [position.x, position.y, position.z, 0.0],
             framebuffer_dims: framebuffer_dimensions,
+            near,
+            far,
         }
     }
 
@@ -26,6 +38,8 @@ impl CameraUniformBuffer {
             glam::DMat4::inverse(&(camera.proj_matrix() * camera.view_matrix())).as_mat4(),
             camera.position().as_vec3(),
             framebuffer_dimensions,
+            camera.near_plane() as f32,
+            camera.far_plane() as f32,
         )
     }
 }

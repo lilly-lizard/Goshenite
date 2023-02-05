@@ -1,15 +1,14 @@
 use super::{
-    gui_state::GuiState,
-    object_editor::{object_list, primitive_op_editor, primitive_op_list},
-    theme::Theme,
+    config_ui::EGUI_TRACE,
+    gui_state::{GuiState, WindowStates},
+    layouts_object_editor::{object_editor, object_list},
+    layouts_panel::top_panel_layout,
 };
 use crate::engine::{
     object::{object::ObjectRef, object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     primitives::primitive_references::PrimitiveReferences,
 };
-use egui::{
-    Button, Context, FontFamily::Proportional, FontId, RichText, TextStyle, TexturesDelta, Visuals,
-};
+use egui::{Button, Context, FontFamily::Proportional, FontId, TextStyle, TexturesDelta, Visuals};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -20,9 +19,10 @@ use winit::{event_loop::EventLoopWindowTarget, window::Window};
 pub struct Gui {
     window: Arc<Window>,
     context: egui::Context,
-    window_state: egui_winit::State,
+    winit_state: egui_winit::State,
     mesh_primitives: Vec<egui::ClippedPrimitive>,
-    state: GuiState,
+    window_states: WindowStates,
+    gui_state: GuiState,
     textures_delta: Vec<TexturesDelta>,
     objects_delta: ObjectsDelta,
 }
@@ -38,7 +38,6 @@ impl Gui {
         event_loop: &EventLoopWindowTarget<T>,
         window: Arc<winit::window::Window>,
         scale_factor: f32,
-        theme: Theme,
     ) -> Self {
         let context = egui::Context::default();
         context.set_style(egui::Style {
@@ -46,18 +45,18 @@ impl Gui {
             wrap: Some(false),
             ..Default::default()
         });
-        set_theme(&context, theme);
 
-        let mut window_state = egui_winit::State::new(event_loop);
+        let mut winit_state = egui_winit::State::new(event_loop);
         // set egui scale factor to platform dpi (by default)
-        window_state.set_pixels_per_point(scale_factor);
+        winit_state.set_pixels_per_point(scale_factor);
 
         Self {
             window: window.clone(),
             context,
-            window_state,
+            winit_state,
             mesh_primitives: Default::default(),
-            state: Default::default(),
+            window_states: Default::default(),
+            gui_state: Default::default(),
             textures_delta: Default::default(),
             objects_delta: Default::default(),
         }
@@ -71,7 +70,7 @@ impl Gui {
     ///
     /// Note that egui uses `tab` to move focus between elements, so this will always return `true` for tabs.
     pub fn process_event(&mut self, event: &winit::event::WindowEvent<'_>) -> EventResponse {
-        self.window_state.on_event(&self.context, event)
+        self.winit_state.on_event(&self.context, event)
     }
 
     /// Get a reference to the clipped meshes required for rendering
@@ -80,24 +79,26 @@ impl Gui {
     }
 
     pub fn scale_factor(&self) -> f32 {
-        self.window_state.pixels_per_point()
+        self.winit_state.pixels_per_point()
     }
 
     pub fn set_scale_factor(&mut self, scale_factor: f32) {
-        self.window_state.set_pixels_per_point(scale_factor);
+        self.winit_state.set_pixels_per_point(scale_factor);
     }
 
-    pub fn update_gui(
-        &mut self,
-        object_collection: &ObjectCollection,
-        primitive_references: &mut PrimitiveReferences,
-    ) -> anyhow::Result<()> {
+    pub fn update_gui(&mut self, object_collection: &mut ObjectCollection) -> anyhow::Result<()> {
         // begin frame
-        let raw_input = self.window_state.take_egui_input(self.window.as_ref());
+        let raw_input = self.winit_state.take_egui_input(self.window.as_ref());
         self.context.begin_frame(raw_input);
 
-        self.objects_window(object_collection);
-        self.object_editor_window(primitive_references);
+        // draw
+        self.top_panel();
+        if self.window_states.object_list {
+            self.object_list_window(object_collection);
+        }
+        if self.window_states.object_editor {
+            self.object_editor_window(object_collection.primitive_references_mut());
+        }
 
         // end frame
         let egui::FullOutput {
@@ -106,7 +107,7 @@ impl Gui {
             textures_delta,
             shapes,
         } = self.context.end_frame();
-        self.window_state.handle_platform_output(
+        self.winit_state.handle_platform_output(
             self.window.as_ref(),
             &self.context,
             platform_output,
@@ -123,6 +124,10 @@ impl Gui {
         Ok(())
     }
 
+    pub fn set_cursor_icon(&self, cursor_icon: egui::CursorIcon) {
+        self.context.output().cursor_icon = cursor_icon;
+    }
+
     /// Returns texture update info accumulated since the last call to this function.
     pub fn get_and_clear_textures_delta(&mut self) -> Vec<TexturesDelta> {
         std::mem::take(&mut self.textures_delta)
@@ -134,10 +139,10 @@ impl Gui {
     }
 
     pub fn selected_object(&self) -> Option<Weak<ObjectRef>> {
-        self.state.selected_object().clone()
+        self.gui_state.selected_object().clone()
     }
 
-    pub fn set_theme(&self, theme: Theme) {
+    pub fn set_theme(&self, theme: winit::window::Theme) {
         set_theme(&self.context, theme);
     }
 }
@@ -145,14 +150,27 @@ impl Gui {
 // Private functions
 
 impl Gui {
-    fn objects_window(&mut self, object_collection: &ObjectCollection) {
+    fn top_panel(&mut self) {
+        egui::TopBottomPanel::top("main top panel").show(&self.context, |ui| {
+            if EGUI_TRACE {
+                egui::trace!(ui);
+            }
+            top_panel_layout(ui, &mut self.window_states);
+        });
+    }
+
+    fn object_list_window(&mut self, object_collection: &ObjectCollection) {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
-            object_list(ui, &mut self.state, object_collection);
+            if EGUI_TRACE {
+                egui::trace!(ui);
+            }
+            object_list(ui, &mut self.gui_state, object_collection);
         };
 
         // add window to egui context
         egui::Window::new("Objects")
+            .open(&mut self.window_states.object_list)
             .resizable(true)
             .vscroll(true)
             .hscroll(true)
@@ -162,45 +180,20 @@ impl Gui {
     fn object_editor_window(&mut self, primitive_references: &mut PrimitiveReferences) {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
-            let no_object_text = RichText::new("No Object Selected...").italics();
-            let selected_object_weak = match self.state.selected_object() {
-                Some(o) => o.clone(),
-                None => {
-                    ui.label(no_object_text);
-                    return;
-                }
-            };
-            let selected_object_ref = match selected_object_weak.upgrade() {
-                Some(o) => o,
-                None => {
-                    debug!("selected object dropped. deselecting object...");
-                    self.state.deselect_object();
-                    ui.label(no_object_text);
-                    return;
-                }
-            };
-
-            ui.horizontal(|ui| {
-                ui.label("Name:");
-                ui.text_edit_singleline(selected_object_ref.borrow_mut().name_mut());
-            });
-            primitive_op_editor(
+            if EGUI_TRACE {
+                egui::trace!(ui);
+            }
+            object_editor(
                 ui,
-                &mut self.state,
+                &mut self.gui_state,
                 &mut self.objects_delta,
-                &mut selected_object_ref.borrow_mut(),
                 primitive_references,
-            );
-            primitive_op_list(
-                ui,
-                &mut self.state,
-                &mut self.objects_delta,
-                &mut selected_object_ref.borrow_mut(),
             );
         };
 
         // add window to egui context
         egui::Window::new("Object Editor")
+            .open(&mut self.window_states.object_editor)
             .resizable(true)
             .vscroll(true)
             .hscroll(true)
@@ -234,10 +227,10 @@ impl Gui {
     }
 }
 
-fn set_theme(context: &Context, theme: Theme) {
+fn set_theme(context: &Context, theme: winit::window::Theme) {
     let visuals = match theme {
-        Theme::Dark => Visuals::dark(),
-        Theme::Light => Visuals::light(),
+        winit::window::Theme::Dark => Visuals::dark(),
+        winit::window::Theme::Light => Visuals::light(),
     };
     context.set_visuals(visuals);
 }

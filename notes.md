@@ -2,7 +2,63 @@
 
 focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
-# big todo
+# todo
+
+- geometry pass depth buffer
+- frame time display
+- init renderer test
+- smooth union op (curved combination)
+- surface noise modifiers
+- render outline on selected object
+- can we do without Rc<RefCell<>>?
+- curl noise field
+- scroll zoom proportional to distance (try scrolling on trackpad) and don't want to scroll out other side
+- replace UniqueId type aliases with structs or enums to have explicit conversions and rules
+- bounding box viewer
+- custom bounding boxes
+- anti-aliased gui
+- switch from vulkano to ash
+
+## ui additions
+
+- add/remove objects
+- comand palette and keyboard shortcuts
+- undo (egui::undoer)
+- serde save gui state (start with theme)
+- see egui_demo_app for ideas
+- Bang Wong color palette
+
+## bugz
+
+- vulkano complains about having no descriptor writes when there are no objects!
+- subtraction op broken. record bug before fixing tho lol
+- CursorState not initialized properly! e.g. cursor position 0,0 at start so start dragging before moving it and a big jump occurs. also check latest winit in case querying was made better?
+- Gui::_bug_test_window
+
+## optimize
+
+- log depth function
+- user_interface stuff in its own thread e.g. wait cursor
+- decrease MIN_DIST as distance progresses (need less resolution)
+- FastMemoryAllocator for frequent (per frame) memory allocations (see StandardMemoryAllocator description)
+- gui performance hit when list becomes too big (https://github.com/emilk/egui#cpu-usage) try only laying out part of list in view
+- GuiRenderer::create_texture -> create_textures batch texture creation
+- double buffering
+
+## low priority
+
+- hemisphere (circle) clamps on looking too far up/down (quaternions?)
+- clickable primitives
+- preview new primitive, greyed out/transparent until add?
+- error and warn log messages in gui (popups?)
+- Camera::rotate quaternions https://www.3dgep.com/understanding-quaternions/
+- tests for Primitives data
+
+## commands
+
+- flip to other side of focused object
+
+# previous refactors:
 
 1. objects refactor
 	1. object struct - DONE
@@ -18,86 +74,11 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 		2. overlay pass
 2. organise shaders directory structure and content
 	- would be nice to structure as per how I conceptualize the code i.e. - DONE
-		1. user interface -> intuitive, fast and clear feedback. ux/gui
-		2. backend -> optimized. rendering code
-		3. engine -> abstraction. connecting glue between user interface and backend
-	- clearly defined design goals for each section of the code
-3. raster bounding boxes (hard-coded AABB for now)
-
-# todo
-
-- switch from vulkano to ash
-- frame time display
-- checks in object_collection to make sure that you don't have the same primitive ids across multiple primitive ops. put primitive_references inside object_collection?
-- init renderer test
-- smooth union op (curved combination)
-- hemisphere (circle) clamps on looking too far up/down (quaternions?)
-- surface noise modifiers
-- render outline on selected object
-- output render png (write tests using this?)
-- can we do without Rc<RefCell<>>?
-- save model as file
-- curl noise field
-- scroll zoom proportional to distance (try scrolling on trackpad) and don't want to scroll out other side
-- anti-aliased ui
-- replace UniqueId type aliases with structs or enums to have explicit conversions and rules
-- object bounding box viewer
-- custom bounding boxes
-
-## cleanup
-
-- primitive_references to dos
-- support/handle VulkanError cases...
-
-## always
-
-- unwrap/except/assert
-- clippy
-
-## bugz
-
-- subtraction op broken. record bug before fixing tho lol
-- CursorState not initialized properly! e.g. cursor position 0,0 at start so start dragging before moving it and a big jump occurs. also check latest winit in case querying was made better?
-- Gui::_bug_test_window
-
-## optimize
-
-- user_interface stuff in its own thread e.g. wait cursor
-- decrease MIN_DIST as distance progresses (need less resolution)
-- FastMemoryAllocator for frequent (per frame) memory allocations (see StandardMemoryAllocator description)
-- gui performance hit when list becomes too big (https://github.com/emilk/egui#cpu-usage) try only laying out part of list in view
-- GuiRenderer::create_texture -> create_textures batch texture creation
-- double buffering
-
-## low priority
-
-- clickable primitives
-- coordinate overlay z-buffer
-- attempt to restart renderer on error: e.g. SurfaceLost attempt reinitialization. pop-up dialogue "renderer has crashes. attempt re-initialization? report bug here..."
-- test anyhow dereferencing e.g. SurfaceSizeUnsupported (see bottom of render_manager.rs)
-- preview new primitive, greyed out/transparent until add?
-- highlight changed primitive values in gui (to indicate what hasn't been updated)
-- error and warn log messages in gui (popups?)
-- draw sdf sphere with AABB
-- double buffering (2 frames in flight) -> double up futures/per-frame resources, reduce cpu-gpu sync blocking
-- Camera::rotate quaternions https://www.3dgep.com/understanding-quaternions/
-- shaderStorageImageExtendedFormats
-	- https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap43.html#features-required-format-support
-	- VK_FORMAT_A2B10G10R10_UNORM_PACK32 or VK_FORMAT_B10G11R11_UFLOAT_PACK32
-	- https://stackoverflow.com/questions/72548476/whats-the-best-practice-for-handling-format-qualifiers-for-images-in-compute-sh
-- tests for Primitives data
-- if using compute shader, use shader_storage_image_write_without_format
-
-- Bang Wong color palette
-
-## gui additions
-
-- see egui_demo_app for ideas
-- button for light/dark theme
-
-## commands
-
-- flip to other side of focused object
+		1. user interface -> intuitive, fast and clear feedback. ux/gui - DONE
+		2. backend -> optimized. rendering code - DONE
+		3. engine -> abstraction. connecting glue between user interface and backend - DONE
+	- clearly defined design goals for each section of the code - DONE
+3. raster bounding boxes (hard-coded AABB for now) - DONE
 
 # Code Guidelines
 

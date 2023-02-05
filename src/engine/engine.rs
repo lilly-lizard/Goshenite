@@ -1,19 +1,15 @@
 use super::{
     object::{object_collection::ObjectCollection, operation::Operation},
-    primitives::{
-        null_primitive::NullPrimitive, primitive::new_primitive_ref,
-        primitive_references::PrimitiveReferences,
-    },
+    primitives::null_primitive::NullPrimitive,
 };
 use crate::{
     config,
-    helper::anyhow_panic::{anyhow_panic, anyhow_unwrap},
+    helper::anyhow_panic::anyhow_unwrap,
     renderer::render_manager::RenderManager,
     user_interface::camera::Camera,
     user_interface::{
         cursor::{Cursor, MouseButton},
         gui::Gui,
-        theme::Theme,
     },
 };
 use glam::Vec3;
@@ -34,7 +30,6 @@ pub struct Engine {
     window_resize: bool,
     scale_factor: f64,
     cursor_state: Cursor,
-    theme: Theme,
 
     // specialized controllers
     camera: Camera,
@@ -43,7 +38,6 @@ pub struct Engine {
 
     // model data
     object_collection: ObjectCollection,
-    primitive_references: PrimitiveReferences,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
@@ -67,24 +61,32 @@ impl Engine {
             _ => None,
         };
         let scale_factor = scale_factor_override.unwrap_or(window.scale_factor());
-        let cursor_state = Cursor::new(window.clone());
+
+        let cursor_state = Cursor::new();
 
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
-        // TESTING OBJECTS START
-
-        // todo put inside object_collection??
-        // todo checks in object_collection to make sure that you don't have the same primitive ids across multiple primitive ops
-        let mut primitive_references = PrimitiveReferences::new();
-
-        let sphere = primitive_references.new_sphere(Vec3::new(0., 0., 0.), 0.5);
-        let cube = primitive_references.new_cube(Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8));
-        let another_sphere = primitive_references.new_sphere(Vec3::new(0.2, -0.2, 0.), 0.83);
-
         let mut object_collection = ObjectCollection::new();
 
-        let object =
-            object_collection.new_object("Bruh".to_string(), Vec3::new(-1., 1., 0.), cube.clone());
+        // TESTING OBJECTS START
+
+        //object_collection.new_empty_object("no bruh".to_string(), Vec3::ZERO);
+
+        let sphere = object_collection
+            .primitive_references_mut()
+            .new_sphere(Vec3::new(0., 0., 0.), 0.5);
+        let cube = object_collection
+            .primitive_references_mut()
+            .new_cube(Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8));
+        let another_sphere = object_collection
+            .primitive_references_mut()
+            .new_sphere(Vec3::new(0.2, -0.2, 0.), 0.83);
+
+        let object = object_collection.new_object(
+            "Bruh".to_string(),
+            Vec3::new(-0.2, 0.2, 0.),
+            cube.clone(),
+        );
         object
             .borrow_mut()
             .push_op(Operation::Union, sphere.clone());
@@ -94,12 +96,12 @@ impl Engine {
 
         let another_object = object_collection.new_object(
             "Another Bruh".to_string(),
-            Vec3::new(1., -1., 0.),
+            Vec3::new(0.2, -0.2, 0.),
             sphere.clone(),
         );
         another_object
             .borrow_mut()
-            .push_op(Operation::Union, new_primitive_ref(NullPrimitive {}));
+            .push_op(Operation::Union, NullPrimitive::new_ref());
 
         // TESTING OBJECTS END
 
@@ -108,8 +110,7 @@ impl Engine {
             "initialize renderer",
         );
 
-        let theme = Theme::Light;
-        let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32, theme);
+        let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32);
 
         Engine {
             _window: window,
@@ -117,14 +118,12 @@ impl Engine {
             window_resize: false,
             scale_factor,
             cursor_state,
-            theme,
 
             camera,
             gui,
             renderer,
 
             object_collection: object_collection,
-            primitive_references,
         }
     }
 
@@ -193,8 +192,7 @@ impl Engine {
             }
 
             WindowEvent::ThemeChanged(winit_theme) => {
-                self.theme = winit_theme.into();
-                self.gui.set_theme(self.theme);
+                self.gui.set_theme(winit_theme);
             }
             _ => (),
         }
@@ -206,39 +204,40 @@ impl Engine {
         self.cursor_state.process_frame();
 
         // process gui inputs and update layout
-        if let Err(e) = self
-            .gui
-            .update_gui(&self.object_collection, &mut self.primitive_references)
-        {
-            anyhow_panic(&e, "update gui");
+        if let Some(cursor_icon) = self.cursor_state.get_cursor_icon() {
+            self.gui.set_cursor_icon(cursor_icon);
         }
+        anyhow_unwrap(
+            self.gui.update_gui(&mut self.object_collection),
+            "update gui",
+        );
 
         // update camera based on now processed user inputs
         self.update_camera();
 
         // update object buffers
-        if let Err(e) = self.renderer.update_object_buffers(
-            &self.object_collection,
-            self.gui.get_and_clear_objects_delta(),
-        ) {
-            anyhow_panic(&e, "update object buffers");
-        }
+        anyhow_unwrap(
+            self.renderer.update_object_buffers(
+                &self.object_collection,
+                self.gui.get_and_clear_objects_delta(),
+            ),
+            "update object buffers",
+        );
 
         // update gui renderer
-        if let Err(e) = self
-            .renderer
-            .update_gui_textures(self.gui.get_and_clear_textures_delta())
-        {
-            anyhow_panic(&e, "update gui textures");
-        }
+        anyhow_unwrap(
+            self.renderer
+                .update_gui_textures(self.gui.get_and_clear_textures_delta()),
+            "update gui textures",
+        );
 
         // now that frame processing is done, submit rendering commands
-        if let Err(e) =
+        anyhow_unwrap(
             self.renderer
-                .render_frame(self.window_resize, &mut self.gui, &mut self.camera)
-        {
-            anyhow_panic(&e, "render frame");
-        }
+                .render_frame(self.window_resize, &mut self.gui, &mut self.camera),
+            "render frame",
+        );
+
         self.window_resize = false;
     }
 
