@@ -2,17 +2,14 @@ use super::{
     config_renderer::SHADER_ENTRY_POINT,
     object_buffers::ObjectBuffers,
     shader_interfaces::{
-        primitive_op_buffer::{PrimitiveOpBufferUnit, PRIMITIVE_OP_UNIT_LEN},
-        push_constants::ObjectIndexPushConstant,
+        primitive_op_buffer::{PrimitiveOpBufferUnit},
         uniform_buffers::CameraUniformBuffer,
         vertex_inputs::BoundingBoxVertex,
     },
     vulkan_helper::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
 use crate::engine::{
-    aabb::AABB_VERTEX_COUNT,
     object::{
-        object::{Object, ObjectId},
         object_collection::ObjectCollection,
         objects_delta::ObjectsDelta,
     },
@@ -20,10 +17,10 @@ use crate::engine::{
 use anyhow::Context;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{borrow::Borrow, mem::size_of, sync::Arc};
+use std::{borrow::Borrow, sync::Arc};
 use vulkano::{
     buffer::{
-        cpu_pool::CpuBufferPoolChunk, BufferAccess, BufferUsage, CpuAccessibleBuffer, CpuBufferPool,
+        cpu_pool::CpuBufferPoolChunk, BufferAccess, CpuAccessibleBuffer,
     },
     command_buffer::AutoCommandBufferBuilder,
     descriptor_set::{
@@ -34,7 +31,7 @@ use vulkano::{
         PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Device,
-    memory::allocator::{AllocationCreationError, MemoryUsage, StandardMemoryAllocator},
+    memory::allocator::{StandardMemoryAllocator},
     pipeline::{
         graphics::{
             input_assembly::{InputAssemblyState, PrimitiveTopology},
@@ -47,7 +44,6 @@ use vulkano::{
     },
     render_pass::Subpass,
     shader::{DescriptorRequirements, EntryPoint},
-    DeviceSize,
 };
 
 const MAX_OBJECT_BUFFERS: u32 = 256;
