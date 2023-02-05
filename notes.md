@@ -4,7 +4,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
-- switch from vulkano to ash
+- geometry pass depth buffer
 - frame time display
 - init renderer test
 - smooth union op (curved combination)
@@ -17,17 +17,17 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - bounding box viewer
 - custom bounding boxes
 - anti-aliased gui
+- switch from vulkano to ash
 
 ## ui additions
 
-- window list
-- serde save gui state
+- add/remove objects
 - comand palette and keyboard shortcuts
 - undo (egui::undoer)
 - Bang Wong color palette
 - see egui_demo_app for ideas
 - button for light/dark theme
-- debug on hover
+- serde save gui state
 
 ## bugz
 

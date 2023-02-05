@@ -4,7 +4,7 @@ use crate::{
         aabb::Aabb,
         primitives::{
             null_primitive::NullPrimitive,
-            primitive::{new_primitive_ref, Primitive, PrimitiveRef},
+            primitive::{Primitive, PrimitiveRef},
         },
     },
     helper::{
