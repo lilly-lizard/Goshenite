@@ -1,4 +1,5 @@
 use super::{
+    config_ui::EGUI_TRACE,
     gui_state::{GuiState, WindowStates},
     layouts_object_editor::{object_editor, object_list},
     layouts_panel::top_panel_layout,
@@ -18,7 +19,7 @@ use winit::{event_loop::EventLoopWindowTarget, window::Window};
 pub struct Gui {
     window: Arc<Window>,
     context: egui::Context,
-    window_state: egui_winit::State,
+    winit_state: egui_winit::State,
     mesh_primitives: Vec<egui::ClippedPrimitive>,
     window_states: WindowStates,
     gui_state: GuiState,
@@ -45,14 +46,14 @@ impl Gui {
             ..Default::default()
         });
 
-        let mut window_state = egui_winit::State::new(event_loop);
+        let mut winit_state = egui_winit::State::new(event_loop);
         // set egui scale factor to platform dpi (by default)
-        window_state.set_pixels_per_point(scale_factor);
+        winit_state.set_pixels_per_point(scale_factor);
 
         Self {
             window: window.clone(),
             context,
-            window_state,
+            winit_state,
             mesh_primitives: Default::default(),
             window_states: Default::default(),
             gui_state: Default::default(),
@@ -69,7 +70,7 @@ impl Gui {
     ///
     /// Note that egui uses `tab` to move focus between elements, so this will always return `true` for tabs.
     pub fn process_event(&mut self, event: &winit::event::WindowEvent<'_>) -> EventResponse {
-        self.window_state.on_event(&self.context, event)
+        self.winit_state.on_event(&self.context, event)
     }
 
     /// Get a reference to the clipped meshes required for rendering
@@ -78,22 +79,26 @@ impl Gui {
     }
 
     pub fn scale_factor(&self) -> f32 {
-        self.window_state.pixels_per_point()
+        self.winit_state.pixels_per_point()
     }
 
     pub fn set_scale_factor(&mut self, scale_factor: f32) {
-        self.window_state.set_pixels_per_point(scale_factor);
+        self.winit_state.set_pixels_per_point(scale_factor);
     }
 
     pub fn update_gui(&mut self, object_collection: &mut ObjectCollection) -> anyhow::Result<()> {
         // begin frame
-        let raw_input = self.window_state.take_egui_input(self.window.as_ref());
+        let raw_input = self.winit_state.take_egui_input(self.window.as_ref());
         self.context.begin_frame(raw_input);
 
         // draw
         self.top_panel();
-        self.object_list_window(object_collection);
-        self.object_editor_window(object_collection.primitive_references_mut());
+        if self.window_states.object_list {
+            self.object_list_window(object_collection);
+        }
+        if self.window_states.object_editor {
+            self.object_editor_window(object_collection.primitive_references_mut());
+        }
 
         // end frame
         let egui::FullOutput {
@@ -102,7 +107,7 @@ impl Gui {
             textures_delta,
             shapes,
         } = self.context.end_frame();
-        self.window_state.handle_platform_output(
+        self.winit_state.handle_platform_output(
             self.window.as_ref(),
             &self.context,
             platform_output,
@@ -147,18 +152,25 @@ impl Gui {
 impl Gui {
     fn top_panel(&mut self) {
         egui::TopBottomPanel::top("main top panel").show(&self.context, |ui| {
-            top_panel_layout(ui);
+            if EGUI_TRACE {
+                egui::trace!(ui);
+            }
+            top_panel_layout(ui, &mut self.window_states);
         });
     }
 
     fn object_list_window(&mut self, object_collection: &ObjectCollection) {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
+            if EGUI_TRACE {
+                egui::trace!(ui);
+            }
             object_list(ui, &mut self.gui_state, object_collection);
         };
 
         // add window to egui context
         egui::Window::new("Objects")
+            .open(&mut self.window_states.object_list)
             .resizable(true)
             .vscroll(true)
             .hscroll(true)
@@ -168,6 +180,9 @@ impl Gui {
     fn object_editor_window(&mut self, primitive_references: &mut PrimitiveReferences) {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
+            if EGUI_TRACE {
+                egui::trace!(ui);
+            }
             object_editor(
                 ui,
                 &mut self.gui_state,
@@ -178,6 +193,7 @@ impl Gui {
 
         // add window to egui context
         egui::Window::new("Object Editor")
+            .open(&mut self.window_states.object_editor)
             .resizable(true)
             .vscroll(true)
             .hscroll(true)

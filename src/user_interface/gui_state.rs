@@ -10,10 +10,18 @@ use glam::Vec3;
 use std::rc::Weak;
 
 /// Wherver or not different windows are open
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct WindowStates {
     pub object_list: bool,
     pub object_editor: bool,
+}
+impl Default for WindowStates {
+    fn default() -> Self {
+        Self {
+            object_list: true,
+            object_editor: true,
+        }
+    }
 }
 
 /// Amount to increment when modifying values via dragging
