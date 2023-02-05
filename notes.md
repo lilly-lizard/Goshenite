@@ -6,7 +6,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - switch from vulkano to ash
 - frame time display
-- checks in object_collection to make sure that you don't have the same primitive ids across multiple primitive ops. put primitive_references inside object_collection?
 - init renderer test
 - smooth union op (curved combination)
 - surface noise modifiers
@@ -32,6 +31,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## bugz
 
+- vulkano complains about having no descriptor writes when there are no objects!
 - subtraction op broken. record bug before fixing tho lol
 - CursorState not initialized properly! e.g. cursor position 0,0 at start so start dragging before moving it and a big jump occurs. also check latest winit in case querying was made better?
 - Gui::_bug_test_window

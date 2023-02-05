@@ -44,7 +44,7 @@ impl PrimitiveOp {
     }
 
     pub fn new_default(id: PrimitiveOpId) -> Self {
-        Self::new(id, Operation::NOP, new_primitive_ref(NullPrimitive {}))
+        Self::new(id, Operation::NOP, NullPrimitive::new_ref())
     }
 
     pub fn id(&self) -> PrimitiveOpId {
