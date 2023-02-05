@@ -15,9 +15,9 @@ use std::{
 
 pub struct PrimitiveReferences {
     unique_id_gen: UniqueIdGen,
-    pub null_primitive: Rc<RefCell<NullPrimitive>>,
-    pub spheres: AHashMap<PrimitiveId, Weak<SphereRef>>,
-    pub cubes: AHashMap<PrimitiveId, Weak<CubeRef>>,
+    null_primitive: Rc<RefCell<NullPrimitive>>,
+    spheres: AHashMap<PrimitiveId, Weak<SphereRef>>,
+    cubes: AHashMap<PrimitiveId, Weak<CubeRef>>,
 }
 
 /// Should only be one per engine instance.
