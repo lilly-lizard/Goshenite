@@ -188,6 +188,10 @@ float ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint ob
 	discard;
 }
 
+float depth(float near, float far, float z) {
+	return (z - near) / (far - near);
+}
+
 // ~~~ Main ~~~
 
 void main()
@@ -201,9 +205,9 @@ void main()
 	// render scene
 	vec3 normal;
 	uint object_id;
-	float depth = ray_march(cam.position.xyz, ray_d_norm, normal, object_id);
+	float z = ray_march(cam.position.xyz, ray_d_norm, normal, object_id);
 
-	//gl_FragDepth = mix(cam.near, cam.far, depth);
+	gl_FragDepth = depth(cam.near, cam.far, z);
 	out_normal = vec4(normal, 0.);
 	out_object_id = object_id;
 }

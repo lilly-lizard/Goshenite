@@ -33,6 +33,8 @@ pub struct Camera {
     normal: DVec3,
     fov: Angle,
     aspect_ratio: f32,
+    near_plane: f64,
+    far_plane: f64,
 }
 // Public functions
 impl Camera {
@@ -54,6 +56,8 @@ impl Camera {
             normal,
             fov: config::FIELD_OF_VIEW,
             aspect_ratio: calc_aspect_ratio(resolution),
+            near_plane: config::CAMERA_NEAR_PLANE,
+            far_plane: config::CAMERA_FAR_PLANE,
         })
     }
 
@@ -147,8 +151,8 @@ impl Camera {
         DMat4::perspective_rh(
             self.fov.radians(),
             self.aspect_ratio as f64,
-            config::CAMERA_NEAR_PLANE,
-            config::CAMERA_FAR_PLANE,
+            self.near_plane,
+            self.far_plane,
         )
     }
 
@@ -158,6 +162,14 @@ impl Camera {
 
     pub fn look_mode(&self) -> LookMode {
         self.look_mode.clone()
+    }
+
+    pub fn near_plane(&self) -> f64 {
+        self.near_plane
+    }
+
+    pub fn far_plane(&self) -> f64 {
+        self.far_plane
     }
 }
 
