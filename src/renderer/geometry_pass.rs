@@ -2,26 +2,18 @@ use super::{
     config_renderer::SHADER_ENTRY_POINT,
     object_buffers::ObjectBuffers,
     shader_interfaces::{
-        primitive_op_buffer::{PrimitiveOpBufferUnit},
-        uniform_buffers::CameraUniformBuffer,
+        primitive_op_buffer::PrimitiveOpBufferUnit, uniform_buffers::CameraUniformBuffer,
         vertex_inputs::BoundingBoxVertex,
     },
     vulkan_helper::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
-use crate::engine::{
-    object::{
-        object_collection::ObjectCollection,
-        objects_delta::ObjectsDelta,
-    },
-};
+use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
 use anyhow::Context;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{borrow::Borrow, sync::Arc};
 use vulkano::{
-    buffer::{
-        cpu_pool::CpuBufferPoolChunk, BufferAccess, CpuAccessibleBuffer,
-    },
+    buffer::{cpu_pool::CpuBufferPoolChunk, BufferAccess, CpuAccessibleBuffer},
     command_buffer::AutoCommandBufferBuilder,
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator,
@@ -31,7 +23,7 @@ use vulkano::{
         PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Device,
-    memory::allocator::{StandardMemoryAllocator},
+    memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
             input_assembly::{InputAssemblyState, PrimitiveTopology},

@@ -1,29 +1,21 @@
-use super::{
-    shader_interfaces::{
-        primitive_op_buffer::{PrimitiveOpBufferUnit, PRIMITIVE_OP_UNIT_LEN},
-        push_constants::ObjectIndexPushConstant,
-        vertex_inputs::BoundingBoxVertex,
-    },
+use super::shader_interfaces::{
+    primitive_op_buffer::{PrimitiveOpBufferUnit, PRIMITIVE_OP_UNIT_LEN},
+    push_constants::ObjectIndexPushConstant,
+    vertex_inputs::BoundingBoxVertex,
 };
 use crate::engine::{
     aabb::AABB_VERTEX_COUNT,
-    object::{
-        object::{Object, ObjectId},
-    },
+    object::object::{Object, ObjectId},
 };
 use anyhow::Context;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{mem::size_of, sync::Arc};
 use vulkano::{
-    buffer::{
-        cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool,
-    },
+    buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
     command_buffer::AutoCommandBufferBuilder,
     memory::allocator::{AllocationCreationError, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        GraphicsPipeline, Pipeline,
-    },
+    pipeline::{GraphicsPipeline, Pipeline},
     DeviceSize,
 };
 
