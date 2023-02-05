@@ -23,11 +23,10 @@ use vulkano::{
         PersistentDescriptorSet, WriteDescriptorSet,
     },
     device::Device,
-    format::Format,
-    image::{view::ImageView, AttachmentImage},
     memory::allocator::StandardMemoryAllocator,
     pipeline::{
         graphics::{
+            depth_stencil::DepthStencilState,
             input_assembly::{InputAssemblyState, PrimitiveTopology},
             rasterization::{CullMode, FrontFace, RasterizationState},
             vertex_input::BuffersDefinition,
@@ -187,6 +186,7 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
         .context("creating geometry pipeline layout")?;
 
     Ok(GraphicsPipeline::start()
+        .render_pass(subpass)
         .vertex_input_state(BuffersDefinition::new().vertex::<BoundingBoxVertex>())
         .input_assembly_state(InputAssemblyState::new().topology(PrimitiveTopology::TriangleList))
         .vertex_shader(vert_shader, ())
@@ -196,8 +196,8 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
                 .cull_mode(CullMode::Back)
                 .front_face(FrontFace::CounterClockwise),
         )
+        .depth_stencil_state(DepthStencilState::simple_depth_test())
         .fragment_shader(frag_shader, ())
-        .render_pass(subpass)
         .with_pipeline_layout(device.clone(), pipeline_layout)
         .context("creating geometry pass pipeline")?)
 }
