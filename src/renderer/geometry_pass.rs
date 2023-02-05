@@ -58,7 +58,8 @@ pub struct GeometryPass {
     pipeline: Arc<GraphicsPipeline>,
 
     descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
-    desc_set_primitive_ops: Arc<PersistentDescriptorSet>,
+    /// None indicates there are no object buffers to be bound
+    desc_set_primitive_ops: Option<Arc<PersistentDescriptorSet>>,
 
     object_buffers: ObjectBuffers,
 }
@@ -69,58 +70,18 @@ impl GeometryPass {
         device: Arc<Device>,
         memory_allocator: Arc<StandardMemoryAllocator>,
         descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
-        object_collection: &ObjectCollection,
         subpass: Subpass,
     ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
 
-        let mut object_buffers = ObjectBuffers::new(memory_allocator)?;
-        for (_id, object_ref) in object_collection.objects() {
-            let object = &*object_ref.as_ref().borrow();
-            object_buffers.update_or_push(object)?;
-        }
-
-        let desc_set_primitive_ops = create_desc_set_primitive_ops(
-            descriptor_allocator.borrow(),
-            pipeline.clone(),
-            object_buffers.primitive_op_buffers(),
-        )?;
+        let object_buffers = ObjectBuffers::new(memory_allocator)?;
 
         Ok(Self {
             pipeline,
             descriptor_allocator,
-            desc_set_primitive_ops,
+            desc_set_primitive_ops: None,
             object_buffers,
         })
-    }
-
-    pub fn record_commands<L>(
-        &self,
-        command_buffer: &mut AutoCommandBufferBuilder<L>,
-        viewport: Viewport,
-        camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
-    ) -> anyhow::Result<()> {
-        let desc_set_camera = create_desc_set_camera(
-            &self.descriptor_allocator,
-            self.pipeline.clone(),
-            camera_buffer,
-        )?;
-
-        let desc_sets = vec![desc_set_camera, self.desc_set_primitive_ops.clone()];
-
-        command_buffer
-            .set_viewport(0, [viewport])
-            .bind_pipeline_graphics(self.pipeline.clone())
-            .bind_descriptor_sets(
-                PipelineBindPoint::Graphics,
-                self.pipeline.layout().clone(),
-                0,
-                desc_sets,
-            );
-        self.object_buffers
-            .draw_commands(command_buffer, self.pipeline.clone())?;
-
-        Ok(())
     }
 
     pub fn update_object_buffers(
@@ -160,6 +121,43 @@ impl GeometryPass {
             self.pipeline.clone(),
             self.object_buffers.primitive_op_buffers(),
         )?;
+
+        Ok(())
+    }
+
+    pub fn record_commands<L>(
+        &self,
+        command_buffer: &mut AutoCommandBufferBuilder<L>,
+        viewport: Viewport,
+        camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
+    ) -> anyhow::Result<()> {
+        let desc_set_primitive_ops = match &self.desc_set_primitive_ops {
+            Some(s) => s.clone(),
+            None => {
+                trace!("no object buffers found. skipping geometry pass commands...");
+                return Ok(());
+            }
+        };
+
+        let desc_set_camera = create_desc_set_camera(
+            &self.descriptor_allocator,
+            self.pipeline.clone(),
+            camera_buffer,
+        )?;
+
+        let desc_sets = vec![desc_set_camera, desc_set_primitive_ops];
+
+        command_buffer
+            .set_viewport(0, [viewport])
+            .bind_pipeline_graphics(self.pipeline.clone())
+            .bind_descriptor_sets(
+                PipelineBindPoint::Graphics,
+                self.pipeline.layout().clone(),
+                0,
+                desc_sets,
+            );
+        self.object_buffers
+            .draw_commands(command_buffer, self.pipeline.clone())?;
 
         Ok(())
     }
@@ -280,7 +278,12 @@ fn create_desc_set_primitive_ops(
     descriptor_allocator: &StandardDescriptorSetAllocator,
     pipeline: Arc<GraphicsPipeline>,
     primitive_op_buffers: &Vec<Arc<CpuBufferPoolChunk<PrimitiveOpBufferUnit>>>,
-) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
+) -> anyhow::Result<Option<Arc<PersistentDescriptorSet>>> {
+    if primitive_op_buffers.is_empty() {
+        // descriptor set creation fails when element count is 0
+        return Ok(None);
+    }
+
     let set_layout = pipeline
         .layout()
         .set_layouts()
@@ -292,7 +295,7 @@ fn create_desc_set_primitive_ops(
         .context("creating primitive op buffer desc set")?
         .to_owned();
 
-    PersistentDescriptorSet::new_variable(
+    let desc_set = PersistentDescriptorSet::new_variable(
         descriptor_allocator,
         set_layout,
         primitive_op_buffers.len() as u32,
@@ -305,7 +308,8 @@ fn create_desc_set_primitive_ops(
                 .collect::<Vec<Arc<dyn BufferAccess>>>(),
         )],
     )
-    .context("creating primitive op buffer desc set")
+    .context("creating primitive op buffer desc set")?;
+    Ok(Some(desc_set))
 }
 
 /// We need to update the binding info generated by vulkano to have a variable descriptor count for the object buffers
