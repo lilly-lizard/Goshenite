@@ -386,7 +386,7 @@ pub fn cube_editor_ui(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &mut Vec
 
 impl DragableItem for PrimitiveOp {
     fn id(&self) -> egui::Id {
-        egui::Id::new(self.prim.borrow().id())
+        egui::Id::new(format!("primitive op {}", self.prim.borrow().id()))
     }
 }
 /// Draw the primitive op list. each list element can be dragged/dropped elsewhere in the list,

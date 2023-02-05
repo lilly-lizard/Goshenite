@@ -5,4 +5,4 @@ pub mod cursor;
 pub mod gui;
 mod gui_state;
 mod layouts_object_editor;
-pub mod theme;
+mod layouts_panel;

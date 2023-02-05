@@ -24,10 +24,11 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - window list
 - serde save gui state
 - comand palette and keyboard shortcuts
-- undo
+- undo (egui::undoer)
 - Bang Wong color palette
 - see egui_demo_app for ideas
 - button for light/dark theme
+- debug on hover
 
 ## bugz
 

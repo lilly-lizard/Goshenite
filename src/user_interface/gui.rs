@@ -1,7 +1,7 @@
 use super::{
-    gui_state::GuiState,
+    gui_state::{GuiState, WindowStates},
     layouts_object_editor::{object_editor, object_list},
-    theme::Theme,
+    layouts_panel::top_panel_layout,
 };
 use crate::engine::{
     object::{object::ObjectRef, object_collection::ObjectCollection, objects_delta::ObjectsDelta},
@@ -20,7 +20,8 @@ pub struct Gui {
     context: egui::Context,
     window_state: egui_winit::State,
     mesh_primitives: Vec<egui::ClippedPrimitive>,
-    state: GuiState,
+    window_states: WindowStates,
+    gui_state: GuiState,
     textures_delta: Vec<TexturesDelta>,
     objects_delta: ObjectsDelta,
 }
@@ -36,7 +37,6 @@ impl Gui {
         event_loop: &EventLoopWindowTarget<T>,
         window: Arc<winit::window::Window>,
         scale_factor: f32,
-        theme: Theme,
     ) -> Self {
         let context = egui::Context::default();
         context.set_style(egui::Style {
@@ -44,7 +44,6 @@ impl Gui {
             wrap: Some(false),
             ..Default::default()
         });
-        set_theme(&context, theme);
 
         let mut window_state = egui_winit::State::new(event_loop);
         // set egui scale factor to platform dpi (by default)
@@ -55,7 +54,8 @@ impl Gui {
             context,
             window_state,
             mesh_primitives: Default::default(),
-            state: Default::default(),
+            window_states: Default::default(),
+            gui_state: Default::default(),
             textures_delta: Default::default(),
             objects_delta: Default::default(),
         }
@@ -94,7 +94,9 @@ impl Gui {
         let raw_input = self.window_state.take_egui_input(self.window.as_ref());
         self.context.begin_frame(raw_input);
 
-        self.objects_window(object_collection);
+        // draw
+        self.top_panel();
+        self.object_list_window(object_collection);
         self.object_editor_window(primitive_references);
 
         // end frame
@@ -136,10 +138,10 @@ impl Gui {
     }
 
     pub fn selected_object(&self) -> Option<Weak<ObjectRef>> {
-        self.state.selected_object().clone()
+        self.gui_state.selected_object().clone()
     }
 
-    pub fn set_theme(&self, theme: Theme) {
+    pub fn set_theme(&self, theme: winit::window::Theme) {
         set_theme(&self.context, theme);
     }
 }
@@ -147,10 +149,16 @@ impl Gui {
 // Private functions
 
 impl Gui {
-    fn objects_window(&mut self, object_collection: &ObjectCollection) {
+    fn top_panel(&mut self) {
+        egui::TopBottomPanel::top("main top panel").show(&self.context, |ui| {
+            top_panel_layout(ui);
+        });
+    }
+
+    fn object_list_window(&mut self, object_collection: &ObjectCollection) {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
-            object_list(ui, &mut self.state, object_collection);
+            object_list(ui, &mut self.gui_state, object_collection);
         };
 
         // add window to egui context
@@ -166,7 +174,7 @@ impl Gui {
         let add_contents = |ui: &mut egui::Ui| {
             object_editor(
                 ui,
-                &mut self.state,
+                &mut self.gui_state,
                 &mut self.objects_delta,
                 primitive_references,
             );
@@ -207,10 +215,10 @@ impl Gui {
     }
 }
 
-fn set_theme(context: &Context, theme: Theme) {
+fn set_theme(context: &Context, theme: winit::window::Theme) {
     let visuals = match theme {
-        Theme::Dark => Visuals::dark(),
-        Theme::Light => Visuals::light(),
+        winit::window::Theme::Dark => Visuals::dark(),
+        winit::window::Theme::Light => Visuals::light(),
     };
     context.set_visuals(visuals);
 }

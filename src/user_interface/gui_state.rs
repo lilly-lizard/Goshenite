@@ -9,6 +9,13 @@ use egui_dnd::DragDropUi;
 use glam::Vec3;
 use std::rc::Weak;
 
+/// Wherver or not different windows are open
+#[derive(Default, Clone)]
+pub struct WindowStates {
+    pub object_list: bool,
+    pub object_editor: bool,
+}
+
 /// Amount to increment when modifying values via dragging
 pub const DRAG_INC: f64 = 0.02;
 

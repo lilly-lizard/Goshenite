@@ -13,7 +13,6 @@ use crate::{
     user_interface::{
         cursor::{Cursor, MouseButton},
         gui::Gui,
-        theme::Theme,
     },
 };
 use glam::Vec3;
@@ -34,7 +33,6 @@ pub struct Engine {
     window_resize: bool,
     scale_factor: f64,
     cursor_state: Cursor,
-    theme: Theme,
 
     // specialized controllers
     camera: Camera,
@@ -108,8 +106,7 @@ impl Engine {
             "initialize renderer",
         );
 
-        let theme = Theme::Light;
-        let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32, theme);
+        let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32);
 
         Engine {
             _window: window,
@@ -117,7 +114,6 @@ impl Engine {
             window_resize: false,
             scale_factor,
             cursor_state,
-            theme,
 
             camera,
             gui,
@@ -193,8 +189,7 @@ impl Engine {
             }
 
             WindowEvent::ThemeChanged(winit_theme) => {
-                self.theme = winit_theme.into();
-                self.gui.set_theme(self.theme);
+                self.gui.set_theme(winit_theme);
             }
             _ => (),
         }
