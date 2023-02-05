@@ -4,6 +4,8 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- switch from vulkano to ash
+- path tracing heat map
 - geometry pass depth buffer
 - frame time display
 - init renderer test
@@ -17,7 +19,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - bounding box viewer
 - custom bounding boxes
 - anti-aliased gui
-- switch from vulkano to ash
 
 ## ui additions
 
@@ -44,6 +45,12 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - gui performance hit when list becomes too big (https://github.com/emilk/egui#cpu-usage) try only laying out part of list in view
 - GuiRenderer::create_texture -> create_textures batch texture creation
 - double buffering
+
+## shader optimize
+
+compare instructions and frame time before/after
+https://www.marshallplan.at/images/All-Papers/MP-2017/Mroz+Michael_746.pdf
+- minimum step cap
 
 ## low priority
 

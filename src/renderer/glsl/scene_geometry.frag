@@ -5,8 +5,10 @@
 
 // Maximum number of ray marching steps before confirming a miss
 const uint MAX_STEPS = 50;
-// Minimum distance to travel 
+// Distance required to confirm a hit
 const float MIN_DIST = 0.001;
+// Minimum step distance
+const float MIN_STEP = 0.001; // todo test
 // Offset used for calculating normals.
 const float NORMAL_EPSILON = 0.001;
 const vec2 NORMAL_OFFSET = vec2(NORMAL_EPSILON, -NORMAL_EPSILON);
@@ -161,9 +163,9 @@ vec3 calcNormal(vec3 pos)
 					 e.xxx * map(pos + e.xxx).d);
 }
 
-// Render the scene and return the color. Returns the depth of a hit primitive.
-// When the ray misses, calls discard.
-//https://michaelwalczyk.com/blog-ray-marching.html
+// Render the scene with sphere tracing and write the normal and object id.
+// Returns the depth of a hit primitive. When the ray misses, calls discard.
+// https://michaelwalczyk.com/blog-ray-marching.html
 float ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint object_id)
 {
 	// total distance traveled
