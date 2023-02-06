@@ -159,7 +159,7 @@ impl Gui {
         });
     }
 
-    fn object_list_window(&mut self, object_collection: &ObjectCollection) {
+    fn object_list_window(&mut self, object_collection: &mut ObjectCollection) {
         // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
             if EGUI_TRACE {

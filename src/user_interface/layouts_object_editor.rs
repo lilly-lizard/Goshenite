@@ -24,13 +24,72 @@ use glam::Vec3;
 use log::{debug, error, info, trace, warn};
 use std::rc::Rc;
 
+pub fn object_list(
+    ui: &mut egui::Ui,
+    gui_state: &mut GuiState,
+    object_collection: &mut ObjectCollection,
+) {
+    ui.horizontal(|ui_h| {
+        // add object button
+        let add_response = ui_h.button("Add object");
+        if add_response.clicked() {
+            object_collection.new_empty_object();
+        }
+
+        // delete object button
+        if let Some(selected_obeject_ref) = gui_state.selected_object() {
+            if let Some(selected_object) = selected_obeject_ref.upgrade() {
+                let delete_response =
+                    ui_h.button(format!("Delete: \"{}\"", selected_object.borrow().name()));
+                if delete_response.clicked() {
+                    object_collection.remove_object(selected_object.borrow().id());
+                }
+            } else {
+                debug!("selected object dropped. deselecting object...");
+                gui_state.deselect_object();
+            }
+        }
+    });
+
+    // object list
+    let objects = object_collection.objects();
+    for (current_id, current_object) in objects.iter() {
+        let label_text = RichText::new(format!(
+            "{} - {}",
+            current_id,
+            current_object.borrow().name()
+        ))
+        .text_style(TextStyle::Monospace);
+
+        let is_selected = if let Some(selected_obeject_ref) = gui_state.selected_object() {
+            if let Some(selected_object) = selected_obeject_ref.upgrade() {
+                selected_object.borrow().id() == current_object.borrow().id()
+            } else {
+                debug!("selected object dropped. deselecting object...");
+                gui_state.deselect_object();
+                false
+            }
+        } else {
+            false
+        };
+
+        if ui.selectable_label(is_selected, label_text).clicked() {
+            if !is_selected {
+                gui_state.set_selected_object(Rc::downgrade(current_object));
+                gui_state.deselect_primitive_op();
+            }
+        }
+    }
+}
+
 pub fn object_editor(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
     primitive_references: &mut PrimitiveReferences,
 ) {
-    let no_object_text = RichText::new("No Object Selected...").italics();
+    // selected object name
+    let no_object_text = RichText::new("No object selected...").italics();
     let selected_object_weak = match gui_state.selected_object() {
         Some(o) => o.clone(),
         None => {
@@ -51,6 +110,7 @@ pub fn object_editor(
         ui.label("Name:");
         ui.text_edit_singleline(selected_object_ref.borrow_mut().name_mut());
     });
+
     primitive_op_editor(
         ui,
         gui_state,
@@ -58,47 +118,13 @@ pub fn object_editor(
         &mut selected_object_ref.borrow_mut(),
         primitive_references,
     );
+
     primitive_op_list(
         ui,
         gui_state,
         objects_delta,
         &mut selected_object_ref.borrow_mut(),
     );
-}
-
-pub fn object_list(
-    ui: &mut egui::Ui,
-    gui_state: &mut GuiState,
-    object_collection: &ObjectCollection,
-) {
-    let objects = object_collection.objects();
-    for (current_id, current_object) in objects.iter() {
-        let label_text = RichText::new(format!(
-            "{} - {}",
-            current_id,
-            current_object.borrow().name()
-        ))
-        .text_style(TextStyle::Monospace);
-
-        let is_selected = if let Some(object_ref) = gui_state.selected_object() {
-            if let Some(selected_object) = object_ref.upgrade() {
-                selected_object.borrow().id() == current_object.borrow().id()
-            } else {
-                debug!("selected object dropped. deselecting object...");
-                gui_state.deselect_object();
-                false
-            }
-        } else {
-            false
-        };
-
-        if ui.selectable_label(is_selected, label_text).clicked() {
-            if !is_selected {
-                gui_state.set_selected_object(Rc::downgrade(current_object));
-                gui_state.deselect_primitive_op();
-            }
-        }
-    }
 }
 
 pub fn primitive_op_editor(
@@ -156,7 +182,7 @@ fn existing_primitive_op_editor(
 
     ui.separator();
 
-    ui.label(format!("Primitive Op {}:", selected_prim_op_index));
+    ui.label(format!("Primitive op {}:", selected_prim_op_index));
 
     let mut primitive_id = selected_prim_op.prim.borrow().id();
     let old_primitive_type_name = selected_prim_op.prim.borrow().type_name();
@@ -247,7 +273,7 @@ fn new_primitive_op_editor(
 
     ui.separator();
 
-    ui.label("New Primitive");
+    ui.label("New primitive");
 
     ui.horizontal(|ui_h| {
         // op drop down menu
@@ -400,9 +426,10 @@ pub fn primitive_op_list(
     ui.separator();
 
     // new primitive op button
-    let new_op_text = RichText::new("New Primitive Op").text_style(TextStyle::Monospace);
-    let new_op_response =
-        ui.selectable_label(gui_state.selected_primitive_op_id().is_none(), new_op_text);
+    let new_op_response = ui.selectable_label(
+        gui_state.selected_primitive_op_id().is_none(),
+        "New primitive op",
+    );
     if new_op_response.clicked() {
         gui_state.deselect_primitive_op();
     }
