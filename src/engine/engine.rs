@@ -1,8 +1,6 @@
 use super::{
     object::{
-        object_collection::ObjectCollection,
-        objects_delta::{self, ObjectsDelta},
-        operation::Operation,
+        object_collection::ObjectCollection, objects_delta::ObjectsDelta, operation::Operation,
     },
     primitives::null_primitive::NullPrimitive,
 };
