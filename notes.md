@@ -4,6 +4,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- surface patterns (natural looking noise stuff)
 - switch from vulkano to ash
 - path tracing heat map
 - geometry pass depth buffer
