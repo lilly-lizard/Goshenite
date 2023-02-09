@@ -34,16 +34,23 @@ impl ObjectCollection {
         object
     }
 
-    pub fn new_empty_object(&mut self, name: String, origin: Vec3) -> Rc<ObjectRef> {
+    pub fn new_empty_object(&mut self) -> Rc<ObjectRef> {
         let object_id = self.unique_id_gen.new_id();
         let object = new_object_ref(Object::new(
             object_id,
-            name,
-            origin,
+            format!("New Object {}", object_id),
+            Vec3::ZERO,
             self.primitive_references.null_primitive(),
         ));
         self.objects.insert(object_id, object.clone());
         object
+    }
+
+    pub fn remove_object(&mut self, object_id: ObjectId) -> Option<Rc<ObjectRef>> {
+        let removed_obeject = self.objects.remove(&object_id);
+        // will probably have some 0-ref-count weak primitive ptrs now, so lets clean those up
+        self.primitive_references.clean_unused_references();
+        removed_obeject
     }
 
     pub fn primitive_references(&self) -> &PrimitiveReferences {

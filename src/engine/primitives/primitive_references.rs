@@ -82,6 +82,12 @@ impl PrimitiveReferences {
             PrimitiveRefType::Unknown => None,
         }
     }
+
+    /// Removes any primitives that aren't being used anywhere.
+    pub fn clean_unused_references(&mut self) {
+        self.spheres
+            .retain(|_sphere_id, sphere_ref| sphere_ref.strong_count() != 0);
+    }
 }
 
 fn get_primitive<T>(

@@ -1,5 +1,7 @@
 use super::{
-    object::{object_collection::ObjectCollection, operation::Operation},
+    object::{
+        object_collection::ObjectCollection, objects_delta::ObjectsDelta, operation::Operation,
+    },
     primitives::null_primitive::NullPrimitive,
 };
 use crate::{
@@ -66,11 +68,13 @@ impl Engine {
 
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
+        let mut renderer = anyhow_unwrap(RenderManager::new(window.clone()), "initialize renderer");
+
+        let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32);
+
         let mut object_collection = ObjectCollection::new();
 
         // TESTING OBJECTS START
-
-        //object_collection.new_empty_object("no bruh".to_string(), Vec3::ZERO);
 
         let sphere = object_collection
             .primitive_references_mut()
@@ -103,14 +107,16 @@ impl Engine {
             .borrow_mut()
             .push_op(Operation::Union, NullPrimitive::new_ref());
 
-        // TESTING OBJECTS END
+        let mut objects_delta = ObjectsDelta::default();
+        objects_delta.update.insert(object.borrow().id());
+        objects_delta.update.insert(another_object.borrow().id());
 
-        let renderer = anyhow_unwrap(
-            RenderManager::new(window.clone(), &object_collection),
-            "initialize renderer",
+        anyhow_unwrap(
+            renderer.update_object_buffers(&object_collection, objects_delta),
+            "bruh",
         );
 
-        let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32);
+        // TESTING OBJECTS END
 
         Engine {
             _window: window,

@@ -92,7 +92,7 @@ pub struct RenderManager {
 
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
-    pub fn new(window: Arc<Window>, object_collection: &ObjectCollection) -> anyhow::Result<Self> {
+    pub fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let vulkan_library = VulkanLibrary::new().context("loading vulkan library")?;
         info!(
             "loaded vulkan library, api version = {}",
@@ -322,7 +322,6 @@ impl RenderManager {
             device.clone(),
             memory_allocator.clone(),
             descriptor_allocator.clone(),
-            object_collection,
             subpass_gbuffer,
         )?;
 
