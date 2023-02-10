@@ -16,31 +16,11 @@ use crate::{
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::{anyhow, Context};
+use bort::instance::Instance;
 use egui::TexturesDelta;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
-use vulkano::{
-    command_buffer::{
-        self,
-        allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
-        RenderPassBeginInfo, SubpassContents,
-    },
-    descriptor_set::allocator::StandardDescriptorSetAllocator,
-    device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo},
-    format::ClearValue,
-    image::{
-        view::ImageView, AttachmentImage, ImageAccess, ImageUsage, SampleCount, SwapchainImage,
-    },
-    instance::debug::DebugUtilsMessenger,
-    instance::{Instance, InstanceCreateInfo},
-    memory::allocator::StandardMemoryAllocator,
-    pipeline::graphics::viewport::Viewport,
-    render_pass::{Framebuffer, RenderPass, Subpass},
-    swapchain::{self, Surface, Swapchain, SwapchainCreationError, SwapchainPresentInfo},
-    sync::{self, FlushError, GpuFuture},
-    VulkanLibrary,
-};
 use winit::window::Window;
 
 // number of primary and secondary command buffers to initially allocate
@@ -49,6 +29,10 @@ const PRE_ALLOCATE_SECONDARY_COMMAND_BUFFERS: usize = 0;
 
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
+    pub entry: ash::Entry,
+    pub instance: Instance,
+
+    /*
     device: Arc<Device>,
     render_queue: Arc<Queue>,
     _transfer_queue: Arc<Queue>,
@@ -72,6 +56,10 @@ pub struct RenderManager {
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
     clear_values: [Option<ClearValue>; ATTACHMENT_COUNT],
+    */
+    window: Arc<Window>,
+
+    is_srgb_framebuffer: bool,
 
     geometry_pass: GeometryPass,
     lighting_pass: LightingPass,
@@ -82,8 +70,6 @@ pub struct RenderManager {
     /// without conflicting with commands currently being processed. This variable indicates
     /// which index to will be next submitted to the GPU.
     next_frame: usize,
-    /// Can be used to synchronize commands with the submission for the previous frame
-    future_previous_frame: Option<Box<dyn GpuFuture>>,
     /// Indicates that the swapchain needs to be recreated next frame
     recreate_swapchain: bool,
 }
@@ -93,12 +79,13 @@ pub struct RenderManager {
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
     pub fn new(window: Arc<Window>) -> anyhow::Result<Self> {
-        let vulkan_library = VulkanLibrary::new().context("loading vulkan library")?;
+        let entry = ash::Entry::linked();
         info!(
             "loaded vulkan library, api version = {}",
             vulkan_library.api_version()
         );
 
+        /// TODO BRUH ///
         // required instance extensions for platform surface rendering
         let mut instance_extensions = vulkano_win::required_extensions(&vulkan_library);
         let mut instance_layers: Vec<String> = Vec::new();

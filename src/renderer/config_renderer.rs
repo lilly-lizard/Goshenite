@@ -1,4 +1,4 @@
-use vulkano::format::Format;
+use ash::vk::Format;
 
 pub const VULKAN_VER_MAJ: u32 = 1;
 pub const VULKAN_VER_MIN: u32 = 2;

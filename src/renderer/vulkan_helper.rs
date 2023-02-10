@@ -1,7 +1,7 @@
 use super::{
     config_renderer::{
         FORMAT_DEPTH_BUFFER, FORMAT_G_BUFFER_NORMAL, FORMAT_G_BUFFER_PRIMITIVE_ID,
-        SHADER_ENTRY_POINT,
+        SHADER_ENTRY_POINT, VULKAN_VER_MAJ, VULKAN_VER_MIN,
     },
     shader_interfaces::uniform_buffers::CameraUniformBuffer,
 };
@@ -9,32 +9,7 @@ use anyhow::{bail, ensure, Context};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{fmt, sync::Arc};
-use vulkano::{
-    buffer::{BufferUsage, CpuAccessibleBuffer},
-    device::{
-        self,
-        physical::{PhysicalDevice, PhysicalDeviceType},
-        Device, DeviceExtensions,
-    },
-    format::NumericType,
-    image::{
-        view::ImageView, AttachmentImage, ImageAccess, ImageUsage, ImageViewAbstract, SampleCount,
-        SwapchainImage,
-    },
-    instance::debug::{
-        DebugUtilsMessageSeverity, DebugUtilsMessageType, DebugUtilsMessenger,
-        DebugUtilsMessengerCreateInfo,
-    },
-    instance::{Instance, InstanceExtensions},
-    memory::allocator::StandardMemoryAllocator,
-    render_pass::{Framebuffer, FramebufferCreateInfo, RenderPass},
-    shader::{ShaderCreationError, ShaderModule},
-    swapchain::{self, Surface, Swapchain},
-    VulkanLibrary,
-};
 use winit::window::Window;
-
-use super::config_renderer::{VULKAN_VER_MAJ, VULKAN_VER_MIN};
 
 pub fn required_device_extensions() -> DeviceExtensions {
     DeviceExtensions {

@@ -4,8 +4,14 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- switch from vulkano to ash. reasons:
+	- keep running into restrictions that slow down dev work
+	- wrestling with vulkano on top of wrestling with borrow checker
+	- lack of flexibility slows dev time
+	- don't know what's going on under the hood (buffers, descriptor etc)
+	- shit load of compile time
+	- writing raw vulkan isn't even that hard anyway
 - surface patterns (natural looking noise stuff)
-- switch from vulkano to ash
 - path tracing heat map
 - geometry pass depth buffer
 - frame time display
