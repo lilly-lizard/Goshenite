@@ -8,7 +8,6 @@ use super::{
     shader_interfaces::{
         primitive_op_buffer::primitive_codes, uniform_buffers::CameraUniformBuffer,
     },
-    vulkan_helper_archive::{render_pass_indices::ATTACHMENT_COUNT, *},
 };
 use crate::{
     config::ENGINE_NAME,
@@ -17,10 +16,14 @@ use crate::{
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::{anyhow, Context};
-use ash::vk::{self, DebugUtilsMessageSeverityFlagsEXT};
+use ash::{
+    vk::{self, DebugUtilsMessageSeverityFlagsEXT, PhysicalDeviceVulkan12Features, QueueFlags},
+};
 use bort::{
-    debug_callback::{setup_debug_callback, DebugCallback},
+    debug_callback::DebugCallback,
     instance::{ApiVersion, Instance},
+    physical_device::PhysicalDevice,
+    surface::Surface,
 };
 use egui::TexturesDelta;
 #[allow(unused_imports)]
@@ -71,11 +74,152 @@ unsafe extern "system" fn log_vulkan_debug_callback(
     vk::FALSE
 }
 
+fn required_device_extensions() -> [String] {
+    [
+        "VK_KHR_swapchain".to_string(),
+        "VK_EXT_descriptor_indexing".to_string(),
+    ]
+}
+
+/// Make sure to update `required_features` too!
+fn supports_required_features(supported_features: PhysicalDeviceVulkan12Features) -> bool {
+    supported_features.descriptor_indexing
+        && supported_features.runtime_descriptor_array
+        && supported_features.descriptor_binding_variable_descriptor_count
+        && supported_features.shader_storage_buffer_array_non_uniform_indexing
+        && supported_features.descriptor_binding_partially_bound
+}
+/// Make sure to update `supports_required_features` too!
+fn required_features() -> PhysicalDeviceVulkan12Features {
+    PhysicalDeviceVulkan12Features {
+        descriptor_indexing: true,
+        runtime_descriptor_array: true,
+        descriptor_binding_variable_descriptor_count: true,
+        shader_storage_buffer_array_non_uniform_indexing: true,
+        descriptor_binding_partially_bound: true,
+        ..PhysicalDeviceVulkan12Features::default()
+    }
+}
+
+struct ChoosePhysicalDeviceReturn {
+    pub physical_device: PhysicalDevice,
+    pub render_queue_family_index: usize,
+    pub transfer_queue_family_index: usize,
+}
+fn choose_physical_device_and_queue_families(
+    instance: &Instance,
+    surface: &Surface,
+) -> anyhow::Result<ChoosePhysicalDeviceReturn> {
+    let p_device_handles = unsafe { instance.inner().enumerate_physical_devices() }
+        .context("enumerating physical devices")?;
+    let p_devices: Vec<PhysicalDevice> = p_device_handles
+        .iter()
+        .map(|handle| PhysicalDevice::new(instance, handle))
+        .collect();
+
+    let required_extensions = required_device_extensions();
+    let required_features = required_features();
+    debug!(
+        "choosing physical device... required features: {:?}",
+        required_features
+    );
+
+    let chosen_device = p_devices
+        .iter()
+        // filter for supported api version
+        .filter(|p| p.supports_api_ver(instance.api_version()))
+        // filter for required device extensionssupports_extension
+        .filter(|p| p.supports_extensions(required_extensions))
+        // filter for queue support
+        .filter_map(|p| {
+            // get queue family index for main queue
+            let render_family = p
+                .queue_family_properties()
+                .iter()
+                // because we want the queue family index
+                .enumerate()
+                .position(|(i, q)| {
+                    // must support our surface and essential operations
+                    q.queue_flags.contains(QueueFlags::GRAPHICS)
+                        && q.queue_flags.contains(QueueFlags::TRANSFER)
+                        && surface
+                            .get_physical_device_surface_support(p, i)
+                            .unwrap_or(false)
+                });
+            let render_family = match render_family {
+                Some(x) => x,
+                None => {
+                    debug!("no suitable queue family index found for physical device {}", p.properties().device_name);
+                    return None;
+                },
+            };
+
+            // check requried device features support
+            let supported_features = p.features();
+            if supports_required_features(supported_features) {
+                debug!(
+                    "physical device {} doesn't support required features. supported features: {:?}",
+                    p.properties().device_name,
+                    supported_features
+                );
+                return None;
+            }
+
+            // attempt to find a different queue family that we can use for asynchronous transfer operations
+            // e.g. uploading image/buffer data at same time as rendering
+            let transfer_family = p
+                .queue_family_properties()
+                .iter()
+                .enumerate()
+                // exclude the queue family we've already found and filter by transfer operation support
+                .filter(|(i, q)| *i != render_family && q.queue_flags.contains(QueueFlags::TRANSFER))
+                // some drivers expose a queue that only supports transfer operations (for this very purpose) which is preferable
+                .max_by_key(|(_, q)| if !q.queue_flags.contains(QueueFlags::GRAPHICS) { 1 } else { 0 })
+                .map(|(i, _)| i);
+            
+            Some(ChoosePhysicalDeviceReturn {
+                physical_device: p,
+                render_queue_family_index: render_family,
+                transfer_queue_family_index: transfer_family.unwrap_or(render_family)
+            })
+        })
+        // preference of device type
+        .max_by_key(
+            |ChoosePhysicalDeviceReturn {
+                 physical_device, ..
+             }| match physical_device.properties().device_type {
+                vk::PhysicalDeviceType::DiscreteGpu => 4,
+                vk::PhysicalDeviceType::IntegratedGpu => 3,
+                vk::PhysicalDeviceType::VirtualGpu => 2,
+                vk::PhysicalDeviceType::Cpu => 1,
+                vk::PhysicalDeviceType::Other => 0,
+                _ne => 0,
+            },
+        );
+
+    chosen_device.with_context(|| {
+            format!(
+                "could not find a suitable vulkan physical device. requirements:\n
+            \t- must support minimum vulkan version {}.{}\n
+            \t- must contain queue family supporting graphics, transfer and surface operations\n
+            \t- must support device extensions: {:?}\n
+            \t- must support device features: {:?}",
+                VULKAN_VER_MAJ, VULKAN_VER_MIN, required_extensions, required_features
+            )
+        })
+}
+
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
-    pub entry: ash::Entry,
-    pub instance: Arc<Instance>,
-    pub debug_call_back: vk::DebugUtilsMessengerEXT,
+    entry: ash::Entry,
+    instance: Arc<Instance>,
+    debug_callback: vk::DebugUtilsMessengerEXT,
+
+    physical_device: PhysicalDevice,
+
+    window: Arc<Window>,
+    surface: Surface,
+    is_srgb_framebuffer: bool,
 
     /*
     device: Arc<Device>,
@@ -102,9 +246,6 @@ pub struct RenderManager {
     framebuffers: Vec<Arc<Framebuffer>>,
     clear_values: [Option<ClearValue>; ATTACHMENT_COUNT],
     */
-    window: Arc<Window>,
-
-    is_srgb_framebuffer: bool,
 
     geometry_pass: GeometryPass,
     lighting_pass: LightingPass,
@@ -145,6 +286,7 @@ impl RenderManager {
             instance.api_version()
         );
 
+        // setup validation layer debug callback
         let debug_callback = if ENABLE_VULKAN_VALIDATION {
             Some(
                 DebugCallback::new(&entry, instance.clone(), log_vulkan_debug_callback)
@@ -153,6 +295,18 @@ impl RenderManager {
         } else {
             None
         };
+
+        // create surface
+        let surface = Surface::new(
+            &entry,
+            instance.clone(),
+            window.raw_display_handle(),
+            window.raw_window_handle(),
+        )
+        .context("creating vulkan surface")?;
+
+        // choose physical device
+        let physical_device = choose_physical_device_and_queue_families(&instance, &surface)?;
 
         /// TODO BRUH ///
         //

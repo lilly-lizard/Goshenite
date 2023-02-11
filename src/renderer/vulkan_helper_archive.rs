@@ -208,7 +208,7 @@ pub fn choose_physical_device(
             )
         })
 }
-pub struct ChoosePhysicalDeviceReturn {
+pub struct ChoosePhysicalDeviceReturnBruh {
     pub physical_device: Arc<PhysicalDevice>,
     pub render_queue_family: QueueFamilyIndex,
     pub transfer_queue_family: QueueFamilyIndex,
