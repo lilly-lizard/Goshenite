@@ -1,14 +1,10 @@
 use crate::{
+    common::c_string_to_string,
     instance::{ApiVersion, Instance},
-    surface::Surface,
 };
 use anyhow::Context;
-use ash::{
-    prelude::VkResult,
-    vk::{self, api_version_major, api_version_minor},
-    Entry,
-};
-use std::{ffi::CStr, str::Utf8Error};
+use ash::vk::{self, api_version_major, api_version_minor};
+use std::str::Utf8Error;
 
 /// Properties of an extension in the loader or a physical device.
 #[derive(Clone, Debug)]
@@ -19,8 +15,7 @@ pub struct ExtensionProperties {
 
 impl ExtensionProperties {
     fn new(value: vk::ExtensionProperties) -> Result<Self, Utf8Error> {
-        let c_str = unsafe { CStr::from_ptr(value.extension_name.as_ptr()) };
-        let extension_name = c_str.to_str()?.to_string();
+        let extension_name = c_string_to_string(value.extension_name.as_ptr())?;
         Ok(Self {
             extension_name,
             spec_version: value.spec_version,
@@ -31,6 +26,7 @@ impl ExtensionProperties {
 pub struct PhysicalDevice {
     handle: vk::PhysicalDevice,
     properties: vk::PhysicalDeviceProperties,
+    name: String,
     features: vk::PhysicalDeviceFeatures,
     queue_family_properties: Vec<vk::QueueFamilyProperties>,
     memory_properties: vk::PhysicalDeviceMemoryProperties,
@@ -41,6 +37,8 @@ impl PhysicalDevice {
     pub fn new(instance: &Instance, handle: vk::PhysicalDevice) -> anyhow::Result<Self> {
         let features = unsafe { instance.inner().get_physical_device_features(handle) };
         let properties = unsafe { instance.inner().get_physical_device_properties(handle) };
+        let name = c_string_to_string(properties.device_name.as_ptr())
+            .context("processing device name c string")?;
 
         let queue_family_properties = unsafe {
             instance
@@ -69,6 +67,7 @@ impl PhysicalDevice {
         Ok(Self {
             handle,
             properties,
+            name,
             features,
             queue_family_properties,
             memory_properties,
@@ -90,7 +89,7 @@ impl PhysicalDevice {
 
     pub fn supports_extensions<'a>(
         &self,
-        mut extension_names: impl Iterator<Item = &'a String>,
+        mut extension_names: impl Iterator<Item = &'static str>,
     ) -> bool {
         extension_names.all(|extension_name| {
             self.extension_properties
@@ -113,6 +112,10 @@ impl PhysicalDevice {
 
     pub fn properties(&self) -> vk::PhysicalDeviceProperties {
         self.properties
+    }
+
+    pub fn name(&self) -> String {
+        self.name.clone()
     }
 
     pub fn features(&self) -> vk::PhysicalDeviceFeatures {

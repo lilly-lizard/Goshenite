@@ -1,4 +1,4 @@
-use crate::{common::to_c_string_vec, ALLOCATION_CALLBACK};
+use crate::{common::string_to_c_string_vec, ALLOCATION_CALLBACK};
 use anyhow::Context;
 use ash::{extensions::ext::DebugUtils, vk, Entry};
 #[allow(unused_imports)]
@@ -41,9 +41,9 @@ impl Instance {
                 0,
             ));
 
-        let mut layer_names_raw = to_c_string_vec(additional_layer_names)
+        let mut layer_names_raw = string_to_c_string_vec(additional_layer_names)
             .context("converting layer names to c strings")?;
-        let mut extension_names_raw = to_c_string_vec(additional_extension_names)
+        let mut extension_names_raw = string_to_c_string_vec(additional_extension_names)
             .context("converting extension names to c strings")?;
 
         let display_extension_names = ash_window::enumerate_required_extensions(display_handle)
