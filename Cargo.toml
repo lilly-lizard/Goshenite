@@ -24,8 +24,8 @@ glam = { version = "0.22", features = ["debug-glam-assert"] }
 # winit is a cross-platform window creation and management library (version must match vulkano-win support)
 winit = "0.27"
 raw-window-handle = "0.5"
-# ash is a lightweight vulkan wrapper
-ash = { version = "0.37", default-features = false, features = ["linked", "debug"] }
+# ash is a lightweight vulkan wrapper. note that with default features, the vulkan library will (attempt to) be loaded dynamically at runtime.
+ash = "0.37.2"
 ash-window = "0.12"
 # bort has a bunch of helper structs and functions wrapped around ash
 bort = { path = "./bort" }

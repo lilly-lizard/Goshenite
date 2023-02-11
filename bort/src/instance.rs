@@ -76,6 +76,58 @@ impl Instance {
         })
     }
 
+    pub fn physical_device_features_1_0(
+        &self,
+        physical_device_handle: vk::PhysicalDevice,
+    ) -> vk::PhysicalDeviceFeatures {
+        unsafe {
+            self.inner()
+                .get_physical_device_features(physical_device_handle)
+        }
+    }
+
+    /// Vulkan 1.1 features. If api version < 1.1, these can not be populated.
+    pub fn physical_device_features_1_1(
+        &self,
+        physical_device_handle: vk::PhysicalDevice,
+    ) -> Option<vk::PhysicalDeviceVulkan11Features> {
+        if self.api_version.major < 1 {
+            return None;
+        }
+
+        let mut features_1_1 = vk::PhysicalDeviceVulkan11Features::default();
+        let mut features = vk::PhysicalDeviceFeatures2::builder()
+            .push_next(&mut features_1_1)
+            .build();
+        unsafe {
+            self.inner
+                .get_physical_device_features2(physical_device_handle, &mut features)
+        };
+
+        Some(features_1_1)
+    }
+
+    /// Vulkan 1.2 features. If api version < 1.2, these can not be populated.
+    pub fn physical_device_features_1_2(
+        &self,
+        physical_device_handle: vk::PhysicalDevice,
+    ) -> Option<vk::PhysicalDeviceVulkan12Features> {
+        if self.api_version.major < 2 {
+            return None;
+        }
+
+        let mut features_1_2 = vk::PhysicalDeviceVulkan12Features::default();
+        let mut features = vk::PhysicalDeviceFeatures2::builder()
+            .push_next(&mut features_1_2)
+            .build();
+        unsafe {
+            self.inner
+                .get_physical_device_features2(physical_device_handle, &mut features)
+        };
+
+        Some(features_1_2)
+    }
+
     // Getters
 
     pub fn inner(&self) -> &ash::Instance {

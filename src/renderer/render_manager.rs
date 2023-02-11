@@ -25,7 +25,7 @@ use bort::{
 use egui::TexturesDelta;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use raw_window_handle::HasRawDisplayHandle;
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::{borrow::Cow, ffi::CStr, sync::Arc};
 use winit::window::Window;
 
@@ -79,16 +79,16 @@ fn required_device_extensions() -> [&'static str; 2] {
     ]
 }
 
-/// Make sure to update `required_features` too!
-fn supports_required_features(supported_features: PhysicalDeviceVulkan12Features) -> bool {
+/// Make sure to update `required_features_1_2` too!
+fn supports_required_features_1_2(supported_features: PhysicalDeviceVulkan12Features) -> bool {
     supported_features.descriptor_indexing == vk::TRUE
         && supported_features.runtime_descriptor_array == vk::TRUE
         && supported_features.descriptor_binding_variable_descriptor_count == vk::TRUE
         && supported_features.shader_storage_buffer_array_non_uniform_indexing == vk::TRUE
         && supported_features.descriptor_binding_partially_bound == vk::TRUE
 }
-/// Make sure to update `supports_required_features` too!
-fn required_features() -> PhysicalDeviceVulkan12Features {
+/// Make sure to update `supports_required_features_1_2` too!
+fn required_features_1_2() -> PhysicalDeviceVulkan12Features {
     PhysicalDeviceVulkan12Features {
         descriptor_indexing: vk::TRUE,
         runtime_descriptor_array: vk::TRUE,
@@ -115,15 +115,26 @@ fn choose_physical_device_and_queue_families(
         .map(|&handle| PhysicalDevice::new(instance, handle))
         .collect::<Result<Vec<_>, _>>()?;
 
+    // print available physical devices
+    debug!("available vulkan physical devices:");
+    for pd in &p_devices
+    {
+        debug!("\t{}", pd.name());
+    }
+
     let required_extensions = required_device_extensions();
-    let required_features = required_features();
-    debug!(
-        "choosing physical device... required features: {:?}",
+    let required_features = required_features_1_2();
+    trace!(
+        "required physical device extensions = {:?}",
+        required_extensions
+    );
+    trace!(
+        "required physical device features = {:?}",
         required_features
     );
 
     let chosen_device = p_devices
-        .iter()
+        .into_iter()
         // filter for supported api version
         .filter(|p| p.supports_api_ver(instance.api_version()))
         // filter for required device extensionssupports_extension
@@ -141,7 +152,7 @@ fn choose_physical_device_and_queue_families(
                     q.queue_flags.contains(QueueFlags::GRAPHICS)
                         && q.queue_flags.contains(QueueFlags::TRANSFER)
                         && surface
-                            .get_physical_device_surface_support(p, i as u32)
+                            .get_physical_device_surface_support(&p, i as u32)
                             .unwrap_or(false)
                 });
             let render_family = match render_family {
@@ -153,11 +164,11 @@ fn choose_physical_device_and_queue_families(
             };
 
             // check requried device features support
-            let supported_features = p.features();
-            if supports_required_features(supported_features) {
-                debug!(
+            let supported_features = instance.physical_device_features_1_2(p.handle()).expect("instance should have been created for vulkan 1.2");
+            if supports_required_features_1_2(supported_features) {
+                trace!(
                     "physical device {} doesn't support required features. supported features: {:?}",
-                    p.properties().device_name,
+                    p.name(),
                     supported_features
                 );
                 return None;
@@ -186,11 +197,11 @@ fn choose_physical_device_and_queue_families(
             |ChoosePhysicalDeviceReturn {
                  physical_device, ..
              }| match physical_device.properties().device_type {
-                vk::PhysicalDeviceType::DiscreteGpu => 4,
-                vk::PhysicalDeviceType::IntegratedGpu => 3,
-                vk::PhysicalDeviceType::VirtualGpu => 2,
-                vk::PhysicalDeviceType::Cpu => 1,
-                vk::PhysicalDeviceType::Other => 0,
+                vk::PhysicalDeviceType::DISCRETE_GPU => 4,
+                vk::PhysicalDeviceType::INTEGRATED_GPU => 3,
+                vk::PhysicalDeviceType::VIRTUAL_GPU => 2,
+                vk::PhysicalDeviceType::CPU => 1,
+                vk::PhysicalDeviceType::OTHER => 0,
                 _ne => 0,
             },
         );
@@ -244,10 +255,11 @@ pub struct RenderManager {
     framebuffers: Vec<Arc<Framebuffer>>,
     clear_values: [Option<ClearValue>; ATTACHMENT_COUNT],
     */
-    geometry_pass: GeometryPass,
-    lighting_pass: LightingPass,
+
+    //geometry_pass: GeometryPass,
+    //lighting_pass: LightingPass,
     //overlay_pass: OverlayPass,
-    gui_pass: GuiRenderer,
+    //gui_pass: GuiRenderer,
 
     /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
     /// without conflicting with commands currently being processed. This variable indicates
@@ -262,7 +274,7 @@ pub struct RenderManager {
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initiver_minoralize, returns a string explanation.
     pub fn new(window: Arc<Window>) -> anyhow::Result<Self> {
-        let entry = Entry::linked();
+        let entry = unsafe { Entry::load() }.context("loading dynamic library. please install vulkan on your system...")?;
 
         // create instance
         let api_version = ApiVersion {
@@ -279,24 +291,24 @@ impl RenderManager {
             Vec::new(),
         )?);
         info!(
-            "created vulkan instance. api version = {}",
+            "created vulkan instance. api version = {:?}",
             instance.api_version()
         );
 
         // setup validation layer debug callback
         let debug_callback = if ENABLE_VULKAN_VALIDATION {
-            match DebugCallback::new(&entry, instance.clone(), log_vulkan_debug_callback) {
+            match DebugCallback::new(&entry, instance.clone(), Some(log_vulkan_debug_callback)) {
                 Ok(x) => {
-                    info!("enabling Vulkan validation layers and debug callback");
+                    info!("enabling vulkan validation layers and debug callback");
                     Some(x)
                 },
                 Err(e) => {
                     warn!("validation layer debug callback requested but cannot be setup due to: {:?}", e);
                     None
-mod vulkan_helper_archive;
-}
+                }
             }
         } else {
+            debug!("vulkan validation layers disabled");
             None
         };
 
@@ -309,12 +321,19 @@ mod vulkan_helper_archive;
         )
         .context("creating vulkan surface")?;
 
-        // choose physical device and queue indices
+        // choose physical device and queue families
         let ChoosePhysicalDeviceReturn {
             physical_device,
             render_queue_family_index,
             transfer_queue_family_index,
         } = choose_physical_device_and_queue_families(&instance, &surface)?;
+        info!(
+            "Using Vulkan device: {} (type: {:?})",
+            physical_device.name(),
+            physical_device.properties().device_type,
+        );
+        debug!("render queue family index = {}", render_queue_family_index);
+        debug!("transfer queue family index = {}", transfer_queue_family_index);
 
         todo!();
     }
@@ -324,8 +343,7 @@ mod vulkan_helper_archive;
         object_collection: &ObjectCollection,
         object_delta: ObjectsDelta,
     ) -> anyhow::Result<()> {
-        self.geometry_pass
-            .update_object_buffers(object_collection, object_delta)
+        todo!();
     }
 
     pub fn update_gui_textures(

@@ -1,17 +1,15 @@
+use crate::engine::object::object::ObjectId;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 
-use crate::engine::object::object::ObjectId;
-
 /// Should match inputs in `overlay.vert`
 #[repr(C)]
-#[derive(Default, Debug, Clone, Copy, Zeroable, Pod)]
+#[derive(Default, Debug, Clone, Copy, Zeroable, Pod)] // todo bytemuck needed now?
 pub struct OverlayVertex {
     pub in_position: [f32; 4],
     pub in_normal: [f32; 4],
     pub in_color: [f32; 4],
 }
-vulkano::impl_vertex!(OverlayVertex, in_position, in_normal, in_color);
 impl OverlayVertex {
     pub const fn new(position: Vec3, normal: Vec3, color: Vec3) -> Self {
         Self {
@@ -30,7 +28,6 @@ pub struct EguiVertex {
     pub in_tex_coords: [f32; 2],
     pub in_color: [f32; 4],
 }
-vulkano::impl_vertex!(EguiVertex, in_position, in_tex_coords, in_color);
 
 /// Should match inputs in `bounding_box.vert`
 #[repr(C)]
@@ -39,7 +36,6 @@ pub struct BoundingBoxVertex {
     pub in_position: [f32; 4],
     pub in_object_id: u32,
 }
-vulkano::impl_vertex!(BoundingBoxVertex, in_position, in_object_id);
 impl BoundingBoxVertex {
     pub const fn new(position: Vec3, object_id: ObjectId) -> Self {
         Self {

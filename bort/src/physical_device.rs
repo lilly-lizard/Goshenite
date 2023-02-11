@@ -23,11 +23,12 @@ impl ExtensionProperties {
     }
 }
 
+#[derive(Clone)]
 pub struct PhysicalDevice {
     handle: vk::PhysicalDevice,
     properties: vk::PhysicalDeviceProperties,
     name: String,
-    features: vk::PhysicalDeviceFeatures,
+
     queue_family_properties: Vec<vk::QueueFamilyProperties>,
     memory_properties: vk::PhysicalDeviceMemoryProperties,
     extension_properties: Vec<ExtensionProperties>,
@@ -35,7 +36,6 @@ pub struct PhysicalDevice {
 
 impl PhysicalDevice {
     pub fn new(instance: &Instance, handle: vk::PhysicalDevice) -> anyhow::Result<Self> {
-        let features = unsafe { instance.inner().get_physical_device_features(handle) };
         let properties = unsafe { instance.inner().get_physical_device_properties(handle) };
         let name = c_string_to_string(properties.device_name.as_ptr())
             .context("processing device name c string")?;
@@ -68,7 +68,7 @@ impl PhysicalDevice {
             handle,
             properties,
             name,
-            features,
+
             queue_family_properties,
             memory_properties,
             extension_properties,
@@ -116,10 +116,6 @@ impl PhysicalDevice {
 
     pub fn name(&self) -> String {
         self.name.clone()
-    }
-
-    pub fn features(&self) -> vk::PhysicalDeviceFeatures {
-        self.features
     }
 
     pub fn queue_family_properties(&self) -> &Vec<vk::QueueFamilyProperties> {
