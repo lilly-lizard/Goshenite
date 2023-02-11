@@ -11,12 +11,13 @@ use super::{
     vulkan_helper::{render_pass_indices::ATTACHMENT_COUNT, *},
 };
 use crate::{
+    config::ENGINE_NAME,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
-    renderer::config_renderer::FORMAT_G_BUFFER_PRIMITIVE_ID,
+    renderer::config_renderer::{FORMAT_G_BUFFER_PRIMITIVE_ID, VULKAN_VER_MAJ, VULKAN_VER_MIN},
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::{anyhow, Context};
-use bort::instance::Instance;
+use bort::instance::{ApiVersion, Instance};
 use egui::TexturesDelta;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -74,18 +75,35 @@ pub struct RenderManager {
     recreate_swapchain: bool,
 }
 
+fn instance_extensions() -> Vec<String> {}
+
 // Public functions
 
 impl RenderManager {
-    /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
+    /// Initializes Vulkan resources. If renderer fails to initiver_minoralize, returns a string explanation.
     pub fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let entry = ash::Entry::linked();
+
+        let api_version = ApiVersion {
+            major: VULKAN_VER_MAJ,
+            minor: VULKAN_VER_MIN,
+        };
+        let instance = Instance::new(
+            &entry,
+            api_version,
+            ENGINE_NAME,
+            window.raw_display_handle(),
+            ENABLE_VULKAN_VALIDATION,
+            Vec::new(),
+            Vec::new(),
+        )?;
         info!(
-            "loaded vulkan library, api version = {}",
-            vulkan_library.api_version()
+            "created vulkan instance. api version = {}",
+            instance.api_version()
         );
 
         /// TODO BRUH ///
+        //
         // required instance extensions for platform surface rendering
         let mut instance_extensions = vulkano_win::required_extensions(&vulkan_library);
         let mut instance_layers: Vec<String> = Vec::new();

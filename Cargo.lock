@@ -161,6 +161,7 @@ dependencies = [
  "ash",
  "ash-window",
  "log",
+ "raw-window-handle 0.5.0",
  "vk-mem",
 ]
 
