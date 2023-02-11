@@ -5,7 +5,7 @@ use super::{
         primitive_op_buffer::PrimitiveOpBufferUnit, uniform_buffers::CameraUniformBuffer,
         vertex_inputs::BoundingBoxVertex,
     },
-    vulkan_helper::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
+    vulkan_helper_archive::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
 use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
 use anyhow::Context;

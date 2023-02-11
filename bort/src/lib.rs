@@ -1,4 +1,5 @@
 pub mod common;
+pub mod debug_callback;
 pub mod device;
 pub mod instance;
 

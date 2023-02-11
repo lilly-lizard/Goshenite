@@ -1,6 +1,6 @@
 use crate::{common::to_c_string_vec, ALLOCATION_CALLBACK};
 use anyhow::Context;
-use ash::{extensions::ext::DebugUtils, vk, vk::InstanceCreateInfo, Entry};
+use ash::{extensions::ext::DebugUtils, vk, Entry};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use raw_window_handle::RawDisplayHandle;
@@ -59,7 +59,7 @@ impl Instance {
             extension_names_raw.push(DebugUtils::name().as_ptr());
         }
 
-        let create_info = InstanceCreateInfo::builder()
+        let create_info = vk::InstanceCreateInfo::builder()
             .application_info(&appinfo)
             .enabled_layer_names(&layer_names_raw)
             .enabled_extension_names(&extension_names_raw);

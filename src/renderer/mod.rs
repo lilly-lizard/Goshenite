@@ -6,4 +6,4 @@ mod config_renderer;
 mod object_buffers;
 pub mod render_manager;
 pub mod shader_interfaces;
-mod vulkan_helper;
+mod vulkan_helper_archive;

@@ -1,7 +1,7 @@
 use super::{
     config_renderer::SHADER_ENTRY_POINT,
     shader_interfaces::uniform_buffers::CameraUniformBuffer,
-    vulkan_helper::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
+    vulkan_helper_archive::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
 use anyhow::Context;
 #[allow(unused_imports)]

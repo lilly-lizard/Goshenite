@@ -8,7 +8,7 @@ use super::{
     shader_interfaces::{
         primitive_op_buffer::primitive_codes, uniform_buffers::CameraUniformBuffer,
     },
-    vulkan_helper::{render_pass_indices::ATTACHMENT_COUNT, *},
+    vulkan_helper_archive::{render_pass_indices::ATTACHMENT_COUNT, *},
 };
 use crate::{
     config::ENGINE_NAME,
@@ -17,21 +17,65 @@ use crate::{
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::{anyhow, Context};
-use bort::instance::{ApiVersion, Instance};
+use ash::vk::{self, DebugUtilsMessageSeverityFlagsEXT};
+use bort::{
+    debug_callback::{setup_debug_callback, DebugCallback},
+    instance::{ApiVersion, Instance},
+};
 use egui::TexturesDelta;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::sync::Arc;
+use std::{borrow::Cow, ffi::CStr, sync::Arc};
 use winit::window::Window;
 
 // number of primary and secondary command buffers to initially allocate
 const PRE_ALLOCATE_PRIMARY_COMMAND_BUFFERS: usize = 64;
 const PRE_ALLOCATE_SECONDARY_COMMAND_BUFFERS: usize = 0;
 
+// todo move these somewhere else
+
+unsafe extern "system" fn log_vulkan_debug_callback(
+    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    message_type: vk::DebugUtilsMessageTypeFlagsEXT,
+    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+    _user_data: *mut std::os::raw::c_void,
+) -> vk::Bool32 {
+    let callback_data = *p_callback_data;
+
+    let message = if callback_data.p_message.is_null() {
+        Cow::from("")
+    } else {
+        CStr::from_ptr(callback_data.p_message).to_string_lossy()
+    };
+
+    match message_severity {
+        DebugUtilsMessageSeverityFlagsEXT::ERROR => {
+            error!("Vulkan [{:?}]:\n{}", message_type, message);
+        }
+        DebugUtilsMessageSeverityFlagsEXT::WARNING => {
+            warn!("Vulkan [{:?}]:\n{}", message_type, message);
+        }
+        DebugUtilsMessageSeverityFlagsEXT::INFO => {
+            info!("Vulkan [{:?}]:\n{}", message_type, message);
+        }
+        DebugUtilsMessageSeverityFlagsEXT::VERBOSE => {
+            trace!("Vulkan [{:?}]:\n{}", message_type, message);
+        }
+        _ => trace!(
+            "Vulkan [{:?}] (UNKONWN SEVERITY):\n{}",
+            message_type,
+            message
+        ),
+    }
+
+    vk::FALSE
+}
+
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
     pub entry: ash::Entry,
-    pub instance: Instance,
+    pub instance: Arc<Instance>,
+    pub debug_call_back: vk::DebugUtilsMessengerEXT,
 
     /*
     device: Arc<Device>,
@@ -75,8 +119,6 @@ pub struct RenderManager {
     recreate_swapchain: bool,
 }
 
-fn instance_extensions() -> Vec<String> {}
-
 // Public functions
 
 impl RenderManager {
@@ -84,11 +126,12 @@ impl RenderManager {
     pub fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let entry = ash::Entry::linked();
 
+        // create instance
         let api_version = ApiVersion {
             major: VULKAN_VER_MAJ,
             minor: VULKAN_VER_MIN,
         };
-        let instance = Instance::new(
+        let instance = Arc::new(Instance::new(
             &entry,
             api_version,
             ENGINE_NAME,
@@ -96,11 +139,20 @@ impl RenderManager {
             ENABLE_VULKAN_VALIDATION,
             Vec::new(),
             Vec::new(),
-        )?;
+        )?);
         info!(
             "created vulkan instance. api version = {}",
             instance.api_version()
         );
+
+        let debug_callback = if ENABLE_VULKAN_VALIDATION {
+            Some(
+                DebugCallback::new(&entry, instance.clone(), log_vulkan_debug_callback)
+                    .context("creating vulkan debug callback")?,
+            )
+        } else {
+            None
+        };
 
         /// TODO BRUH ///
         //

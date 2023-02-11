@@ -2,7 +2,7 @@
 use super::{
     config_renderer::SHADER_ENTRY_POINT,
     shader_interfaces::{push_constants::GuiPushConstant, vertex_inputs::EguiVertex},
-    vulkan_helper::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
+    vulkan_helper_archive::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
 use crate::user_interface::gui::Gui;
 use ahash::AHashMap;
