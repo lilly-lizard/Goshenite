@@ -157,6 +157,10 @@ impl RenderManager {
 
         // create swapchain
         let swapchain = create_swapchain(&instance, &device, &surface, &window, &physical_device)?;
+        debug!(
+            "swapchain surface format = {:?}",
+            swapchain.surface_format()
+        );
         let is_swapchain_srgb = is_format_srgb(swapchain.surface_format().format);
 
         Ok(Self {

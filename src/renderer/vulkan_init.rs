@@ -247,10 +247,26 @@ pub fn create_swapchain(
     let preferred_image_count = FRAMES_IN_FLIGHT as u32;
     let window_dimensions: [u32; 2] = window.inner_size().into();
 
+    let surface_capabilities = surface
+        .get_physical_device_surface_capabilities(physical_device)
+        .context("get_physical_device_surface_capabilities")?;
+
+    let supported_composite_alpha = surface_capabilities.supported_composite_alpha;
+    let composite_alpha_preference_order = [
+        vk::CompositeAlphaFlagsKHR::POST_MULTIPLIED,
+        vk::CompositeAlphaFlagsKHR::OPAQUE,
+        vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED, // because cbf implimenting the logic for this
+        vk::CompositeAlphaFlagsKHR::INHERIT,
+    ];
+    let composite_alpha = composite_alpha_preference_order
+        .into_iter()
+        .find(|&ca| supported_composite_alpha.contains(ca))
+        .expect("driver should support at least one type of composite alpha!");
+
     let surface_formats = surface
         .get_physical_device_surface_formats(physical_device)
         .context("get_physical_device_surface_formats")?;
-    let preferred_surface_format = surface_formats
+    let surface_format = surface_formats
         .iter()
         .cloned()
         // use the first SRGB format we find
@@ -258,13 +274,17 @@ pub fn create_swapchain(
         // otherwise just go with the first format
         .unwrap_or(surface_formats[0]);
 
+    let image_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT;
+
     Swapchain::new(
         instance,
         device,
         surface,
         physical_device,
-        preferred_surface_format,
         preferred_image_count,
+        surface_format,
+        composite_alpha,
+        image_usage,
         window_dimensions,
     )
 }

@@ -14,22 +14,29 @@ pub struct Swapchain {
     image_count: u32,
     dimensions: vk::Extent2D,
     present_mode: vk::PresentModeKHR,
+    composite_alpha: vk::CompositeAlphaFlagsKHR,
 }
 
 impl Swapchain {
     /// Prefers the following settings:
     /// - present mode = `vk::PresentModeKHR::MAILBOX`
     /// - pre-transform = `vk::SurfaceTransformFlagsKHR::IDENTITY`
+    ///
     /// If preferred parameters aren't supported, defaults to the following:
-    /// - the first surface format returned by `get_physical_device_surface_formats`
     /// - image count clamped based on `vk::SurfaceCapabilitiesKHR`
+    ///
+    /// `surface_format`, `composite_alpha` and `image_usage` and are unchecked.
+    ///
+    /// Sharing mode is set to `vk::SharingMode::EXCLUSIVE` and clipping is enabled.
     pub fn new(
         instance: &Instance,
         device: &Device,
         surface: &Surface,
         physical_device: &PhysicalDevice,
-        preferred_surface_format: vk::SurfaceFormatKHR,
         preferred_image_count: u32,
+        surface_format: vk::SurfaceFormatKHR,
+        composite_alpha: vk::CompositeAlphaFlagsKHR,
+        image_usage: vk::ImageUsageFlags,
         window_dimensions: [u32; 2],
     ) -> anyhow::Result<Self> {
         let swapchain_loader = khr::Swapchain::new(instance.inner(), device.inner());
@@ -50,15 +57,6 @@ impl Swapchain {
             },
             _ => surface_capabilities.current_extent,
         };
-
-        let surface_formats = surface
-            .get_physical_device_surface_formats(physical_device)
-            .context("get_physical_device_surface_formats")?;
-        let surface_format = surface_formats
-            .iter()
-            .cloned()
-            .find(|f| *f == preferred_surface_format)
-            .unwrap_or(surface_formats[0]);
 
         let present_modes = surface
             .get_physical_device_surface_present_modes(physical_device)
@@ -84,10 +82,10 @@ impl Swapchain {
             .image_color_space(surface_format.color_space)
             .image_format(surface_format.format)
             .image_extent(dimensions)
-            .image_usage(vk::ImageUsageFlags::COLOR_ATTACHMENT)
+            .image_usage(image_usage)
             .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
             .pre_transform(pre_transform)
-            .composite_alpha(vk::CompositeAlphaFlagsKHR::OPAQUE)
+            .composite_alpha(composite_alpha)
             .present_mode(present_mode)
             .clipped(true)
             .image_array_layers(1);
@@ -104,6 +102,7 @@ impl Swapchain {
             image_count,
             dimensions,
             present_mode,
+            composite_alpha,
         })
     }
 
@@ -131,6 +130,10 @@ impl Swapchain {
 
     pub fn present_mode(&self) -> vk::PresentModeKHR {
         self.present_mode
+    }
+
+    pub fn composite_alpha(&self) -> vk::CompositeAlphaFlagsKHR {
+        self.composite_alpha
     }
 }
 
