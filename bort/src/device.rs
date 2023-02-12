@@ -10,7 +10,7 @@ use ash::vk;
 use log::{debug, error, info, trace, warn};
 
 pub struct Device {
-    pub inner: ash::Device,
+    inner: ash::Device,
 }
 
 impl Device {

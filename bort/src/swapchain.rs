@@ -1,5 +1,5 @@
 use anyhow::Context;
-use ash::{extensions::khr, vk};
+use ash::{extensions::khr, prelude::VkResult, vk};
 use std::cmp::{max, min};
 
 use crate::{
@@ -106,6 +106,10 @@ impl Swapchain {
         })
     }
 
+    pub fn get_swapchain_images(&self) -> VkResult<Vec<vk::Image>> {
+        unsafe { self.swapchain_loader.get_swapchain_images(self.handle) }
+    }
+
     // Getters
 
     pub fn handle(&self) -> vk::SwapchainKHR {
@@ -124,8 +128,8 @@ impl Swapchain {
         self.image_count
     }
 
-    pub fn dimensions(&self) -> vk::Extent2D {
-        self.dimensions
+    pub fn dimensions(&self) -> [u32; 2] {
+        [self.dimensions.width, self.dimensions.height]
     }
 
     pub fn present_mode(&self) -> vk::PresentModeKHR {
