@@ -1,11 +1,10 @@
+use crate::{instance::Instance, physical_device::PhysicalDevice, ALLOCATION_CALLBACK};
+use ash::{extensions::khr, prelude::VkResult, vk, Entry};
+use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use std::sync::Arc;
 
-use crate::{instance::Instance, physical_device::PhysicalDevice, ALLOCATION_CALLBACK};
-use ash::{extensions::khr, prelude::VkResult, vk::SurfaceKHR, Entry};
-use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
-
 pub struct Surface {
-    inner: SurfaceKHR,
+    handle: vk::SurfaceKHR,
     surface_loader: khr::Surface,
 
     // dependencies
@@ -19,7 +18,7 @@ impl Surface {
         raw_display_handle: RawDisplayHandle,
         raw_window_handle: RawWindowHandle,
     ) -> VkResult<Self> {
-        let inner = unsafe {
+        let handle = unsafe {
             ash_window::create_surface(
                 entry,
                 instance.inner(),
@@ -32,7 +31,7 @@ impl Surface {
         let surface_loader = khr::Surface::new(&entry, instance.inner());
 
         Ok(Self {
-            inner,
+            handle,
             surface_loader,
 
             _instance: instance,
@@ -48,15 +47,15 @@ impl Surface {
             self.surface_loader.get_physical_device_surface_support(
                 physical_device.handle(),
                 queue_family_index,
-                self.inner,
+                self.handle,
             )
         }
     }
 
     // Getters
 
-    pub fn inner(&self) -> &SurfaceKHR {
-        &self.inner
+    pub fn handle(&self) -> vk::SurfaceKHR {
+        self.handle
     }
 
     pub fn surface_loader(&self) -> &khr::Surface {
@@ -68,7 +67,7 @@ impl Drop for Surface {
     fn drop(&mut self) {
         unsafe {
             self.surface_loader
-                .destroy_surface(self.inner, ALLOCATION_CALLBACK)
+                .destroy_surface(self.handle, ALLOCATION_CALLBACK)
         };
     }
 }

@@ -1,8 +1,6 @@
-use std::sync::Arc;
-
-use ash::vk;
-
 use crate::device::Device;
+use ash::vk;
+use std::sync::Arc;
 
 pub struct Queue {
     handle: vk::Queue,

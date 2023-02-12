@@ -3,7 +3,7 @@ use ash::{extensions::ext::DebugUtils, prelude::VkResult, vk, Entry};
 use std::sync::Arc;
 
 pub struct DebugCallback {
-    inner: vk::DebugUtilsMessengerEXT,
+    handle: vk::DebugUtilsMessengerEXT,
     debug_utils_loader: DebugUtils,
 
     // dependencies
@@ -31,20 +31,20 @@ impl DebugCallback {
             .pfn_user_callback(debug_callback);
 
         let debug_utils_loader = DebugUtils::new(entry, instance.inner());
-        let inner = unsafe {
+        let handle = unsafe {
             debug_utils_loader.create_debug_utils_messenger(&debug_info, ALLOCATION_CALLBACK)
         }?;
 
         Ok(Self {
-            inner,
+            handle,
             debug_utils_loader,
 
             _instance: instance,
         })
     }
 
-    pub fn inner(&self) -> &vk::DebugUtilsMessengerEXT {
-        &self.inner
+    pub fn handle(&self) -> &vk::DebugUtilsMessengerEXT {
+        &self.handle
     }
 }
 
@@ -52,7 +52,7 @@ impl Drop for DebugCallback {
     fn drop(&mut self) {
         unsafe {
             self.debug_utils_loader
-                .destroy_debug_utils_messenger(self.inner, ALLOCATION_CALLBACK);
+                .destroy_debug_utils_messenger(self.handle, ALLOCATION_CALLBACK);
         }
     }
 }
