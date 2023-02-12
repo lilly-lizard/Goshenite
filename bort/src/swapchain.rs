@@ -1,20 +1,60 @@
+use crate::{
+    common::is_format_srgb, device::Device, instance::Instance, physical_device::PhysicalDevice,
+    surface::Surface, ALLOCATION_CALLBACK,
+};
 use anyhow::Context;
 use ash::{extensions::khr, prelude::VkResult, vk};
 use std::cmp::{max, min};
 
-use crate::{
-    device::Device, instance::Instance, physical_device::PhysicalDevice, surface::Surface,
-    ALLOCATION_CALLBACK,
-};
+/// Checks surface support for the first compositie alpha flag in order of preference:
+/// 1. `vk::CompositeAlphaFlagsKHR::POST_MULTIPLIED`
+/// 2. `vk::CompositeAlphaFlagsKHR::OPAQUE`
+/// 3. `vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED` (because cbf implimenting the logic for this)
+/// 4. `vk::CompositeAlphaFlagsKHR::INHERIT` (noooope)
+pub fn choose_composite_alpha(
+    surface_capabilities: vk::SurfaceCapabilitiesKHR,
+) -> vk::CompositeAlphaFlagsKHR {
+    let supported_composite_alpha = surface_capabilities.supported_composite_alpha;
+    let composite_alpha_preference_order = [
+        vk::CompositeAlphaFlagsKHR::POST_MULTIPLIED,
+        vk::CompositeAlphaFlagsKHR::OPAQUE,
+        vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED,
+        vk::CompositeAlphaFlagsKHR::INHERIT,
+    ];
+    composite_alpha_preference_order
+        .into_iter()
+        .find(|&ca| supported_composite_alpha.contains(ca))
+        .expect("driver should support at least one type of composite alpha!")
+}
+
+/// Returns the first SRGB surface format in the vec.
+pub fn get_first_srgb_surface_format(
+    surface_formats: &Vec<vk::SurfaceFormatKHR>,
+) -> vk::SurfaceFormatKHR {
+    surface_formats
+        .iter()
+        .cloned()
+        // use the first SRGB format we find
+        .find(|vk::SurfaceFormatKHR { format, .. }| is_format_srgb(*format))
+        // otherwise just go with the first format
+        .unwrap_or(surface_formats[0])
+}
 
 pub struct Swapchain {
     handle: vk::SwapchainKHR,
     swapchain_loader: khr::Swapchain,
-    surface_format: vk::SurfaceFormatKHR,
+
     image_count: u32,
+    surface_format: vk::SurfaceFormatKHR,
     dimensions: vk::Extent2D,
-    present_mode: vk::PresentModeKHR,
+    array_layers: u32,
+    image_usage: vk::ImageUsageFlags,
+    sharing_mode: vk::SharingMode,
+    queue_family_indices: Option<Vec<u32>>,
+    pre_transform: vk::SurfaceTransformFlagsKHR,
     composite_alpha: vk::CompositeAlphaFlagsKHR,
+    present_mode: vk::PresentModeKHR,
+    clipping_enabled: bool,
 }
 
 impl Swapchain {
@@ -22,17 +62,17 @@ impl Swapchain {
     /// - present mode = `vk::PresentModeKHR::MAILBOX`
     /// - pre-transform = `vk::SurfaceTransformFlagsKHR::IDENTITY`
     ///
-    /// If preferred parameters aren't supported, defaults to the following:
-    /// - image count clamped based on `vk::SurfaceCapabilitiesKHR`
+    /// `preferred_image_count` is clamped based on `vk::SurfaceCapabilitiesKHR`.
     ///
-    /// `surface_format`, `composite_alpha` and `image_usage` and are unchecked.
+    /// `surface_format`, `composite_alpha` and `image_usage` are unchecked.
     ///
-    /// Sharing mode is set to `vk::SharingMode::EXCLUSIVE` and clipping is enabled.
+    /// Sharing mode is set to `vk::SharingMode::EXCLUSIVE`, only 1 array layer, and clipping is enabled.
     pub fn new(
         instance: &Instance,
         device: &Device,
         surface: &Surface,
         physical_device: &PhysicalDevice,
+
         preferred_image_count: u32,
         surface_format: vk::SurfaceFormatKHR,
         composite_alpha: vk::CompositeAlphaFlagsKHR,
@@ -76,6 +116,13 @@ impl Swapchain {
             surface_capabilities.current_transform
         };
 
+        // hard-coded
+
+        let array_layers = 1u32;
+        let clipping_enabled = true;
+        let sharing_mode = vk::SharingMode::EXCLUSIVE;
+        let queue_family_indices: Option<Vec<u32>> = None;
+
         let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
             .surface(surface.handle())
             .min_image_count(image_count)
@@ -83,12 +130,12 @@ impl Swapchain {
             .image_format(surface_format.format)
             .image_extent(dimensions)
             .image_usage(image_usage)
-            .image_sharing_mode(vk::SharingMode::EXCLUSIVE)
+            .image_sharing_mode(sharing_mode)
             .pre_transform(pre_transform)
             .composite_alpha(composite_alpha)
             .present_mode(present_mode)
-            .clipped(true)
-            .image_array_layers(1);
+            .clipped(clipping_enabled)
+            .image_array_layers(array_layers);
 
         let handle = unsafe {
             swapchain_loader.create_swapchain(&swapchain_create_info, ALLOCATION_CALLBACK)
@@ -98,11 +145,18 @@ impl Swapchain {
         Ok(Self {
             handle,
             swapchain_loader,
-            surface_format,
+
             image_count,
+            surface_format,
             dimensions,
-            present_mode,
+            array_layers,
+            image_usage,
+            sharing_mode,
+            queue_family_indices,
+            pre_transform,
             composite_alpha,
+            present_mode,
+            clipping_enabled,
         })
     }
 
@@ -120,24 +174,38 @@ impl Swapchain {
         &self.swapchain_loader
     }
 
-    pub fn surface_format(&self) -> vk::SurfaceFormatKHR {
-        self.surface_format
-    }
-
     pub fn image_count(&self) -> u32 {
         self.image_count
     }
-
-    pub fn dimensions(&self) -> [u32; 2] {
-        [self.dimensions.width, self.dimensions.height]
+    pub fn surface_format(&self) -> vk::SurfaceFormatKHR {
+        self.surface_format
     }
-
+    pub fn dimensions(&self) -> vk::Extent2D {
+        self.dimensions
+    }
+    pub fn array_layers(&self) -> u32 {
+        self.array_layers
+    }
+    pub fn image_usage(&self) -> vk::ImageUsageFlags {
+        self.image_usage
+    }
+    pub fn sharing_mode(&self) -> vk::SharingMode {
+        self.sharing_mode
+    }
+    pub fn queue_family_indices(&self) -> Option<Vec<u32>> {
+        self.queue_family_indices
+    }
+    pub fn pre_transform(&self) -> vk::SurfaceTransformFlagsKHR {
+        self.pre_transform
+    }
+    pub fn composite_alpha(&self) -> vk::CompositeAlphaFlagsKHR {
+        self.composite_alpha
+    }
     pub fn present_mode(&self) -> vk::PresentModeKHR {
         self.present_mode
     }
-
-    pub fn composite_alpha(&self) -> vk::CompositeAlphaFlagsKHR {
-        self.composite_alpha
+    pub fn clipping_enabled(&self) -> bool {
+        self.clipping_enabled
     }
 }
 

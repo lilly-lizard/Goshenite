@@ -2,8 +2,13 @@ use super::config_renderer::{FRAMES_IN_FLIGHT, VULKAN_VER_MAJ, VULKAN_VER_MIN};
 use anyhow::Context;
 use ash::vk;
 use bort::{
-    common::is_format_srgb, device::Device, instance::Instance, physical_device::PhysicalDevice,
-    queue::Queue, surface::Surface, swapchain::Swapchain,
+    common::is_format_srgb,
+    device::Device,
+    instance::Instance,
+    physical_device::PhysicalDevice,
+    queue::Queue,
+    surface::Surface,
+    swapchain::{choose_composite_alpha, get_first_srgb_surface_format, Swapchain},
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -251,28 +256,12 @@ pub fn create_swapchain(
         .get_physical_device_surface_capabilities(physical_device)
         .context("get_physical_device_surface_capabilities")?;
 
-    let supported_composite_alpha = surface_capabilities.supported_composite_alpha;
-    let composite_alpha_preference_order = [
-        vk::CompositeAlphaFlagsKHR::POST_MULTIPLIED,
-        vk::CompositeAlphaFlagsKHR::OPAQUE,
-        vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED, // because cbf implimenting the logic for this
-        vk::CompositeAlphaFlagsKHR::INHERIT,
-    ];
-    let composite_alpha = composite_alpha_preference_order
-        .into_iter()
-        .find(|&ca| supported_composite_alpha.contains(ca))
-        .expect("driver should support at least one type of composite alpha!");
+    let composite_alpha = choose_composite_alpha(surface_capabilities);
 
     let surface_formats = surface
         .get_physical_device_surface_formats(physical_device)
         .context("get_physical_device_surface_formats")?;
-    let surface_format = surface_formats
-        .iter()
-        .cloned()
-        // use the first SRGB format we find
-        .find(|vk::SurfaceFormatKHR { format, .. }| is_format_srgb(*format))
-        // otherwise just go with the first format
-        .unwrap_or(surface_formats[0]);
+    let surface_format = get_first_srgb_surface_format(&surface_formats);
 
     let image_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT;
 
