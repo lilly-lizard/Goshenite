@@ -167,14 +167,17 @@ impl RenderManager {
         )?);
         debug!(
             "swapchain surface format = {:?}",
-            swapchain.surface_format()
+            swapchain.properties().surface_format
         );
-        debug!("swapchain present mode = {:?}", swapchain.present_mode());
+        debug!(
+            "swapchain present mode = {:?}",
+            swapchain.properties().present_mode
+        );
         debug!(
             "swapchain composite alpha = {:?}",
-            swapchain.composite_alpha()
+            swapchain.properties().composite_alpha
         );
-        let is_swapchain_srgb = is_format_srgb(swapchain.surface_format().format);
+        let is_swapchain_srgb = is_format_srgb(swapchain.properties().surface_format.format);
 
         // create swapchain images
         let swapchain_images = SwapchainImage::from_swapchain(device.clone(), swapchain.clone())?;

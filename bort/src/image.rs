@@ -3,11 +3,28 @@ use anyhow::Context;
 use ash::vk;
 use std::sync::Arc;
 
+pub fn default_component_mapping() -> vk::ComponentMapping {
+    vk::ComponentMapping {
+        r: vk::ComponentSwizzle::R,
+        g: vk::ComponentSwizzle::G,
+        b: vk::ComponentSwizzle::B,
+        a: vk::ComponentSwizzle::A,
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ImageProperties {
+    pub format: vk::Format,
+    pub dimensions: [u32; 2],
+    pub view_type: vk::ImageViewType,
+    pub component_mapping: vk::ComponentMapping,
+    pub subresource_range: vk::ImageSubresourceRange,
+}
+
 pub struct SwapchainImage {
     image_handle: vk::Image,
     image_view_handle: vk::ImageView,
-    format: vk::Format,
-    dimensions: [u32; 2],
+    properties: ImageProperties,
 
     // dependencies
     device: Arc<Device>,
@@ -28,8 +45,8 @@ impl SwapchainImage {
                     device.clone(),
                     swapchain.clone(),
                     image_handle,
-                    swapchain.surface_format().format,
-                    swapchain.dimensions(),
+                    swapchain.properties().surface_format.format,
+                    swapchain.properties().dimensions,
                 )
             })
             .collect::<anyhow::Result<Vec<_>>>()
@@ -42,17 +59,21 @@ impl SwapchainImage {
         format: vk::Format,
         dimensions: [u32; 2],
     ) -> anyhow::Result<Self> {
+        let view_type = vk::ImageViewType::TYPE_2D;
+        let component_mapping = default_component_mapping();
+        let subresource_range = vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            base_mip_level: 0,
+            level_count: 1,
+            base_array_layer: 0,
+            layer_count: 1,
+        };
+
         let image_view_info = vk::ImageViewCreateInfo::builder()
-            .view_type(vk::ImageViewType::TYPE_2D)
+            .view_type(view_type)
             .format(format)
-            .components(default_component_mapping())
-            .subresource_range(vk::ImageSubresourceRange {
-                aspect_mask: vk::ImageAspectFlags::COLOR,
-                base_mip_level: 0,
-                level_count: 1,
-                base_array_layer: 0,
-                layer_count: 1,
-            })
+            .components(component_mapping)
+            .subresource_range(subresource_range)
             .image(image_handle)
             .build();
 
@@ -66,8 +87,13 @@ impl SwapchainImage {
         Ok(Self {
             image_handle,
             image_view_handle,
-            format,
-            dimensions,
+            properties: ImageProperties {
+                format,
+                dimensions,
+                view_type,
+                component_mapping,
+                subresource_range,
+            },
 
             device,
             _swapchain: swapchain,
@@ -78,8 +104,8 @@ impl SwapchainImage {
         vk::Viewport {
             x: 0.,
             y: 0.,
-            width: self.dimensions[0] as f32,
-            height: self.dimensions[1] as f32,
+            width: self.properties.dimensions[0] as f32,
+            height: self.properties.dimensions[1] as f32,
             min_depth: 0.,
             max_depth: 1.,
         }
@@ -95,12 +121,8 @@ impl SwapchainImage {
         self.image_view_handle
     }
 
-    pub fn format(&self) -> vk::Format {
-        self.format
-    }
-
-    pub fn dimensions(&self) -> [u32; 2] {
-        self.dimensions
+    pub fn properties(&self) -> ImageProperties {
+        self.properties
     }
 }
 
@@ -112,14 +134,5 @@ impl Drop for SwapchainImage {
                 .inner()
                 .destroy_image_view(self.image_view_handle, ALLOCATION_CALLBACK);
         }
-    }
-}
-
-pub fn default_component_mapping() -> vk::ComponentMapping {
-    vk::ComponentMapping {
-        r: vk::ComponentSwizzle::R,
-        g: vk::ComponentSwizzle::G,
-        b: vk::ComponentSwizzle::B,
-        a: vk::ComponentSwizzle::A,
     }
 }

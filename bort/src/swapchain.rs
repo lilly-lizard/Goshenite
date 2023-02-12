@@ -40,21 +40,25 @@ pub fn get_first_srgb_surface_format(
         .unwrap_or(surface_formats[0])
 }
 
+#[derive(Debug, Clone)]
+pub struct SwapchainProperties {
+    pub image_count: u32,
+    pub surface_format: vk::SurfaceFormatKHR,
+    pub dimensions: [u32; 2],
+    pub array_layers: u32,
+    pub image_usage: vk::ImageUsageFlags,
+    pub sharing_mode: vk::SharingMode,
+    pub queue_family_indices: Option<Vec<u32>>,
+    pub pre_transform: vk::SurfaceTransformFlagsKHR,
+    pub composite_alpha: vk::CompositeAlphaFlagsKHR,
+    pub present_mode: vk::PresentModeKHR,
+    pub clipping_enabled: bool,
+}
+
 pub struct Swapchain {
     handle: vk::SwapchainKHR,
     swapchain_loader: khr::Swapchain,
-
-    image_count: u32,
-    surface_format: vk::SurfaceFormatKHR,
-    dimensions: [u32; 2],
-    array_layers: u32,
-    image_usage: vk::ImageUsageFlags,
-    sharing_mode: vk::SharingMode,
-    queue_family_indices: Option<Vec<u32>>,
-    pre_transform: vk::SurfaceTransformFlagsKHR,
-    composite_alpha: vk::CompositeAlphaFlagsKHR,
-    present_mode: vk::PresentModeKHR,
-    clipping_enabled: bool,
+    properties: SwapchainProperties,
 }
 
 impl Swapchain {
@@ -145,18 +149,19 @@ impl Swapchain {
         Ok(Self {
             handle,
             swapchain_loader,
-
-            image_count,
-            surface_format,
-            dimensions: [extent.width, extent.height],
-            array_layers,
-            image_usage,
-            sharing_mode,
-            queue_family_indices,
-            pre_transform,
-            composite_alpha,
-            present_mode,
-            clipping_enabled,
+            properties: SwapchainProperties {
+                image_count,
+                surface_format,
+                dimensions: [extent.width, extent.height],
+                array_layers,
+                image_usage,
+                sharing_mode,
+                queue_family_indices,
+                pre_transform,
+                composite_alpha,
+                present_mode,
+                clipping_enabled,
+            },
         })
     }
 
@@ -169,43 +174,11 @@ impl Swapchain {
     pub fn handle(&self) -> vk::SwapchainKHR {
         self.handle
     }
-
     pub fn swapchain_loader(&self) -> &khr::Swapchain {
         &self.swapchain_loader
     }
-
-    pub fn image_count(&self) -> u32 {
-        self.image_count
-    }
-    pub fn surface_format(&self) -> vk::SurfaceFormatKHR {
-        self.surface_format
-    }
-    pub fn dimensions(&self) -> [u32; 2] {
-        self.dimensions
-    }
-    pub fn array_layers(&self) -> u32 {
-        self.array_layers
-    }
-    pub fn image_usage(&self) -> vk::ImageUsageFlags {
-        self.image_usage
-    }
-    pub fn sharing_mode(&self) -> vk::SharingMode {
-        self.sharing_mode
-    }
-    pub fn queue_family_indices(&self) -> &Option<Vec<u32>> {
-        &self.queue_family_indices
-    }
-    pub fn pre_transform(&self) -> vk::SurfaceTransformFlagsKHR {
-        self.pre_transform
-    }
-    pub fn composite_alpha(&self) -> vk::CompositeAlphaFlagsKHR {
-        self.composite_alpha
-    }
-    pub fn present_mode(&self) -> vk::PresentModeKHR {
-        self.present_mode
-    }
-    pub fn clipping_enabled(&self) -> bool {
-        self.clipping_enabled
+    pub fn properties(&self) -> &SwapchainProperties {
+        &self.properties
     }
 }
 
