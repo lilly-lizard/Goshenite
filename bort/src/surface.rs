@@ -52,6 +52,36 @@ impl Surface {
         }
     }
 
+    pub fn get_physical_device_surface_capabilities(
+        &self,
+        physical_device: &PhysicalDevice,
+    ) -> VkResult<vk::SurfaceCapabilitiesKHR> {
+        unsafe {
+            self.surface_loader
+                .get_physical_device_surface_capabilities(physical_device.handle(), self.handle)
+        }
+    }
+
+    pub fn get_physical_device_surface_formats(
+        &self,
+        physical_device: &PhysicalDevice,
+    ) -> VkResult<Vec<vk::SurfaceFormatKHR>> {
+        unsafe {
+            self.surface_loader
+                .get_physical_device_surface_formats(physical_device.handle(), self.handle)
+        }
+    }
+
+    pub fn get_physical_device_surface_present_modes(
+        &self,
+        physical_device: &PhysicalDevice,
+    ) -> VkResult<Vec<vk::PresentModeKHR>> {
+        unsafe {
+            self.surface_loader
+                .get_physical_device_surface_present_modes(physical_device.handle(), self.handle)
+        }
+    }
+
     // Getters
 
     pub fn handle(&self) -> vk::SurfaceKHR {

@@ -3,7 +3,7 @@ use crate::{
     config::ENGINE_NAME,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     renderer::vulkan_init::{
-        choose_physical_device_and_queue_families, create_device_and_queues,
+        choose_physical_device_and_queue_families, create_device_and_queues, create_swapchain,
         ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
     },
     user_interface::{camera::Camera, gui::Gui},
@@ -11,12 +11,14 @@ use crate::{
 use anyhow::Context;
 use ash::{vk, Entry};
 use bort::{
+    common::is_format_srgb,
     debug_callback::DebugCallback,
     device::Device,
     instance::{ApiVersion, Instance},
     physical_device::PhysicalDevice,
     queue::Queue,
     surface::Surface,
+    swapchain::Swapchain,
 };
 use egui::TexturesDelta;
 #[allow(unused_imports)]
@@ -33,6 +35,8 @@ pub struct RenderManager {
 
     window: Arc<Window>,
     surface: Surface,
+    swapchain: Swapchain,
+    is_swapchain_srgb: bool,
 
     physical_device: PhysicalDevice,
     device: Arc<Device>,
@@ -152,6 +156,8 @@ impl RenderManager {
         )?;
 
         // create swapchain
+        let swapchain = create_swapchain(&instance, &device, &surface, &window, &physical_device)?;
+        let is_swapchain_srgb = is_format_srgb(swapchain.surface_format().format);
 
         Ok(Self {
             entry,
@@ -160,6 +166,8 @@ impl RenderManager {
 
             window,
             surface,
+            swapchain,
+            is_swapchain_srgb,
 
             physical_device,
             device,

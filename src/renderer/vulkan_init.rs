@@ -1,13 +1,14 @@
-use super::config_renderer::{VULKAN_VER_MAJ, VULKAN_VER_MIN};
+use super::config_renderer::{FRAMES_IN_FLIGHT, VULKAN_VER_MAJ, VULKAN_VER_MIN};
 use anyhow::Context;
 use ash::vk;
 use bort::{
-    device::Device, instance::Instance, physical_device::PhysicalDevice, queue::Queue,
-    surface::Surface, swapchain::Swapchain,
+    common::is_format_srgb, device::Device, instance::Instance, physical_device::PhysicalDevice,
+    queue::Queue, surface::Surface, swapchain::Swapchain,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
+use winit::window::Window;
 
 pub fn required_device_extensions() -> [&'static str; 2] {
     ["VK_KHR_swapchain", "VK_EXT_descriptor_indexing"]
@@ -236,4 +237,34 @@ pub fn create_device_and_queues(
     })
 }
 
-pub fn create_swapchain() -> Swapchain {}
+pub fn create_swapchain(
+    instance: &Instance,
+    device: &Device,
+    surface: &Surface,
+    window: &Window,
+    physical_device: &PhysicalDevice,
+) -> anyhow::Result<Swapchain> {
+    let preferred_image_count = FRAMES_IN_FLIGHT as u32;
+    let window_dimensions: [u32; 2] = window.inner_size().into();
+
+    let surface_formats = surface
+        .get_physical_device_surface_formats(physical_device)
+        .context("get_physical_device_surface_formats")?;
+    let preferred_surface_format = surface_formats
+        .iter()
+        .cloned()
+        // use the first SRGB format we find
+        .find(|vk::SurfaceFormatKHR { format, .. }| is_format_srgb(*format))
+        // otherwise just go with the first format
+        .unwrap_or(surface_formats[0]);
+
+    Swapchain::new(
+        instance,
+        device,
+        surface,
+        physical_device,
+        preferred_surface_format,
+        preferred_image_count,
+        window_dimensions,
+    )
+}
