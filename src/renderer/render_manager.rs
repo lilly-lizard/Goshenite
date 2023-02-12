@@ -161,7 +161,26 @@ impl RenderManager {
             "swapchain surface format = {:?}",
             swapchain.surface_format()
         );
+        debug!("swapchain present mode = {:?}", swapchain.present_mode());
+        debug!(
+            "swapchain composite alpha = {:?}",
+            swapchain.composite_alpha()
+        );
         let is_swapchain_srgb = is_format_srgb(swapchain.surface_format().format);
+
+        // create swapchain images
+        todo!();
+
+        // todo have function in image?
+        let framebuffer_dimensions = swapchain.dimensions();
+        let render_viewport = vk::Viewport {
+            x: 0.,
+            y: 0.,
+            width: framebuffer_dimensions.width as f32,
+            height: framebuffer_dimensions.height as f32,
+            min_depth: 0.,
+            max_depth: 1.,
+        };
 
         Ok(Self {
             entry,
