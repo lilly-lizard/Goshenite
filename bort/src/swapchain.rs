@@ -46,7 +46,7 @@ pub struct Swapchain {
 
     image_count: u32,
     surface_format: vk::SurfaceFormatKHR,
-    dimensions: vk::Extent2D,
+    dimensions: [u32; 2],
     array_layers: u32,
     image_usage: vk::ImageUsageFlags,
     sharing_mode: vk::SharingMode,
@@ -90,7 +90,7 @@ impl Swapchain {
             surface_capabilities.min_image_count,
         );
 
-        let dimensions = match surface_capabilities.current_extent.width {
+        let extent = match surface_capabilities.current_extent.width {
             std::u32::MAX => vk::Extent2D {
                 width: window_dimensions[0],
                 height: window_dimensions[1],
@@ -128,7 +128,7 @@ impl Swapchain {
             .min_image_count(image_count)
             .image_color_space(surface_format.color_space)
             .image_format(surface_format.format)
-            .image_extent(dimensions)
+            .image_extent(extent)
             .image_usage(image_usage)
             .image_sharing_mode(sharing_mode)
             .pre_transform(pre_transform)
@@ -148,7 +148,7 @@ impl Swapchain {
 
             image_count,
             surface_format,
-            dimensions,
+            dimensions: [extent.width, extent.height],
             array_layers,
             image_usage,
             sharing_mode,
@@ -180,7 +180,7 @@ impl Swapchain {
     pub fn surface_format(&self) -> vk::SurfaceFormatKHR {
         self.surface_format
     }
-    pub fn dimensions(&self) -> vk::Extent2D {
+    pub fn dimensions(&self) -> [u32; 2] {
         self.dimensions
     }
     pub fn array_layers(&self) -> u32 {
@@ -192,8 +192,8 @@ impl Swapchain {
     pub fn sharing_mode(&self) -> vk::SharingMode {
         self.sharing_mode
     }
-    pub fn queue_family_indices(&self) -> Option<Vec<u32>> {
-        self.queue_family_indices
+    pub fn queue_family_indices(&self) -> &Option<Vec<u32>> {
+        &self.queue_family_indices
     }
     pub fn pre_transform(&self) -> vk::SurfaceTransformFlagsKHR {
         self.pre_transform

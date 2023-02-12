@@ -2,7 +2,6 @@ use super::config_renderer::{FRAMES_IN_FLIGHT, VULKAN_VER_MAJ, VULKAN_VER_MIN};
 use anyhow::Context;
 use ash::vk;
 use bort::{
-    common::is_format_srgb,
     device::Device,
     instance::Instance,
     physical_device::PhysicalDevice,
