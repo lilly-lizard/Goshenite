@@ -13,13 +13,16 @@ use crate::{
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::Context;
-use ash::{vk::{
-    self, DebugUtilsMessageSeverityFlagsEXT, PhysicalDeviceVulkan12Features, QueueFlags,
-}, Entry};
+use ash::{
+    vk::{self, DebugUtilsMessageSeverityFlagsEXT, PhysicalDeviceVulkan12Features, QueueFlags},
+    Entry,
+};
 use bort::{
     debug_callback::DebugCallback,
+    device::Device,
     instance::{ApiVersion, Instance},
     physical_device::PhysicalDevice,
+    queue::Queue,
     surface::Surface,
 };
 use egui::TexturesDelta;
@@ -73,10 +76,7 @@ unsafe extern "system" fn log_vulkan_debug_callback(
 }
 
 fn required_device_extensions() -> [&'static str; 2] {
-    [
-        "VK_KHR_swapchain",
-        "VK_EXT_descriptor_indexing",
-    ]
+    ["VK_KHR_swapchain", "VK_EXT_descriptor_indexing"]
 }
 
 /// Make sure to update `required_features_1_2` too!
@@ -101,8 +101,8 @@ fn required_features_1_2() -> PhysicalDeviceVulkan12Features {
 
 struct ChoosePhysicalDeviceReturn {
     pub physical_device: PhysicalDevice,
-    pub render_queue_family_index: usize,
-    pub transfer_queue_family_index: usize,
+    pub render_queue_family_index: u32,
+    pub transfer_queue_family_index: u32,
 }
 fn choose_physical_device_and_queue_families(
     instance: &Instance,
@@ -117,8 +117,7 @@ fn choose_physical_device_and_queue_families(
 
     // print available physical devices
     debug!("available vulkan physical devices:");
-    for pd in &p_devices
-    {
+    for pd in &p_devices {
         debug!("\t{}", pd.name());
     }
 
@@ -140,58 +139,7 @@ fn choose_physical_device_and_queue_families(
         // filter for required device extensionssupports_extension
         .filter(|p| p.supports_extensions(required_extensions.into_iter()))
         // filter for queue support
-        .filter_map(|p| {
-            // get queue family index for main queue
-            let render_family = p
-                .queue_family_properties()
-                .iter()
-                // because we want the queue family index
-                .enumerate()
-                .position(|(i, q)| {
-                    // must support our surface and essential operations
-                    q.queue_flags.contains(QueueFlags::GRAPHICS)
-                        && q.queue_flags.contains(QueueFlags::TRANSFER)
-                        && surface
-                            .get_physical_device_surface_support(&p, i as u32)
-                            .unwrap_or(false)
-                });
-            let render_family = match render_family {
-                Some(x) => x,
-                None => {
-                    debug!("no suitable queue family index found for physical device {}", p.name());
-                    return None;
-                },
-            };
-
-            // check requried device features support
-            let supported_features = instance.physical_device_features_1_2(p.handle()).expect("instance should have been created for vulkan 1.2");
-            if supports_required_features_1_2(supported_features) {
-                trace!(
-                    "physical device {} doesn't support required features. supported features: {:?}",
-                    p.name(),
-                    supported_features
-                );
-                return None;
-            }
-
-            // attempt to find a different queue family that we can use for asynchronous transfer operations
-            // e.g. uploading image/buffer data at same time as rendering
-            let transfer_family = p
-                .queue_family_properties()
-                .iter()
-                .enumerate()
-                // exclude the queue family we've already found and filter by transfer operation support
-                .filter(|(i, q)| *i != render_family && q.queue_flags.contains(QueueFlags::TRANSFER))
-                // some drivers expose a queue that only supports transfer operations (for this very purpose) which is preferable
-                .max_by_key(|(_, q)| if !q.queue_flags.contains(QueueFlags::GRAPHICS) { 1 } else { 0 })
-                .map(|(i, _)| i);
-            
-            Some(ChoosePhysicalDeviceReturn {
-                physical_device: p,
-                render_queue_family_index: render_family,
-                transfer_queue_family_index: transfer_family.unwrap_or(render_family)
-            })
-        })
+        .filter_map(|p| check_physical_device_queue_support(p, surface, instance))
         // preference of device type
         .max_by_key(
             |ChoosePhysicalDeviceReturn {
@@ -218,6 +166,136 @@ fn choose_physical_device_and_queue_families(
     })
 }
 
+fn check_physical_device_queue_support(
+    physical_device: PhysicalDevice,
+    surface: &Surface,
+    instance: &Instance,
+) -> Option<ChoosePhysicalDeviceReturn> {
+    // get queue family index for main queue
+    let render_family = physical_device
+        .queue_family_properties()
+        .iter()
+        // because we want the queue family index
+        .enumerate()
+        .position(|(i, q)| {
+            // must support our surface and essential operations
+            q.queue_flags.contains(QueueFlags::GRAPHICS)
+                && q.queue_flags.contains(QueueFlags::TRANSFER)
+                && surface
+                    .get_physical_device_surface_support(&physical_device, i as u32)
+                    .unwrap_or(false)
+        });
+    let render_family = match render_family {
+        Some(x) => x as u32,
+        None => {
+            debug!(
+                "no suitable queue family index found for physical device {}",
+                physical_device.name()
+            );
+            return None;
+        }
+    };
+
+    // check requried device features support
+    let supported_features = instance
+        .physical_device_features_1_2(physical_device.handle())
+        .expect("instance should have been created for vulkan 1.2");
+    if supports_required_features_1_2(supported_features) {
+        trace!(
+            "physical device {} doesn't support required features. supported features: {:?}",
+            physical_device.name(),
+            supported_features
+        );
+        return None;
+    }
+
+    // attempt to find a different queue family that we can use for asynchronous transfer operations
+    // e.g. uploading image/buffer data at same time as rendering
+    let transfer_family = physical_device
+        .queue_family_properties()
+        .iter()
+        .enumerate()
+        // exclude the queue family we've already found and filter by transfer operation support
+        .filter(|(i, q)| *i as u32 != render_family && q.queue_flags.contains(QueueFlags::TRANSFER))
+        // some drivers expose a queue that only supports transfer operations (for this very purpose) which is preferable
+        .max_by_key(|(_, q)| {
+            if !q.queue_flags.contains(QueueFlags::GRAPHICS) {
+                1
+            } else {
+                0
+            }
+        })
+        .map(|(i, _)| i as u32);
+
+    Some(ChoosePhysicalDeviceReturn {
+        physical_device: physical_device,
+        render_queue_family_index: render_family,
+        transfer_queue_family_index: transfer_family.unwrap_or(render_family),
+    })
+}
+
+struct CreateDeviceAndQueuesReturn {
+    device: Arc<Device>,
+    render_queue: Queue,
+    transfer_queue: Option<Queue>,
+}
+fn create_device_and_queues(
+    instance: &Instance,
+    physical_device: &PhysicalDevice,
+    render_queue_family_index: u32,
+    transfer_queue_family_index: u32,
+) -> anyhow::Result<CreateDeviceAndQueuesReturn> {
+    let queue_priorities = [1.0];
+    let single_queue = transfer_queue_family_index != render_queue_family_index;
+
+    let render_queue_info = vk::DeviceQueueCreateInfo::builder()
+        .queue_family_index(render_queue_family_index)
+        .queue_priorities(&queue_priorities);
+    let mut queue_infos = vec![render_queue_info.build()];
+
+    let mut transfer_queue_info = vk::DeviceQueueCreateInfo::builder();
+    if single_queue {
+        transfer_queue_info = transfer_queue_info
+            .queue_family_index(transfer_queue_family_index)
+            .queue_priorities(&queue_priorities);
+        queue_infos.push(transfer_queue_info.build());
+    }
+
+    let features_1_0 = vk::PhysicalDeviceFeatures::default();
+    let features_1_1 = vk::PhysicalDeviceVulkan11Features::default();
+    let features_1_2 = required_features_1_2();
+
+    let extension_names: Vec<String> = required_device_extensions()
+        .into_iter()
+        .map(|s| s.to_string())
+        .collect();
+
+    let device = Arc::new(Device::new(
+        instance,
+        physical_device,
+        queue_infos.as_slice(),
+        features_1_0,
+        features_1_1,
+        features_1_2,
+        extension_names,
+        [],
+    )?);
+
+    let render_queue = Queue::new(device.clone(), render_queue_family_index, 0);
+
+    let transfer_queue = if single_queue {
+        None
+    } else {
+        Some(Queue::new(device.clone(), transfer_queue_family_index, 0))
+    };
+
+    Ok(CreateDeviceAndQueuesReturn {
+        device,
+        render_queue,
+        transfer_queue,
+    })
+}
+
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
     entry: ash::Entry,
@@ -225,6 +303,9 @@ pub struct RenderManager {
     debug_callback: vk::DebugUtilsMessengerEXT,
 
     physical_device: PhysicalDevice,
+    device: Arc<Device>,
+    render_queue: Queue,
+    transfer_queue: Option<Queue>,
 
     window: Arc<Window>,
     surface: Surface,
@@ -255,12 +336,10 @@ pub struct RenderManager {
     framebuffers: Vec<Arc<Framebuffer>>,
     clear_values: [Option<ClearValue>; ATTACHMENT_COUNT],
     */
-
     //geometry_pass: GeometryPass,
     //lighting_pass: LightingPass,
     //overlay_pass: OverlayPass,
     //gui_pass: GuiRenderer,
-
     /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
     /// without conflicting with commands currently being processed. This variable indicates
     /// which index to will be next submitted to the GPU.
@@ -274,21 +353,19 @@ pub struct RenderManager {
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initiver_minoralize, returns a string explanation.
     pub fn new(window: Arc<Window>) -> anyhow::Result<Self> {
-        let entry = unsafe { Entry::load() }.context("loading dynamic library. please install vulkan on your system...")?;
+        let entry = unsafe { Entry::load() }
+            .context("loading dynamic library. please install vulkan on your system...")?;
 
         // create instance
-        let api_version = ApiVersion {
-            major: VULKAN_VER_MAJ,
-            minor: VULKAN_VER_MIN,
-        };
+        let api_version = ApiVersion::new(VULKAN_VER_MAJ, VULKAN_VER_MIN);
         let instance = Arc::new(Instance::new(
             &entry,
             api_version,
             ENGINE_NAME,
             window.raw_display_handle(),
             ENABLE_VULKAN_VALIDATION,
-            Vec::new(),
-            Vec::new(),
+            [],
+            [],
         )?);
         info!(
             "created vulkan instance. api version = {:?}",
@@ -301,7 +378,7 @@ impl RenderManager {
                 Ok(x) => {
                     info!("enabling vulkan validation layers and debug callback");
                     Some(x)
-                },
+                }
                 Err(e) => {
                     warn!("validation layer debug callback requested but cannot be setup due to: {:?}", e);
                     None
@@ -333,7 +410,22 @@ impl RenderManager {
             physical_device.properties().device_type,
         );
         debug!("render queue family index = {}", render_queue_family_index);
-        debug!("transfer queue family index = {}", transfer_queue_family_index);
+        debug!(
+            "transfer queue family index = {}",
+            transfer_queue_family_index
+        );
+
+        // create device and queues
+        let CreateDeviceAndQueuesReturn {
+            device,
+            render_queue,
+            transfer_queue,
+        } = create_device_and_queues(
+            &instance,
+            &physical_device,
+            render_queue_family_index,
+            transfer_queue_family_index,
+        )?;
 
         todo!();
     }

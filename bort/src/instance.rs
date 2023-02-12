@@ -12,6 +12,19 @@ pub struct ApiVersion {
     pub minor: u32,
 }
 
+impl ApiVersion {
+    pub fn new(major: u32, minor: u32) -> Self {
+        Self { major, minor }
+    }
+}
+
+#[test]
+fn api_version_ordering() {
+    let ver_1_1 = ApiVersion::new(1, 1);
+    let ver_1_2 = ApiVersion::new(1, 2);
+    assert!(ver_1_1 < ver_1_2);
+}
+
 pub struct Instance {
     inner: ash::Instance,
     api_version: ApiVersion,
@@ -25,8 +38,8 @@ impl Instance {
         app_name: &str,
         display_handle: RawDisplayHandle,
         enable_debug_validation: bool,
-        additional_layer_names: Vec<String>,
-        additional_extension_names: Vec<String>,
+        additional_layer_names: impl IntoIterator<Item = String>,
+        additional_extension_names: impl IntoIterator<Item = String>,
     ) -> anyhow::Result<Self> {
         let app_name = CString::new(app_name).context("converting app name to c string")?;
         let appinfo = vk::ApplicationInfo::builder()
@@ -59,6 +72,9 @@ impl Instance {
             extension_names_raw.push(DebugUtils::name().as_ptr());
         }
 
+        trace!("enabling instance extensions: {:?}", extension_names_raw);
+        trace!("enabling vulkan layers: {:?}", layer_names_raw);
+
         let create_info = vk::InstanceCreateInfo::builder()
             .application_info(&appinfo)
             .enabled_layer_names(&layer_names_raw)
@@ -76,6 +92,7 @@ impl Instance {
         })
     }
 
+    /// Vulkan 1.0 features
     pub fn physical_device_features_1_0(
         &self,
         physical_device_handle: vk::PhysicalDevice,
@@ -86,12 +103,12 @@ impl Instance {
         }
     }
 
-    /// Vulkan 1.1 features. If api version < 1.1, these can not be populated.
+    /// Vulkan 1.1 features. If api version < 1.1, these cannot be populated.
     pub fn physical_device_features_1_1(
         &self,
         physical_device_handle: vk::PhysicalDevice,
     ) -> Option<vk::PhysicalDeviceVulkan11Features> {
-        if self.api_version.major < 1 {
+        if self.api_version < ApiVersion::new(1, 1) {
             return None;
         }
 
@@ -107,12 +124,12 @@ impl Instance {
         Some(features_1_1)
     }
 
-    /// Vulkan 1.2 features. If api version < 1.2, these can not be populated.
+    /// Vulkan 1.2 features. If api version < 1.2, these cannot be populated.
     pub fn physical_device_features_1_2(
         &self,
         physical_device_handle: vk::PhysicalDevice,
     ) -> Option<vk::PhysicalDeviceVulkan12Features> {
-        if self.api_version.major < 2 {
+        if self.api_version < ApiVersion::new(1, 2) {
             return None;
         }
 
