@@ -4,6 +4,7 @@ use crate::{
 };
 use anyhow::Context;
 use ash::{extensions::khr, prelude::VkResult, vk};
+use core::slice::SlicePattern;
 use std::cmp::{max, min};
 
 /// Checks surface support for the first compositie alpha flag in order of preference:
@@ -42,17 +43,49 @@ pub fn get_first_srgb_surface_format(
 
 #[derive(Debug, Clone)]
 pub struct SwapchainProperties {
+    pub create_flags: vk::SwapchainCreateFlagsKHR,
     pub image_count: u32,
+
     pub surface_format: vk::SurfaceFormatKHR,
     pub dimensions: [u32; 2],
     pub array_layers: u32,
     pub image_usage: vk::ImageUsageFlags,
     pub sharing_mode: vk::SharingMode,
     pub queue_family_indices: Option<Vec<u32>>,
+
     pub pre_transform: vk::SurfaceTransformFlagsKHR,
     pub composite_alpha: vk::CompositeAlphaFlagsKHR,
     pub present_mode: vk::PresentModeKHR,
     pub clipping_enabled: bool,
+}
+
+impl SwapchainProperties {
+    pub fn create_info_builder(
+        &self,
+        surface_handle: vk::SurfaceKHR,
+        old_swapchain_handle: vk::SwapchainKHR,
+    ) -> vk::SwapchainCreateInfoKHRBuilder {
+        let mut builder = vk::SwapchainCreateInfoKHR::builder()
+            .flags(self.create_flags)
+            .surface(surface_handle)
+            .min_image_count(self.image_count)
+            .image_format(self.surface_format.format)
+            .image_color_space(self.surface_format.color_space)
+            .image_extent(extent)
+            .image_array_layers(self.array_layers)
+            .image_usage(self.image_usage)
+            .image_sharing_mode(self.sharing_mode)
+            .pre_transform(self.pre_transform)
+            .composite_alpha(self.composite_alpha)
+            .present_mode(self.present_mode)
+            .clipped(self.clipping_enabled)
+            .old_swapchain(old_swapchain_handle);
+        if let Some(queue_family_indices) = self.queue_family_indices {
+            builder = builder.queue_family_indices(queue_family_indices.as_slice());
+        }
+
+        builder
+    }
 }
 
 pub struct Swapchain {
@@ -120,48 +153,30 @@ impl Swapchain {
             surface_capabilities.current_transform
         };
 
-        // hard-coded
+        let properties = SwapchainProperties {
+            image_count,
+            surface_format,
+            dimensions: [extent.width, extent.height],
+            image_usage,
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            pre_transform,
+            composite_alpha,
+            present_mode,
+            clipping_enabled: true,
+            ..SwapchainProperties::default()
+        };
 
-        let array_layers = 1u32;
-        let clipping_enabled = true;
-        let sharing_mode = vk::SharingMode::EXCLUSIVE;
-        let queue_family_indices: Option<Vec<u32>> = None;
-
-        let swapchain_create_info = vk::SwapchainCreateInfoKHR::builder()
-            .surface(surface.handle())
-            .min_image_count(image_count)
-            .image_color_space(surface_format.color_space)
-            .image_format(surface_format.format)
-            .image_extent(extent)
-            .image_usage(image_usage)
-            .image_sharing_mode(sharing_mode)
-            .pre_transform(pre_transform)
-            .composite_alpha(composite_alpha)
-            .present_mode(present_mode)
-            .clipped(clipping_enabled)
-            .image_array_layers(array_layers);
-
+        let swapchain_create_info_builder =
+            properties.create_info_builder(surface.handle(), vk::SwapchainKHR::null());
         let handle = unsafe {
-            swapchain_loader.create_swapchain(&swapchain_create_info, ALLOCATION_CALLBACK)
+            swapchain_loader.create_swapchain(&swapchain_create_info_builder, ALLOCATION_CALLBACK)
         }
         .context("creating swapchain")?;
 
         Ok(Self {
             handle,
             swapchain_loader,
-            properties: SwapchainProperties {
-                image_count,
-                surface_format,
-                dimensions: [extent.width, extent.height],
-                array_layers,
-                image_usage,
-                sharing_mode,
-                queue_family_indices,
-                pre_transform,
-                composite_alpha,
-                present_mode,
-                clipping_enabled,
-            },
+            properties,
         })
     }
 
@@ -174,9 +189,11 @@ impl Swapchain {
     pub fn handle(&self) -> vk::SwapchainKHR {
         self.handle
     }
+
     pub fn swapchain_loader(&self) -> &khr::Swapchain {
         &self.swapchain_loader
     }
+
     pub fn properties(&self) -> &SwapchainProperties {
         &self.properties
     }
