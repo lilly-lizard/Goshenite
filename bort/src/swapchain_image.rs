@@ -1,7 +1,8 @@
 use crate::{
     device::Device,
-    image_base::{
-        default_component_mapping, default_subresource_range, ImageBase, ImageViewProperties,
+    image_base::ImageBase,
+    image_properties::{
+        default_component_mapping, default_subresource_range, ImageDimensions, ImageViewProperties,
     },
     swapchain::Swapchain,
     ALLOCATION_CALLBACK,
@@ -14,7 +15,7 @@ pub struct SwapchainImage {
     image_handle: vk::Image,
     image_view_handle: vk::ImageView,
     image_view_properties: ImageViewProperties,
-    dimensions: [u32; 2],
+    dimensions: ImageDimensions,
 
     // dependencies
     device: Arc<Device>,
@@ -76,7 +77,7 @@ impl SwapchainImage {
             image_handle,
             image_view_handle,
             image_view_properties,
-            dimensions: swapchain.properties().dimensions,
+            dimensions: swapchain.properties().dimensions(),
 
             device,
             _swapchain: swapchain,
@@ -98,12 +99,8 @@ impl ImageBase for SwapchainImage {
         self.image_view_handle
     }
 
-    fn extent(&self) -> vk::Extent3D {
-        vk::Extent3D {
-            width: self.dimensions[0],
-            height: self.dimensions[1],
-            depth: self.layer_count(),
-        }
+    fn dimensions(&self) -> ImageDimensions {
+        self.dimensions
     }
 
     fn image_view_properties(&self) -> ImageViewProperties {

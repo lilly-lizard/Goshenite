@@ -1,6 +1,7 @@
 use crate::{
-    common::is_format_srgb, device::Device, image_base::extent_2d_from_dimensions,
-    instance::Instance, physical_device::PhysicalDevice, surface::Surface, ALLOCATION_CALLBACK,
+    common::is_format_srgb, device::Device, image_base::extent_2d_from_width_height,
+    image_properties::ImageDimensions, instance::Instance, physical_device::PhysicalDevice,
+    surface::Surface, ALLOCATION_CALLBACK,
 };
 use anyhow::Context;
 use ash::{extensions::khr, prelude::VkResult, vk};
@@ -59,7 +60,7 @@ pub struct SwapchainProperties {
 
     // image properties
     pub surface_format: vk::SurfaceFormatKHR,
-    pub dimensions: [u32; 2],
+    pub width_height: [u32; 2],
     pub array_layers: u32,
     pub image_usage: vk::ImageUsageFlags,
     pub sharing_mode: vk::SharingMode,
@@ -79,7 +80,7 @@ impl Default for SwapchainProperties {
 
             // nonsense defaults. make sure you override these!
             surface_format: vk::SurfaceFormatKHR::default(),
-            dimensions: [1, 1],
+            width_height: [1, 1],
             image_usage: vk::ImageUsageFlags::empty(),
             pre_transform: vk::SurfaceTransformFlagsKHR::default(),
             composite_alpha: vk::CompositeAlphaFlagsKHR::empty(),
@@ -99,7 +100,7 @@ impl SwapchainProperties {
             .min_image_count(self.image_count)
             .image_format(self.surface_format.format)
             .image_color_space(self.surface_format.color_space)
-            .image_extent(extent_2d_from_dimensions(self.dimensions))
+            .image_extent(extent_2d_from_width_height(self.width_height))
             .image_array_layers(self.array_layers)
             .image_usage(self.image_usage)
             .image_sharing_mode(self.sharing_mode)
@@ -113,6 +114,14 @@ impl SwapchainProperties {
         }
 
         builder
+    }
+
+    pub fn dimensions(&self) -> ImageDimensions {
+        ImageDimensions::Dim2d {
+            width: self.width_height[0],
+            height: self.width_height[1],
+            array_layers: 1,
+        }
     }
 }
 
@@ -186,7 +195,7 @@ impl Swapchain {
         let properties = SwapchainProperties {
             image_count,
             surface_format,
-            dimensions: [extent.width, extent.height],
+            width_height: [extent.width, extent.height],
             image_usage,
             sharing_mode: vk::SharingMode::EXCLUSIVE,
             pre_transform,
