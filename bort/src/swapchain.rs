@@ -1,44 +1,147 @@
 use crate::{
     common::is_format_srgb, device::Device, image_base::extent_2d_from_width_height,
-    image_properties::ImageDimensions, instance::Instance, physical_device::PhysicalDevice,
-    surface::Surface, ALLOCATION_CALLBACK,
+    image_properties::ImageDimensions, surface::Surface, ALLOCATION_CALLBACK,
 };
 use anyhow::Context;
 use ash::{extensions::khr, prelude::VkResult, vk};
-use std::cmp::{max, min};
+use std::{
+    cmp::{max, min},
+    sync::Arc,
+};
 
-/// Checks surface support for the first compositie alpha flag in order of preference:
-/// 1. `vk::CompositeAlphaFlagsKHR::POST_MULTIPLIED`
-/// 2. `vk::CompositeAlphaFlagsKHR::OPAQUE`
-/// 3. `vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED` (because cbf implimenting the logic for this)
-/// 4. `vk::CompositeAlphaFlagsKHR::INHERIT` (noooope)
-pub fn choose_composite_alpha(
-    surface_capabilities: vk::SurfaceCapabilitiesKHR,
-) -> vk::CompositeAlphaFlagsKHR {
-    let supported_composite_alpha = surface_capabilities.supported_composite_alpha;
-    let composite_alpha_preference_order = [
-        vk::CompositeAlphaFlagsKHR::POST_MULTIPLIED,
-        vk::CompositeAlphaFlagsKHR::OPAQUE,
-        vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED,
-        vk::CompositeAlphaFlagsKHR::INHERIT,
-    ];
-    composite_alpha_preference_order
-        .into_iter()
-        .find(|&ca| supported_composite_alpha.contains(ca))
-        .expect("driver should support at least one type of composite alpha!")
+// Swapchain
+
+pub struct Swapchain {
+    handle: vk::SwapchainKHR,
+    swapchain_loader: khr::Swapchain,
+    properties: SwapchainProperties,
+
+    // dependencies
+    device: Arc<Device>,
+    surface: Arc<Surface>,
 }
 
-/// Returns the first SRGB surface format in the vec.
-pub fn get_first_srgb_surface_format(
-    surface_formats: &Vec<vk::SurfaceFormatKHR>,
-) -> vk::SurfaceFormatKHR {
-    surface_formats
-        .iter()
-        .cloned()
-        // use the first SRGB format we find
-        .find(|vk::SurfaceFormatKHR { format, .. }| is_format_srgb(*format))
-        // otherwise just go with the first format
-        .unwrap_or(surface_formats[0])
+impl Swapchain {
+    /// Prefers the following settings:
+    /// - present mode = `vk::PresentModeKHR::MAILBOX`
+    /// - pre-transform = `vk::SurfaceTransformFlagsKHR::IDENTITY`
+    ///
+    /// `preferred_image_count` is clamped based on `vk::SurfaceCapabilitiesKHR`.
+    ///
+    /// `surface_format`, `composite_alpha` and `image_usage` are unchecked.
+    ///
+    /// Sharing mode is set to `vk::SharingMode::EXCLUSIVE`, only 1 array layer, and clipping is enabled.
+    pub fn new(
+        device: Arc<Device>,
+        surface: Arc<Surface>,
+
+        preferred_image_count: u32,
+        surface_format: vk::SurfaceFormatKHR,
+        composite_alpha: vk::CompositeAlphaFlagsKHR,
+        image_usage: vk::ImageUsageFlags,
+        window_dimensions: [u32; 2],
+    ) -> anyhow::Result<Self> {
+        let swapchain_loader = khr::Swapchain::new(device.instance().inner(), device.inner());
+
+        let surface_capabilities = surface
+            .get_physical_device_surface_capabilities(device.physical_device())
+            .context("get_physical_device_surface_capabilities")?;
+
+        let image_count = max(
+            min(preferred_image_count, surface_capabilities.max_image_count),
+            surface_capabilities.min_image_count,
+        );
+
+        let extent = match surface_capabilities.current_extent.width {
+            std::u32::MAX => vk::Extent2D {
+                width: window_dimensions[0],
+                height: window_dimensions[1],
+            },
+            _ => surface_capabilities.current_extent,
+        };
+
+        let present_modes = surface
+            .get_physical_device_surface_present_modes(device.physical_device())
+            .context("get_physical_device_surface_present_modes")?;
+        let present_mode = present_modes
+            .into_iter()
+            .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
+            .unwrap_or(vk::PresentModeKHR::FIFO);
+
+        // should think more about this if targeting mobile in the future...
+        let pre_transform = if surface_capabilities
+            .supported_transforms
+            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
+        {
+            vk::SurfaceTransformFlagsKHR::IDENTITY
+        } else {
+            surface_capabilities.current_transform
+        };
+
+        let properties = SwapchainProperties {
+            image_count,
+            surface_format,
+            width_height: [extent.width, extent.height],
+            image_usage,
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            pre_transform,
+            composite_alpha,
+            present_mode,
+            clipping_enabled: true,
+            ..SwapchainProperties::default()
+        };
+
+        let swapchain_create_info_builder =
+            properties.create_info_builder(surface.handle(), vk::SwapchainKHR::null());
+        let handle = unsafe {
+            swapchain_loader.create_swapchain(&swapchain_create_info_builder, ALLOCATION_CALLBACK)
+        }
+        .context("creating swapchain")?;
+
+        Ok(Self {
+            handle,
+            swapchain_loader,
+            properties,
+
+            device,
+            surface,
+        })
+    }
+
+    pub fn get_swapchain_images(&self) -> VkResult<Vec<vk::Image>> {
+        unsafe { self.swapchain_loader.get_swapchain_images(self.handle) }
+    }
+
+    // Getters
+
+    pub fn handle(&self) -> vk::SwapchainKHR {
+        self.handle
+    }
+
+    pub fn swapchain_loader(&self) -> &khr::Swapchain {
+        &self.swapchain_loader
+    }
+
+    pub fn properties(&self) -> &SwapchainProperties {
+        &self.properties
+    }
+
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+
+    pub fn surface(&self) -> &Arc<Surface> {
+        &self.surface
+    }
+}
+
+impl Drop for Swapchain {
+    fn drop(&mut self) {
+        unsafe {
+            self.swapchain_loader
+                .destroy_swapchain(self.handle, ALLOCATION_CALLBACK)
+        };
+    }
 }
 
 // Swapchain Properties
@@ -125,124 +228,38 @@ impl SwapchainProperties {
     }
 }
 
-// Swapchain
+// Helper Functions
 
-pub struct Swapchain {
-    handle: vk::SwapchainKHR,
-    swapchain_loader: khr::Swapchain,
-    properties: SwapchainProperties,
+/// Checks surface support for the first compositie alpha flag in order of preference:
+/// 1. `vk::CompositeAlphaFlagsKHR::POST_MULTIPLIED`
+/// 2. `vk::CompositeAlphaFlagsKHR::OPAQUE`
+/// 3. `vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED` (because cbf implimenting the logic for this)
+/// 4. `vk::CompositeAlphaFlagsKHR::INHERIT` (noooope)
+pub fn choose_composite_alpha(
+    surface_capabilities: vk::SurfaceCapabilitiesKHR,
+) -> vk::CompositeAlphaFlagsKHR {
+    let supported_composite_alpha = surface_capabilities.supported_composite_alpha;
+    let composite_alpha_preference_order = [
+        vk::CompositeAlphaFlagsKHR::POST_MULTIPLIED,
+        vk::CompositeAlphaFlagsKHR::OPAQUE,
+        vk::CompositeAlphaFlagsKHR::PRE_MULTIPLIED,
+        vk::CompositeAlphaFlagsKHR::INHERIT,
+    ];
+    composite_alpha_preference_order
+        .into_iter()
+        .find(|&ca| supported_composite_alpha.contains(ca))
+        .expect("driver should support at least one type of composite alpha!")
 }
 
-impl Swapchain {
-    /// Prefers the following settings:
-    /// - present mode = `vk::PresentModeKHR::MAILBOX`
-    /// - pre-transform = `vk::SurfaceTransformFlagsKHR::IDENTITY`
-    ///
-    /// `preferred_image_count` is clamped based on `vk::SurfaceCapabilitiesKHR`.
-    ///
-    /// `surface_format`, `composite_alpha` and `image_usage` are unchecked.
-    ///
-    /// Sharing mode is set to `vk::SharingMode::EXCLUSIVE`, only 1 array layer, and clipping is enabled.
-    pub fn new(
-        instance: &Instance,
-        device: &Device,
-        surface: &Surface,
-        physical_device: &PhysicalDevice,
-
-        preferred_image_count: u32,
-        surface_format: vk::SurfaceFormatKHR,
-        composite_alpha: vk::CompositeAlphaFlagsKHR,
-        image_usage: vk::ImageUsageFlags,
-        window_dimensions: [u32; 2],
-    ) -> anyhow::Result<Self> {
-        let swapchain_loader = khr::Swapchain::new(instance.inner(), device.inner());
-
-        let surface_capabilities = surface
-            .get_physical_device_surface_capabilities(physical_device)
-            .context("get_physical_device_surface_capabilities")?;
-
-        let image_count = max(
-            min(preferred_image_count, surface_capabilities.max_image_count),
-            surface_capabilities.min_image_count,
-        );
-
-        let extent = match surface_capabilities.current_extent.width {
-            std::u32::MAX => vk::Extent2D {
-                width: window_dimensions[0],
-                height: window_dimensions[1],
-            },
-            _ => surface_capabilities.current_extent,
-        };
-
-        let present_modes = surface
-            .get_physical_device_surface_present_modes(physical_device)
-            .context("get_physical_device_surface_present_modes")?;
-        let present_mode = present_modes
-            .into_iter()
-            .find(|&mode| mode == vk::PresentModeKHR::MAILBOX)
-            .unwrap_or(vk::PresentModeKHR::FIFO);
-
-        // should think more about this if targeting mobile in the future...
-        let pre_transform = if surface_capabilities
-            .supported_transforms
-            .contains(vk::SurfaceTransformFlagsKHR::IDENTITY)
-        {
-            vk::SurfaceTransformFlagsKHR::IDENTITY
-        } else {
-            surface_capabilities.current_transform
-        };
-
-        let properties = SwapchainProperties {
-            image_count,
-            surface_format,
-            width_height: [extent.width, extent.height],
-            image_usage,
-            sharing_mode: vk::SharingMode::EXCLUSIVE,
-            pre_transform,
-            composite_alpha,
-            present_mode,
-            clipping_enabled: true,
-            ..SwapchainProperties::default()
-        };
-
-        let swapchain_create_info_builder =
-            properties.create_info_builder(surface.handle(), vk::SwapchainKHR::null());
-        let handle = unsafe {
-            swapchain_loader.create_swapchain(&swapchain_create_info_builder, ALLOCATION_CALLBACK)
-        }
-        .context("creating swapchain")?;
-
-        Ok(Self {
-            handle,
-            swapchain_loader,
-            properties,
-        })
-    }
-
-    pub fn get_swapchain_images(&self) -> VkResult<Vec<vk::Image>> {
-        unsafe { self.swapchain_loader.get_swapchain_images(self.handle) }
-    }
-
-    // Getters
-
-    pub fn handle(&self) -> vk::SwapchainKHR {
-        self.handle
-    }
-
-    pub fn swapchain_loader(&self) -> &khr::Swapchain {
-        &self.swapchain_loader
-    }
-
-    pub fn properties(&self) -> &SwapchainProperties {
-        &self.properties
-    }
-}
-
-impl Drop for Swapchain {
-    fn drop(&mut self) {
-        unsafe {
-            self.swapchain_loader
-                .destroy_swapchain(self.handle, ALLOCATION_CALLBACK)
-        };
-    }
+/// Returns the first SRGB surface format in the vec.
+pub fn get_first_srgb_surface_format(
+    surface_formats: &Vec<vk::SurfaceFormatKHR>,
+) -> vk::SurfaceFormatKHR {
+    surface_formats
+        .iter()
+        .cloned()
+        // use the first SRGB format we find
+        .find(|vk::SurfaceFormatKHR { format, .. }| is_format_srgb(*format))
+        // otherwise just go with the first format
+        .unwrap_or(surface_formats[0])
 }

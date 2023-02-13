@@ -7,7 +7,7 @@ pub struct DebugCallback {
     debug_utils_loader: DebugUtils,
 
     // dependencies
-    _instance: Arc<Instance>,
+    instance: Arc<Instance>,
 }
 
 impl DebugCallback {
@@ -39,12 +39,18 @@ impl DebugCallback {
             handle,
             debug_utils_loader,
 
-            _instance: instance,
+            instance,
         })
     }
 
+    // Getters
+
     pub fn handle(&self) -> &vk::DebugUtilsMessengerEXT {
         &self.handle
+    }
+
+    pub fn instance(&self) -> &Arc<Instance> {
+        &self.instance
     }
 }
 

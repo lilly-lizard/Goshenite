@@ -19,7 +19,7 @@ pub struct SwapchainImage {
 
     // dependencies
     device: Arc<Device>,
-    _swapchain: Arc<Swapchain>,
+    swapchain: Arc<Swapchain>,
 }
 
 impl SwapchainImage {
@@ -80,13 +80,38 @@ impl SwapchainImage {
             dimensions: swapchain.properties().dimensions(),
 
             device,
-            _swapchain: swapchain,
+            swapchain,
         })
     }
 
-    #[inline]
+    // Getters
+
+    pub fn image_handle(&self) -> vk::Image {
+        self.image_handle
+    }
+
+    pub fn image_view_handle(&self) -> vk::ImageView {
+        self.image_view_handle
+    }
+
+    pub fn image_view_properties(&self) -> ImageViewProperties {
+        self.image_view_properties
+    }
+
+    pub fn dimensions(&self) -> ImageDimensions {
+        self.dimensions
+    }
+
     pub fn layer_count(&self) -> u32 {
         self.image_view_properties.subresource_range.layer_count
+    }
+
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
+
+    pub fn swapchain(&self) -> &Arc<Swapchain> {
+        &self.swapchain
     }
 }
 

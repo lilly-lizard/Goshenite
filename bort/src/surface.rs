@@ -8,7 +8,7 @@ pub struct Surface {
     surface_loader: khr::Surface,
 
     // dependencies
-    _instance: Arc<Instance>,
+    instance: Arc<Instance>,
 }
 
 impl Surface {
@@ -34,7 +34,7 @@ impl Surface {
             handle,
             surface_loader,
 
-            _instance: instance,
+            instance,
         })
     }
 
@@ -90,6 +90,10 @@ impl Surface {
 
     pub fn surface_loader(&self) -> &khr::Surface {
         &self.surface_loader
+    }
+
+    pub fn instance(&self) -> &Arc<Instance> {
+        &self.instance
     }
 }
 

@@ -192,7 +192,6 @@ impl ImageDimensions {
         }
     }
 
-    /// Returns the total number of texels for an image of these dimensions.
     pub fn num_texels(&self) -> u32 {
         self.width() * self.height() * self.depth() * self.array_layers()
     }

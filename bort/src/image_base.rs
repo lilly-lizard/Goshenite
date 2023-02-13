@@ -1,6 +1,5 @@
-use ash::vk;
-
 use crate::image_properties::{ImageDimensions, ImageViewProperties};
+use ash::vk;
 
 pub trait ImageBase {
     fn image_handle(&self) -> vk::Image;

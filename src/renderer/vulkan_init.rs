@@ -51,14 +51,14 @@ pub struct ChoosePhysicalDeviceReturn {
 }
 
 pub fn choose_physical_device_and_queue_families(
-    instance: &Instance,
+    instance: Arc<Instance>,
     surface: &Surface,
 ) -> anyhow::Result<ChoosePhysicalDeviceReturn> {
     let p_device_handles = unsafe { instance.inner().enumerate_physical_devices() }
         .context("enumerating physical devices")?;
     let p_devices: Vec<PhysicalDevice> = p_device_handles
         .iter()
-        .map(|&handle| PhysicalDevice::new(instance, handle))
+        .map(|&handle| PhysicalDevice::new(instance.clone(), handle))
         .collect::<Result<Vec<_>, _>>()?;
 
     // print available physical devices
@@ -85,7 +85,7 @@ pub fn choose_physical_device_and_queue_families(
         // filter for required device extensionssupports_extension
         .filter(|p| p.supports_extensions(required_extensions.into_iter()))
         // filter for queue support
-        .filter_map(|p| check_physical_device_queue_support(p, surface, instance))
+        .filter_map(|p| check_physical_device_queue_support(p, surface, &instance))
         // preference of device type
         .max_by_key(
             |ChoosePhysicalDeviceReturn {
@@ -189,8 +189,7 @@ pub struct CreateDeviceAndQueuesReturn {
 }
 
 pub fn create_device_and_queues(
-    instance: &Instance,
-    physical_device: &PhysicalDevice,
+    physical_device: Arc<PhysicalDevice>,
     render_queue_family_index: u32,
     transfer_queue_family_index: u32,
 ) -> anyhow::Result<CreateDeviceAndQueuesReturn> {
@@ -220,7 +219,6 @@ pub fn create_device_and_queues(
         .collect();
 
     let device = Arc::new(Device::new(
-        instance,
         physical_device,
         queue_infos.as_slice(),
         features_1_0,
@@ -246,9 +244,8 @@ pub fn create_device_and_queues(
 }
 
 pub fn create_swapchain(
-    instance: &Instance,
-    device: &Device,
-    surface: &Surface,
+    device: Arc<Device>,
+    surface: Arc<Surface>,
     window: &Window,
     physical_device: &PhysicalDevice,
 ) -> anyhow::Result<Swapchain> {
@@ -269,10 +266,8 @@ pub fn create_swapchain(
     let image_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT;
 
     Swapchain::new(
-        instance,
         device,
         surface,
-        physical_device,
         preferred_image_count,
         surface_format,
         composite_alpha,

@@ -5,6 +5,7 @@ pub mod image;
 pub mod image_base;
 pub mod image_properties;
 pub mod instance;
+pub mod memory;
 pub mod physical_device;
 pub mod queue;
 pub mod render_pass;

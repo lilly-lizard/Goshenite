@@ -4,7 +4,7 @@ use crate::{
 };
 use anyhow::Context;
 use ash::vk::{self, api_version_major, api_version_minor};
-use std::str::Utf8Error;
+use std::{str::Utf8Error, sync::Arc};
 
 /// Properties of an extension in the loader or a physical device.
 #[derive(Clone, Debug)]
@@ -32,10 +32,13 @@ pub struct PhysicalDevice {
     queue_family_properties: Vec<vk::QueueFamilyProperties>,
     memory_properties: vk::PhysicalDeviceMemoryProperties,
     extension_properties: Vec<ExtensionProperties>,
+
+    // dependencies
+    instance: Arc<Instance>,
 }
 
 impl PhysicalDevice {
-    pub fn new(instance: &Instance, handle: vk::PhysicalDevice) -> anyhow::Result<Self> {
+    pub fn new(instance: Arc<Instance>, handle: vk::PhysicalDevice) -> anyhow::Result<Self> {
         let properties = unsafe { instance.inner().get_physical_device_properties(handle) };
         let name = unsafe { c_string_to_string(properties.device_name.as_ptr()) }
             .context("processing device name c string")?;
@@ -45,6 +48,7 @@ impl PhysicalDevice {
                 .inner()
                 .get_physical_device_queue_family_properties(handle)
         };
+
         let memory_properties = unsafe {
             instance
                 .inner()
@@ -72,6 +76,8 @@ impl PhysicalDevice {
             queue_family_properties,
             memory_properties,
             extension_properties,
+
+            instance,
         })
     }
 
@@ -128,5 +134,9 @@ impl PhysicalDevice {
 
     pub fn extension_properties(&self) -> &Vec<ExtensionProperties> {
         &self.extension_properties
+    }
+
+    pub fn instance(&self) -> &Arc<Instance> {
+        &self.instance
     }
 }

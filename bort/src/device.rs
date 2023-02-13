@@ -8,16 +8,19 @@ use anyhow::Context;
 use ash::vk;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use std::sync::Arc;
 
 pub struct Device {
     inner: ash::Device,
+
+    // dependencies
+    physical_device: Arc<PhysicalDevice>,
 }
 
 impl Device {
     /// `features_1_1` and `features_1_2` may be ignored depending on the `instance` api version.
     pub fn new<'a>(
-        instance: &Instance,
-        physical_device: &PhysicalDevice,
+        physical_device: Arc<PhysicalDevice>,
         queue_create_infos: &'a [vk::DeviceQueueCreateInfo],
         features_1_0: vk::PhysicalDeviceFeatures,
         mut features_1_1: vk::PhysicalDeviceVulkan11Features,
@@ -25,6 +28,8 @@ impl Device {
         extension_names: impl IntoIterator<Item = String>,
         layer_names: impl IntoIterator<Item = String>,
     ) -> anyhow::Result<Self> {
+        let instance = physical_device.instance();
+
         let extension_names_raw = string_to_c_string_vec(extension_names)
             .context("converting extension names to c strings")?;
         let layer_names_raw =
@@ -58,15 +63,28 @@ impl Device {
         }
         .context("creating vulkan device")?;
 
-        Ok(Self { inner })
+        Ok(Self {
+            inner,
+            physical_device,
+        })
     }
 
     pub fn wait_idle(&self) -> anyhow::Result<()> {
         unsafe { self.inner.device_wait_idle().context("vkDeviceWaitIdle") }
     }
 
+    // Getters
+
     pub fn inner(&self) -> &ash::Device {
         &self.inner
+    }
+
+    pub fn physical_device(&self) -> &Arc<PhysicalDevice> {
+        &self.physical_device
+    }
+
+    pub fn instance(&self) -> &Arc<Instance> {
+        self.physical_device.instance()
     }
 }
 

@@ -36,12 +36,11 @@ pub struct RenderManager {
     debug_callback: Option<DebugCallback>,
 
     window: Arc<Window>,
-    surface: Surface,
+    surface: Arc<Surface>,
     swapchain: Arc<Swapchain>,
     swapchain_images: Vec<SwapchainImage>,
     is_swapchain_srgb: bool,
 
-    physical_device: PhysicalDevice,
     device: Arc<Device>,
     render_queue: Queue,
     transfer_queue: Option<Queue>,
@@ -98,20 +97,23 @@ impl RenderManager {
         };
 
         // create surface
-        let surface = Surface::new(
-            &entry,
-            instance.clone(),
-            window.raw_display_handle(),
-            window.raw_window_handle(),
-        )
-        .context("creating vulkan surface")?;
+        let surface = Arc::new(
+            Surface::new(
+                &entry,
+                instance.clone(),
+                window.raw_display_handle(),
+                window.raw_window_handle(),
+            )
+            .context("creating vulkan surface")?,
+        );
 
         // choose physical device and queue families
         let ChoosePhysicalDeviceReturn {
             physical_device,
             render_queue_family_index,
             transfer_queue_family_index,
-        } = choose_physical_device_and_queue_families(&instance, &surface)?;
+        } = choose_physical_device_and_queue_families(instance.clone(), &surface)?;
+        let physical_device = Arc::new(physical_device);
         info!(
             "using vulkan physical device: {} (type: {:?})",
             physical_device.name(),
@@ -129,17 +131,15 @@ impl RenderManager {
             render_queue,
             transfer_queue,
         } = create_device_and_queues(
-            &instance,
-            &physical_device,
+            physical_device.clone(),
             render_queue_family_index,
             transfer_queue_family_index,
         )?;
 
         // create swapchain
         let swapchain = Arc::new(create_swapchain(
-            &instance,
-            &device,
-            &surface,
+            device.clone(),
+            surface.clone(),
             &window,
             &physical_device,
         )?);
@@ -176,7 +176,6 @@ impl RenderManager {
             swapchain_images,
             is_swapchain_srgb,
 
-            physical_device,
             device,
             render_queue,
             transfer_queue,

@@ -8,7 +8,7 @@ pub struct Queue {
     queue_index: u32,
 
     // dependencies
-    _device: Arc<Device>,
+    device: Arc<Device>,
 }
 
 impl Queue {
@@ -19,7 +19,7 @@ impl Queue {
             handle,
             family_index,
             queue_index,
-            _device: device,
+            device,
         }
     }
 
@@ -35,5 +35,9 @@ impl Queue {
 
     pub fn queue_index(&self) -> u32 {
         self.queue_index
+    }
+
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
     }
 }

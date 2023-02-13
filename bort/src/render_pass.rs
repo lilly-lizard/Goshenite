@@ -67,6 +67,10 @@ impl RenderPass {
     pub fn properties(&self) -> &RenderPassProperties {
         &self.properties
     }
+
+    pub fn device(&self) -> &Arc<Device> {
+        &self.device
+    }
 }
 
 impl Drop for RenderPass {
