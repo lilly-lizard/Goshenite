@@ -9,11 +9,18 @@ pub trait ImageBase {
 
 // Helper funtions
 
-pub fn extent_from_dimensions(dimensions: [u32; 2]) -> vk::Extent3D {
+pub fn extent_3d_from_dimensions(dimensions: [u32; 2]) -> vk::Extent3D {
     vk::Extent3D {
         width: dimensions[0],
         height: dimensions[1],
         depth: 1,
+    }
+}
+
+pub fn extent_2d_from_dimensions(dimensions: [u32; 2]) -> vk::Extent2D {
+    vk::Extent2D {
+        width: dimensions[0],
+        height: dimensions[1],
     }
 }
 
@@ -36,20 +43,20 @@ pub fn default_subresource_range(aspect_mask: vk::ImageAspectFlags) -> vk::Image
     }
 }
 
-fn whole_viewport(image: &dyn ImageBase) -> vk::Viewport {
+pub fn whole_viewport(image: &dyn ImageBase) -> vk::Viewport {
     vk::Viewport {
         x: 0.,
         y: 0.,
-        width: image.properties().extent.width as f32,
-        height: image.properties().extent.height as f32,
+        width: image.extent().width as f32,
+        height: image.extent().height as f32,
         min_depth: 0.,
-        max_depth: image.properties().extent.depth as f32,
+        max_depth: image.extent().depth as f32,
     }
 }
 
 // Image Properties
 
-/// Default values are for a 2D srgb rgba32 color image dimensions = [1, 1, 1] and no usage flags.
+/// WARNING `default()` values for `format`, `extent` and `usage` are nothing!
 #[derive(Debug, Clone)]
 pub struct ImageProperties {
     pub image_type: vk::ImageType,
@@ -60,7 +67,8 @@ pub struct ImageProperties {
     pub samples: vk::SampleCountFlags,
     pub tiling: vk::ImageTiling,
     pub usage: vk::ImageUsageFlags,
-    pub queue_family_indices: Option<Vec<u32>>,
+    pub sharing_mode: vk::SharingMode,
+    pub queue_family_indices: Vec<u32>,
     pub initial_layout: vk::ImageLayout,
     pub image_create_flags: vk::ImageCreateFlags,
 }
@@ -69,16 +77,19 @@ impl Default for ImageProperties {
     fn default() -> Self {
         Self {
             image_type: vk::ImageType::TYPE_2D,
-            format: vk::Format::R8G8B8A8_SRGB,
-            extent: extent_from_dimensions([1, 1]),
             mip_levels: 1,
             array_layers: 1,
             samples: vk::SampleCountFlags::TYPE_1,
             tiling: vk::ImageTiling::OPTIMAL,
-            usage: vk::ImageUsageFlags::empty(),
-            queue_family_indices: None,
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            queue_family_indices: Vec::new(),
             initial_layout: vk::ImageLayout::GENERAL,
             image_create_flags: vk::ImageCreateFlags::empty(),
+
+            // nonsense defaults. make sure you override these!
+            format: vk::Format::default(),
+            extent: vk::Extent3D::default(),
+            usage: vk::ImageUsageFlags::empty(),
         }
     }
 }
@@ -89,13 +100,12 @@ impl ImageProperties {
         dimensions: [u32; 2],
         usage: vk::ImageUsageFlags,
         initial_layout: vk::ImageLayout,
-        image_aspect_mask: vk::ImageAspectFlags,
     ) -> Self {
         Self {
-            format: vk::Format,
-            extent: extent_from_dimensions(dimensions),
-            usage: vk::ImageUsageFlags,
-            initial_layout: vk::ImageLayout,
+            format,
+            extent: extent_3d_from_dimensions(dimensions),
+            usage,
+            initial_layout,
             ..Self::default()
         }
     }
@@ -111,25 +121,17 @@ impl ImageProperties {
             .samples(self.samples)
             .tiling(self.tiling)
             .usage(self.usage)
-            .sharing_mode(self.sharing_mode())
+            .sharing_mode(self.sharing_mode)
             .initial_layout(self.initial_layout);
-        if let Some(queue_family_indices_ref) = self.queue_family_indices {
-            builder = builder.queue_family_indices(queue_family_indices_ref.as_slice());
+        if self.queue_family_indices.len() > 0 {
+            builder = builder.queue_family_indices(self.queue_family_indices.as_slice());
         }
 
         builder
     }
-
-    pub fn sharing_mode(&self) -> vk::SharingMode {
-        if self.queue_family_indices.is_some() {
-            vk::SharingMode::CONCURRENT
-        } else {
-            vk::SharingMode::EXCLUSIVE
-        }
-    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Copy, Clone)]
 pub struct ImageViewProperties {
     pub view_type: vk::ImageViewType,
     pub component_mapping: vk::ComponentMapping,
@@ -175,7 +177,8 @@ impl ImageViewProperties {
 pub struct ImageRaw {
     pub image_handle: vk::Image,
     pub image_view_handle: vk::ImageView,
-    pub properties: ImageProperties,
+    pub image_view_properties: ImageViewProperties,
+    pub extent: vk::Extent3D,
 }
 
 impl ImageBase for ImageRaw {
@@ -187,7 +190,11 @@ impl ImageBase for ImageRaw {
         self.image_view_handle
     }
 
-    fn properties(&self) -> ImageProperties {
-        self.properties
+    fn extent(&self) -> vk::Extent3D {
+        self.extent
+    }
+
+    fn image_view_properties(&self) -> ImageViewProperties {
+        self.image_view_properties
     }
 }

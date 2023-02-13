@@ -1,8 +1,9 @@
 use crate::{
     device::Device,
-    image_base::{extent_from_dimensions, ImageBase, ImageProperties, ImageViewProperties},
+    image_base::{ImageBase, ImageProperties, ImageViewProperties},
     ALLOCATION_CALLBACK,
 };
+use anyhow::Context;
 use ash::vk;
 use std::sync::Arc;
 
@@ -56,8 +57,12 @@ impl ImageBase for Image {
         self.image_view_handle
     }
 
-    fn properties(&self) -> ImageProperties {
-        self.properties
+    fn extent(&self) -> vk::Extent3D {
+        self.image_properties.extent
+    }
+
+    fn image_view_properties(&self) -> ImageViewProperties {
+        self.image_view_properties
     }
 }
 

@@ -1,9 +1,7 @@
 use crate::{
     device::Device,
-    image::Image,
     image_base::{
-        default_component_mapping, default_subresource_range, extent_from_dimensions, ImageBase,
-        ImageProperties, ImageViewProperties,
+        default_component_mapping, default_subresource_range, ImageBase, ImageViewProperties,
     },
     swapchain::Swapchain,
     ALLOCATION_CALLBACK,
@@ -44,20 +42,29 @@ impl SwapchainImage {
         image_handle: vk::Image,
     ) -> anyhow::Result<Self> {
         let format = swapchain.properties().surface_format.format;
-        let extent = extent_from_dimensions(swapchain.properties().dimensions);
-
         let component_mapping = default_component_mapping();
-        let subresource_range = default_subresource_range(vk::ImageAspectFlags::COLOR);
+
+        let layer_count = swapchain.properties().array_layers;
+        let view_type = if layer_count > 1 {
+            vk::ImageViewType::TYPE_2D_ARRAY
+        } else {
+            vk::ImageViewType::TYPE_2D
+        };
+        let subresource_range = vk::ImageSubresourceRange {
+            layer_count,
+            ..default_subresource_range(vk::ImageAspectFlags::COLOR)
+        };
 
         let image_view_properties = ImageViewProperties {
             format,
-            view_type: vk::ImageViewType::TYPE_2D,
+            view_type,
             component_mapping,
             subresource_range,
-            ..Default::default()
+            ..ImageViewProperties::default()
         };
 
-        let image_view_create_info_builder = image_properties.create_info_builder(image_handle);
+        let image_view_create_info_builder =
+            image_view_properties.create_info_builder(image_handle);
         let image_view_handle = unsafe {
             device
                 .inner()
@@ -75,6 +82,11 @@ impl SwapchainImage {
             _swapchain: swapchain,
         })
     }
+
+    #[inline]
+    pub fn layer_count(&self) -> u32 {
+        self.image_view_properties.subresource_range.layer_count
+    }
 }
 
 impl ImageBase for SwapchainImage {
@@ -87,7 +99,11 @@ impl ImageBase for SwapchainImage {
     }
 
     fn extent(&self) -> vk::Extent3D {
-        extent_from_dimensions(self.dimensions)
+        vk::Extent3D {
+            width: self.dimensions[0],
+            height: self.dimensions[1],
+            depth: self.layer_count(),
+        }
     }
 
     fn image_view_properties(&self) -> ImageViewProperties {

@@ -1,10 +1,9 @@
 use crate::{
-    common::is_format_srgb, device::Device, instance::Instance, physical_device::PhysicalDevice,
-    surface::Surface, ALLOCATION_CALLBACK,
+    common::is_format_srgb, device::Device, image_base::extent_2d_from_dimensions,
+    instance::Instance, physical_device::PhysicalDevice, surface::Surface, ALLOCATION_CALLBACK,
 };
 use anyhow::Context;
 use ash::{extensions::khr, prelude::VkResult, vk};
-use core::slice::SlicePattern;
 use std::cmp::{max, min};
 
 /// Checks surface support for the first compositie alpha flag in order of preference:
@@ -41,22 +40,51 @@ pub fn get_first_srgb_surface_format(
         .unwrap_or(surface_formats[0])
 }
 
+// Swapchain Properties
+
+/// WARNING when using `default()` the following values should be overridden:
+/// - `surface_format`
+/// - `dimensions`
+/// - `image_usage`
+/// - `pre_transform`
+/// - `composite_alpha`
 #[derive(Debug, Clone)]
 pub struct SwapchainProperties {
     pub create_flags: vk::SwapchainCreateFlagsKHR,
     pub image_count: u32,
+    pub pre_transform: vk::SurfaceTransformFlagsKHR,
+    pub composite_alpha: vk::CompositeAlphaFlagsKHR,
+    pub present_mode: vk::PresentModeKHR,
+    pub clipping_enabled: bool,
 
+    // image properties
     pub surface_format: vk::SurfaceFormatKHR,
     pub dimensions: [u32; 2],
     pub array_layers: u32,
     pub image_usage: vk::ImageUsageFlags,
     pub sharing_mode: vk::SharingMode,
-    pub queue_family_indices: Option<Vec<u32>>,
+    pub queue_family_indices: Vec<u32>,
+}
 
-    pub pre_transform: vk::SurfaceTransformFlagsKHR,
-    pub composite_alpha: vk::CompositeAlphaFlagsKHR,
-    pub present_mode: vk::PresentModeKHR,
-    pub clipping_enabled: bool,
+impl Default for SwapchainProperties {
+    fn default() -> Self {
+        Self {
+            image_count: 1,
+            array_layers: 1,
+            sharing_mode: vk::SharingMode::EXCLUSIVE,
+            queue_family_indices: Vec::new(),
+            clipping_enabled: true,
+            present_mode: vk::PresentModeKHR::MAILBOX,
+            create_flags: vk::SwapchainCreateFlagsKHR::empty(),
+
+            // nonsense defaults. make sure you override these!
+            surface_format: vk::SurfaceFormatKHR::default(),
+            dimensions: [1, 1],
+            image_usage: vk::ImageUsageFlags::empty(),
+            pre_transform: vk::SurfaceTransformFlagsKHR::default(),
+            composite_alpha: vk::CompositeAlphaFlagsKHR::empty(),
+        }
+    }
 }
 
 impl SwapchainProperties {
@@ -71,7 +99,7 @@ impl SwapchainProperties {
             .min_image_count(self.image_count)
             .image_format(self.surface_format.format)
             .image_color_space(self.surface_format.color_space)
-            .image_extent(extent)
+            .image_extent(extent_2d_from_dimensions(self.dimensions))
             .image_array_layers(self.array_layers)
             .image_usage(self.image_usage)
             .image_sharing_mode(self.sharing_mode)
@@ -80,13 +108,15 @@ impl SwapchainProperties {
             .present_mode(self.present_mode)
             .clipped(self.clipping_enabled)
             .old_swapchain(old_swapchain_handle);
-        if let Some(queue_family_indices) = self.queue_family_indices {
-            builder = builder.queue_family_indices(queue_family_indices.as_slice());
+        if self.queue_family_indices.len() > 0 {
+            builder = builder.queue_family_indices(self.queue_family_indices.as_slice());
         }
 
         builder
     }
 }
+
+// Swapchain
 
 pub struct Swapchain {
     handle: vk::SwapchainKHR,
