@@ -14,8 +14,9 @@ pub fn string_to_c_string_vec(
         .collect()
 }
 
-pub fn c_string_to_string(source: *const c_char) -> Result<String, Utf8Error> {
-    let c_str = unsafe { CStr::from_ptr(source) };
+/// Safety: see [`CStr::from_ptr`](std::ffi::CStr::from_ptr) documentation...
+pub unsafe fn c_string_to_string(source: *const c_char) -> Result<String, Utf8Error> {
+    let c_str = CStr::from_ptr(source);
     Ok(c_str.to_str()?.to_string())
 }
 

@@ -1,4 +1,7 @@
-use super::config_renderer::{FRAMES_IN_FLIGHT, VULKAN_VER_MAJ, VULKAN_VER_MIN};
+use super::config_renderer::{
+    FORMAT_DEPTH_BUFFER, FORMAT_G_BUFFER_NORMAL, FORMAT_G_BUFFER_PRIMITIVE_ID, FRAMES_IN_FLIGHT,
+    VULKAN_VER_MAJ, VULKAN_VER_MIN,
+};
 use anyhow::Context;
 use ash::vk;
 use bort::{
@@ -6,6 +9,7 @@ use bort::{
     instance::Instance,
     physical_device::PhysicalDevice,
     queue::Queue,
+    render_pass::{RenderPass, Subpass},
     surface::Surface,
     swapchain::{choose_composite_alpha, get_first_srgb_surface_format, Swapchain},
 };
@@ -275,4 +279,167 @@ pub fn create_swapchain(
         image_usage,
         window_dimensions,
     )
+}
+
+pub mod render_pass_indices {
+    pub const ATTACHMENT_SWAPCHAIN: usize = 0;
+    pub const ATTACHMENT_NORMAL: usize = 1;
+    pub const ATTACHMENT_PRIMITIVE_ID: usize = 2;
+    pub const ATTACHMENT_DEPTH_BUFFER: usize = 3;
+    pub const NUM_ATTACHMENTS: usize = 4;
+
+    pub const SUBPASS_GBUFFER: usize = 0;
+    pub const SUBPASS_DEFERRED: usize = 1;
+    pub const NUM_SUBPASSES: usize = 2;
+}
+
+fn attachment_descriptions(
+    swapchain: &Swapchain,
+) -> [vk::AttachmentDescription; render_pass_indices::NUM_ATTACHMENTS] {
+    let mut attachment_descriptions =
+        [vk::AttachmentDescription::default(); render_pass_indices::NUM_ATTACHMENTS];
+
+    // swapchain
+    attachment_descriptions[render_pass_indices::ATTACHMENT_SWAPCHAIN] =
+        vk::AttachmentDescription::builder()
+            .format(swapchain.properties().surface_format.format)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::STORE)
+            .initial_layout(vk::ImageLayout::UNDEFINED)
+            .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
+            .build();
+
+    // normal buffer
+    attachment_descriptions[render_pass_indices::ATTACHMENT_NORMAL] =
+        vk::AttachmentDescription::builder()
+            .format(FORMAT_G_BUFFER_NORMAL)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .initial_layout(vk::ImageLayout::UNDEFINED) // what it will be in at the beginning of the render pass
+            .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) // what it will transition to at the end of the render pass
+            .build();
+
+    // primitive id buffer
+    attachment_descriptions[render_pass_indices::ATTACHMENT_PRIMITIVE_ID] =
+        vk::AttachmentDescription::builder()
+            .format(FORMAT_G_BUFFER_PRIMITIVE_ID)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .initial_layout(vk::ImageLayout::UNDEFINED) // what it will be in at the beginning of the render pass
+            .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) // what it will transition to at the end of the render pass
+            .build();
+
+    // depth buffer
+    attachment_descriptions[render_pass_indices::ATTACHMENT_DEPTH_BUFFER] =
+        vk::AttachmentDescription::builder()
+            .format(FORMAT_DEPTH_BUFFER)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .initial_layout(vk::ImageLayout::UNDEFINED) // what it will be in at the beginning of the render pass
+            .final_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL) // what it will transition to at the end of the render pass
+            .build();
+
+    attachment_descriptions
+}
+
+fn subpasses() -> [Subpass; render_pass_indices::NUM_SUBPASSES] {
+    let mut subpasses: [Subpass; render_pass_indices::NUM_SUBPASSES] =
+        [Subpass::default(), Subpass::default()];
+
+    // g-buffer subpass
+
+    let g_buffer_color_attachments = [
+        vk::AttachmentReference::builder()
+            .attachment(render_pass_indices::ATTACHMENT_NORMAL as u32)
+            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .build(),
+        vk::AttachmentReference::builder()
+            .attachment(render_pass_indices::ATTACHMENT_NORMAL as u32)
+            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .build(),
+    ];
+
+    let g_buffer_depth_attachment = vk::AttachmentReference::builder()
+        .attachment(render_pass_indices::ATTACHMENT_DEPTH_BUFFER as u32)
+        .layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
+        .build();
+
+    subpasses[render_pass_indices::SUBPASS_GBUFFER] =
+        Subpass::new(g_buffer_color_attachments, g_buffer_depth_attachment, []);
+
+    // deferred subpass
+
+    let deferred_color_attachments = [vk::AttachmentReference::builder()
+        .attachment(render_pass_indices::ATTACHMENT_SWAPCHAIN as u32)
+        .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+        .build()];
+
+    let deferred_input_attachments = [
+        vk::AttachmentReference::builder()
+            .attachment(render_pass_indices::ATTACHMENT_NORMAL as u32)
+            .layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .build(),
+        vk::AttachmentReference::builder()
+            .attachment(render_pass_indices::ATTACHMENT_PRIMITIVE_ID as u32)
+            .layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .build(),
+    ];
+
+    subpasses[render_pass_indices::SUBPASS_DEFERRED] = Subpass::new(
+        deferred_color_attachments,
+        Default::default(),
+        deferred_input_attachments,
+    );
+
+    subpasses
+}
+
+fn subpass_dependencies() -> [vk::SubpassDependency; 2] {
+    let mut subpass_dependencies = [vk::SubpassDependency::default(); 2];
+
+    // more efficient swapchain synchronization than the implicit transition.
+    // see first section of https://community.arm.com/arm-community-blogs/b/graphics-gaming-and-vr-blog/posts/vulkan-best-practices-frequently-asked-questions-part-1
+    subpass_dependencies[0] = vk::SubpassDependency::builder()
+        .src_subpass(vk::SUBPASS_EXTERNAL)
+        .dst_subpass(render_pass_indices::SUBPASS_DEFERRED as u32)
+        .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+        .dst_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+        .src_access_mask(vk::AccessFlags::empty())
+        .dst_access_mask(
+            vk::AccessFlags::COLOR_ATTACHMENT_WRITE | vk::AccessFlags::COLOR_ATTACHMENT_READ,
+        )
+        .build();
+
+    // input attachments
+    subpass_dependencies[1] = vk::SubpassDependency::builder()
+        .src_subpass(render_pass_indices::SUBPASS_GBUFFER as u32)
+        .dst_subpass(render_pass_indices::SUBPASS_DEFERRED as u32)
+        .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
+        .src_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
+        .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
+        .dst_access_mask(vk::AccessFlags::SHADER_READ)
+        .build();
+
+    subpass_dependencies
+}
+
+pub fn create_render_pass(
+    device: Arc<Device>,
+    swapchain: &Swapchain,
+) -> anyhow::Result<RenderPass> {
+    let attachment_descriptions = attachment_descriptions(swapchain);
+    let subpasses = subpasses();
+    let subpass_dependencies = subpass_dependencies();
+
+    RenderPass::new(
+        device,
+        attachment_descriptions,
+        subpasses,
+        subpass_dependencies,
+    )
+    .context("creating render pass")
 }

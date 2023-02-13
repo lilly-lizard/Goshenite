@@ -3,8 +3,8 @@ use crate::{
     config::ENGINE_NAME,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     renderer::vulkan_init::{
-        choose_physical_device_and_queue_families, create_device_and_queues, create_swapchain,
-        ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
+        choose_physical_device_and_queue_families, create_device_and_queues, create_render_pass,
+        create_swapchain, ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
     },
     user_interface::{camera::Camera, gui::Gui},
 };
@@ -18,6 +18,7 @@ use bort::{
     instance::{ApiVersion, Instance},
     physical_device::PhysicalDevice,
     queue::Queue,
+    render_pass::RenderPass,
     surface::Surface,
     swapchain::Swapchain,
 };
@@ -45,31 +46,8 @@ pub struct RenderManager {
     render_queue: Queue,
     transfer_queue: Option<Queue>,
 
-    /*
-    device: Arc<Device>,
-    render_queue: Arc<Queue>,
-    _transfer_queue: Arc<Queue>,
-    _debug_callback: Option<DebugUtilsMessenger>,
+    render_pass: RenderPass,
 
-    window: Arc<Window>,
-    _surface: Arc<Surface>,
-    swapchain: Arc<Swapchain>,
-    swapchain_image_views: Vec<Arc<ImageView<SwapchainImage>>>,
-    is_srgb_framebuffer: bool,
-
-    memory_allocator: Arc<StandardMemoryAllocator>,
-    command_buffer_allocator: StandardCommandBufferAllocator,
-    descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
-
-    depth_buffer: Arc<ImageView<AttachmentImage>>,
-    g_buffer_normal: Arc<ImageView<AttachmentImage>>,
-    g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
-
-    viewport: Viewport,
-    render_pass: Arc<RenderPass>,
-    framebuffers: Vec<Arc<Framebuffer>>,
-    clear_values: [Option<ClearValue>; ATTACHMENT_COUNT],
-    */
     /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
     /// without conflicting with commands currently being processed. This variable indicates
     /// which index to will be next submitted to the GPU.
@@ -182,6 +160,9 @@ impl RenderManager {
         // create swapchain images
         let swapchain_images = SwapchainImage::from_swapchain(device.clone(), swapchain.clone())?;
 
+        // create render pass
+        let render_pass = create_render_pass(device.clone(), &swapchain)?;
+
         Ok(Self {
             entry,
             instance,
@@ -197,6 +178,8 @@ impl RenderManager {
             device,
             render_queue,
             transfer_queue,
+
+            render_pass,
 
             next_frame: 0,
             recreate_swapchain: false,

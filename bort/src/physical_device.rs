@@ -15,7 +15,7 @@ pub struct ExtensionProperties {
 
 impl ExtensionProperties {
     fn new(value: vk::ExtensionProperties) -> Result<Self, Utf8Error> {
-        let extension_name = c_string_to_string(value.extension_name.as_ptr())?;
+        let extension_name = unsafe { c_string_to_string(value.extension_name.as_ptr()) }?;
         Ok(Self {
             extension_name,
             spec_version: value.spec_version,
@@ -37,7 +37,7 @@ pub struct PhysicalDevice {
 impl PhysicalDevice {
     pub fn new(instance: &Instance, handle: vk::PhysicalDevice) -> anyhow::Result<Self> {
         let properties = unsafe { instance.inner().get_physical_device_properties(handle) };
-        let name = c_string_to_string(properties.device_name.as_ptr())
+        let name = unsafe { c_string_to_string(properties.device_name.as_ptr()) }
             .context("processing device name c string")?;
 
         let queue_family_properties = unsafe {
