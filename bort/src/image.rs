@@ -1,138 +1,124 @@
-use crate::{device::Device, swapchain::Swapchain, ALLOCATION_CALLBACK};
-use anyhow::Context;
+use crate::{
+    device::Device,
+    ALLOCATION_CALLBACK, image_base::{ImageProperties, ImageBase},
+};
 use ash::vk;
 use std::sync::Arc;
 
-pub fn default_component_mapping() -> vk::ComponentMapping {
-    vk::ComponentMapping {
-        r: vk::ComponentSwizzle::R,
-        g: vk::ComponentSwizzle::G,
-        b: vk::ComponentSwizzle::B,
-        a: vk::ComponentSwizzle::A,
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ImageProperties {
-    pub format: vk::Format,
-    pub dimensions: [u32; 2],
-    pub view_type: vk::ImageViewType,
-    pub component_mapping: vk::ComponentMapping,
-    pub subresource_range: vk::ImageSubresourceRange,
-}
-
-pub struct SwapchainImage {
+pub struct Image {
     image_handle: vk::Image,
     image_view_handle: vk::ImageView,
     properties: ImageProperties,
 
     // dependencies
     device: Arc<Device>,
-    _swapchain: Arc<Swapchain>,
 }
 
-impl SwapchainImage {
-    pub fn from_swapchain(
+impl Image {
+    pub fn new_default(
         device: Arc<Device>,
-        swapchain: Arc<Swapchain>,
-    ) -> anyhow::Result<Vec<Self>> {
-        swapchain
-            .get_swapchain_images()
-            .context("getting swapchain images")?
-            .into_iter()
-            .map(|image_handle| {
-                Self::from_image_handle(
-                    device.clone(),
-                    swapchain.clone(),
-                    image_handle,
-                    swapchain.properties().surface_format.format,
-                    swapchain.properties().dimensions,
-                )
-            })
-            .collect::<anyhow::Result<Vec<_>>>()
-    }
 
-    fn from_image_handle(
-        device: Arc<Device>,
-        swapchain: Arc<Swapchain>,
-        image_handle: vk::Image,
         format: vk::Format,
         dimensions: [u32; 2],
-    ) -> anyhow::Result<Self> {
-        let view_type = vk::ImageViewType::TYPE_2D;
-        let component_mapping = default_component_mapping();
-        let subresource_range = vk::ImageSubresourceRange {
-            aspect_mask: vk::ImageAspectFlags::COLOR,
-            base_mip_level: 0,
-            level_count: 1,
-            base_array_layer: 0,
-            layer_count: 1,
+        usage: vk::ImageUsageFlags,
+        initial_layout: vk::ImageLayout,
+        image_aspect_mask: vk::ImageAspectFlags,
+    ) -> Self {
+        Self::new(
+            device,
+            format,
+            dimensions,
+            1,
+            1,
+            vk::SampleCountFlags::TYPE_1,
+            vk::ImageTiling::OPTIMAL,
+            usage,
+            None,
+            initial_layout,
+            image_aspect_mask,
+        )
+    }
+
+    pub fn new(
+        device: Arc<Device>,
+		properties: 
+    ) -> Self {
+        let image_type = vk::ImageType::TYPE_2D;
+        let extent = vk::Extent3D {
+            width: dimensions[0],
+            height: dimensions[1],
+            depth: 1,
+        };
+        let sharing_mode = if queue_family_indices.is_some() {
+            vk::SharingMode::CONCURRENT
+        } else {
+            vk::SharingMode::EXCLUSIVE
         };
 
-        let image_view_info = vk::ImageViewCreateInfo::builder()
-            .view_type(view_type)
-            .format(format)
-            .components(component_mapping)
-            .subresource_range(subresource_range)
-            .image(image_handle)
-            .build();
-
-        let image_view_handle = unsafe {
+        let image_handle = unsafe {
             device
                 .inner()
-                .create_image_view(&image_view_info, ALLOCATION_CALLBACK)
-        }
-        .context("create_image_view")?;
+                .create_image(create_info, ALLOCATION_CALLBACK)
+        };
 
-        Ok(Self {
+        let view_type = if array_layers > 1 {
+            vk::ImageViewType::TYPE_2D_ARRAY
+        } else {
+            vk::ImageViewType::TYPE_2D
+        };
+        let component_mapping = default_component_mapping();
+        let subresource_range = default_subresource_range(image_aspect_mask);
+
+        Self {
             image_handle,
             image_view_handle,
             properties: ImageProperties {
+                // image
+                image_type,
                 format,
-                dimensions,
+                extent,
+                mip_levels,
+                array_layers,
+                samples,
+                tiling,
+                usage,
+                sharing_mode,
+                queue_family_indices,
+                initial_layout,
+
+                // view
                 view_type,
                 component_mapping,
                 subresource_range,
             },
-
             device,
-            _swapchain: swapchain,
-        })
-    }
-
-    pub fn viewport(&self) -> vk::Viewport {
-        vk::Viewport {
-            x: 0.,
-            y: 0.,
-            width: self.properties.dimensions[0] as f32,
-            height: self.properties.dimensions[1] as f32,
-            min_depth: 0.,
-            max_depth: 1.,
         }
     }
+}
 
-    // Getters
-
-    pub fn image_handle(&self) -> vk::Image {
+impl ImageBase for Image {
+    fn image_handle(&self) -> vk::Image {
         self.image_handle
     }
 
-    pub fn image_view_handle(&self) -> vk::ImageView {
+    fn image_view_handle(&self) -> vk::ImageView {
         self.image_view_handle
     }
 
-    pub fn properties(&self) -> ImageProperties {
+    fn properties(&self) -> ImageProperties {
         self.properties
     }
 }
 
-impl Drop for SwapchainImage {
+impl Drop for Image {
     fn drop(&mut self) {
-        // note we shouldn't destroy the swapchain images. that'll be handled by the `Swapchain`.
         unsafe {
             self.device
                 .inner()
                 .destroy_image_view(self.image_view_handle, ALLOCATION_CALLBACK);
+            self.device
+                .inner()
+                .destroy_image(self.image_handle, ALLOCATION_CALLBACK);
         }
     }
 }

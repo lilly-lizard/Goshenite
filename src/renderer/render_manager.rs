@@ -14,13 +14,13 @@ use bort::{
     common::is_format_srgb,
     debug_callback::DebugCallback,
     device::Device,
-    image::SwapchainImage,
     instance::{ApiVersion, Instance},
     physical_device::PhysicalDevice,
     queue::Queue,
     render_pass::RenderPass,
     surface::Surface,
     swapchain::Swapchain,
+    swapchain_image::SwapchainImage,
 };
 use egui::TexturesDelta;
 #[allow(unused_imports)]
@@ -162,6 +162,8 @@ impl RenderManager {
 
         // create render pass
         let render_pass = create_render_pass(device.clone(), &swapchain)?;
+
+        // create depth buffer
 
         Ok(Self {
             entry,
