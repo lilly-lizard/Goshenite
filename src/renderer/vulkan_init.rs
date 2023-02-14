@@ -6,7 +6,10 @@ use anyhow::Context;
 use ash::vk;
 use bort::{
     device::Device,
+    image::Image,
+    image_properties::ImageDimensions,
     instance::Instance,
+    memory::MemoryAllocator,
     physical_device::PhysicalDevice,
     queue::Queue,
     render_pass::{RenderPass, Subpass},
@@ -437,4 +440,18 @@ pub fn create_render_pass(
         subpass_dependencies,
     )
     .context("creating render pass")
+}
+
+pub fn create_depth_buffer(
+    device: Arc<Device>,
+    memory_allocator: Arc<MemoryAllocator>,
+    dimensions: ImageDimensions,
+) -> Result<Image, anyhow::Error> {
+    Image::new_tranient(
+        device.clone(),
+        memory_allocator.clone(),
+        dimensions,
+        FORMAT_DEPTH_BUFFER,
+        vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+    )
 }

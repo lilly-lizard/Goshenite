@@ -3,8 +3,9 @@ use crate::{
     config::ENGINE_NAME,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     renderer::vulkan_init::{
-        choose_physical_device_and_queue_families, create_device_and_queues, create_render_pass,
-        create_swapchain, ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
+        choose_physical_device_and_queue_families, create_depth_buffer, create_device_and_queues,
+        create_render_pass, create_swapchain, ChoosePhysicalDeviceReturn,
+        CreateDeviceAndQueuesReturn,
     },
     user_interface::{camera::Camera, gui::Gui},
 };
@@ -14,8 +15,9 @@ use bort::{
     common::is_format_srgb,
     debug_callback::DebugCallback,
     device::Device,
+    image::Image,
     instance::{ApiVersion, Instance},
-    physical_device::PhysicalDevice,
+    memory::MemoryAllocator,
     queue::Queue,
     render_pass::RenderPass,
     surface::Surface,
@@ -35,17 +37,20 @@ pub struct RenderManager {
     instance: Arc<Instance>,
     debug_callback: Option<DebugCallback>,
 
+    device: Arc<Device>,
+    render_queue: Queue,
+    transfer_queue: Option<Queue>,
+
+    memory_allocator: Arc<MemoryAllocator>,
+
     window: Arc<Window>,
     surface: Arc<Surface>,
     swapchain: Arc<Swapchain>,
     swapchain_images: Vec<SwapchainImage>,
     is_swapchain_srgb: bool,
 
-    device: Arc<Device>,
-    render_queue: Queue,
-    transfer_queue: Option<Queue>,
-
     render_pass: RenderPass,
+    depth_buffer: Image,
 
     /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
     /// without conflicting with commands currently being processed. This variable indicates
@@ -136,6 +141,9 @@ impl RenderManager {
             transfer_queue_family_index,
         )?;
 
+        // create memory allocator
+        let memory_allocator = Arc::new(MemoryAllocator::new(device.clone())?);
+
         // create swapchain
         let swapchain = Arc::new(create_swapchain(
             device.clone(),
@@ -164,11 +172,22 @@ impl RenderManager {
         let render_pass = create_render_pass(device.clone(), &swapchain)?;
 
         // create depth buffer
+        let depth_buffer = create_depth_buffer(
+            device.clone(),
+            memory_allocator.clone(),
+            swapchain.properties().dimensions(),
+        )?;
 
         Ok(Self {
             entry,
             instance,
             debug_callback,
+
+            device,
+            render_queue,
+            transfer_queue,
+
+            memory_allocator,
 
             window,
             surface,
@@ -176,11 +195,8 @@ impl RenderManager {
             swapchain_images,
             is_swapchain_srgb,
 
-            device,
-            render_queue,
-            transfer_queue,
-
             render_pass,
+            depth_buffer,
 
             next_frame: 0,
             recreate_swapchain: false,
