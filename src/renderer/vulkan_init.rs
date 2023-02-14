@@ -6,7 +6,9 @@ use anyhow::Context;
 use ash::vk;
 use bort::{
     device::Device,
+    framebuffer::{Framebuffer, FramebufferProperties},
     image::Image,
+    image_base::ImageBase,
     image_properties::ImageDimensions,
     instance::Instance,
     memory::MemoryAllocator,
@@ -15,6 +17,7 @@ use bort::{
     render_pass::{RenderPass, Subpass},
     surface::Surface,
     swapchain::{choose_composite_alpha, get_first_srgb_surface_format, Swapchain},
+    swapchain_image::SwapchainImage,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -443,12 +446,10 @@ pub fn create_render_pass(
 }
 
 pub fn create_depth_buffer(
-    device: Arc<Device>,
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
 ) -> anyhow::Result<Image> {
     Image::new_tranient(
-        device,
         memory_allocator,
         dimensions,
         FORMAT_DEPTH_BUFFER,
@@ -457,12 +458,10 @@ pub fn create_depth_buffer(
 }
 
 pub fn create_normal_buffer(
-    device: Arc<Device>,
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
 ) -> anyhow::Result<Image> {
     Image::new_tranient(
-        device,
         memory_allocator,
         dimensions,
         FORMAT_NORMAL_BUFFER,
@@ -471,15 +470,49 @@ pub fn create_normal_buffer(
 }
 
 pub fn create_primitive_id_buffer(
-    device: Arc<Device>,
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
 ) -> anyhow::Result<Image> {
     Image::new_tranient(
-        device,
         memory_allocator,
         dimensions,
         FORMAT_PRIMITIVE_ID_BUFFER,
         vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
     )
+}
+
+pub fn create_framebuffers(
+    render_pass: &Arc<RenderPass>,
+    swapchain_images: &Vec<Arc<SwapchainImage>>,
+    normal_buffer: &Arc<Image>,
+    primitive_id_buffer: &Arc<Image>,
+    depth_buffer: &Arc<Image>,
+) -> anyhow::Result<Vec<Framebuffer>> {
+    swapchain_images
+        .iter()
+        .map(|swapchain_image| {
+            let mut attachments =
+                Vec::<Arc<dyn ImageBase>>::with_capacity(render_pass_indices::NUM_ATTACHMENTS);
+            attachments.insert(
+                render_pass_indices::ATTACHMENT_SWAPCHAIN,
+                swapchain_image.clone(),
+            );
+            attachments.insert(
+                render_pass_indices::ATTACHMENT_NORMAL,
+                normal_buffer.clone(),
+            );
+            attachments.insert(
+                render_pass_indices::ATTACHMENT_PRIMITIVE_ID,
+                primitive_id_buffer.clone(),
+            );
+            attachments.insert(
+                render_pass_indices::ATTACHMENT_DEPTH_BUFFER,
+                depth_buffer.clone(),
+            );
+
+            let framebuffer_properties =
+                FramebufferProperties::new(attachments, swapchain_image.dimensions());
+            Framebuffer::new(render_pass.clone(), framebuffer_properties)
+        })
+        .collect::<anyhow::Result<Vec<_>>>()
 }

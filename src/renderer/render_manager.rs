@@ -4,8 +4,9 @@ use crate::{
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     renderer::vulkan_init::{
         choose_physical_device_and_queue_families, create_depth_buffer, create_device_and_queues,
-        create_normal_buffer, create_primitive_id_buffer, create_render_pass, create_swapchain,
-        ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
+        create_framebuffers, create_normal_buffer, create_primitive_id_buffer, create_render_pass,
+        create_swapchain, render_pass_indices, ChoosePhysicalDeviceReturn,
+        CreateDeviceAndQueuesReturn,
     },
     user_interface::{camera::Camera, gui::Gui},
 };
@@ -15,7 +16,9 @@ use bort::{
     common::is_format_srgb,
     debug_callback::DebugCallback,
     device::Device,
+    framebuffer::{Framebuffer, FramebufferProperties},
     image::Image,
+    image_base::ImageBase,
     instance::{ApiVersion, Instance},
     memory::MemoryAllocator,
     queue::Queue,
@@ -46,13 +49,14 @@ pub struct RenderManager {
     window: Arc<Window>,
     surface: Arc<Surface>,
     swapchain: Arc<Swapchain>,
-    swapchain_images: Vec<SwapchainImage>,
+    swapchain_images: Vec<Arc<SwapchainImage>>,
     is_swapchain_srgb: bool,
 
-    render_pass: RenderPass,
-    depth_buffer: Image,
-    normal_buffer: Image,
-    primitive_id_buffer: Image,
+    render_pass: Arc<RenderPass>,
+    depth_buffer: Arc<Image>,
+    normal_buffer: Arc<Image>,
+    primitive_id_buffer: Arc<Image>,
+    framebuffers: Vec<Arc<Framebuffer>>,
 
     /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
     /// without conflicting with commands currently being processed. This variable indicates
@@ -168,29 +172,40 @@ impl RenderManager {
         let is_swapchain_srgb = is_format_srgb(swapchain.properties().surface_format.format);
 
         // create swapchain images
-        let swapchain_images = SwapchainImage::from_swapchain(device.clone(), swapchain.clone())?;
+        let swapchain_images = SwapchainImage::from_swapchain(swapchain.clone())?;
+        let swapchain_images: Vec<_> = swapchain_images
+            .into_iter()
+            .map(|image| Arc::new(image))
+            .collect();
 
         // create render pass
-        let render_pass = create_render_pass(device.clone(), &swapchain)?;
+        let render_pass = Arc::new(create_render_pass(device.clone(), &swapchain)?);
 
         // create depth buffer
-        let depth_buffer = create_depth_buffer(
-            device.clone(),
+        let depth_buffer = Arc::new(create_depth_buffer(
             memory_allocator.clone(),
             swapchain.properties().dimensions(),
-        )?;
+        )?);
 
         // create g-buffers
-        let normal_buffer = create_normal_buffer(
-            device.clone(),
+        let normal_buffer = Arc::new(create_normal_buffer(
             memory_allocator.clone(),
             swapchain.properties().dimensions(),
-        )?;
-        let primitive_id_buffer = create_primitive_id_buffer(
-            device.clone(),
+        )?);
+        let primitive_id_buffer = Arc::new(create_primitive_id_buffer(
             memory_allocator.clone(),
             swapchain.properties().dimensions(),
+        )?);
+
+        // create framebuffers
+        let framebuffers = create_framebuffers(
+            &render_pass,
+            &swapchain_images,
+            &normal_buffer,
+            &primitive_id_buffer,
+            &depth_buffer,
         )?;
+        let framebuffers = framebuffers.into_iter().map(|f| Arc::new(f)).collect();
 
         Ok(Self {
             entry,
@@ -213,6 +228,7 @@ impl RenderManager {
             depth_buffer,
             normal_buffer,
             primitive_id_buffer,
+            framebuffers,
 
             next_frame: 0,
             recreate_swapchain: false,
