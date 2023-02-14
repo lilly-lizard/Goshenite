@@ -12,6 +12,6 @@ pub const FRAMES_IN_FLIGHT: usize = 2;
 pub const SHADER_ENTRY_POINT: &str = "main";
 
 /// G-buffer formats. Note that the combined bit total of these should be under 128bits to fit in tile storage on many tile-based architectures.
-pub const FORMAT_G_BUFFER_NORMAL: Format = Format::R8G8B8A8_UNORM;
-pub const FORMAT_G_BUFFER_PRIMITIVE_ID: Format = Format::R32_UINT;
+pub const FORMAT_NORMAL_BUFFER: Format = Format::R8G8B8A8_UNORM;
+pub const FORMAT_PRIMITIVE_ID_BUFFER: Format = Format::R32_UINT;
 pub const FORMAT_DEPTH_BUFFER: Format = Format::D16_UNORM;

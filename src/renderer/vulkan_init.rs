@@ -1,5 +1,5 @@
 use super::config_renderer::{
-    FORMAT_DEPTH_BUFFER, FORMAT_G_BUFFER_NORMAL, FORMAT_G_BUFFER_PRIMITIVE_ID, FRAMES_IN_FLIGHT,
+    FORMAT_DEPTH_BUFFER, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER, FRAMES_IN_FLIGHT,
     VULKAN_VER_MAJ, VULKAN_VER_MIN,
 };
 use anyhow::Context;
@@ -311,7 +311,7 @@ fn attachment_descriptions(
     // normal buffer
     attachment_descriptions[render_pass_indices::ATTACHMENT_NORMAL] =
         vk::AttachmentDescription::builder()
-            .format(FORMAT_G_BUFFER_NORMAL)
+            .format(FORMAT_NORMAL_BUFFER)
             .samples(vk::SampleCountFlags::TYPE_1)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::DONT_CARE)
@@ -322,7 +322,7 @@ fn attachment_descriptions(
     // primitive id buffer
     attachment_descriptions[render_pass_indices::ATTACHMENT_PRIMITIVE_ID] =
         vk::AttachmentDescription::builder()
-            .format(FORMAT_G_BUFFER_PRIMITIVE_ID)
+            .format(FORMAT_PRIMITIVE_ID_BUFFER)
             .samples(vk::SampleCountFlags::TYPE_1)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::DONT_CARE)
@@ -446,12 +446,40 @@ pub fn create_depth_buffer(
     device: Arc<Device>,
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
-) -> Result<Image, anyhow::Error> {
+) -> anyhow::Result<Image> {
     Image::new_tranient(
-        device.clone(),
-        memory_allocator.clone(),
+        device,
+        memory_allocator,
         dimensions,
         FORMAT_DEPTH_BUFFER,
         vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
+    )
+}
+
+pub fn create_normal_buffer(
+    device: Arc<Device>,
+    memory_allocator: Arc<MemoryAllocator>,
+    dimensions: ImageDimensions,
+) -> anyhow::Result<Image> {
+    Image::new_tranient(
+        device,
+        memory_allocator,
+        dimensions,
+        FORMAT_NORMAL_BUFFER,
+        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
+    )
+}
+
+pub fn create_primitive_id_buffer(
+    device: Arc<Device>,
+    memory_allocator: Arc<MemoryAllocator>,
+    dimensions: ImageDimensions,
+) -> anyhow::Result<Image> {
+    Image::new_tranient(
+        device,
+        memory_allocator,
+        dimensions,
+        FORMAT_PRIMITIVE_ID_BUFFER,
+        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
     )
 }

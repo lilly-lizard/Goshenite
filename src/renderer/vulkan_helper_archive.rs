@@ -1,7 +1,7 @@
 use super::{
     config_renderer::{
-        FORMAT_DEPTH_BUFFER, FORMAT_G_BUFFER_NORMAL, FORMAT_G_BUFFER_PRIMITIVE_ID,
-        SHADER_ENTRY_POINT, VULKAN_VER_MAJ, VULKAN_VER_MIN,
+        FORMAT_DEPTH_BUFFER, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER, SHADER_ENTRY_POINT,
+        VULKAN_VER_MAJ, VULKAN_VER_MIN,
     },
     shader_interfaces::uniform_buffers::CameraUniformBuffer,
 };
@@ -330,14 +330,14 @@ pub fn create_render_pass(
             g_buffer_normal: {
                 load: Clear,
                 store: DontCare,
-                format: FORMAT_G_BUFFER_NORMAL,
+                format: FORMAT_NORMAL_BUFFER,
                 samples: sample_count,
             },
             // primitive-id g-buffer
             g_buffer_primitive_id: {
                 load: Clear,
                 store: Store,
-                format: FORMAT_G_BUFFER_PRIMITIVE_ID,
+                format: FORMAT_PRIMITIVE_ID_BUFFER,
                 samples: sample_count,
             },
             // depth buffer

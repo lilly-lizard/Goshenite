@@ -4,8 +4,8 @@ use crate::{
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     renderer::vulkan_init::{
         choose_physical_device_and_queue_families, create_depth_buffer, create_device_and_queues,
-        create_render_pass, create_swapchain, ChoosePhysicalDeviceReturn,
-        CreateDeviceAndQueuesReturn,
+        create_normal_buffer, create_primitive_id_buffer, create_render_pass, create_swapchain,
+        ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
     },
     user_interface::{camera::Camera, gui::Gui},
 };
@@ -51,6 +51,8 @@ pub struct RenderManager {
 
     render_pass: RenderPass,
     depth_buffer: Image,
+    normal_buffer: Image,
+    primitive_id_buffer: Image,
 
     /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
     /// without conflicting with commands currently being processed. This variable indicates
@@ -178,6 +180,18 @@ impl RenderManager {
             swapchain.properties().dimensions(),
         )?;
 
+        // create g-buffers
+        let normal_buffer = create_normal_buffer(
+            device.clone(),
+            memory_allocator.clone(),
+            swapchain.properties().dimensions(),
+        )?;
+        let primitive_id_buffer = create_primitive_id_buffer(
+            device.clone(),
+            memory_allocator.clone(),
+            swapchain.properties().dimensions(),
+        )?;
+
         Ok(Self {
             entry,
             instance,
@@ -197,6 +211,8 @@ impl RenderManager {
 
             render_pass,
             depth_buffer,
+            normal_buffer,
+            primitive_id_buffer,
 
             next_frame: 0,
             recreate_swapchain: false,
