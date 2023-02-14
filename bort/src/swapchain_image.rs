@@ -4,8 +4,8 @@ use crate::{
     image_properties::{
         default_component_mapping, default_subresource_range, ImageDimensions, ImageViewProperties,
     },
+    memory::ALLOCATION_CALLBACK_NONE,
     swapchain::Swapchain,
-    ALLOCATION_CALLBACK,
 };
 use anyhow::Context;
 use ash::vk;
@@ -69,7 +69,7 @@ impl SwapchainImage {
         let image_view_handle = unsafe {
             device
                 .inner()
-                .create_image_view(&image_view_create_info_builder, ALLOCATION_CALLBACK)
+                .create_image_view(&image_view_create_info_builder, ALLOCATION_CALLBACK_NONE)
         }
         .context("create_image_view")?;
 
@@ -139,7 +139,7 @@ impl Drop for SwapchainImage {
         unsafe {
             self.device
                 .inner()
-                .destroy_image_view(self.image_view_handle, ALLOCATION_CALLBACK);
+                .destroy_image_view(self.image_view_handle, ALLOCATION_CALLBACK_NONE);
         }
     }
 }

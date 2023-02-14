@@ -1,6 +1,6 @@
 use crate::{
     common::is_format_srgb, device::Device, image_base::extent_2d_from_width_height,
-    image_properties::ImageDimensions, surface::Surface, ALLOCATION_CALLBACK,
+    image_properties::ImageDimensions, memory::ALLOCATION_CALLBACK_NONE, surface::Surface,
 };
 use anyhow::Context;
 use ash::{extensions::khr, prelude::VkResult, vk};
@@ -94,7 +94,8 @@ impl Swapchain {
         let swapchain_create_info_builder =
             properties.create_info_builder(surface.handle(), vk::SwapchainKHR::null());
         let handle = unsafe {
-            swapchain_loader.create_swapchain(&swapchain_create_info_builder, ALLOCATION_CALLBACK)
+            swapchain_loader
+                .create_swapchain(&swapchain_create_info_builder, ALLOCATION_CALLBACK_NONE)
         }
         .context("creating swapchain")?;
 
@@ -139,7 +140,7 @@ impl Drop for Swapchain {
     fn drop(&mut self) {
         unsafe {
             self.swapchain_loader
-                .destroy_swapchain(self.handle, ALLOCATION_CALLBACK)
+                .destroy_swapchain(self.handle, ALLOCATION_CALLBACK_NONE)
         };
     }
 }

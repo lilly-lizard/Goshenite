@@ -1,4 +1,4 @@
-use crate::{common::string_to_c_string_vec, ALLOCATION_CALLBACK};
+use crate::{common::string_to_c_string_vec, memory::ALLOCATION_CALLBACK_NONE};
 use anyhow::Context;
 use ash::{extensions::ext::DebugUtils, vk, Entry};
 #[allow(unused_imports)]
@@ -82,7 +82,7 @@ impl Instance {
 
         let instance = unsafe {
             entry
-                .create_instance(&create_info, ALLOCATION_CALLBACK)
+                .create_instance(&create_info, ALLOCATION_CALLBACK_NONE)
                 .context("creating vulkan instance")?
         };
 
@@ -159,7 +159,7 @@ impl Instance {
 impl Drop for Instance {
     fn drop(&mut self) {
         unsafe {
-            self.inner.destroy_instance(ALLOCATION_CALLBACK);
+            self.inner.destroy_instance(ALLOCATION_CALLBACK_NONE);
         }
     }
 }

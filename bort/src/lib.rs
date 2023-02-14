@@ -12,5 +12,3 @@ pub mod render_pass;
 pub mod surface;
 pub mod swapchain;
 pub mod swapchain_image;
-
-const ALLOCATION_CALLBACK: Option<&ash::vk::AllocationCallbacks> = None;

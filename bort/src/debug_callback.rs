@@ -1,4 +1,4 @@
-use crate::{instance::Instance, ALLOCATION_CALLBACK};
+use crate::{instance::Instance, memory::ALLOCATION_CALLBACK_NONE};
 use ash::{extensions::ext::DebugUtils, prelude::VkResult, vk, Entry};
 use std::sync::Arc;
 
@@ -32,7 +32,7 @@ impl DebugCallback {
 
         let debug_utils_loader = DebugUtils::new(entry, instance.inner());
         let handle = unsafe {
-            debug_utils_loader.create_debug_utils_messenger(&debug_info, ALLOCATION_CALLBACK)
+            debug_utils_loader.create_debug_utils_messenger(&debug_info, ALLOCATION_CALLBACK_NONE)
         }?;
 
         Ok(Self {
@@ -58,7 +58,7 @@ impl Drop for DebugCallback {
     fn drop(&mut self) {
         unsafe {
             self.debug_utils_loader
-                .destroy_debug_utils_messenger(self.handle, ALLOCATION_CALLBACK);
+                .destroy_debug_utils_messenger(self.handle, ALLOCATION_CALLBACK_NONE);
         }
     }
 }

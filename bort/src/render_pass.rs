@@ -1,4 +1,4 @@
-use crate::{device::Device, ALLOCATION_CALLBACK};
+use crate::{device::Device, memory::ALLOCATION_CALLBACK_NONE};
 use ash::{prelude::VkResult, vk};
 use std::sync::Arc;
 
@@ -44,7 +44,7 @@ impl RenderPass {
         let handle = unsafe {
             device
                 .inner()
-                .create_render_pass(&render_pass_info, ALLOCATION_CALLBACK)
+                .create_render_pass(&render_pass_info, ALLOCATION_CALLBACK_NONE)
         }?;
 
         Ok(Self {
@@ -78,7 +78,7 @@ impl Drop for RenderPass {
         unsafe {
             self.device
                 .inner()
-                .destroy_render_pass(self.handle, ALLOCATION_CALLBACK);
+                .destroy_render_pass(self.handle, ALLOCATION_CALLBACK_NONE);
         }
     }
 }

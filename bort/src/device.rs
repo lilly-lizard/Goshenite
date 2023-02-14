@@ -1,8 +1,8 @@
 use crate::{
     common::string_to_c_string_vec,
     instance::{ApiVersion, Instance},
+    memory::ALLOCATION_CALLBACK_NONE,
     physical_device::PhysicalDevice,
-    ALLOCATION_CALLBACK,
 };
 use anyhow::Context;
 use ash::vk;
@@ -57,9 +57,11 @@ impl Device {
         }
 
         let inner = unsafe {
-            instance
-                .inner()
-                .create_device(physical_device.handle(), &device_create_info, None)
+            instance.inner().create_device(
+                physical_device.handle(),
+                &device_create_info,
+                ALLOCATION_CALLBACK_NONE,
+            )
         }
         .context("creating vulkan device")?;
 
@@ -92,7 +94,7 @@ impl Drop for Device {
     fn drop(&mut self) {
         self.wait_idle().expect("vkDeviceWaitIdle");
         unsafe {
-            self.inner.destroy_device(ALLOCATION_CALLBACK);
+            self.inner.destroy_device(ALLOCATION_CALLBACK_NONE);
         }
     }
 }

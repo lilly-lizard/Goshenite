@@ -1,4 +1,6 @@
-use crate::{instance::Instance, physical_device::PhysicalDevice, ALLOCATION_CALLBACK};
+use crate::{
+    instance::Instance, memory::ALLOCATION_CALLBACK_NONE, physical_device::PhysicalDevice,
+};
 use ash::{extensions::khr, prelude::VkResult, vk, Entry};
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
 use std::sync::Arc;
@@ -24,7 +26,7 @@ impl Surface {
                 instance.inner(),
                 raw_display_handle,
                 raw_window_handle,
-                ALLOCATION_CALLBACK,
+                ALLOCATION_CALLBACK_NONE,
             )
         }?;
 
@@ -101,7 +103,7 @@ impl Drop for Surface {
     fn drop(&mut self) {
         unsafe {
             self.surface_loader
-                .destroy_surface(self.handle, ALLOCATION_CALLBACK)
+                .destroy_surface(self.handle, ALLOCATION_CALLBACK_NONE)
         };
     }
 }
