@@ -2,11 +2,14 @@ use super::config_renderer::{ENABLE_VULKAN_VALIDATION, VULKAN_VER_MAJ, VULKAN_VE
 use crate::{
     config::ENGINE_NAME,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
-    renderer::vulkan_init::{
-        choose_physical_device_and_queue_families, create_depth_buffer, create_device_and_queues,
-        create_framebuffers, create_normal_buffer, create_primitive_id_buffer, create_render_pass,
-        create_swapchain, render_pass_indices, ChoosePhysicalDeviceReturn,
-        CreateDeviceAndQueuesReturn,
+    renderer::{
+        shader_interfaces::primitive_op_buffer::primitive_codes,
+        vulkan_init::{
+            choose_physical_device_and_queue_families, create_depth_buffer,
+            create_device_and_queues, create_framebuffers, create_normal_buffer,
+            create_primitive_id_buffer, create_render_pass, create_swapchain, render_pass_indices,
+            ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
+        },
     },
     user_interface::{camera::Camera, gui::Gui},
 };
@@ -16,9 +19,8 @@ use bort::{
     common::is_format_srgb,
     debug_callback::DebugCallback,
     device::Device,
-    framebuffer::{Framebuffer, FramebufferProperties},
+    framebuffer::Framebuffer,
     image::Image,
-    image_base::ImageBase,
     instance::{ApiVersion, Instance},
     memory::MemoryAllocator,
     queue::Queue,
@@ -53,10 +55,12 @@ pub struct RenderManager {
     is_swapchain_srgb: bool,
 
     render_pass: Arc<RenderPass>,
+    framebuffers: Vec<Arc<Framebuffer>>,
+    clear_values: Vec<vk::ClearValue>,
+
     depth_buffer: Arc<Image>,
     normal_buffer: Arc<Image>,
     primitive_id_buffer: Arc<Image>,
-    framebuffers: Vec<Arc<Framebuffer>>,
 
     /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
     /// without conflicting with commands currently being processed. This variable indicates
@@ -207,6 +211,41 @@ impl RenderManager {
         )?;
         let framebuffers = framebuffers.into_iter().map(|f| Arc::new(f)).collect();
 
+        // clear values
+        let mut clear_values =
+            Vec::<vk::ClearValue>::with_capacity(render_pass_indices::NUM_ATTACHMENTS);
+        clear_values.insert(
+            render_pass_indices::ATTACHMENT_SWAPCHAIN,
+            vk::ClearValue {
+                color: vk::ClearColorValue {
+                    float32: [0., 0., 0., 1.],
+                },
+            },
+        );
+        clear_values.insert(
+            render_pass_indices::ATTACHMENT_NORMAL,
+            vk::ClearValue {
+                color: vk::ClearColorValue { float32: [0.; 4] },
+            },
+        );
+        clear_values.insert(
+            render_pass_indices::ATTACHMENT_PRIMITIVE_ID,
+            vk::ClearValue {
+                color: vk::ClearColorValue {
+                    uint32: [primitive_codes::INVALID; 4],
+                },
+            },
+        );
+        clear_values.insert(
+            render_pass_indices::ATTACHMENT_DEPTH_BUFFER,
+            vk::ClearValue {
+                depth_stencil: vk::ClearDepthStencilValue {
+                    depth: 1.,
+                    stencil: 0,
+                },
+            },
+        );
+
         Ok(Self {
             entry,
             instance,
@@ -225,10 +264,12 @@ impl RenderManager {
             is_swapchain_srgb,
 
             render_pass,
+            framebuffers,
+            clear_values,
+
             depth_buffer,
             normal_buffer,
             primitive_id_buffer,
-            framebuffers,
 
             next_frame: 0,
             recreate_swapchain: false,
