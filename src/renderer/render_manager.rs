@@ -5,7 +5,7 @@ use crate::{
     renderer::{
         shader_interfaces::primitive_op_buffer::primitive_codes,
         vulkan_init::{
-            choose_physical_device_and_queue_families, create_depth_buffer,
+            choose_physical_device_and_queue_families, create_clear_values, create_depth_buffer,
             create_device_and_queues, create_framebuffers, create_normal_buffer,
             create_primitive_id_buffer, create_render_pass, create_swapchain, render_pass_indices,
             ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
@@ -212,39 +212,7 @@ impl RenderManager {
         let framebuffers = framebuffers.into_iter().map(|f| Arc::new(f)).collect();
 
         // clear values
-        let mut clear_values =
-            Vec::<vk::ClearValue>::with_capacity(render_pass_indices::NUM_ATTACHMENTS);
-        clear_values.insert(
-            render_pass_indices::ATTACHMENT_SWAPCHAIN,
-            vk::ClearValue {
-                color: vk::ClearColorValue {
-                    float32: [0., 0., 0., 1.],
-                },
-            },
-        );
-        clear_values.insert(
-            render_pass_indices::ATTACHMENT_NORMAL,
-            vk::ClearValue {
-                color: vk::ClearColorValue { float32: [0.; 4] },
-            },
-        );
-        clear_values.insert(
-            render_pass_indices::ATTACHMENT_PRIMITIVE_ID,
-            vk::ClearValue {
-                color: vk::ClearColorValue {
-                    uint32: [primitive_codes::INVALID; 4],
-                },
-            },
-        );
-        clear_values.insert(
-            render_pass_indices::ATTACHMENT_DEPTH_BUFFER,
-            vk::ClearValue {
-                depth_stencil: vk::ClearDepthStencilValue {
-                    depth: 1.,
-                    stencil: 0,
-                },
-            },
-        );
+        let clear_values = create_clear_values();
 
         Ok(Self {
             entry,

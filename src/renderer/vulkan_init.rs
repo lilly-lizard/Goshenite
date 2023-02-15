@@ -516,3 +516,40 @@ pub fn create_framebuffers(
         })
         .collect::<anyhow::Result<Vec<_>>>()
 }
+
+pub fn create_clear_values() -> Vec<vk::ClearValue> {
+    let mut clear_values =
+        Vec::<vk::ClearValue>::with_capacity(render_pass_indices::NUM_ATTACHMENTS);
+    clear_values.insert(
+        render_pass_indices::ATTACHMENT_SWAPCHAIN,
+        vk::ClearValue {
+            color: vk::ClearColorValue {
+                float32: [0., 0., 0., 1.],
+            },
+        },
+    );
+    clear_values.insert(
+        render_pass_indices::ATTACHMENT_NORMAL,
+        vk::ClearValue {
+            color: vk::ClearColorValue { float32: [0.; 4] },
+        },
+    );
+    clear_values.insert(
+        render_pass_indices::ATTACHMENT_PRIMITIVE_ID,
+        vk::ClearValue {
+            color: vk::ClearColorValue {
+                uint32: [primitive_codes::INVALID; 4],
+            },
+        },
+    );
+    clear_values.insert(
+        render_pass_indices::ATTACHMENT_DEPTH_BUFFER,
+        vk::ClearValue {
+            depth_stencil: vk::ClearDepthStencilValue {
+                depth: 1.,
+                stencil: 0,
+            },
+        },
+    );
+    clear_values
+}
