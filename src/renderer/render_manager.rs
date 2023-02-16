@@ -2,14 +2,11 @@ use super::config_renderer::{ENABLE_VULKAN_VALIDATION, VULKAN_VER_MAJ, VULKAN_VE
 use crate::{
     config::ENGINE_NAME,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
-    renderer::{
-        shader_interfaces::primitive_op_buffer::primitive_codes,
-        vulkan_init::{
-            choose_physical_device_and_queue_families, create_clear_values, create_depth_buffer,
-            create_device_and_queues, create_framebuffers, create_normal_buffer,
-            create_primitive_id_buffer, create_render_pass, create_swapchain, render_pass_indices,
-            ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
-        },
+    renderer::vulkan_init::{
+        choose_physical_device_and_queue_families, create_clear_values, create_depth_buffer,
+        create_device_and_queues, create_framebuffers, create_normal_buffer,
+        create_primitive_id_buffer, create_render_pass, create_swapchain, create_swapchain_images,
+        ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
     },
     user_interface::{camera::Camera, gui::Gui},
 };
@@ -21,6 +18,7 @@ use bort::{
     device::Device,
     framebuffer::Framebuffer,
     image::Image,
+    image_view::ImageView,
     instance::{ApiVersion, Instance},
     memory::MemoryAllocator,
     queue::Queue,
@@ -51,16 +49,16 @@ pub struct RenderManager {
     window: Arc<Window>,
     surface: Arc<Surface>,
     swapchain: Arc<Swapchain>,
-    swapchain_images: Vec<Arc<SwapchainImage>>,
+    swapchain_images: Vec<Arc<ImageView<SwapchainImage>>>,
     is_swapchain_srgb: bool,
 
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
     clear_values: Vec<vk::ClearValue>,
 
-    depth_buffer: Arc<Image>,
-    normal_buffer: Arc<Image>,
-    primitive_id_buffer: Arc<Image>,
+    depth_buffer: Arc<ImageView<Image>>,
+    normal_buffer: Arc<ImageView<Image>>,
+    primitive_id_buffer: Arc<ImageView<Image>>,
 
     /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
     /// without conflicting with commands currently being processed. This variable indicates
@@ -176,11 +174,7 @@ impl RenderManager {
         let is_swapchain_srgb = is_format_srgb(swapchain.properties().surface_format.format);
 
         // create swapchain images
-        let swapchain_images = SwapchainImage::from_swapchain(swapchain.clone())?;
-        let swapchain_images: Vec<_> = swapchain_images
-            .into_iter()
-            .map(|image| Arc::new(image))
-            .collect();
+        let swapchain_images = create_swapchain_images(&swapchain)?;
 
         // create render pass
         let render_pass = Arc::new(create_render_pass(device.clone(), &swapchain)?);

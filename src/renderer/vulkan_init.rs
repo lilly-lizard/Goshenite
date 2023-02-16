@@ -1,6 +1,9 @@
-use super::config_renderer::{
-    FORMAT_DEPTH_BUFFER, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER, FRAMES_IN_FLIGHT,
-    VULKAN_VER_MAJ, VULKAN_VER_MIN,
+use super::{
+    config_renderer::{
+        FORMAT_DEPTH_BUFFER, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER, FRAMES_IN_FLIGHT,
+        VULKAN_VER_MAJ, VULKAN_VER_MIN,
+    },
+    shader_interfaces::primitive_op_buffer::primitive_codes,
 };
 use anyhow::Context;
 use ash::vk;
@@ -8,8 +11,8 @@ use bort::{
     device::Device,
     framebuffer::{Framebuffer, FramebufferProperties},
     image::Image,
-    image_base::ImageBase,
     image_properties::ImageDimensions,
+    image_view::{ImageView, ImageViewAccess, ImageViewProperties},
     instance::Instance,
     memory::MemoryAllocator,
     physical_device::PhysicalDevice,
@@ -280,6 +283,28 @@ pub fn create_swapchain(
         image_usage,
         window_dimensions,
     )
+    .context("creating swapchain")
+}
+
+pub fn create_swapchain_images(
+    swapchain: &Arc<Swapchain>,
+) -> anyhow::Result<Vec<Arc<ImageView<SwapchainImage>>>> {
+    let swapchain_images = SwapchainImage::from_swapchain(swapchain.clone())?;
+
+    let swapchain_images = swapchain_images
+        .into_iter()
+        .map(|image| {
+            let image_view_properties = image.image_view_properties();
+            ImageView::new(Arc::new(image), image_view_properties)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let swapchain_images = swapchain_images
+        .into_iter()
+        .map(|image_view| Arc::new(image_view))
+        .collect::<Vec<_>>();
+
+    Ok(swapchain_images)
 }
 
 pub mod render_pass_indices {
@@ -448,51 +473,67 @@ pub fn create_render_pass(
 pub fn create_depth_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
-) -> anyhow::Result<Image> {
-    Image::new_tranient(
+) -> anyhow::Result<ImageView<Image>> {
+    let image = Image::new_tranient(
         memory_allocator,
         dimensions,
         FORMAT_DEPTH_BUFFER,
         vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
     )
+    .context("creating depth buffer image")?;
+
+    let image_view_properties = ImageViewProperties::from_image_properties(image.properties());
+    ImageView::new(Arc::new(image), image_view_properties)
+        .context("creating depth buffer image view")
 }
 
 pub fn create_normal_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
-) -> anyhow::Result<Image> {
-    Image::new_tranient(
+) -> anyhow::Result<ImageView<Image>> {
+    let image = Image::new_tranient(
         memory_allocator,
         dimensions,
         FORMAT_NORMAL_BUFFER,
         vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
     )
+    .context("creating normal buffer image")?;
+
+    let image_view_properties = ImageViewProperties::from_image_properties(image.properties());
+    ImageView::new(Arc::new(image), image_view_properties)
+        .context("creating normal buffer image view")
 }
 
 pub fn create_primitive_id_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
-) -> anyhow::Result<Image> {
-    Image::new_tranient(
+) -> anyhow::Result<ImageView<Image>> {
+    let image = Image::new_tranient(
         memory_allocator,
         dimensions,
         FORMAT_PRIMITIVE_ID_BUFFER,
         vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
     )
+    .context("creating primitive id buffer image")?;
+
+    let image_view_properties = ImageViewProperties::from_image_properties(image.properties());
+    ImageView::new(Arc::new(image), image_view_properties)
+        .context("creating primitive id buffer image view")
 }
 
 pub fn create_framebuffers(
     render_pass: &Arc<RenderPass>,
-    swapchain_images: &Vec<Arc<SwapchainImage>>,
-    normal_buffer: &Arc<Image>,
-    primitive_id_buffer: &Arc<Image>,
-    depth_buffer: &Arc<Image>,
+    swapchain_images: &Vec<Arc<ImageView<SwapchainImage>>>,
+    normal_buffer: &Arc<ImageView<Image>>,
+    primitive_id_buffer: &Arc<ImageView<Image>>,
+    depth_buffer: &Arc<ImageView<Image>>,
 ) -> anyhow::Result<Vec<Framebuffer>> {
     swapchain_images
         .iter()
         .map(|swapchain_image| {
-            let mut attachments =
-                Vec::<Arc<dyn ImageBase>>::with_capacity(render_pass_indices::NUM_ATTACHMENTS);
+            let mut attachments = Vec::<Arc<dyn ImageViewAccess>>::with_capacity(
+                render_pass_indices::NUM_ATTACHMENTS,
+            );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_SWAPCHAIN,
                 swapchain_image.clone(),
@@ -511,8 +552,9 @@ pub fn create_framebuffers(
             );
 
             let framebuffer_properties =
-                FramebufferProperties::new(attachments, swapchain_image.dimensions());
+                FramebufferProperties::new(attachments, swapchain_image.image().dimensions());
             Framebuffer::new(render_pass.clone(), framebuffer_properties)
+                .context("creating framebuffer")
         })
         .collect::<anyhow::Result<Vec<_>>>()
 }
