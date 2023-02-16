@@ -157,10 +157,8 @@ checksum = "0d8c1fef690941d3e7788d328517591fecc684c084084702d6ff1641e993699a"
 name = "bort"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "ash",
  "ash-window",
- "log",
  "raw-window-handle 0.5.0",
  "vk-mem",
 ]
