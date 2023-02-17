@@ -26,6 +26,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - bounding box viewer
 - custom bounding boxes
 - anti-aliased gui
+- 'waiting' cursor when other code taking time...
 
 ## ui additions
 

@@ -2,10 +2,11 @@ use super::{
     config_renderer::SHADER_ENTRY_POINT, shader_interfaces::uniform_buffers::CameraUniformBuffer,
 };
 use anyhow::Context;
-use ash::vk;
+use ash::vk::{self, DynamicState};
+use bort::{shader_module::ShaderModule, pipeline_graphics::{GraphicsPipelineProperties, VertexInputState, InputAssemblyState, TessellationState, ViewportState, RasterizationState, MultisampleState, DepthStencilState, ColorBlendState, ShaderStage}};
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
-use std::sync::Arc;
+use std::{sync::Arc, ffi::CString};
 
 const VERT_SHADER_PATH: &str = "assets/shader_binaries/full_screen.vert.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_lighting.frag.spv";
@@ -61,21 +62,33 @@ impl LightingPass {
 }
 
 fn create_pipeline(device: Arc<vk::Device>, subpass: Subpass) -> anyhow::Result<Arc<vk::Pipeline>> {
-    let vert_module = create_shader_module(device.clone(), VERT_SHADER_PATH)?;
-    let vert_shader =
-        vert_module
-            .entry_point(SHADER_ENTRY_POINT)
-            .ok_or(CreateShaderError::MissingEntryPoint(
-                VERT_SHADER_PATH.to_owned(),
-            ))?;
+    let vert_shader = ShaderModule::new_from_file(device.clone(), VERT_SHADER_PATH)
+        .context("creating lighting pass vertex shader")?;
+    let vert_stage = ShaderStage {
+        stage: vk::ShaderStageFlags::VERTEX,
+        module_handle: vert_shader.handle(),
+        entry_point: CString::new(SHADER_ENTRY_POINT).context("shader entry point to c-string")?,
+        ..Default::default()
+    };
 
-    let frag_module = create_shader_module(device.clone(), FRAG_SHADER_PATH)?;
-    let frag_shader =
-        frag_module
-            .entry_point(SHADER_ENTRY_POINT)
-            .ok_or(CreateShaderError::MissingEntryPoint(
-                FRAG_SHADER_PATH.to_owned(),
-            ))?;
+    let frag_shader = ShaderModule::new_from_file(device.clone(), FRAG_SHADER_PATH)
+        .context("creating lighting pass fragment shader")?;
+    let frag_stage = ShaderStage {
+        stage: vk::ShaderStageFlags::FRAGMENT,
+        module_handle: frag_shader.handle(),
+        entry_point: CString::new(SHADER_ENTRY_POINT).context("shader entry point to c-string")?,
+        ..Default::default()
+    };
+
+    let pipeline_properties = GraphicsPipelineProperties {
+        shader_stages: vec![vert_stage, frag_stage],
+        rasterization_state: RasterizationState,
+        multisample_state: MultisampleState,
+        depth_stencil_state: DepthStencilState,
+        color_blend_state: ColorBlendState,
+        dynamic_state: DynamicState,
+        ..Default::default(),
+    };
 
     Ok(GraphicsPipeline::start()
         .render_pass(subpass)
