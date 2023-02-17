@@ -11,8 +11,9 @@ use bort::{
     device::Device,
     framebuffer::{Framebuffer, FramebufferProperties},
     image::Image,
+    image_access::ImageViewAccess,
     image_properties::ImageDimensions,
-    image_view::{ImageView, ImageViewAccess, ImageViewProperties},
+    image_view::{ImageView, ImageViewProperties},
     instance::Instance,
     memory::MemoryAllocator,
     physical_device::PhysicalDevice,
@@ -482,7 +483,8 @@ pub fn create_depth_buffer(
     )
     .context("creating depth buffer image")?;
 
-    let image_view_properties = ImageViewProperties::from_image_properties(image.properties());
+    let image_view_properties =
+        ImageViewProperties::from_image_properties_default(image.properties());
     ImageView::new(Arc::new(image), image_view_properties)
         .context("creating depth buffer image view")
 }
@@ -499,7 +501,8 @@ pub fn create_normal_buffer(
     )
     .context("creating normal buffer image")?;
 
-    let image_view_properties = ImageViewProperties::from_image_properties(image.properties());
+    let image_view_properties =
+        ImageViewProperties::from_image_properties_default(image.properties());
     ImageView::new(Arc::new(image), image_view_properties)
         .context("creating normal buffer image view")
 }
@@ -516,7 +519,8 @@ pub fn create_primitive_id_buffer(
     )
     .context("creating primitive id buffer image")?;
 
-    let image_view_properties = ImageViewProperties::from_image_properties(image.properties());
+    let image_view_properties =
+        ImageViewProperties::from_image_properties_default(image.properties());
     ImageView::new(Arc::new(image), image_view_properties)
         .context("creating primitive id buffer image view")
 }
