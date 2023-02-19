@@ -713,7 +713,6 @@ dependencies = [
  "log",
  "raw-window-handle 0.5.0",
  "shaderc",
- "smallvec",
  "winit",
 ]
 
