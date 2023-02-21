@@ -4,6 +4,7 @@ use super::{
 use anyhow::Context;
 use ash::vk;
 use bort::{
+    buffer::Buffer,
     descriptor_layout::{
         DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
     },
@@ -11,7 +12,6 @@ use bort::{
     descriptor_set::DescriptorSet,
     device::Device,
     image_access::ImageViewAccess,
-    image_view::ImageView,
     pipeline_graphics::{
         ColorBlendState, DynamicState, GraphicsPipeline, GraphicsPipelineProperties,
     },
@@ -39,8 +39,10 @@ mod descriptor {
 /// Defines functionality for reading the g-buffers and calculating the scene color values
 pub struct LightingPass {
     device: Arc<Device>,
-    descriptor_pool: Arc<DescriptorPool>,
+
+    desc_set_camera: Arc<DescriptorSet>,
     desc_set_g_buffers: Arc<DescriptorSet>,
+
     pipeline_layout: Arc<PipelineLayout>,
     pipeline: Arc<GraphicsPipeline>,
 }
@@ -50,11 +52,15 @@ impl LightingPass {
         device: Arc<Device>,
         render_pass: &RenderPass,
         subpass_index: u32,
-        desc_set_layout_camera: Arc<DescriptorSetLayout>,
+        camera_buffer: &Buffer,
         normal_buffer: &impl ImageViewAccess,
         primitive_id_buffer: &impl ImageViewAccess,
     ) -> anyhow::Result<Self> {
         let descriptor_pool = create_descriptor_pool(device.clone())?;
+
+        let desc_set_camera = create_desc_set_camera(device.clone(), descriptor_pool.clone())?;
+        write_desc_set_camera(device.clone(), &desc_set_camera, camera_buffer)?;
+
         let desc_set_g_buffers = create_desc_set_gbuffers(device.clone(), descriptor_pool.clone())?;
         write_desc_set_gbuffers(
             device.clone(),
@@ -65,7 +71,7 @@ impl LightingPass {
 
         let pipeline_layout = create_pipeline_layout(
             device.clone(),
-            desc_set_layout_camera,
+            desc_set_camera.layout().clone(),
             desc_set_g_buffers.layout().clone(),
         )?;
         let pipeline = create_pipeline(
@@ -77,8 +83,8 @@ impl LightingPass {
 
         Ok(Self {
             device,
-            descriptor_pool,
             desc_set_g_buffers,
+            desc_set_camera,
             pipeline_layout,
             pipeline,
         })
@@ -114,10 +120,16 @@ impl LightingPass {
 fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorPool>> {
     let descriptor_pool_props = DescriptorPoolProperties {
         max_sets: 8,
-        pool_sizes: vec![vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::INPUT_ATTACHMENT,
-            descriptor_count: 2,
-        }],
+        pool_sizes: vec![
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::INPUT_ATTACHMENT,
+                descriptor_count: 2,
+            },
+            vk::DescriptorPoolSize {
+                ty: vk::DescriptorType::UNIFORM_BUFFER,
+                descriptor_count: 1,
+            },
+        ],
         ..Default::default()
     };
 
@@ -125,6 +137,58 @@ fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorP
         .context("creating lighting pass descriptor pool")?;
 
     Ok(Arc::new(descriptor_pool))
+}
+
+fn create_desc_set_camera(
+    device: Arc<Device>,
+    descriptor_pool: Arc<DescriptorPool>,
+) -> anyhow::Result<Arc<DescriptorSet>> {
+    let mut desc_set_layout_props = DescriptorSetLayoutProperties::default();
+    desc_set_layout_props.bindings = vec![DescriptorSetLayoutBinding {
+        binding: descriptor::BINDING_CAMERA,
+        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+        descriptor_count: 1,
+        stage_flags: vk::ShaderStageFlags::FRAGMENT,
+    }];
+
+    let desc_set_layout = Arc::new(
+        DescriptorSetLayout::new(device, desc_set_layout_props)
+            .context("creating lighting pass camera descriptor set layout")?,
+    );
+
+    let desc_set = descriptor_pool
+        .allocate_descriptor_set(desc_set_layout)
+        .context("allocating lighting pass camera descriptor set")?;
+
+    Ok(Arc::new(desc_set))
+}
+
+fn write_desc_set_camera(
+    device: Arc<Device>,
+    desc_set_camera: &DescriptorSet,
+    camera_buffer: &Buffer,
+) -> anyhow::Result<()> {
+    let camera_buffer_info = vk::DescriptorBufferInfo {
+        buffer: camera_buffer.handle(),
+        offset: 0,
+        range: std::mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize,
+    };
+
+    let descriptor_writes = [vk::WriteDescriptorSet {
+        dst_set: desc_set_camera.handle(),
+        descriptor_count: 1,
+        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+        p_buffer_info: &camera_buffer_info,
+        ..Default::default()
+    }];
+
+    unsafe {
+        device
+            .inner()
+            .update_descriptor_sets(&descriptor_writes, &[]);
+    }
+
+    Ok(())
 }
 
 fn create_desc_set_gbuffers(

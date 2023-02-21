@@ -1,20 +1,29 @@
-use super::config_renderer::{ENABLE_VULKAN_VALIDATION, VULKAN_VER_MAJ, VULKAN_VER_MIN};
+use super::{
+    config_renderer::{ENABLE_VULKAN_VALIDATION, VULKAN_VER_MAJ, VULKAN_VER_MIN},
+    lighting_pass::LightingPass,
+};
 use crate::{
     config::ENGINE_NAME,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
-    renderer::vulkan_init::{
-        choose_physical_device_and_queue_families, create_clear_values, create_depth_buffer,
-        create_device_and_queues, create_framebuffers, create_normal_buffer,
-        create_primitive_id_buffer, create_render_pass, create_swapchain, create_swapchain_images,
-        ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
+    renderer::{
+        shader_interfaces::uniform_buffers::CameraUniformBuffer,
+        vulkan_init::{
+            choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
+            create_depth_buffer, create_device_and_queues, create_framebuffers,
+            create_normal_buffer, create_primitive_id_buffer, create_render_pass, create_swapchain,
+            create_swapchain_images, render_pass_indices, ChoosePhysicalDeviceReturn,
+            CreateDeviceAndQueuesReturn,
+        },
     },
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::Context;
 use ash::{vk, Entry};
 use bort::{
+    buffer::Buffer,
     common::is_format_srgb,
     debug_callback::DebugCallback,
+    descriptor_set::DescriptorSet,
     device::Device,
     framebuffer::Framebuffer,
     image::Image,
@@ -59,6 +68,9 @@ pub struct RenderManager {
     depth_buffer: Arc<ImageView<Image>>,
     normal_buffer: Arc<ImageView<Image>>,
     primitive_id_buffer: Arc<ImageView<Image>>,
+    camera_ubo: Arc<Buffer>,
+
+    lighting_pass: LightingPass,
 
     /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
     /// without conflicting with commands currently being processed. This variable indicates
@@ -185,6 +197,9 @@ impl RenderManager {
             swapchain.properties().dimensions(),
         )?);
 
+        // create camera ubo
+        let camera_ubo = Arc::new(create_camera_ubo(memory_allocator.clone())?);
+
         // create g-buffers
         let normal_buffer = Arc::new(create_normal_buffer(
             memory_allocator.clone(),
@@ -207,6 +222,15 @@ impl RenderManager {
 
         // clear values
         let clear_values = create_clear_values();
+
+        let lighting_pass = LightingPass::new(
+            device.clone(),
+            &render_pass,
+            render_pass_indices::SUBPASS_GBUFFER as u32,
+            todo!(),
+            normal_buffer.as_ref(),
+            primitive_id_buffer.as_ref(),
+        )?;
 
         Ok(Self {
             entry,
@@ -232,6 +256,9 @@ impl RenderManager {
             depth_buffer,
             normal_buffer,
             primitive_id_buffer,
+            camera_ubo,
+
+            lighting_pass,
 
             next_frame: 0,
             recreate_swapchain: false,

@@ -27,6 +27,8 @@ ash = "0.37.2"
 ash-window = "0.12"
 # bort has a bunch of helper structs and functions wrapped around ash
 bort = { path = "../bort" }
+# AMD vulkan memory allocator bindings
+vk-mem = { version = "0.2.3", path = "../vk-mem-bort" }
 # bit-casting crate (for cpu<->gpu buffers) todo needed?
 bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library

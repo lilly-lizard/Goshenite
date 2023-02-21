@@ -3,11 +3,19 @@ use super::{
         FORMAT_DEPTH_BUFFER, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER, FRAMES_IN_FLIGHT,
         VULKAN_VER_MAJ, VULKAN_VER_MIN,
     },
-    shader_interfaces::primitive_op_buffer::primitive_codes,
+    shader_interfaces::{
+        primitive_op_buffer::primitive_codes, uniform_buffers::CameraUniformBuffer,
+    },
 };
 use anyhow::Context;
 use ash::vk;
 use bort::{
+    buffer::{Buffer, BufferProperties},
+    descriptor_layout::{
+        DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
+    },
+    descriptor_pool::{DescriptorPool, DescriptorPoolProperties},
+    descriptor_set::DescriptorSet,
     device::Device,
     framebuffer::{Framebuffer, FramebufferProperties},
     image::Image,
@@ -26,6 +34,7 @@ use bort::{
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
+use vk_mem::AllocationCreateInfo;
 use winit::window::Window;
 
 pub fn required_device_extensions() -> [&'static str; 2] {
@@ -598,4 +607,24 @@ pub fn create_clear_values() -> Vec<vk::ClearValue> {
         },
     );
     clear_values
+}
+
+pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Buffer> {
+    let ubo_size = std::mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize;
+    let ubo_props = BufferProperties {
+        size: ubo_size,
+        usage: vk::BufferUsageFlags::UNIFORM_BUFFER,
+        sharing_mode: vk::SharingMode::EXCLUSIVE,
+        ..Default::default()
+    };
+
+    let memory_info = AllocationCreateInfo {
+        flags: vk_mem::AllocationCreateFlags::MAPPED,
+        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE,
+        preferred_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL
+            | vk::MemoryPropertyFlags::HOST_COHERENT,
+        ..Default::default()
+    };
+
+    Buffer::new(memory_allocator, ubo_props, memory_info).context("creating camera ubo buffer")
 }
