@@ -227,7 +227,7 @@ impl RenderManager {
             device.clone(),
             &render_pass,
             render_pass_indices::SUBPASS_GBUFFER as u32,
-            todo!(),
+            &camera_ubo,
             normal_buffer.as_ref(),
             primitive_id_buffer.as_ref(),
         )?;
@@ -265,6 +265,18 @@ impl RenderManager {
         })
     }
 
+    pub fn update_camera(&mut self, camera: &mut Camera) -> anyhow::Result<()> {
+        self.wait_idle()?;
+
+        let dimensions = self.swapchain.properties().width_height;
+        let camera_data =
+            CameraUniformBuffer::from_camera(camera, [dimensions[0] as f32, dimensions[1] as f32]);
+
+        todo!();
+
+        Ok(())
+    }
+
     pub fn update_object_buffers(
         &mut self,
         object_collection: &ObjectCollection,
@@ -281,12 +293,7 @@ impl RenderManager {
     }
 
     /// Submits Vulkan commands for rendering a frame.
-    pub fn render_frame(
-        &mut self,
-        window_resize: bool,
-        gui: &mut Gui,
-        camera: &mut Camera,
-    ) -> anyhow::Result<()> {
+    pub fn render_frame(&mut self, window_resize: bool, gui: &mut Gui) -> anyhow::Result<()> {
         todo!();
     }
 }
@@ -294,6 +301,10 @@ impl RenderManager {
 // Private functions
 
 impl RenderManager {
+    fn wait_idle(&mut self) -> anyhow::Result<()> {
+        todo!();
+    }
+
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
         todo!();

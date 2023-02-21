@@ -13,6 +13,9 @@ layout (push_constant) uniform PushConstant {
 layout (set = 0, binding = 0) uniform Camera {
 	mat4 proj_view_inverse;
 	vec4 _position;
+	vec2 _framebuffer_dims;
+	float _near;
+	float _far;
 } cam;
 
 void main()

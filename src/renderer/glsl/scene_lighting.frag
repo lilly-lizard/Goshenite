@@ -14,6 +14,9 @@ layout (location = 0) out vec4 out_color;
 layout (set = 1, binding = 0) uniform Camera {
 	mat4 proj_view_inverse;
 	vec4 _position;
+	vec2 _framebuffer_dims;
+	float _near;
+	float _far;
 } cam;
 
 /// Returns a sky color for a ray miss
