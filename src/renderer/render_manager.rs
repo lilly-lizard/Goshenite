@@ -40,7 +40,7 @@ use egui::TexturesDelta;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use std::{borrow::Cow, ffi::CStr, sync::Arc};
+use std::{borrow::Cow, ffi::CStr, mem, ptr, sync::Arc};
 use winit::window::Window;
 
 /// Contains Vulkan resources and methods to manage rendering
@@ -68,7 +68,7 @@ pub struct RenderManager {
     depth_buffer: Arc<ImageView<Image>>,
     normal_buffer: Arc<ImageView<Image>>,
     primitive_id_buffer: Arc<ImageView<Image>>,
-    camera_ubo: Arc<Buffer>,
+    camera_ubo: Buffer,
 
     lighting_pass: LightingPass,
 
@@ -198,7 +198,7 @@ impl RenderManager {
         )?);
 
         // create camera ubo
-        let camera_ubo = Arc::new(create_camera_ubo(memory_allocator.clone())?);
+        let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
 
         // create g-buffers
         let normal_buffer = Arc::new(create_normal_buffer(
@@ -272,7 +272,25 @@ impl RenderManager {
         let camera_data =
             CameraUniformBuffer::from_camera(camera, [dimensions[0] as f32, dimensions[1] as f32]);
 
-        todo!();
+        let mapping_ptr = unsafe {
+            self.memory_allocator
+                .inner()
+                .map_memory(&mut self.camera_ubo.memory_allocation_mut())
+        }
+        .context("mapping camera ubo")?;
+
+        debug_assert!(mem::size_of_val(&camera_data) <= self.camera_ubo.properties().size as usize);
+        unsafe {
+            ptr::write::<CameraUniformBuffer>(mapping_ptr as *mut CameraUniformBuffer, camera_data);
+        }
+
+        unsafe {
+            self.memory_allocator
+                .inner()
+                .unmap_memory(&mut self.camera_ubo.memory_allocation_mut());
+        }
+
+        todo!("flush? read descriptions for vma memory create flags");
 
         Ok(())
     }

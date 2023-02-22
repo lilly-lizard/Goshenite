@@ -21,7 +21,7 @@ use bort::{
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
-use std::{ffi::CString, sync::Arc};
+use std::{ffi::CString, mem, sync::Arc};
 
 const VERT_SHADER_PATH: &str = "assets/shader_binaries/full_screen.vert.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_lighting.frag.spv";
@@ -169,7 +169,7 @@ fn write_desc_set_camera(
     let camera_buffer_info = vk::DescriptorBufferInfo {
         buffer: camera_buffer.handle(),
         offset: 0,
-        range: std::mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize,
+        range: mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize,
     };
 
     let descriptor_writes = [vk::WriteDescriptorSet {

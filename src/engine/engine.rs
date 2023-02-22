@@ -220,6 +220,10 @@ impl Engine {
 
         // update camera based on now processed user inputs
         self.update_camera();
+        anyhow_unwrap(
+            self.renderer.update_camera(&mut self.camera),
+            "update camera buffer",
+        );
 
         // update object buffers
         anyhow_unwrap(
@@ -240,7 +244,7 @@ impl Engine {
         // now that frame processing is done, submit rendering commands
         anyhow_unwrap(
             self.renderer
-                .render_frame(self.window_resize, &mut self.gui, &mut self.camera),
+                .render_frame(self.window_resize, &mut self.gui),
             "render frame",
         );
 

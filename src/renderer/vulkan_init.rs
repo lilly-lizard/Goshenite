@@ -33,7 +33,7 @@ use bort::{
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::sync::Arc;
+use std::{mem, sync::Arc};
 use vk_mem::AllocationCreateInfo;
 use winit::window::Window;
 
@@ -610,7 +610,7 @@ pub fn create_clear_values() -> Vec<vk::ClearValue> {
 }
 
 pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Buffer> {
-    let ubo_size = std::mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize;
+    let ubo_size = mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize;
     let ubo_props = BufferProperties {
         size: ubo_size,
         usage: vk::BufferUsageFlags::UNIFORM_BUFFER,
