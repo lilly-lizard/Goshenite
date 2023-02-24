@@ -98,7 +98,8 @@ impl Cursor {
         // position processing
         self.position_frame_change =
             self.position.unwrap_or_default() - self.position_previous.unwrap_or_default();
-        let has_moved = self.position_frame_change.x != 0. && self.position_frame_change.y != 0.;
+        let has_moved =
+            self.position_frame_change.x != 0_f64 || self.position_frame_change.y != 0_f64;
         self.position_previous = self.position;
 
         // dragging logic
@@ -112,11 +113,12 @@ impl Cursor {
             // check each button
             for button in MOUSE_BUTTONS {
                 // if button held and cursor has moved, set which_dragging
-                if self.is_pressed.get(button) && self.is_pressed_previous.get(button) && has_moved
-                {
-                    self.which_dragging = Some(button);
-                    self.cursor_icon = Some(egui::CursorIcon::Grabbing);
-                    break; // priority given to the order of `MOUSE_BUTTONS`
+                if self.is_pressed.get(button) && self.is_pressed_previous.get(button) {
+                    if has_moved {
+                        self.which_dragging = Some(button);
+                        self.cursor_icon = Some(egui::CursorIcon::Grabbing);
+                        break; // priority given to the order of `MOUSE_BUTTONS`
+                    }
                 }
             }
         }
