@@ -272,25 +272,9 @@ impl RenderManager {
         let camera_data =
             CameraUniformBuffer::from_camera(camera, [dimensions[0] as f32, dimensions[1] as f32]);
 
-        let mapping_ptr = unsafe {
-            self.memory_allocator
-                .inner()
-                .map_memory(&mut self.camera_ubo.memory_allocation_mut())
-        }
-        .context("mapping camera ubo")?;
-
-        debug_assert!(mem::size_of_val(&camera_data) <= self.camera_ubo.properties().size as usize);
-        unsafe {
-            ptr::write::<CameraUniformBuffer>(mapping_ptr as *mut CameraUniformBuffer, camera_data);
-        }
-
-        unsafe {
-            self.memory_allocator
-                .inner()
-                .unmap_memory(&mut self.camera_ubo.memory_allocation_mut());
-        }
-
-        todo!("flush? read descriptions for vma memory create flags");
+        self.camera_ubo
+            .write_struct(camera_data, 0)
+            .context("uploading camera ubo data")?;
 
         Ok(())
     }
