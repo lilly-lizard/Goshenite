@@ -5,6 +5,7 @@ use anyhow::Context;
 use ash::vk;
 use bort::{
     buffer::Buffer,
+    command_buffer::CommandBuffer,
     descriptor_layout::{
         DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
     },
@@ -12,6 +13,7 @@ use bort::{
     descriptor_set::DescriptorSet,
     device::Device,
     image_access::ImageViewAccess,
+    pipeline_access::PipelineAccess,
     pipeline_graphics::{
         ColorBlendState, DynamicState, GraphicsPipeline, GraphicsPipelineProperties,
     },
@@ -43,7 +45,6 @@ pub struct LightingPass {
     desc_set_camera: Arc<DescriptorSet>,
     desc_set_g_buffers: Arc<DescriptorSet>,
 
-    pipeline_layout: Arc<PipelineLayout>,
     pipeline: Arc<GraphicsPipeline>,
 }
 
@@ -86,7 +87,6 @@ impl LightingPass {
             device,
             desc_set_g_buffers,
             desc_set_camera,
-            pipeline_layout,
             pipeline,
         })
     }
@@ -104,15 +104,38 @@ impl LightingPass {
         )
     }
 
-    /// Records draw commands to a command buffer. Assumes that the command buffer is
-    /// already in a render pass state, otherwise an error will be returned.
+    /// Records draw commands to a command buffer.
+    ///
+    /// **Assumes that the command buffer is already in a render pass state.**
     pub fn record_commands<L>(
         &self,
-        //command_buffer: &mut AutoCommandBufferBuilder<L>,
-        //viewport: vk::Viewport,
-        //camera_buffer: Arc<CpuAccessibleBuffer<CameraUniformBuffer>>,
+        command_buffer: &CommandBuffer,
+        viewport: vk::Viewport,
     ) -> anyhow::Result<()> {
-        todo!();
+        let device_ash = self.device.inner();
+        let command_buffer_handle = command_buffer.handle();
+        let descriptor_set_handles = [
+            self.desc_set_camera.handle(),
+            self.desc_set_g_buffers.handle(),
+        ];
+
+        unsafe {
+            device_ash.cmd_bind_pipeline(
+                command_buffer_handle,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline.handle(),
+            );
+            device_ash.cmd_set_viewport(command_buffer_handle, 0, &[viewport]);
+            device_ash.cmd_bind_descriptor_sets(
+                command_buffer_handle,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline.pipeline_layout().handle(),
+                0,
+                &descriptor_set_handles,
+                &[],
+            );
+            device_ash.cmd_draw(command_buffer_handle, 3, 1, 0, 0);
+        }
 
         Ok(())
     }
@@ -273,7 +296,7 @@ fn create_pipeline_layout(
     desc_set_layout_camera: Arc<DescriptorSetLayout>,
     desc_set_layout_g_buffers: Arc<DescriptorSetLayout>,
 ) -> anyhow::Result<Arc<PipelineLayout>> {
-    let mut pipeline_layout_props = PipelineLayoutProperties::new(
+    let pipeline_layout_props = PipelineLayoutProperties::new(
         vec![desc_set_layout_camera, desc_set_layout_g_buffers],
         Vec::new(),
     );
