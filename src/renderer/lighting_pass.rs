@@ -144,13 +144,13 @@ fn create_desc_set_camera(
     device: Arc<Device>,
     descriptor_pool: Arc<DescriptorPool>,
 ) -> anyhow::Result<Arc<DescriptorSet>> {
-    let mut desc_set_layout_props = DescriptorSetLayoutProperties::default();
-    desc_set_layout_props.bindings = vec![DescriptorSetLayoutBinding {
-        binding: descriptor::BINDING_CAMERA,
-        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-        descriptor_count: 1,
-        stage_flags: vk::ShaderStageFlags::FRAGMENT,
-    }];
+    let desc_set_layout_props =
+        DescriptorSetLayoutProperties::new(vec![DescriptorSetLayoutBinding {
+            binding: descriptor::BINDING_CAMERA,
+            descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+            descriptor_count: 1,
+            stage_flags: vk::ShaderStageFlags::FRAGMENT,
+        }]);
 
     let desc_set_layout = Arc::new(
         DescriptorSetLayout::new(device, desc_set_layout_props)

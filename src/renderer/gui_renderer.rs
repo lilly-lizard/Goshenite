@@ -8,7 +8,9 @@ use ahash::AHashMap;
 use anyhow::Context;
 use ash::vk;
 use bort::{
-    descriptor_layout::DescriptorSetLayout,
+    descriptor_layout::{
+        DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
+    },
     descriptor_set::DescriptorSet,
     device::Device,
     image::Image,
@@ -54,7 +56,7 @@ pub struct GuiRenderer {
     transfer_queue: Arc<Queue>,
 
     pipeline: Arc<GraphicsPipeline>,
-    sampler: Arc<Sampler>,
+    texture_sampler: Arc<Sampler>,
 
     texture_images: AHashMap<egui::TextureId, Arc<ImageView<Image>>>,
     texture_desc_sets: AHashMap<egui::TextureId, Arc<DescriptorSet>>,
@@ -69,17 +71,19 @@ impl GuiRenderer {
         render_pass: &RenderPass,
         subpass_index: u32,
     ) -> anyhow::Result<Self> {
-        let pipeline = create_pipeline(device.clone(), subpass)?;
+        let desc_set_layout = create_descriptor_layout(device.clone())?;
 
-        let sampler = Self::create_sampler(device.clone())?;
+        let pipeline_layout = create_pipeline_layout(device.clone(), desc_set_layout)?;
+        let pipeline =
+            create_pipeline(device.clone(), pipeline_layout, render_pass, subpass_index)?;
+
+        let texture_sampler = create_texture_sampler(device.clone())?;
 
         Ok(Self {
             memory_allocator,
             transfer_queue,
             pipeline,
-            sampler,
-            vertex_buffer_pool,
-            index_buffer_pool,
+            texture_sampler,
             texture_images: AHashMap::default(),
             texture_desc_sets: AHashMap::default(),
         })
@@ -89,15 +93,13 @@ impl GuiRenderer {
     /// output by [`egui::end_frame`](egui::context::Context::end_frame).
     pub fn update_textures(
         &mut self,
-        exec_after_future: Box<dyn GpuFuture>,
         command_buffer_allocator: &StandardCommandBufferAllocator,
-        descriptor_allocator: &StandardDescriptorSetAllocator,
         textures_delta_vec: Vec<TexturesDelta>,
         render_queue: Arc<Queue>,
-    ) -> anyhow::Result<Box<dyn GpuFuture>> {
+    ) -> anyhow::Result<()> {
         // return if empty
         if textures_delta_vec.is_empty() {
-            return Ok(exec_after_future);
+            return Ok(());
         }
 
         // create command buffer builder
@@ -130,13 +132,9 @@ impl GuiRenderer {
         let command_buffer = command_buffer_builder
             .build()
             .context("building command buffer for gui texture upload")?;
-        let finished = exec_after_future
-            .then_execute(self.transfer_queue.clone(), command_buffer)
-            .context("executing gui texture upload commands")?;
-        let future = finished
-            .then_signal_fence_and_flush()
-            .context("executing gui texture upload commands")?;
-        Ok(future.boxed())
+        todo!("return semaphore or something?");
+
+        Ok(())
     }
 
     /// Record gui rendering commands
@@ -152,7 +150,6 @@ impl GuiRenderer {
         is_srgb_framebuffer: bool,
         framebuffer_dimensions: [f32; 2],
     ) -> anyhow::Result<()> {
-        // todo have these as args instead of whole gui?
         let scale_factor = gui.scale_factor();
         let primitives = gui.mesh_primitives();
 
@@ -176,7 +173,7 @@ impl GuiRenderer {
                     }
 
                     // get region of screen to render
-                    let scissors = [get_rect_scissor(
+                    let scissors = [calculate_gui_element_scissor(
                         scale_factor,
                         framebuffer_dimensions,
                         *clip_rect,
@@ -193,6 +190,7 @@ impl GuiRenderer {
                         })
                         .context("recording gui render commands")?
                         .clone();
+
                     command_buffer
                         .bind_pipeline_graphics(self.pipeline.clone())
                         .set_viewport(
@@ -447,6 +445,19 @@ fn create_texture_sampler(device: Arc<Device>) -> anyhow::Result<Arc<Sampler>> {
 
     let sampler = Sampler::new(device, sampler_props).context("creating gui texture sampler");
     Arc::new(sampler)
+}
+
+fn create_descriptor_layout(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorSetLayout>> {
+    let layout_props = DescriptorSetLayoutProperties::new(vec![DescriptorSetLayoutBinding {
+        binding: descriptor::BINDING_FONT_TEXTURE,
+        descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
+        descriptor_count: 1,
+        stage_flags: vk::ShaderStageFlags::FRAGMENT,
+    }]);
+
+    let desc_layout = DescriptorSetLayout::new(device, layout_props)
+        .context("creating gui pass descriptor set layout")?;
+    Ok(Arc::new(desc_layout))
 }
 
 fn create_pipeline_layout(
