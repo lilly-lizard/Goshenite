@@ -8,12 +8,14 @@ use ahash::AHashMap;
 use anyhow::Context;
 use ash::vk;
 use bort::{
+    descriptor_layout::DescriptorSetLayout,
     descriptor_set::DescriptorSet,
     device::Device,
     image::Image,
     image_view::ImageView,
     memory::MemoryAllocator,
     pipeline_graphics::GraphicsPipeline,
+    pipeline_layout::{PipelineLayout, PipelineLayoutProperties},
     queue::Queue,
     render_pass::RenderPass,
     sampler::{Sampler, SamplerProperties},
@@ -430,8 +432,7 @@ impl GuiRenderer {
     }
 }
 
-/// Create sampler for gui textures
-fn create_sampler(device: Arc<Device>) -> anyhow::Result<Sampler> {
+fn create_texture_sampler(device: Arc<Device>) -> anyhow::Result<Arc<Sampler>> {
     let sampler_props = SamplerProperties {
         mag_filter: vk::Filter::Linear,
         min_filter: vk::Filter::Linear,
@@ -440,10 +441,27 @@ fn create_sampler(device: Arc<Device>) -> anyhow::Result<Sampler> {
         ..Default::default()
     };
 
-    Sampler::new(device, sampler_props).context("creating gui texture sampler")
+    let sampler = Sampler::new(device, sampler_props).context("creating gui texture sampler");
+    Arc::new(sampler)
 }
 
-fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<GraphicsPipeline>> {
+fn create_pipeline_layout(
+    device: Arc<Device>,
+    desc_set_layout_texture: Arc<DescriptorSetLayout>,
+) -> anyhow::Result<Arc<PipelineLayout>> {
+    let mut pipeline_layout_props =
+        PipelineLayoutProperties::new(vec![desc_set_layout_texture], Vec::new());
+
+    let pipeline_layout = PipelineLayout::new(device, pipeline_layout_props)
+        .context("creating gui pass pipeline layout")?;
+    Ok(Arc::new(pipeline_layout))
+}
+
+fn create_pipeline(
+    device: Arc<Device>,
+    render_pass: &RenderPass,
+    subpass_index: u32,
+) -> anyhow::Result<Arc<GraphicsPipeline>> {
     let mut blend = AttachmentBlend::alpha();
     blend.color_source = BlendFactor::One;
     let blend_state = ColorBlendState::new(1).blend(blend);
