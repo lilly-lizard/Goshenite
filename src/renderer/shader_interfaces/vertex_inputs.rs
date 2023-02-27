@@ -37,7 +37,7 @@ impl EguiVertex {
     pub fn binding_description() -> vk::VertexInputBindingDescription {
         vk::VertexInputBindingDescription {
             binding: 0,
-            stride: std::mem::size_of::<Self>(),
+            stride: std::mem::size_of::<Self>() as u32,
             input_rate: vk::VertexInputRate::VERTEX,
         }
     }
@@ -48,19 +48,19 @@ impl EguiVertex {
                 binding: 0,
                 location: 0,
                 format: vk::Format::R32G32_SFLOAT,
-                offset: offset_of!(Self, in_position),
+                offset: offset_of!(Self, in_position) as u32,
             },
             vk::VertexInputAttributeDescription {
                 binding: 0,
                 location: 1,
                 format: vk::Format::R32G32_SFLOAT,
-                offset: offset_of!(Self, in_tex_coords),
+                offset: offset_of!(Self, in_tex_coords) as u32,
             },
             vk::VertexInputAttributeDescription {
                 binding: 0,
                 location: 2,
                 format: vk::Format::R32G32B32A32_SFLOAT,
-                offset: offset_of!(Self, in_color),
+                offset: offset_of!(Self, in_color) as u32,
             },
         ]
     }

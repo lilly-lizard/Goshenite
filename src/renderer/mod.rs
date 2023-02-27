@@ -1,5 +1,5 @@
 //mod geometry_pass;
-mod gui_renderer;
+//mod gui_renderer;
 mod lighting_pass;
 //mod overlay_pass;
 mod config_renderer;
