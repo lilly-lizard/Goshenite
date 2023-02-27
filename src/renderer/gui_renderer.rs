@@ -95,7 +95,7 @@ impl GuiRenderer {
         &mut self,
         command_buffer_allocator: &StandardCommandBufferAllocator,
         textures_delta_vec: Vec<TexturesDelta>,
-        render_queue: Arc<Queue>,
+        render_queue_family_index: u32,
     ) -> anyhow::Result<()> {
         // return if empty
         if textures_delta_vec.is_empty() {
@@ -123,7 +123,7 @@ impl GuiRenderer {
                     id,
                     image_delta,
                     &mut command_buffer_builder,
-                    render_queue.clone(),
+                    render_queue_family_index,
                 )?;
             }
         }
@@ -233,7 +233,7 @@ impl GuiRenderer {
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
         command_buffer_builder: &mut AutoCommandBufferBuilder<L>,
-        render_queue: Arc<Queue>,
+        render_queue_family_index: u32,
     ) -> anyhow::Result<()> {
         // extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
@@ -309,7 +309,6 @@ impl GuiRenderer {
 
             // create image
             let transfer_queue_family = self.transfer_queue.queue_family_index();
-            let render_queue_family = render_queue.queue_family_index();
             let queue_family_indices: SmallVec<[u32; 2]> =
                 if transfer_queue_family == render_queue_family {
                     // will result in VK_SHARING_MODE_EXCLUSIVE
