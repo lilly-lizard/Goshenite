@@ -2,63 +2,38 @@
 use super::{
     config_renderer::SHADER_ENTRY_POINT,
     shader_interfaces::{push_constants::GuiPushConstant, vertex_inputs::EguiVertex},
-    vulkan_helper_archive::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
 use crate::user_interface::gui::Gui;
 use ahash::AHashMap;
 use anyhow::Context;
+use ash::vk;
+use bort::{
+    descriptor_set::DescriptorSet,
+    device::Device,
+    image::Image,
+    image_view::ImageView,
+    memory::MemoryAllocator,
+    pipeline_graphics::GraphicsPipeline,
+    queue::Queue,
+    render_pass::RenderPass,
+    sampler::{Sampler, SamplerProperties},
+};
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
-use smallvec::{smallvec, SmallVec};
 use std::{
     fmt::{self, Display},
     sync::Arc,
-};
-use vulkano::{
-    buffer::{
-        cpu_access::CpuAccessibleBuffer, cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool,
-        TypedBufferAccess,
-    },
-    command_buffer::{
-        allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, BufferImageCopy,
-        CommandBufferUsage, CopyBufferToImageInfo,
-    },
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator, layout::DescriptorSetLayout,
-        PersistentDescriptorSet, WriteDescriptorSet,
-    },
-    device::{Device, Queue},
-    format::Format,
-    image::{
-        view::ImageView, ImageAccess, ImageLayout, ImageUsage, ImageViewAbstract, ImmutableImage,
-    },
-    memory::allocator::{MemoryAllocator, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{
-        graphics::{
-            color_blend::{AttachmentBlend, BlendFactor, ColorBlendState},
-            input_assembly::InputAssemblyState,
-            rasterization::{CullMode, RasterizationState},
-            vertex_input::BuffersDefinition,
-            viewport::{Scissor, Viewport, ViewportState},
-            GraphicsPipeline,
-        },
-        Pipeline, PipelineBindPoint,
-    },
-    render_pass::Subpass,
-    sampler::{self, Sampler, SamplerAddressMode, SamplerCreateInfo, SamplerMipmapMode},
-    sync::GpuFuture,
-    DeviceSize,
 };
 
 const VERT_SHADER_PATH: &str = "assets/shader_binaries/gui.vert.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/gui.frag.spv";
 
-const VERTICES_PER_QUAD: DeviceSize = 4;
-const VERTEX_BUFFER_SIZE: DeviceSize = 1024 * 1024 * VERTICES_PER_QUAD;
-const INDEX_BUFFER_SIZE: DeviceSize = 1024 * 1024 * 2;
+const VERTICES_PER_QUAD: vk::DeviceSize = 4;
+const VERTEX_BUFFER_SIZE: vk::DeviceSize = 1024 * 1024 * VERTICES_PER_QUAD;
+const INDEX_BUFFER_SIZE: vk::DeviceSize = 1024 * 1024 * 2;
 
-const TEXTURE_FORMAT: Format = Format::R8G8B8A8_SRGB;
+const TEXTURE_FORMAT: vk::Format = vk::Format::R8G8B8A8_SRGB;
 
 mod descriptor {
     pub const SET_FONT_TEXTURE: usize = 0;
@@ -69,30 +44,29 @@ mod descriptor {
 type VertexIndex = u32;
 
 pub struct GuiRenderer {
-    memory_allocator: Arc<dyn MemoryAllocator>,
+    memory_allocator: Arc<MemoryAllocator>,
     transfer_queue: Arc<Queue>,
 
     pipeline: Arc<GraphicsPipeline>,
     sampler: Arc<Sampler>,
-    vertex_buffer_pool: CpuBufferPool<EguiVertex>,
-    index_buffer_pool: CpuBufferPool<VertexIndex>,
 
-    texture_images: AHashMap<egui::TextureId, Arc<dyn ImageViewAbstract>>,
-    texture_desc_sets: AHashMap<egui::TextureId, Arc<PersistentDescriptorSet>>,
+    texture_images: AHashMap<egui::TextureId, Arc<ImageView<Image>>>,
+    texture_desc_sets: AHashMap<egui::TextureId, Arc<DescriptorSet>>,
 }
 // Public functions
 impl GuiRenderer {
     /// Initializes the gui renderer
     pub fn new(
         device: Arc<Device>,
-        memory_allocator: Arc<StandardMemoryAllocator>,
+        memory_allocator: Arc<MemoryAllocator>,
         transfer_queue: Arc<Queue>,
-        subpass: Subpass,
+        render_pass: &RenderPass,
+        subpass_index: u32,
     ) -> anyhow::Result<Self> {
         let pipeline = create_pipeline(device.clone(), subpass)?;
-        let (vertex_buffer_pool, index_buffer_pool) =
-            create_buffer_pools(memory_allocator.clone())?;
+
         let sampler = Self::create_sampler(device.clone())?;
+
         Ok(Self {
             memory_allocator,
             transfer_queue,
@@ -242,23 +216,10 @@ impl GuiRenderer {
         Ok(())
     }
 }
-// Private functions
-impl GuiRenderer {
-    /// Create sampler for gui textures.
-    fn create_sampler(device: Arc<Device>) -> anyhow::Result<Arc<Sampler>> {
-        Sampler::new(
-            device,
-            SamplerCreateInfo {
-                mag_filter: sampler::Filter::Linear,
-                min_filter: sampler::Filter::Linear,
-                address_mode: [SamplerAddressMode::ClampToEdge; 3],
-                mipmap_mode: SamplerMipmapMode::Linear,
-                ..Default::default()
-            },
-        )
-        .context("creating gui texture sampler")
-    }
 
+// Private functions
+
+impl GuiRenderer {
     /// Creates a new texture needing to be added for the gui.
     ///
     /// Helper function for [`GuiRenderer::update_textures`]
@@ -469,9 +430,19 @@ impl GuiRenderer {
     }
 }
 
-/// Builds the gui rendering graphics pipeline.
-///
-/// Helper function for [`Self::new`]
+/// Create sampler for gui textures
+fn create_sampler(device: Arc<Device>) -> anyhow::Result<Sampler> {
+    let sampler_props = SamplerProperties {
+        mag_filter: vk::Filter::Linear,
+        min_filter: vk::Filter::Linear,
+        address_mode: [vk::SamplerAddressMode::ClampToEdge; 3],
+        mipmap_mode: vk::SamplerMipmapMode::Linear,
+        ..Default::default()
+    };
+
+    Sampler::new(device, sampler_props).context("creating gui texture sampler")
+}
+
 fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<GraphicsPipeline>> {
     let mut blend = AttachmentBlend::alpha();
     blend.color_source = BlendFactor::One;
@@ -503,42 +474,12 @@ fn create_pipeline(device: Arc<Device>, subpass: Subpass) -> anyhow::Result<Arc<
         .context("gui pipeline")
 }
 
-/// Creates vertex and index buffer pools.
-///
-/// Helper function for [`Self::new`]
-fn create_buffer_pools(
-    memory_allocator: Arc<StandardMemoryAllocator>,
-) -> anyhow::Result<(CpuBufferPool<EguiVertex>, CpuBufferPool<VertexIndex>)> {
-    let vertex_buffer_pool = CpuBufferPool::vertex_buffer(memory_allocator.clone());
-    vertex_buffer_pool
-        .reserve(VERTEX_BUFFER_SIZE)
-        .context("creating gui vertex buffer pool")?;
-    debug!(
-        "reserving {} bytes for gui vertex buffer pool",
-        VERTEX_BUFFER_SIZE
-    );
-
-    let index_buffer_pool = CpuBufferPool::new(
-        memory_allocator,
-        BufferUsage {
-            index_buffer: true,
-            ..BufferUsage::empty()
-        },
-        MemoryUsage::Upload,
-    );
-    index_buffer_pool
-        .reserve(INDEX_BUFFER_SIZE)
-        .context("creating gui index buffer pool")?;
-    debug!(
-        "reserving {} bytes for gui index buffer pool",
-        INDEX_BUFFER_SIZE
-    );
-
-    Ok((vertex_buffer_pool, index_buffer_pool))
-}
-
-/// Caclulates the region of the framebuffer to render a gui element.
-fn get_rect_scissor(scale_factor: f32, framebuffer_dimensions: [f32; 2], rect: Rect) -> Scissor {
+/// Caclulates the region of the framebuffer to render a gui element
+fn calculate_gui_element_scissor(
+    scale_factor: f32,
+    framebuffer_dimensions: [f32; 2],
+    rect: Rect,
+) -> vk::Rect2D {
     let min = egui::Pos2 {
         x: rect.min.x * scale_factor,
         y: rect.min.y * scale_factor,
@@ -555,9 +496,9 @@ fn get_rect_scissor(scale_factor: f32, framebuffer_dimensions: [f32; 2], rect: R
         x: max.x.clamp(min.x, framebuffer_dimensions[0]),
         y: max.y.clamp(min.y, framebuffer_dimensions[1]),
     };
-    Scissor {
-        origin: [min.x.round() as u32, min.y.round() as u32],
-        dimensions: [
+    vk::Rect2D {
+        offset: [min.x.round() as i32, min.y.round() as i32],
+        extent: [
             (max.x.round() - min.x) as u32,
             (max.y.round() - min.y) as u32,
         ],

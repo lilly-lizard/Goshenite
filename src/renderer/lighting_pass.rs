@@ -316,6 +316,7 @@ fn create_pipeline(
         }]);
 
     let mut pipeline_properties = GraphicsPipelineProperties::default();
+    pipeline_properties.subpass_index = subpass_index;
     pipeline_properties.dynamic_state = dynamic_state;
     pipeline_properties.color_blend_state = color_blend_state;
 
@@ -324,7 +325,6 @@ fn create_pipeline(
         pipeline_properties,
         shader_stages,
         render_pass,
-        subpass_index,
         None,
     )
     .context("creating lighting pass pipeline")?;
