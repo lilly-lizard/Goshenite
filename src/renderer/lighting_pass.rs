@@ -74,6 +74,7 @@ impl LightingPass {
             desc_set_camera.layout().clone(),
             desc_set_g_buffers.layout().clone(),
         )?;
+
         let pipeline = create_pipeline(
             device.clone(),
             pipeline_layout.clone(),
@@ -272,8 +273,10 @@ fn create_pipeline_layout(
     desc_set_layout_camera: Arc<DescriptorSetLayout>,
     desc_set_layout_g_buffers: Arc<DescriptorSetLayout>,
 ) -> anyhow::Result<Arc<PipelineLayout>> {
-    let mut pipeline_layout_props = PipelineLayoutProperties::default();
-    pipeline_layout_props.set_layouts = vec![desc_set_layout_camera, desc_set_layout_g_buffers];
+    let mut pipeline_layout_props = PipelineLayoutProperties::new(
+        vec![desc_set_layout_camera, desc_set_layout_g_buffers],
+        Vec::new(),
+    );
 
     let pipeline_layout = PipelineLayout::new(device, pipeline_layout_props)
         .context("creating lighting pass pipeline layout")?;
@@ -318,6 +321,7 @@ fn create_pipeline(
         }]);
 
     let mut pipeline_properties = GraphicsPipelineProperties::default();
+    pipeline_properties.subpass_index = subpass_index;
     pipeline_properties.dynamic_state = dynamic_state;
     pipeline_properties.color_blend_state = color_blend_state;
 
@@ -326,7 +330,6 @@ fn create_pipeline(
         pipeline_properties,
         shader_stages,
         render_pass,
-        subpass_index,
         None,
     )
     .context("creating lighting pass pipeline")?;
