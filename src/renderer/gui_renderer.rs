@@ -14,16 +14,20 @@ use bort::{
     image::Image,
     image_view::ImageView,
     memory::MemoryAllocator,
-    pipeline_graphics::GraphicsPipeline,
+    pipeline_graphics::{
+        ColorBlendState, DynamicState, GraphicsPipeline, GraphicsPipelineProperties,
+    },
     pipeline_layout::{PipelineLayout, PipelineLayoutProperties},
     queue::Queue,
     render_pass::RenderPass,
     sampler::{Sampler, SamplerProperties},
+    shader_module::{ShaderModule, ShaderStage},
 };
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
 use std::{
+    ffi::CString,
     fmt::{self, Display},
     sync::Arc,
 };
@@ -459,37 +463,53 @@ fn create_pipeline_layout(
 
 fn create_pipeline(
     device: Arc<Device>,
+    pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
     subpass_index: u32,
 ) -> anyhow::Result<Arc<GraphicsPipeline>> {
-    let mut blend = AttachmentBlend::alpha();
-    blend.color_source = BlendFactor::One;
-    let blend_state = ColorBlendState::new(1).blend(blend);
-    let vert_module = create_shader_module(device.clone(), VERT_SHADER_PATH)?;
-    let vert_shader =
-        vert_module
-            .entry_point(SHADER_ENTRY_POINT)
-            .ok_or(CreateShaderError::MissingEntryPoint(
-                VERT_SHADER_PATH.to_owned(),
-            ))?;
-    let frag_module = create_shader_module(device.clone(), FRAG_SHADER_PATH)?;
-    let frag_shader =
-        frag_module
-            .entry_point(SHADER_ENTRY_POINT)
-            .ok_or(CreateShaderError::MissingEntryPoint(
-                FRAG_SHADER_PATH.to_owned(),
-            ))?;
-    GraphicsPipeline::start()
-        .vertex_input_state(BuffersDefinition::new().vertex::<EguiVertex>())
-        .vertex_shader(vert_shader, ())
-        .input_assembly_state(InputAssemblyState::new())
-        .fragment_shader(frag_shader, ())
-        .viewport_state(ViewportState::viewport_dynamic_scissor_dynamic(1))
-        .color_blend_state(blend_state)
-        .rasterization_state(RasterizationState::new().cull_mode(CullMode::None))
-        .render_pass(subpass)
-        .build(device.clone())
-        .context("gui pipeline")
+    let vert_shader = Arc::new(
+        ShaderModule::new_from_file(device.clone(), VERT_SHADER_PATH)
+            .context("creating gui pass vertex shader")?,
+    );
+    let vert_stage = ShaderStage::new(
+        vk::ShaderStageFlags::VERTEX,
+        vert_shader,
+        CString::new(SHADER_ENTRY_POINT).context("shader entry point to c-string")?,
+    );
+
+    let frag_shader = Arc::new(
+        ShaderModule::new_from_file(device.clone(), FRAG_SHADER_PATH)
+            .context("creating gui pass fragment shader")?,
+    );
+    let frag_stage = ShaderStage::new(
+        vk::ShaderStageFlags::FRAGMENT,
+        frag_shader,
+        CString::new(SHADER_ENTRY_POINT).context("shader entry point to c-string")?,
+    );
+
+    let shader_stages = [vert_stage, frag_stage];
+
+    let dynamic_state =
+        DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
+    let color_blend_state =
+        ColorBlendState::new_default(vec![ColorBlendState::blend_state_alpha()]);
+
+    let mut pipeline_properties = GraphicsPipelineProperties::default();
+    pipeline_properties.subpass_index = subpass_index;
+    pipeline_properties.dynamic_state = dynamic_state;
+    pipeline_properties.color_blend_state = color_blend_state;
+    pipeline_properties.vertex_input_state = EguiVertex::vertex_input_state();
+
+    let pipeline = GraphicsPipeline::new(
+        pipeline_layout,
+        pipeline_properties,
+        shader_stages,
+        render_pass,
+        None,
+    )
+    .context("creating gui pass pipeline")?;
+
+    Ok(Arc::new(pipeline))
 }
 
 /// Caclulates the region of the framebuffer to render a gui element

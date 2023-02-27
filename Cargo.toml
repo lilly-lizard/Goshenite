@@ -40,6 +40,8 @@ ahash = { version = "0.8", default-features = false, features = [
     "no-rng", # we don't need DOS-protection, so we let users opt-in to it instead
     "std",
 ] }
+# for offset_of macro
+memoffset = "0.8"
 
 # slotmap
 # specs: ECS

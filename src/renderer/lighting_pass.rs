@@ -315,10 +315,7 @@ fn create_pipeline(
     let dynamic_state =
         DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
     let color_blend_state =
-        ColorBlendState::new_default(vec![vk::PipelineColorBlendAttachmentState {
-            color_write_mask: vk::ColorComponentFlags::RGBA,
-            ..Default::default()
-        }]);
+        ColorBlendState::new_default(vec![ColorBlendState::blend_state_disabled()]);
 
     let mut pipeline_properties = GraphicsPipelineProperties::default();
     pipeline_properties.subpass_index = subpass_index;
