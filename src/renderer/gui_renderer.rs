@@ -8,6 +8,8 @@ use ahash::AHashMap;
 use anyhow::Context;
 use ash::vk;
 use bort::{
+    command_buffer::CommandBuffer,
+    command_pool::{CommandPool, CommandPoolProperties},
     descriptor_layout::{
         DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
     },
@@ -53,15 +55,17 @@ type VertexIndex = u32;
 
 pub struct GuiRenderer {
     memory_allocator: Arc<MemoryAllocator>,
+    transient_command_pool: Arc<CommandPool>,
     transfer_queue: Arc<Queue>,
-
     pipeline: Arc<GraphicsPipeline>,
-    texture_sampler: Arc<Sampler>,
 
+    texture_sampler: Arc<Sampler>,
     texture_images: AHashMap<egui::TextureId, Arc<ImageView<Image>>>,
     texture_desc_sets: AHashMap<egui::TextureId, Arc<DescriptorSet>>,
 }
+
 // Public functions
+
 impl GuiRenderer {
     /// Initializes the gui renderer
     pub fn new(
@@ -71,6 +75,9 @@ impl GuiRenderer {
         render_pass: &RenderPass,
         subpass_index: u32,
     ) -> anyhow::Result<Self> {
+        let transient_command_pool =
+            create_transient_command_pool(device.clone(), transfer_queue.famliy_index())?;
+
         let desc_set_layout = create_descriptor_layout(device.clone())?;
 
         let pipeline_layout = create_pipeline_layout(device.clone(), desc_set_layout)?;
@@ -82,6 +89,7 @@ impl GuiRenderer {
         Ok(Self {
             memory_allocator,
             transfer_queue,
+            transient_command_pool,
             pipeline,
             texture_sampler,
             texture_images: AHashMap::default(),
@@ -93,7 +101,6 @@ impl GuiRenderer {
     /// output by [`egui::end_frame`](egui::context::Context::end_frame).
     pub fn update_textures(
         &mut self,
-        command_buffer_allocator: &StandardCommandBufferAllocator,
         textures_delta_vec: Vec<TexturesDelta>,
         render_queue_family_index: u32,
     ) -> anyhow::Result<()> {
@@ -102,13 +109,10 @@ impl GuiRenderer {
             return Ok(());
         }
 
-        // create command buffer builder
-        let mut command_buffer_builder = AutoCommandBufferBuilder::primary(
-            command_buffer_allocator,
-            self.transfer_queue.queue_family_index(),
-            CommandBufferUsage::OneTimeSubmit,
-        )
-        .context("creating command buffer for gui texture upload")?;
+        // create command buffer
+        let command_buffer =
+            CommandBuffer::new(self.transient_command_pool, vk::CommandBufferLevel::PRIMARY)
+                .context("creating command buffer for gui texture upload")?;
 
         for textures_delta in textures_delta_vec {
             // release unused texture resources
@@ -229,10 +233,9 @@ impl GuiRenderer {
     /// Helper function for [`GuiRenderer::update_textures`]
     fn create_texture<L>(
         &mut self,
-        descriptor_allocator: &StandardDescriptorSetAllocator,
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
-        command_buffer_builder: &mut AutoCommandBufferBuilder<L>,
+        command_buffer: &CommandBuffer,
         render_queue_family_index: u32,
     ) -> anyhow::Result<()> {
         // extract pixel data from egui
@@ -520,6 +523,21 @@ fn create_pipeline(
     .context("creating gui pass pipeline")?;
 
     Ok(Arc::new(pipeline))
+}
+
+fn create_transient_command_pool(
+    device: Arc<Device>,
+    queue_family_index: u32,
+) -> anyhow::Result<Arc<CommandPool>> {
+    let command_pool_props = CommandPoolProperties {
+        flags: vk::CommandPoolCreateFlags::TRANSIENT,
+        queue_family_index,
+    };
+
+    let command_pool = CommandPool::new(device, command_pool_props)
+        .context("creating gui renderer command pool")?;
+
+    Ok(Arc::new(command_pool))
 }
 
 /// Caclulates the region of the framebuffer to render a gui element
