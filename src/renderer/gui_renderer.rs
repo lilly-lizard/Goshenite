@@ -3,11 +3,12 @@ use super::{
     config_renderer::SHADER_ENTRY_POINT,
     shader_interfaces::{push_constants::GuiPushConstant, vertex_inputs::EguiVertex},
 };
-use crate::user_interface::gui::Gui;
+use crate::{engine::primitives::primitive::default_center, user_interface::gui::Gui};
 use ahash::AHashMap;
 use anyhow::Context;
 use ash::vk;
 use bort::{
+    buffer::{Buffer, BufferProperties},
     command_buffer::CommandBuffer,
     command_pool::{CommandPool, CommandPoolProperties},
     descriptor_layout::{
@@ -569,6 +570,25 @@ fn calculate_gui_element_scissor(
             (max.y.round() - min.y) as u32,
         ],
     }
+}
+
+fn create_texture_data_buffer(
+    memory_allocator: Arc<MemoryAllocator>,
+    size: vk::DeviceSize,
+) -> anyhow::Result<Buffer> {
+    let buffer_props = BufferProperties {
+        size,
+        usage: vk::BufferUsageFlags::TRANSFER_SRC,
+        ..Default::default()
+    };
+
+    let alloc_info = vk_mem::AllocationCreateInfo {
+        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE,
+        preferred_flags: vk::
+    };
+
+    let texture_data_buffer =
+        Buffer::new(memory_allocator, buffer_props, alloc_info).context("creating texture data buffer")?;
 }
 
 // ~~~ Errors ~~~

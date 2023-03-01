@@ -26,8 +26,8 @@ Source split into three directories:
   │ G │──>│ L │──>│ O │──>│ E │
   └───┘ ┆ └───┘   └───┘   └───┘
         ┆        ╰------┬------╯
-subpass ┆ subpass       ┆
-   0    ┆    1         gui
+subpass ┆ subpass      gui
+   0    ┆    1
 ```
 
 1. __G__ = Geometry pass
@@ -38,7 +38,7 @@ subpass ┆ subpass       ┆
 	- frag shader - shading
 	- reads input attachment g-buffers
 3. __O__ = Overlay pass - rendered ui elements e.g. coordinate indicators
-4. __E__ = Egui pass - egui menus
+4. __E__ = Egui pass - egui stuff
 
 Subpass outputs:m
 1. Subpass 0 - g-buffers:

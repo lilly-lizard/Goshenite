@@ -619,7 +619,7 @@ pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Resu
     };
 
     let memory_info = AllocationCreateInfo {
-        flags: vk_mem::AllocationCreateFlags::MAPPED,
+        flags: vk_mem::AllocationCreateFlags::HOST_ACCESS_RANDOM,
         required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE,
         preferred_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL
             | vk::MemoryPropertyFlags::HOST_COHERENT,
