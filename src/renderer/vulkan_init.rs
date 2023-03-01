@@ -11,11 +11,6 @@ use anyhow::Context;
 use ash::vk;
 use bort::{
     buffer::{Buffer, BufferProperties},
-    descriptor_layout::{
-        DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
-    },
-    descriptor_pool::{DescriptorPool, DescriptorPoolProperties},
-    descriptor_set::DescriptorSet,
     device::Device,
     framebuffer::{Framebuffer, FramebufferProperties},
     image::Image,
@@ -23,7 +18,7 @@ use bort::{
     image_properties::ImageDimensions,
     image_view::{ImageView, ImageViewProperties},
     instance::Instance,
-    memory::MemoryAllocator,
+    memory::{cpu_accessible_allocation_info, MemoryAllocator},
     physical_device::PhysicalDevice,
     queue::Queue,
     render_pass::{RenderPass, Subpass},
@@ -34,7 +29,6 @@ use bort::{
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{mem, sync::Arc};
-use vk_mem::AllocationCreateInfo;
 use winit::window::Window;
 
 pub fn required_device_extensions() -> [&'static str; 2] {
@@ -618,13 +612,6 @@ pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Resu
         ..Default::default()
     };
 
-    let memory_info = AllocationCreateInfo {
-        flags: vk_mem::AllocationCreateFlags::HOST_ACCESS_RANDOM,
-        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE,
-        preferred_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL
-            | vk::MemoryPropertyFlags::HOST_COHERENT,
-        ..Default::default()
-    };
-
-    Buffer::new(memory_allocator, ubo_props, memory_info).context("creating camera ubo buffer")
+    let alloc_info = cpu_accessible_allocation_info();
+    Buffer::new(memory_allocator, ubo_props, alloc_info).context("creating camera ubo buffer")
 }

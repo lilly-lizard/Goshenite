@@ -3,7 +3,7 @@ use super::{
     config_renderer::SHADER_ENTRY_POINT,
     shader_interfaces::{push_constants::GuiPushConstant, vertex_inputs::EguiVertex},
 };
-use crate::{engine::primitives::primitive::default_center, user_interface::gui::Gui};
+use crate::user_interface::gui::Gui;
 use ahash::AHashMap;
 use anyhow::Context;
 use ash::vk;
@@ -18,7 +18,7 @@ use bort::{
     device::Device,
     image::Image,
     image_view::ImageView,
-    memory::MemoryAllocator,
+    memory::{cpu_accessible_allocation_info, MemoryAllocator},
     pipeline_graphics::{
         ColorBlendState, DynamicState, GraphicsPipeline, GraphicsPipelineProperties,
     },
@@ -269,16 +269,13 @@ impl GuiRenderer {
         }
 
         // create buffer to be copied to the image
-        let texture_data_buffer = CpuAccessibleBuffer::from_iter(
-            self.memory_allocator.as_ref(),
-            BufferUsage {
-                transfer_src: true,
-                ..BufferUsage::empty()
-            },
-            false,
-            data,
-        )
-        .context("creating gui texture data buffer")?;
+        let texture_data_buffer = create_texture_data_buffer(
+            self.memory_allocator.clone(),
+            std::mem::size_of_val(&data),
+        )?;
+        texture_data_buffer
+            .write_iter(data, 0)
+            .context("uploading gui texture data to staging buffer")?;
 
         if let Some(update_pos) = delta.pos {
             // sometimes a subregion of an already allocated texture needs to be updated e.g. when a font size is changed
@@ -582,13 +579,8 @@ fn create_texture_data_buffer(
         ..Default::default()
     };
 
-    let alloc_info = vk_mem::AllocationCreateInfo {
-        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE,
-        preferred_flags: vk::
-    };
-
-    let texture_data_buffer =
-        Buffer::new(memory_allocator, buffer_props, alloc_info).context("creating texture data buffer")?;
+    let alloc_info = cpu_accessible_allocation_info();
+    Buffer::new(memory_allocator, buffer_props, alloc_info).context("creating texture data buffer")
 }
 
 // ~~~ Errors ~~~
