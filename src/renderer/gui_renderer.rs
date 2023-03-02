@@ -17,6 +17,7 @@ use bort::{
     descriptor_set::DescriptorSet,
     device::Device,
     image::Image,
+    image_access::ImageViewAccess,
     image_view::ImageView,
     memory::{cpu_accessible_allocation_info, MemoryAllocator},
     pipeline_graphics::{
@@ -55,9 +56,10 @@ mod descriptor {
 type VertexIndex = u32;
 
 pub struct GuiRenderer {
+    device: Arc<Device>,
+
     memory_allocator: Arc<MemoryAllocator>,
     transient_command_pool: Arc<CommandPool>,
-    transfer_queue: Arc<Queue>,
     pipeline: Arc<GraphicsPipeline>,
 
     texture_sampler: Arc<Sampler>,
@@ -71,13 +73,13 @@ impl GuiRenderer {
     /// Initializes the gui renderer
     pub fn new(
         device: Arc<Device>,
+        queue_family_index: u32,
         memory_allocator: Arc<MemoryAllocator>,
-        transfer_queue: Arc<Queue>,
         render_pass: &RenderPass,
         subpass_index: u32,
     ) -> anyhow::Result<Self> {
         let transient_command_pool =
-            create_transient_command_pool(device.clone(), transfer_queue.famliy_index())?;
+            create_transient_command_pool(device.clone(), queue_family_index)?;
 
         let desc_set_layout = create_descriptor_layout(device.clone())?;
 
@@ -88,8 +90,8 @@ impl GuiRenderer {
         let texture_sampler = create_texture_sampler(device.clone())?;
 
         Ok(Self {
+            device,
             memory_allocator,
-            transfer_queue,
             transient_command_pool,
             pipeline,
             texture_sampler,
@@ -229,6 +231,7 @@ impl GuiRenderer {
 // Private functions
 
 impl GuiRenderer {
+    // TODO EXTRACT SUBFUNCTIONS
     /// Creates a new texture needing to be added for the gui.
     ///
     /// Helper function for [`GuiRenderer::update_textures`]
@@ -279,12 +282,8 @@ impl GuiRenderer {
 
         if let Some(update_pos) = delta.pos {
             // sometimes a subregion of an already allocated texture needs to be updated e.g. when a font size is changed
-            // todo sync issue!
-            // CommandBufferExecError(AccessError { error: AlreadyInUse, command_name: "copy_buffer_to_image", command_param: "dst_image", command_offset: 0 })
-            // pass future to update_textures and this funtion sets a bool to indicate wherver an existing will be modified...
             if let Some(existing_image) = self.texture_images.get(&texture_id) {
-                // define copy region
-                let copy_region = BufferImageCopy {
+                let copy_region = vk::BufferImageCopy {
                     image_subresource: existing_image.image().subresource_layers(),
                     image_offset: [update_pos[0] as u32, update_pos[1] as u32, 0],
                     image_extent: [delta.image.width() as u32, delta.image.height() as u32, 1],
@@ -293,16 +292,54 @@ impl GuiRenderer {
                 debug!("updating existing gui texture id = {:?}, region offset = {:?}, region extent = {:?}",
                     texture_id, copy_region.image_offset, copy_region.image_extent);
 
+                // we need to transition the image layout to vk::ImageLayout::GENERAL
+                let to_general_image_barrier = vk::ImageMemoryBarrier::builder()
+                    .src_access_mask(vk::AccessFlags::SHADER_READ)
+                    .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                    .old_layout(vk::ImageLayout::UNDEFINED)
+                    .new_layout(vk::ImageLayout::GENERAL)
+                    .image(existing_image.handle())
+                    .subresource_range(existing_image.properties().subresource_range);
+
+                // then transition back to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+                let to_shader_read_image_barrier = vk::ImageMemoryBarrier::builder()
+                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                    .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                    .old_layout(vk::ImageLayout::GENERAL)
+                    .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                    .image(existing_image.handle())
+                    .subresource_range(existing_image.properties().subresource_range);
+
                 // copy buffer to image
-                command_buffer_builder
-                    .copy_buffer_to_image(CopyBufferToImageInfo {
-                        regions: [copy_region].into(),
-                        ..CopyBufferToImageInfo::buffer_image(
-                            texture_data_buffer,
-                            existing_image.image().clone(),
-                        )
-                    })
-                    .context("updating region of existing gui texture")?;
+                unsafe {
+                    self.device.inner().cmd_pipeline_barrier(
+                        command_buffer.handle(),
+                        vk::PipelineStageFlags::FRAGMENT_SHADER,
+                        vk::PipelineStageFlags::TRANSFER,
+                        vk::DependencyFlags::empty(),
+                        &[],
+                        &[],
+                        &[to_general_image_barrier],
+                    );
+
+                    self.device.inner().cmd_copy_buffer_to_image(
+                        command_buffer.handle(),
+                        texture_data_buffer.handle(),
+                        existing_image.handle(),
+                        vk::ImageLayout::GENERAL,
+                        &[copy_region],
+                    );
+
+                    self.device.inner().cmd_pipeline_barrier(
+                        command_buffer.handle(),
+                        vk::PipelineStageFlags::TRANSFER,
+                        vk::PipelineStageFlags::FRAGMENT_SHADER,
+                        vk::DependencyFlags::empty(),
+                        &[],
+                        &[],
+                        &[to_shader_read_image_barrier],
+                    );
+                }
             }
         } else {
             // usually ImageDelta.pos == None meaning a new image needs to be created
