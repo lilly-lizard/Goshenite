@@ -2,7 +2,7 @@ use super::{
     config_ui::EGUI_TRACE,
     gui_state::{GuiState, WindowStates},
     layouts_object_editor::{object_editor, object_list},
-    layouts_panel::top_panel_layout,
+    layouts_panel::bottom_panel_layout,
 };
 use crate::engine::{
     object::{object::ObjectRef, object_collection::ObjectCollection, objects_delta::ObjectsDelta},
@@ -151,11 +151,11 @@ impl Gui {
 
 impl Gui {
     fn top_panel(&mut self) {
-        egui::TopBottomPanel::top("main top panel").show(&self.context, |ui| {
+        egui::TopBottomPanel::bottom("main top panel").show(&self.context, |ui| {
             if EGUI_TRACE {
                 egui::trace!(ui);
             }
-            top_panel_layout(ui, &mut self.window_states);
+            bottom_panel_layout(ui, &mut self.window_states);
         });
     }
 

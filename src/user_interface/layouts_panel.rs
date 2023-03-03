@@ -1,7 +1,7 @@
 use super::gui_state::WindowStates;
 use egui::Ui;
 
-pub fn top_panel_layout(ui: &mut Ui, window_states: &mut WindowStates) {
+pub fn bottom_panel_layout(ui: &mut Ui, window_states: &mut WindowStates) {
     ui.horizontal_wrapped(|ui| {
         ui.visuals_mut().button_frame = false; // idk what this does tbh
 
