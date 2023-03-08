@@ -14,12 +14,15 @@ use bort::{
     descriptor_layout::{
         DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
     },
+    descriptor_pool::{DescriptorPool, DescriptorPoolProperties},
     descriptor_set::DescriptorSet,
     device::Device,
     image::Image,
-    image_access::ImageViewAccess,
-    image_view::ImageView,
+    image_access::{ImageAccess, ImageViewAccess},
+    image_properties::{ImageDimensions, ImageProperties},
+    image_view::{default_subresource_layers, ImageView, ImageViewProperties},
     memory::{cpu_accessible_allocation_info, MemoryAllocator},
+    pipeline_access::PipelineAccess,
     pipeline_graphics::{
         ColorBlendState, DynamicState, GraphicsPipeline, GraphicsPipelineProperties,
     },
@@ -37,6 +40,7 @@ use std::{
     fmt::{self, Display},
     sync::Arc,
 };
+use vk_mem::AllocationCreateInfo;
 
 const VERT_SHADER_PATH: &str = "assets/shader_binaries/gui.vert.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/gui.frag.spv";
@@ -46,6 +50,8 @@ const VERTEX_BUFFER_SIZE: vk::DeviceSize = 1024 * 1024 * VERTICES_PER_QUAD;
 const INDEX_BUFFER_SIZE: vk::DeviceSize = 1024 * 1024 * 2;
 
 const TEXTURE_FORMAT: vk::Format = vk::Format::R8G8B8A8_SRGB;
+
+const MAX_DESC_SETS_PER_POOL: u32 = 64;
 
 mod descriptor {
     pub const SET_FONT_TEXTURE: usize = 0;
@@ -62,8 +68,11 @@ pub struct GuiRenderer {
     transient_command_pool: Arc<CommandPool>,
     pipeline: Arc<GraphicsPipeline>,
 
+    descriptor_pools: Vec<Arc<DescriptorPool>>,
+    unused_texture_desc_sets: Vec<Arc<DescriptorSet>>,
+
     texture_sampler: Arc<Sampler>,
-    texture_images: AHashMap<egui::TextureId, Arc<ImageView<Image>>>,
+    texture_image_views: AHashMap<egui::TextureId, Arc<ImageView<Image>>>,
     texture_desc_sets: AHashMap<egui::TextureId, Arc<DescriptorSet>>,
 }
 
@@ -89,13 +98,19 @@ impl GuiRenderer {
 
         let texture_sampler = create_texture_sampler(device.clone())?;
 
+        let descriptor_pool = create_descriptor_pool(device.clone())?;
+
         Ok(Self {
             device,
             memory_allocator,
             transient_command_pool,
             pipeline,
+
+            descriptor_pools: vec![descriptor_pool],
+            unused_texture_desc_sets: Vec::new(),
+
             texture_sampler,
-            texture_images: AHashMap::default(),
+            texture_image_views: AHashMap::default(),
             texture_desc_sets: AHashMap::default(),
         })
     }
@@ -105,7 +120,7 @@ impl GuiRenderer {
     pub fn update_textures(
         &mut self,
         textures_delta_vec: Vec<TexturesDelta>,
-        render_queue_family_index: u32,
+        queue: &Queue,
     ) -> anyhow::Result<()> {
         // return if empty
         if textures_delta_vec.is_empty() {
@@ -117,6 +132,8 @@ impl GuiRenderer {
             CommandBuffer::new(self.transient_command_pool, vk::CommandBufferLevel::PRIMARY)
                 .context("creating command buffer for gui texture upload")?;
 
+        let command_buffer = todo!();
+
         for textures_delta in textures_delta_vec {
             // release unused texture resources
             for &id in &textures_delta.free {
@@ -125,20 +142,12 @@ impl GuiRenderer {
 
             // create new images and record upload commands
             for (id, image_delta) in textures_delta.set {
-                self.create_texture(
-                    descriptor_allocator,
-                    id,
-                    image_delta,
-                    &mut command_buffer_builder,
-                    render_queue_family_index,
-                )?;
+                self.create_texture(id, image_delta, &command_buffer, queue)?;
             }
         }
 
         // execute command buffer
-        let command_buffer = command_buffer_builder
-            .build()
-            .context("building command buffer for gui texture upload")?;
+
         todo!("return semaphore or something?");
 
         Ok(())
@@ -152,79 +161,11 @@ impl GuiRenderer {
     /// * `framebuffer_dimensions`: Framebuffer dimensions.
     pub(super) fn record_commands<L>(
         &mut self,
-        command_buffer: &mut AutoCommandBufferBuilder<L>,
         gui: &Gui,
         is_srgb_framebuffer: bool,
         framebuffer_dimensions: [f32; 2],
     ) -> anyhow::Result<()> {
-        let scale_factor = gui.scale_factor();
-        let primitives = gui.mesh_primitives();
-
-        let push_constants = GuiPushConstant::new(
-            [
-                framebuffer_dimensions[0] / scale_factor,
-                framebuffer_dimensions[1] / scale_factor,
-            ],
-            is_srgb_framebuffer,
-        );
-        for ClippedPrimitive {
-            clip_rect,
-            primitive,
-        } in primitives
-        {
-            match primitive {
-                Primitive::Mesh(mesh) => {
-                    // nothing to draw if we don't have vertices & indices
-                    if mesh.vertices.is_empty() || mesh.indices.is_empty() {
-                        continue;
-                    }
-
-                    // get region of screen to render
-                    let scissors = [calculate_gui_element_scissor(
-                        scale_factor,
-                        framebuffer_dimensions,
-                        *clip_rect,
-                    )];
-
-                    // create vertex and index buffers
-                    let (vertices, indices) = self.create_subbuffers(&mesh)?;
-
-                    let desc_set = self
-                        .texture_desc_sets
-                        .get(&mesh.texture_id)
-                        .ok_or(GuiRendererError::TextureDescSetMissing {
-                            id: mesh.texture_id,
-                        })
-                        .context("recording gui render commands")?
-                        .clone();
-
-                    command_buffer
-                        .bind_pipeline_graphics(self.pipeline.clone())
-                        .set_viewport(
-                            0,
-                            [Viewport {
-                                origin: [0.0, 0.0],
-                                dimensions: framebuffer_dimensions,
-                                depth_range: 0.0..1.0,
-                            }],
-                        )
-                        .set_scissor(0, scissors)
-                        .bind_descriptor_sets(
-                            PipelineBindPoint::Graphics,
-                            self.pipeline.layout().clone(),
-                            0,
-                            desc_set.clone(),
-                        )
-                        .push_constants(self.pipeline.layout().clone(), 0, push_constants)
-                        .bind_vertex_buffers(0, vertices.clone())
-                        .bind_index_buffer(indices.clone())
-                        .draw_indexed(indices.len() as u32, 1, 0, 0, 0)
-                        .context("recording gui draw commands")?;
-                }
-                Primitive::Callback(_) => continue, // we don't need to support Primitive::Callback
-            }
-        }
-        Ok(())
+        todo!()
     }
 }
 
@@ -235,12 +176,12 @@ impl GuiRenderer {
     /// Creates a new texture needing to be added for the gui.
     ///
     /// Helper function for [`GuiRenderer::update_textures`]
-    fn create_texture<L>(
+    fn create_texture(
         &mut self,
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
         command_buffer: &CommandBuffer,
-        render_queue_family_index: u32,
+        queue: &Queue,
     ) -> anyhow::Result<()> {
         // extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
@@ -272,9 +213,9 @@ impl GuiRenderer {
         }
 
         // create buffer to be copied to the image
-        let texture_data_buffer = create_texture_data_buffer(
+        let mut texture_data_buffer = create_texture_data_buffer(
             self.memory_allocator.clone(),
-            std::mem::size_of_val(&data),
+            std::mem::size_of_val(&data) as u64,
         )?;
         texture_data_buffer
             .write_iter(data, 0)
@@ -282,11 +223,19 @@ impl GuiRenderer {
 
         if let Some(update_pos) = delta.pos {
             // sometimes a subregion of an already allocated texture needs to be updated e.g. when a font size is changed
-            if let Some(existing_image) = self.texture_images.get(&texture_id) {
+            if let Some(existing_image_view) = self.texture_image_views.get(&texture_id) {
                 let copy_region = vk::BufferImageCopy {
-                    image_subresource: existing_image.image().subresource_layers(),
-                    image_offset: [update_pos[0] as u32, update_pos[1] as u32, 0],
-                    image_extent: [delta.image.width() as u32, delta.image.height() as u32, 1],
+                    image_subresource: default_subresource_layers(vk::ImageAspectFlags::COLOR),
+                    image_offset: vk::Offset3D {
+                        x: update_pos[0] as i32,
+                        y: update_pos[1] as i32,
+                        z: 0,
+                    },
+                    image_extent: vk::Extent3D {
+                        width: delta.image.width() as u32,
+                        height: delta.image.height() as u32,
+                        depth: 1,
+                    },
                     ..Default::default()
                 };
                 debug!("updating existing gui texture id = {:?}, region offset = {:?}, region extent = {:?}",
@@ -298,8 +247,8 @@ impl GuiRenderer {
                     .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                     .old_layout(vk::ImageLayout::UNDEFINED)
                     .new_layout(vk::ImageLayout::GENERAL)
-                    .image(existing_image.handle())
-                    .subresource_range(existing_image.properties().subresource_range);
+                    .image(existing_image_view.image().handle())
+                    .subresource_range(existing_image_view.properties().subresource_range);
 
                 // then transition back to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
                 let to_shader_read_image_barrier = vk::ImageMemoryBarrier::builder()
@@ -307,8 +256,8 @@ impl GuiRenderer {
                     .dst_access_mask(vk::AccessFlags::SHADER_READ)
                     .old_layout(vk::ImageLayout::GENERAL)
                     .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    .image(existing_image.handle())
-                    .subresource_range(existing_image.properties().subresource_range);
+                    .image(existing_image_view.image().handle())
+                    .subresource_range(existing_image_view.properties().subresource_range);
 
                 // copy buffer to image
                 unsafe {
@@ -319,13 +268,13 @@ impl GuiRenderer {
                         vk::DependencyFlags::empty(),
                         &[],
                         &[],
-                        &[to_general_image_barrier],
+                        &[*to_general_image_barrier],
                     );
 
                     self.device.inner().cmd_copy_buffer_to_image(
                         command_buffer.handle(),
                         texture_data_buffer.handle(),
-                        existing_image.handle(),
+                        existing_image_view.image().handle(),
                         vk::ImageLayout::GENERAL,
                         &[copy_region],
                     );
@@ -337,7 +286,7 @@ impl GuiRenderer {
                         vk::DependencyFlags::empty(),
                         &[],
                         &[],
-                        &[to_shader_read_image_barrier],
+                        &[*to_shader_read_image_barrier],
                     );
                 }
             }
@@ -346,63 +295,105 @@ impl GuiRenderer {
             debug!("creating new gui texture id = {:?}", texture_id);
 
             // create image
-            let transfer_queue_family = self.transfer_queue.queue_family_index();
-            let queue_family_indices: SmallVec<[u32; 2]> =
-                if transfer_queue_family == render_queue_family {
-                    // will result in VK_SHARING_MODE_EXCLUSIVE
-                    smallvec![render_queue_family]
-                } else {
-                    // will result in VK_SHARING_MODE_CONCURRENT
-                    smallvec![render_queue_family, transfer_queue_family]
-                };
-            let (image, init_access) = ImmutableImage::uninitialized(
-                self.memory_allocator.as_ref(),
-                vulkano::image::ImageDimensions::Dim2d {
-                    width: delta.image.width() as u32,
-                    height: delta.image.height() as u32,
-                    array_layers: 1,
-                },
+
+            let new_image_properties = ImageProperties::new_default(
                 TEXTURE_FORMAT,
-                vulkano::image::MipmapsCount::One,
-                ImageUsage {
-                    transfer_dst: true,
-                    sampled: true,
-                    ..ImageUsage::empty()
-                },
-                Default::default(),
-                ImageLayout::ShaderReadOnlyOptimal,
-                queue_family_indices,
-            )
-            .context("creating new gui texture image")?;
-            let font_image =
-                ImageView::new_default(image).context("creating new gui texture image")?;
+                ImageDimensions::new_2d(delta.image.width() as u32, delta.image.height() as u32),
+                vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            );
+
+            let new_image_allocation_info = AllocationCreateInfo {
+                required_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+                ..Default::default()
+            };
+
+            let new_image = Arc::new(
+                Image::new(
+                    self.memory_allocator.clone(),
+                    new_image_properties.clone(),
+                    new_image_allocation_info,
+                )
+                .context("creating image for new egui texture")?,
+            );
+
+            // create image view
+
+            let new_image_view_properties =
+                ImageViewProperties::from_image_properties_default(&new_image_properties);
+            let new_image_view = Arc::new(
+                ImageView::new(new_image.clone(), new_image_view_properties)
+                    .context("creating image view for new egui texture")?,
+            );
 
             // copy buffer to image
-            command_buffer_builder
-                .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
-                    texture_data_buffer,
-                    init_access.clone(),
-                ))
-                .context("uploading new gui texture data")?;
+            let copy_region = vk::BufferImageCopy {
+                image_subresource: default_subresource_layers(vk::ImageAspectFlags::COLOR),
+                image_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+                image_extent: vk::Extent3D {
+                    width: delta.image.width() as u32,
+                    height: delta.image.height() as u32,
+                    depth: 1,
+                },
+                ..Default::default()
+            };
+            debug!("updating existing gui texture id = {:?}, region offset = {:?}, region extent = {:?}",
+                texture_id, copy_region.image_offset, copy_region.image_extent);
+
+            // after uploading we need to transfer to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+            let to_shader_read_image_barrier = vk::ImageMemoryBarrier::builder()
+                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                .old_layout(vk::ImageLayout::GENERAL)
+                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image(new_image_view.image().handle())
+                .subresource_range(new_image_view.properties().subresource_range);
+
+            // copy buffer to image
+            unsafe {
+                self.device.inner().cmd_pipeline_barrier(
+                    command_buffer.handle(),
+                    vk::PipelineStageFlags::FRAGMENT_SHADER,
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    &[],
+                );
+
+                self.device.inner().cmd_copy_buffer_to_image(
+                    command_buffer.handle(),
+                    texture_data_buffer.handle(),
+                    new_image.handle(),
+                    vk::ImageLayout::GENERAL,
+                    &[copy_region],
+                );
+
+                self.device.inner().cmd_pipeline_barrier(
+                    command_buffer.handle(),
+                    vk::PipelineStageFlags::TRANSFER,
+                    vk::PipelineStageFlags::FRAGMENT_SHADER,
+                    vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    &[*to_shader_read_image_barrier],
+                );
+            }
 
             // create new descriptor set
-            let layout = self
-                .pipeline
-                .layout()
-                .set_layouts()
-                .get(descriptor::SET_FONT_TEXTURE)
-                .ok_or(CreateDescriptorSetError::InvalidDescriptorSetIndex {
-                    index: descriptor::SET_FONT_TEXTURE,
-                    shader_path: FRAG_SHADER_PATH,
-                })
-                .context("creating new gui texture desc set")?;
-            let font_desc_set = self
-                .sampled_image_desc_set(descriptor_allocator, layout, font_image.clone())
-                .context("creating new gui texture desc set")?;
+            let font_desc_set = self.get_new_font_texture_desc_set()?;
+
+            // write descriptor set
+            write_font_texture_desc_set(
+                &self.device,
+                &font_desc_set,
+                &new_image_view,
+                &self.texture_sampler,
+            )?;
 
             // store new texture
             self.texture_desc_sets.insert(texture_id, font_desc_set);
-            self.texture_images.insert(texture_id, font_image);
+            self.texture_image_views.insert(texture_id, new_image_view);
         }
         Ok(())
     }
@@ -412,76 +403,124 @@ impl GuiRenderer {
     /// Helper function for [`Self::update_textures`]
     fn unregister_image(&mut self, texture_id: egui::TextureId) {
         debug!("removing unneeded gui texture id = {:?}", texture_id);
-        self.texture_desc_sets.remove(&texture_id);
-        self.texture_images.remove(&texture_id);
+        self.texture_image_views.remove(&texture_id);
+        let unused_desc_set = self.texture_desc_sets.remove(&texture_id);
+        if let Some(unused_desc_set) = unused_desc_set {
+            self.unused_texture_desc_sets.push(unused_desc_set);
+        }
     }
 
-    /// Create vertex and index sub-buffers for an egui mesh
-    fn create_subbuffers(
-        &self,
-        mesh: &Mesh,
-    ) -> anyhow::Result<(
-        Arc<CpuBufferPoolChunk<EguiVertex>>,
-        Arc<CpuBufferPoolChunk<VertexIndex>>,
-    )> {
-        // copy vertices to buffer
-        let v_slice = &mesh.vertices;
-
-        let vertex_chunk = self
-            .vertex_buffer_pool
-            .from_iter(v_slice.into_iter().map(|v| EguiVertex {
-                in_position: v.pos.into(),
-                in_tex_coords: v.uv.into(),
-                in_color: [
-                    v.color.r() as f32 / 255.0,
-                    v.color.g() as f32 / 255.0,
-                    v.color.b() as f32 / 255.0,
-                    v.color.a() as f32 / 255.0,
-                ],
-            }))
-            .context("creating gui vertex subbuffer")?;
-
-        // Copy indices to buffer
-        let i_slice = &mesh.indices;
-        let index_chunk = self
-            .index_buffer_pool
-            .from_iter(i_slice.clone())
-            .context("creating gui index subbuffer")?;
-
-        Ok((vertex_chunk, index_chunk))
+    fn get_new_font_texture_desc_set(&mut self) -> anyhow::Result<Arc<DescriptorSet>> {
+        if let Some(existing_desc_set) = self.unused_texture_desc_sets.pop() {
+            // reuse old desc set
+            return Ok(existing_desc_set);
+        }
+        // else allocate new one
+        return self.allocate_font_texture_desc_set();
     }
 
-    /// Creates a descriptor set for images
-    fn sampled_image_desc_set(
-        &self,
-        descriptor_allocator: &StandardDescriptorSetAllocator,
-        layout: &Arc<DescriptorSetLayout>,
-        image: Arc<impl ImageViewAbstract + 'static>,
-    ) -> anyhow::Result<Arc<PersistentDescriptorSet>> {
-        PersistentDescriptorSet::new(
-            descriptor_allocator,
-            layout.clone(),
-            [WriteDescriptorSet::image_view_sampler(
-                descriptor::BINDING_FONT_TEXTURE,
-                image.clone(),
-                self.sampler.clone(),
-            )],
-        )
-        .context("creating gui texture descriptor set")
+    fn allocate_font_texture_desc_set(&mut self) -> anyhow::Result<Arc<DescriptorSet>> {
+        let set_layout = self
+            .pipeline
+            .pipeline_layout()
+            .properties()
+            .set_layouts
+            .get(descriptor::SET_FONT_TEXTURE)
+            .context("indexing gui pipeline descriptor set layout")?;
+
+        let allocate_res = self
+            .descriptor_pools
+            .get(self.descriptor_pools.len() - 1)
+            .expect("should always be at least one descriptor pool")
+            .allocate_descriptor_set(set_layout.clone());
+
+        let desc_set = match allocate_res {
+            Err(allocate_error) => match allocate_error {
+                vk::Result::ERROR_OUT_OF_POOL_MEMORY | vk::Result::ERROR_FRAGMENTED_POOL => {
+                    self.allocate_font_texture_desc_set_from_new_pool(set_layout.clone())?
+                }
+                _ => {
+                    return Err(allocate_error)
+                        .context("allocating descriptor set for new egui texture")
+                }
+            },
+            Ok(desc_set) => desc_set,
+        };
+
+        Ok(Arc::new(desc_set))
     }
+
+    fn allocate_font_texture_desc_set_from_new_pool(
+        &mut self,
+        set_layout: Arc<DescriptorSetLayout>,
+    ) -> anyhow::Result<DescriptorSet> {
+        // create a new descriptor pool
+        let new_pool = create_descriptor_pool(self.device.clone())?;
+        self.descriptor_pools.push(new_pool.clone());
+
+        // try allocation again
+        new_pool
+            .allocate_descriptor_set(set_layout)
+            .context("allocating descriptor set for new egui texture")
+    }
+}
+
+fn write_font_texture_desc_set(
+    device: &Device,
+    desc_set: &DescriptorSet,
+    image_view: &ImageView<Image>,
+    sampler: &Sampler,
+) -> anyhow::Result<()> {
+    let texture_info = vk::DescriptorImageInfo {
+        image_view: image_view.handle(),
+        image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        sampler: sampler.handle(),
+    };
+
+    let descriptor_writes = [vk::WriteDescriptorSet {
+        dst_set: desc_set.handle(),
+        descriptor_count: 1,
+        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+        p_image_info: &texture_info,
+        ..Default::default()
+    }];
+
+    unsafe {
+        device
+            .inner()
+            .update_descriptor_sets(&descriptor_writes, &[]);
+    }
+
+    Ok(())
+}
+
+fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorPool>> {
+    let descriptor_pool_props = DescriptorPoolProperties {
+        max_sets: MAX_DESC_SETS_PER_POOL,
+        pool_sizes: vec![vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::SAMPLED_IMAGE,
+            descriptor_count: MAX_DESC_SETS_PER_POOL,
+        }],
+        ..Default::default()
+    };
+
+    let descriptor_pool = DescriptorPool::new(device, descriptor_pool_props)
+        .context("creating gui renderer descriptor pool")?;
+
+    Ok(Arc::new(descriptor_pool))
 }
 
 fn create_texture_sampler(device: Arc<Device>) -> anyhow::Result<Arc<Sampler>> {
     let sampler_props = SamplerProperties {
-        mag_filter: vk::Filter::Linear,
-        min_filter: vk::Filter::Linear,
-        address_mode: [vk::SamplerAddressMode::ClampToEdge; 3],
-        mipmap_mode: vk::SamplerMipmapMode::Linear,
+        mag_filter: vk::Filter::LINEAR,
+        min_filter: vk::Filter::LINEAR,
+        address_mode: [vk::SamplerAddressMode::CLAMP_TO_EDGE; 3],
+        mipmap_mode: vk::SamplerMipmapMode::LINEAR,
         ..Default::default()
     };
 
-    let sampler = Sampler::new(device, sampler_props).context("creating gui texture sampler");
-    Arc::new(sampler)
+    let sampler = Sampler::new(device, sampler_props).context("creating gui texture sampler")?;
+    Ok(Arc::new(sampler))
 }
 
 fn create_descriptor_layout(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorSetLayout>> {
@@ -598,11 +637,14 @@ fn calculate_gui_element_scissor(
         y: max.y.clamp(min.y, framebuffer_dimensions[1]),
     };
     vk::Rect2D {
-        offset: [min.x.round() as i32, min.y.round() as i32],
-        extent: [
-            (max.x.round() - min.x) as u32,
-            (max.y.round() - min.y) as u32,
-        ],
+        offset: vk::Offset2D {
+            x: min.x.round() as i32,
+            y: min.y.round() as i32,
+        },
+        extent: vk::Extent2D {
+            width: (max.x.round() - min.x) as u32,
+            height: (max.y.round() - min.y) as u32,
+        },
     }
 }
 
