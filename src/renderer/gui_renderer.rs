@@ -30,6 +30,7 @@ use bort::{
     queue::Queue,
     render_pass::RenderPass,
     sampler::{Sampler, SamplerProperties},
+    semaphore::Semaphore,
     shader_module::{ShaderModule, ShaderStage},
 };
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
@@ -116,23 +117,27 @@ impl GuiRenderer {
     }
 
     /// Creates and/or removes texture resources as required by [`TexturesDelta`](epaint::Textures::TexturesDelta)
-    /// output by [`egui::end_frame`](egui::context::Context::end_frame).
+    /// output by [`egui::end_frame`](egui::context::Context::end_frame). If new textures were created, submits a
+    /// command buffer and returns a signal semaphore for the submission.
     pub fn update_textures(
         &mut self,
         textures_delta_vec: Vec<TexturesDelta>,
         queue: &Queue,
-    ) -> anyhow::Result<()> {
+        wait_semaphores: Vec<Semaphore>,
+    ) -> anyhow::Result<Option<Semaphore>> {
         // return if empty
         if textures_delta_vec.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
 
         // create command buffer
-        let command_buffer =
-            CommandBuffer::new(self.transient_command_pool, vk::CommandBufferLevel::PRIMARY)
-                .context("creating command buffer for gui texture upload")?;
+        let command_buffer = CommandBuffer::new(
+            self.transient_command_pool.clone(),
+            vk::CommandBufferLevel::PRIMARY,
+        )
+        .context("creating command buffer for gui texture upload")?;
 
-        let command_buffer = todo!();
+        let mut commands_recorded = false;
 
         for textures_delta in textures_delta_vec {
             // release unused texture resources
@@ -143,14 +148,37 @@ impl GuiRenderer {
             // create new images and record upload commands
             for (id, image_delta) in textures_delta.set {
                 self.create_texture(id, image_delta, &command_buffer, queue)?;
+                commands_recorded = true;
             }
         }
 
         // execute command buffer
+        if commands_recorded {
+            let (wait_semaphore_handles, wait_semaphore_stages): (Vec<_>, Vec<_>) = wait_semaphores
+                .iter()
+                .map(|semaphore| (semaphore.handle(), vk::PipelineStageFlags::TRANSFER))
+                .unzip();
 
-        todo!("return semaphore or something?");
+            let signal_semaphore =
+                Semaphore::new(self.device.clone()).context("creating texture upload semaphore")?;
+            let signal_semaphore_handles = [signal_semaphore.handle()];
 
-        Ok(())
+            let command_buffer_handles = [command_buffer.handle()];
+
+            let submit_info = vk::SubmitInfo::builder()
+                .wait_semaphores(wait_semaphore_handles.as_slice())
+                .wait_dst_stage_mask(wait_semaphore_stages.as_slice())
+                .signal_semaphores(&signal_semaphore_handles)
+                .command_buffers(&command_buffer_handles);
+
+            queue
+                .submit(&[*submit_info], None)
+                .context("submitting gui texture upload commands")?;
+
+            return Ok(Some(signal_semaphore));
+        }
+
+        Ok(None)
     }
 
     /// Record gui rendering commands
@@ -395,6 +423,7 @@ impl GuiRenderer {
             self.texture_desc_sets.insert(texture_id, font_desc_set);
             self.texture_image_views.insert(texture_id, new_image_view);
         }
+
         Ok(())
     }
 
