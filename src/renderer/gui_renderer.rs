@@ -39,6 +39,7 @@ use log::{debug, error, info, warn};
 use std::{
     ffi::CString,
     fmt::{self, Display},
+    mem,
     sync::Arc,
 };
 use vk_mem::AllocationCreateInfo;
@@ -59,9 +60,6 @@ mod descriptor {
     pub const BINDING_FONT_TEXTURE: u32 = 0;
 }
 
-/// Index format
-type VertexIndex = u32;
-
 pub struct GuiRenderer {
     device: Arc<Device>,
 
@@ -75,6 +73,9 @@ pub struct GuiRenderer {
     texture_sampler: Arc<Sampler>,
     texture_image_views: AHashMap<egui::TextureId, Arc<ImageView<Image>>>,
     texture_desc_sets: AHashMap<egui::TextureId, Arc<DescriptorSet>>,
+
+    vertex_buffers: Vec<Buffer>,
+    index_buffers: Vec<Buffer>,
 }
 
 // Public functions
@@ -113,6 +114,9 @@ impl GuiRenderer {
             texture_sampler,
             texture_image_views: AHashMap::default(),
             texture_desc_sets: AHashMap::default(),
+
+            vertex_buffers: Vec::new(),
+            index_buffers: Vec::new(),
         })
     }
 
@@ -147,7 +151,7 @@ impl GuiRenderer {
 
             // create new images and record upload commands
             for (id, image_delta) in textures_delta.set {
-                self.create_texture(id, image_delta, &command_buffer, queue)?;
+                self.add_new_texture_data(id, image_delta, &command_buffer)?;
                 commands_recorded = true;
             }
         }
@@ -181,35 +185,71 @@ impl GuiRenderer {
         Ok(None)
     }
 
-    /// Record gui rendering commands
-    /// * `command_buffer`: Primary command buffer to record commands to. Must be already in dynamic rendering state.
-    /// * `primitives`: List of egui primitives to render. Can aquire from [Gui::primitives](`crate::gui::Gui::primitives`).
-    /// * `scale_factor`: Gui dpi config. Can aquire from [Gui::scale_factor](`crate::gui::Gui::scale_factor`).
-    /// * `is_srgb_framebuffer`: Set to true if rendering to an SRGB framebuffer.
-    /// * `framebuffer_dimensions`: Framebuffer dimensions.
-    pub(super) fn record_commands<L>(
+    /// TODO don't forget to call free_previous_vertex_and_index_buffers!
+    pub fn record_render_commands<L>(
         &mut self,
+        command_buffer: &CommandBuffer,
         gui: &Gui,
         is_srgb_framebuffer: bool,
         framebuffer_dimensions: [f32; 2],
     ) -> anyhow::Result<()> {
-        todo!()
+        let scale_factor = gui.scale_factor();
+        let primitives = gui.mesh_primitives();
+
+        let push_constant_data = GuiPushConstant::new(
+            [
+                framebuffer_dimensions[0] / scale_factor,
+                framebuffer_dimensions[1] / scale_factor,
+            ],
+            is_srgb_framebuffer,
+        );
+        let push_constant_bytes = bytemuck::bytes_of(&push_constant_data);
+
+        for ClippedPrimitive {
+            clip_rect,
+            primitive,
+        } in primitives
+        {
+            match primitive {
+                Primitive::Mesh(mesh) => {
+                    // nothing to draw if we don't have vertices & indices
+                    if mesh.vertices.is_empty() || mesh.indices.is_empty() {
+                        continue;
+                    }
+
+                    self.record_mesh_commands(
+                        command_buffer,
+                        push_constant_bytes,
+                        mesh,
+                        scale_factor,
+                        framebuffer_dimensions,
+                        *clip_rect,
+                    )?;
+                }
+                Primitive::Callback(_) => continue, // we don't need to support Primitive::Callback
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Fress vertex and index buffers created in previous calls to `record_render_commands`.
+    /// Call this when gui rendering commands from the previous frame have finished.
+    pub fn free_previous_vertex_and_index_buffers(&mut self) {
+        self.vertex_buffers.clear();
+        self.index_buffers.clear();
     }
 }
 
 // Private functions
 
 impl GuiRenderer {
-    // TODO EXTRACT SUBFUNCTIONS
-    /// Creates a new texture needing to be added for the gui.
-    ///
-    /// Helper function for [`GuiRenderer::update_textures`]
-    fn create_texture(
+    /// todo desc
+    fn add_new_texture_data(
         &mut self,
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
         command_buffer: &CommandBuffer,
-        queue: &Queue,
     ) -> anyhow::Result<()> {
         // extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
@@ -266,162 +306,24 @@ impl GuiRenderer {
                     },
                     ..Default::default()
                 };
-                debug!("updating existing gui texture id = {:?}, region offset = {:?}, region extent = {:?}",
-                    texture_id, copy_region.image_offset, copy_region.image_extent);
+                debug!(
+                    "updating existing gui texture id = {:?}, region offset = {:?}, region extent = {:?}",
+                    texture_id, copy_region.image_offset, copy_region.image_extent
+                );
 
-                // we need to transition the image layout to vk::ImageLayout::GENERAL
-                let to_general_image_barrier = vk::ImageMemoryBarrier::builder()
-                    .src_access_mask(vk::AccessFlags::SHADER_READ)
-                    .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                    .old_layout(vk::ImageLayout::UNDEFINED)
-                    .new_layout(vk::ImageLayout::GENERAL)
-                    .image(existing_image_view.image().handle())
-                    .subresource_range(existing_image_view.properties().subresource_range);
-
-                // then transition back to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-                let to_shader_read_image_barrier = vk::ImageMemoryBarrier::builder()
-                    .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                    .dst_access_mask(vk::AccessFlags::SHADER_READ)
-                    .old_layout(vk::ImageLayout::GENERAL)
-                    .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                    .image(existing_image_view.image().handle())
-                    .subresource_range(existing_image_view.properties().subresource_range);
-
-                // copy buffer to image
-                unsafe {
-                    self.device.inner().cmd_pipeline_barrier(
-                        command_buffer.handle(),
-                        vk::PipelineStageFlags::FRAGMENT_SHADER,
-                        vk::PipelineStageFlags::TRANSFER,
-                        vk::DependencyFlags::empty(),
-                        &[],
-                        &[],
-                        &[*to_general_image_barrier],
-                    );
-
-                    self.device.inner().cmd_copy_buffer_to_image(
-                        command_buffer.handle(),
-                        texture_data_buffer.handle(),
-                        existing_image_view.image().handle(),
-                        vk::ImageLayout::GENERAL,
-                        &[copy_region],
-                    );
-
-                    self.device.inner().cmd_pipeline_barrier(
-                        command_buffer.handle(),
-                        vk::PipelineStageFlags::TRANSFER,
-                        vk::PipelineStageFlags::FRAGMENT_SHADER,
-                        vk::DependencyFlags::empty(),
-                        &[],
-                        &[],
-                        &[*to_shader_read_image_barrier],
-                    );
-                }
+                upload_existing_font_texture(
+                    &self.device,
+                    command_buffer,
+                    existing_image_view,
+                    &texture_data_buffer,
+                    copy_region,
+                );
             }
         } else {
-            // usually ImageDelta.pos == None meaning a new image needs to be created
-            debug!("creating new gui texture id = {:?}", texture_id);
+            // usually `ImageDelta.pos` is `None` meaning a new image needs to be created
+            debug!("creating new gui texture. id = {:?}", texture_id);
 
-            // create image
-
-            let new_image_properties = ImageProperties::new_default(
-                TEXTURE_FORMAT,
-                ImageDimensions::new_2d(delta.image.width() as u32, delta.image.height() as u32),
-                vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            );
-
-            let new_image_allocation_info = AllocationCreateInfo {
-                required_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
-                ..Default::default()
-            };
-
-            let new_image = Arc::new(
-                Image::new(
-                    self.memory_allocator.clone(),
-                    new_image_properties.clone(),
-                    new_image_allocation_info,
-                )
-                .context("creating image for new egui texture")?,
-            );
-
-            // create image view
-
-            let new_image_view_properties =
-                ImageViewProperties::from_image_properties_default(&new_image_properties);
-            let new_image_view = Arc::new(
-                ImageView::new(new_image.clone(), new_image_view_properties)
-                    .context("creating image view for new egui texture")?,
-            );
-
-            // copy buffer to image
-            let copy_region = vk::BufferImageCopy {
-                image_subresource: default_subresource_layers(vk::ImageAspectFlags::COLOR),
-                image_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
-                image_extent: vk::Extent3D {
-                    width: delta.image.width() as u32,
-                    height: delta.image.height() as u32,
-                    depth: 1,
-                },
-                ..Default::default()
-            };
-            debug!("updating existing gui texture id = {:?}, region offset = {:?}, region extent = {:?}",
-                texture_id, copy_region.image_offset, copy_region.image_extent);
-
-            // after uploading we need to transfer to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-            let to_shader_read_image_barrier = vk::ImageMemoryBarrier::builder()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::SHADER_READ)
-                .old_layout(vk::ImageLayout::GENERAL)
-                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-                .image(new_image_view.image().handle())
-                .subresource_range(new_image_view.properties().subresource_range);
-
-            // copy buffer to image
-            unsafe {
-                self.device.inner().cmd_pipeline_barrier(
-                    command_buffer.handle(),
-                    vk::PipelineStageFlags::FRAGMENT_SHADER,
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[],
-                );
-
-                self.device.inner().cmd_copy_buffer_to_image(
-                    command_buffer.handle(),
-                    texture_data_buffer.handle(),
-                    new_image.handle(),
-                    vk::ImageLayout::GENERAL,
-                    &[copy_region],
-                );
-
-                self.device.inner().cmd_pipeline_barrier(
-                    command_buffer.handle(),
-                    vk::PipelineStageFlags::TRANSFER,
-                    vk::PipelineStageFlags::FRAGMENT_SHADER,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[*to_shader_read_image_barrier],
-                );
-            }
-
-            // create new descriptor set
-            let font_desc_set = self.get_new_font_texture_desc_set()?;
-
-            // write descriptor set
-            write_font_texture_desc_set(
-                &self.device,
-                &font_desc_set,
-                &new_image_view,
-                &self.texture_sampler,
-            )?;
-
-            // store new texture
-            self.texture_desc_sets.insert(texture_id, font_desc_set);
-            self.texture_image_views.insert(texture_id, new_image_view);
+            self.create_new_texture(command_buffer, texture_data_buffer, delta, texture_id)?;
         }
 
         Ok(())
@@ -446,6 +348,111 @@ impl GuiRenderer {
         }
         // else allocate new one
         return self.allocate_font_texture_desc_set();
+    }
+
+    fn create_new_texture(
+        &mut self,
+        command_buffer: &CommandBuffer,
+        texture_data_buffer: Buffer,
+        delta: egui::epaint::ImageDelta,
+        texture_id: TextureId,
+    ) -> anyhow::Result<()> {
+        let new_image_properties = ImageProperties::new_default(
+            TEXTURE_FORMAT,
+            ImageDimensions::new_2d(delta.image.width() as u32, delta.image.height() as u32),
+            vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        );
+        let new_image_allocation_info = AllocationCreateInfo {
+            required_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            ..Default::default()
+        };
+        let new_image = Arc::new(
+            Image::new(
+                self.memory_allocator.clone(),
+                new_image_properties.clone(),
+                new_image_allocation_info,
+            )
+            .context("creating image for new egui texture")?,
+        );
+
+        let new_image_view_properties =
+            ImageViewProperties::from_image_properties_default(&new_image_properties);
+        let new_image_view = Arc::new(
+            ImageView::new(new_image.clone(), new_image_view_properties)
+                .context("creating image view for new egui texture")?,
+        );
+
+        let copy_region = vk::BufferImageCopy {
+            image_subresource: default_subresource_layers(vk::ImageAspectFlags::COLOR),
+            image_offset: vk::Offset3D { x: 0, y: 0, z: 0 },
+            image_extent: vk::Extent3D {
+                width: delta.image.width() as u32,
+                height: delta.image.height() as u32,
+                depth: 1,
+            },
+            ..Default::default()
+        };
+
+        debug!(
+            "updating existing gui texture id = {:?}, region offset = {:?}, region extent = {:?}",
+            texture_id, copy_region.image_offset, copy_region.image_extent
+        );
+
+        let to_shader_read_image_barrier = vk::ImageMemoryBarrier::builder()
+            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .dst_access_mask(vk::AccessFlags::SHADER_READ)
+            .old_layout(vk::ImageLayout::GENERAL)
+            .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image(new_image_view.image().handle())
+            .subresource_range(new_image_view.properties().subresource_range);
+
+        unsafe {
+            let device_ash = self.device.inner();
+            let command_buffer_handle = command_buffer.handle();
+
+            device_ash.cmd_pipeline_barrier(
+                command_buffer_handle,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[],
+            );
+
+            device_ash.cmd_copy_buffer_to_image(
+                command_buffer_handle,
+                texture_data_buffer.handle(),
+                new_image.handle(),
+                vk::ImageLayout::GENERAL,
+                &[copy_region],
+            );
+
+            device_ash.cmd_pipeline_barrier(
+                command_buffer_handle,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[*to_shader_read_image_barrier],
+            );
+        }
+
+        let font_desc_set = self.get_new_font_texture_desc_set()?;
+
+        write_font_texture_desc_set(
+            &self.device,
+            &font_desc_set,
+            &new_image_view,
+            &self.texture_sampler,
+        )?;
+
+        self.texture_desc_sets.insert(texture_id, font_desc_set);
+        self.texture_image_views.insert(texture_id, new_image_view);
+
+        Ok(())
     }
 
     fn allocate_font_texture_desc_set(&mut self) -> anyhow::Result<Arc<DescriptorSet>> {
@@ -491,6 +498,153 @@ impl GuiRenderer {
         new_pool
             .allocate_descriptor_set(set_layout)
             .context("allocating descriptor set for new egui texture")
+    }
+
+    fn record_mesh_commands(
+        &mut self,
+        command_buffer: &CommandBuffer,
+        push_constant_bytes: &[u8],
+        mesh: &Mesh,
+        scale_factor: f32,
+        framebuffer_dimensions: [f32; 2],
+        clip_rect: Rect,
+    ) -> Result<(), anyhow::Error> {
+        let (vertex_buffer, index_buffer) =
+            create_vertex_and_index_buffers(self.memory_allocator.clone(), mesh)?;
+
+        let scissor =
+            calculate_gui_element_scissor(scale_factor, framebuffer_dimensions, clip_rect);
+
+        let viewport = vk::Viewport {
+            x: 0.,
+            y: 0.,
+            width: framebuffer_dimensions[0],
+            height: framebuffer_dimensions[1],
+            min_depth: 0.,
+            max_depth: 1.,
+        };
+
+        let desc_set = self
+            .texture_desc_sets
+            .get(&mesh.texture_id)
+            .ok_or(GuiRendererError::TextureDescSetMissing {
+                id: mesh.texture_id,
+            })
+            .context("recording gui render commands")?
+            .clone();
+        unsafe {
+            let device_ash = self.device.inner();
+            let command_buffer_handle = command_buffer.handle();
+
+            device_ash.cmd_bind_pipeline(
+                command_buffer_handle,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline.handle(),
+            );
+            device_ash.cmd_set_viewport(command_buffer_handle, 0, &[viewport]);
+            device_ash.cmd_set_scissor(command_buffer_handle, 0, &[scissor]);
+            device_ash.cmd_bind_descriptor_sets(
+                command_buffer_handle,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline.pipeline_layout().handle(),
+                0,
+                &[desc_set.handle()],
+                &[],
+            );
+            device_ash.cmd_push_constants(
+                command_buffer_handle,
+                self.pipeline.pipeline_layout().handle(),
+                vk::ShaderStageFlags::FRAGMENT,
+                0,
+                push_constant_bytes,
+            );
+            device_ash.cmd_bind_vertex_buffers(
+                command_buffer_handle,
+                0,
+                &[vertex_buffer.handle()],
+                &[0],
+            );
+            device_ash.cmd_bind_index_buffer(
+                command_buffer_handle,
+                index_buffer.handle(),
+                0,
+                vk::IndexType::UINT32,
+            );
+
+            device_ash.cmd_draw_indexed(
+                command_buffer_handle,
+                mesh.indices.len() as u32,
+                1,
+                0,
+                0,
+                0,
+            );
+        }
+
+        self.vertex_buffers.push(vertex_buffer);
+        self.index_buffers.push(index_buffer);
+
+        Ok(())
+    }
+}
+
+fn upload_existing_font_texture(
+    device: &Device,
+    command_buffer: &CommandBuffer,
+    existing_image_view: &ImageView<Image>,
+    texture_data_buffer: &Buffer,
+    copy_region: vk::BufferImageCopy,
+) {
+    // we need to transition the image layout to vk::ImageLayout::GENERAL
+    let to_general_image_barrier = vk::ImageMemoryBarrier::builder()
+        .src_access_mask(vk::AccessFlags::SHADER_READ)
+        .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+        .old_layout(vk::ImageLayout::UNDEFINED)
+        .new_layout(vk::ImageLayout::GENERAL)
+        .image(existing_image_view.image().handle())
+        .subresource_range(existing_image_view.properties().subresource_range);
+
+    // then transition back to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+    let to_shader_read_image_barrier = vk::ImageMemoryBarrier::builder()
+        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+        .dst_access_mask(vk::AccessFlags::SHADER_READ)
+        .old_layout(vk::ImageLayout::GENERAL)
+        .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+        .image(existing_image_view.image().handle())
+        .subresource_range(existing_image_view.properties().subresource_range);
+
+    // copy buffer to image
+    unsafe {
+        let device_ash = device.inner();
+        let command_buffer_handle = command_buffer.handle();
+
+        device_ash.cmd_pipeline_barrier(
+            command_buffer_handle,
+            vk::PipelineStageFlags::FRAGMENT_SHADER,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::DependencyFlags::empty(),
+            &[],
+            &[],
+            &[*to_general_image_barrier],
+        );
+
+        device_ash.cmd_copy_buffer_to_image(
+            command_buffer_handle,
+            texture_data_buffer.handle(),
+            existing_image_view.image().handle(),
+            vk::ImageLayout::GENERAL,
+            &[copy_region],
+        );
+
+        device_ash.cmd_pipeline_barrier(
+            command_buffer_handle,
+            vk::PipelineStageFlags::TRANSFER,
+            vk::PipelineStageFlags::FRAGMENT_SHADER,
+            vk::DependencyFlags::empty(),
+            &[],
+            &[],
+            &[*to_shader_read_image_barrier],
+        );
     }
 }
 
@@ -569,7 +723,7 @@ fn create_pipeline_layout(
     device: Arc<Device>,
     desc_set_layout_texture: Arc<DescriptorSetLayout>,
 ) -> anyhow::Result<Arc<PipelineLayout>> {
-    let mut pipeline_layout_props =
+    let pipeline_layout_props =
         PipelineLayoutProperties::new(vec![desc_set_layout_texture], Vec::new());
 
     let pipeline_layout = PipelineLayout::new(device, pipeline_layout_props)
@@ -689,6 +843,45 @@ fn create_texture_data_buffer(
 
     let alloc_info = cpu_accessible_allocation_info();
     Buffer::new(memory_allocator, buffer_props, alloc_info).context("creating texture data buffer")
+}
+
+fn create_vertex_and_index_buffers(
+    memory_allocator: Arc<MemoryAllocator>,
+    mesh: &Mesh,
+) -> anyhow::Result<(Buffer, Buffer)> {
+    let buffer_alloc_info = AllocationCreateInfo {
+        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE
+            | vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        ..Default::default()
+    };
+
+    let vertex_buffer_props = BufferProperties {
+        size: mem::size_of_val(&mesh.vertices) as vk::DeviceSize,
+        usage: vk::BufferUsageFlags::VERTEX_BUFFER,
+        ..Default::default()
+    };
+
+    let index_buffer_props = BufferProperties {
+        size: mem::size_of_val(&mesh.indices) as vk::DeviceSize,
+        usage: vk::BufferUsageFlags::INDEX_BUFFER,
+        ..Default::default()
+    };
+
+    let vertex_buffer = Buffer::new(
+        memory_allocator.clone(),
+        vertex_buffer_props,
+        buffer_alloc_info.clone(),
+    )
+    .context("creating gui vertex buffer")?;
+
+    let index_buffer = Buffer::new(
+        memory_allocator.clone(),
+        index_buffer_props,
+        buffer_alloc_info,
+    )
+    .context("creating gui index buffer")?;
+
+    Ok((vertex_buffer, index_buffer))
 }
 
 // ~~~ Errors ~~~
