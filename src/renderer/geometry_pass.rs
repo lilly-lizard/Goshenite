@@ -5,39 +5,13 @@ use super::{
         primitive_op_buffer::PrimitiveOpBufferUnit, uniform_buffers::CameraUniformBuffer,
         vertex_inputs::BoundingBoxVertex,
     },
-    vulkan_helper_archive::{create_shader_module, CreateDescriptorSetError, CreateShaderError},
 };
 use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
 use anyhow::Context;
+use ash::vk;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{borrow::Borrow, sync::Arc};
-use vulkano::{
-    buffer::{cpu_pool::CpuBufferPoolChunk, BufferAccess, CpuAccessibleBuffer},
-    command_buffer::AutoCommandBufferBuilder,
-    descriptor_set::{
-        allocator::StandardDescriptorSetAllocator,
-        layout::{
-            DescriptorSetLayout, DescriptorSetLayoutCreateInfo, DescriptorSetLayoutCreationError,
-        },
-        PersistentDescriptorSet, WriteDescriptorSet,
-    },
-    device::Device,
-    memory::allocator::StandardMemoryAllocator,
-    pipeline::{
-        graphics::{
-            depth_stencil::DepthStencilState,
-            input_assembly::{InputAssemblyState, PrimitiveTopology},
-            rasterization::{CullMode, FrontFace, RasterizationState},
-            vertex_input::BuffersDefinition,
-            viewport::{Viewport, ViewportState},
-        },
-        layout::PipelineLayoutCreateInfo,
-        GraphicsPipeline, Pipeline, PipelineBindPoint, PipelineLayout,
-    },
-    render_pass::Subpass,
-    shader::{DescriptorRequirements, EntryPoint},
-};
 
 const MAX_OBJECT_BUFFERS: u32 = 256;
 

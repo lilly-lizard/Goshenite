@@ -8,30 +8,14 @@ use ahash::AHashMap;
 use anyhow::Context;
 use ash::vk;
 use bort::{
-    buffer::{Buffer, BufferProperties},
-    command_buffer::CommandBuffer,
-    command_pool::{CommandPool, CommandPoolProperties},
-    descriptor_layout::{
-        DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
-    },
-    descriptor_pool::{DescriptorPool, DescriptorPoolProperties},
-    descriptor_set::DescriptorSet,
-    device::Device,
-    image::Image,
-    image_access::{ImageAccess, ImageViewAccess},
-    image_properties::{ImageDimensions, ImageProperties},
-    image_view::{default_subresource_layers, ImageView, ImageViewProperties},
-    memory::{cpu_accessible_allocation_info, MemoryAllocator},
-    pipeline_access::PipelineAccess,
-    pipeline_graphics::{
-        ColorBlendState, DynamicState, GraphicsPipeline, GraphicsPipelineProperties,
-    },
-    pipeline_layout::{PipelineLayout, PipelineLayoutProperties},
-    queue::Queue,
-    render_pass::RenderPass,
-    sampler::{Sampler, SamplerProperties},
-    semaphore::Semaphore,
-    shader_module::{ShaderModule, ShaderStage},
+    cpu_accessible_allocation_info, default_subresource_layers, Buffer, BufferProperties,
+    ColorBlendState, CommandBuffer, CommandPool, CommandPoolProperties, DescriptorPool,
+    DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
+    DescriptorSetLayoutProperties, Device, DynamicState, GraphicsPipeline,
+    GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions, ImageProperties, ImageView,
+    ImageViewAccess, ImageViewProperties, MemoryAllocator, PipelineAccess, PipelineLayout,
+    PipelineLayoutProperties, Queue, RenderPass, Sampler, SamplerProperties, Semaphore,
+    ShaderModule, ShaderStage,
 };
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
 #[allow(unused_imports)]
@@ -233,6 +217,7 @@ impl GuiRenderer {
         Ok(())
     }
 
+    /// TODO [free at once pool](https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/custom_memory_pools.html#linear_algorithm_free_at_once)
     /// Fress vertex and index buffers created in previous calls to `record_render_commands`.
     /// Call this when gui rendering commands from the previous frame have finished.
     pub fn free_previous_vertex_and_index_buffers(&mut self) {

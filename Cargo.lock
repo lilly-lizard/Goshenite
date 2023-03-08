@@ -159,8 +159,17 @@ version = "0.1.0"
 dependencies = [
  "ash",
  "ash-window",
+ "bort-vma",
  "raw-window-handle 0.5.0",
- "vk-mem",
+]
+
+[[package]]
+name = "bort-vma"
+version = "0.2.3"
+dependencies = [
+ "ash",
+ "bitflags",
+ "cc",
 ]
 
 [[package]]
@@ -692,6 +701,7 @@ dependencies = [
  "ash",
  "ash-window",
  "bort",
+ "bort-vma",
  "bytemuck",
  "colored",
  "egui",
@@ -702,7 +712,6 @@ dependencies = [
  "memoffset 0.8.0",
  "raw-window-handle 0.5.0",
  "shaderc",
- "vk-mem",
  "winit",
 ]
 
@@ -1540,15 +1549,6 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
-
-[[package]]
-name = "vk-mem"
-version = "0.2.3"
-dependencies = [
- "ash",
- "bitflags",
- "cc",
-]
 
 [[package]]
 name = "walkdir"

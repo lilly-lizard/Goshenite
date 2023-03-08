@@ -1,6 +1,6 @@
 use crate::engine::object::object::ObjectId;
 use ash::vk;
-use bort::pipeline_graphics::VertexInputState;
+use bort::VertexInputState;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 use memoffset::offset_of;

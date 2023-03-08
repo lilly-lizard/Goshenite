@@ -8,24 +8,19 @@ use crate::engine::{
     object::object::{Object, ObjectId},
 };
 use anyhow::Context;
+use ash::vk;
+use bort::memory::MemoryAllocator;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{mem::size_of, sync::Arc};
-use vulkano::{
-    buffer::{cpu_pool::CpuBufferPoolChunk, BufferUsage, CpuBufferPool},
-    command_buffer::AutoCommandBufferBuilder,
-    memory::allocator::{AllocationCreationError, MemoryUsage, StandardMemoryAllocator},
-    pipeline::{GraphicsPipeline, Pipeline},
-    DeviceSize,
-};
 
 /// Reserve for 1024 operations
-const INIT_PRIMITIVE_OP_POOL_RESERVE: DeviceSize =
-    (1024 * PRIMITIVE_OP_UNIT_LEN * size_of::<PrimitiveOpBufferUnit>()) as DeviceSize;
+const INIT_PRIMITIVE_OP_POOL_RESERVE: vk::DeviceSize =
+    (1024 * PRIMITIVE_OP_UNIT_LEN * size_of::<PrimitiveOpBufferUnit>()) as vk::DeviceSize;
 
 /// Reserve for 16 AABBs
-const INIT_BOUNDING_BOX_POOL_RESERVE: DeviceSize =
-    (16 * AABB_VERTEX_COUNT * size_of::<BoundingBoxVertex>()) as DeviceSize;
+const INIT_BOUNDING_BOX_POOL_RESERVE: vk::DeviceSize =
+    (16 * AABB_VERTEX_COUNT * size_of::<BoundingBoxVertex>()) as vk::DeviceSize;
 
 /// Manages per-object resources for the geometry pass
 pub struct ObjectBuffers {
@@ -39,7 +34,7 @@ pub struct ObjectBuffers {
 }
 
 impl ObjectBuffers {
-    pub fn new(memory_allocator: Arc<StandardMemoryAllocator>) -> anyhow::Result<Self> {
+    pub fn new(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Self> {
         let bounding_box_buffer_pool = create_bounding_box_buffer_pool(memory_allocator.clone())?;
         let primitive_op_buffer_pool = create_primitive_op_buffer_pool(memory_allocator)?;
 
