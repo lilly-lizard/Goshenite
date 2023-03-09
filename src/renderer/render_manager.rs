@@ -20,14 +20,14 @@ use crate::{
 use anyhow::Context;
 use ash::{vk, Entry};
 use bort::{
-    is_format_srgb, ApiVersion, Buffer, DebugCallback, DescriptorSet, Device, Framebuffer, Image,
-    ImageView, Instance, MemoryAllocator, Queue, RenderPass, Surface, Swapchain, SwapchainImage,
+    is_format_srgb, ApiVersion, Buffer, DebugCallback, Device, Framebuffer, Image, ImageView,
+    Instance, MemoryAllocator, Queue, RenderPass, Surface, Swapchain, SwapchainImage,
 };
 use egui::TexturesDelta;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use std::{borrow::Cow, ffi::CStr, mem, ptr, sync::Arc};
+use std::{borrow::Cow, ffi::CStr, sync::Arc};
 use winit::window::Window;
 
 /// Contains Vulkan resources and methods to manage rendering

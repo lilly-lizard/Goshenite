@@ -13,10 +13,11 @@ use bort::{
     DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
     DescriptorSetLayoutProperties, Device, DynamicState, GraphicsPipeline,
     GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions, ImageProperties, ImageView,
-    ImageViewAccess, ImageViewProperties, MemoryAllocator, PipelineAccess, PipelineLayout,
-    PipelineLayoutProperties, Queue, RenderPass, Sampler, SamplerProperties, Semaphore,
-    ShaderModule, ShaderStage,
+    ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool, MemoryPoolPropeties,
+    PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue, RenderPass, Sampler,
+    SamplerProperties, Semaphore, ShaderModule, ShaderStage,
 };
+use bort_vma::{Alloc, AllocationCreateInfo};
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -26,17 +27,14 @@ use std::{
     mem,
     sync::Arc,
 };
-use vk_mem::AllocationCreateInfo;
 
 const VERT_SHADER_PATH: &str = "assets/shader_binaries/gui.vert.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/gui.frag.spv";
 
-const VERTICES_PER_QUAD: vk::DeviceSize = 4;
-const VERTEX_BUFFER_SIZE: vk::DeviceSize = 1024 * 1024 * VERTICES_PER_QUAD;
-const INDEX_BUFFER_SIZE: vk::DeviceSize = 1024 * 1024 * 2;
-
+/// 2048 vertices and 1024 indices todo breakpoint to get estimate of how much actually required...
+const BUFFER_POOL_SIZE: vk::DeviceSize =
+    (4096 * mem::size_of::<egui::epaint::Vertex>() + 1024 * 4) as vk::DeviceSize;
 const TEXTURE_FORMAT: vk::Format = vk::Format::R8G8B8A8_SRGB;
-
 const MAX_DESC_SETS_PER_POOL: u32 = 64;
 
 mod descriptor {
@@ -58,6 +56,10 @@ pub struct GuiRenderer {
     texture_image_views: AHashMap<egui::TextureId, Arc<ImageView<Image>>>,
     texture_desc_sets: AHashMap<egui::TextureId, Arc<DescriptorSet>>,
 
+    buffer_pools: Vec<Arc<MemoryPool>>,
+    /// Indicates which buffer pool to use next. E.g. two buffer pools have been created, but
+    /// all the buffers have just been freed, so we'll start from the first pool again.
+    current_buffer_pool_index: usize,
     vertex_buffers: Vec<Buffer>,
     index_buffers: Vec<Buffer>,
 }
@@ -86,6 +88,8 @@ impl GuiRenderer {
 
         let descriptor_pool = create_descriptor_pool(device.clone())?;
 
+        let initial_buffer_pool = create_buffer_pool(memory_allocator.clone())?;
+
         Ok(Self {
             device,
             memory_allocator,
@@ -99,6 +103,8 @@ impl GuiRenderer {
             texture_image_views: AHashMap::default(),
             texture_desc_sets: AHashMap::default(),
 
+            buffer_pools: vec![Arc::new(initial_buffer_pool)],
+            current_buffer_pool_index: 0,
             vertex_buffers: Vec::new(),
             index_buffers: Vec::new(),
         })
@@ -223,6 +229,7 @@ impl GuiRenderer {
     pub fn free_previous_vertex_and_index_buffers(&mut self) {
         self.vertex_buffers.clear();
         self.index_buffers.clear();
+        self.current_buffer_pool_index = 0;
     }
 }
 
@@ -494,8 +501,7 @@ impl GuiRenderer {
         framebuffer_dimensions: [f32; 2],
         clip_rect: Rect,
     ) -> Result<(), anyhow::Error> {
-        let (vertex_buffer, index_buffer) =
-            create_vertex_and_index_buffers(self.memory_allocator.clone(), mesh)?;
+        let (vertex_buffer, index_buffer) = self.create_vertex_and_index_buffers(mesh)?;
 
         let scissor =
             calculate_gui_element_scissor(scale_factor, framebuffer_dimensions, clip_rect);
@@ -570,6 +576,81 @@ impl GuiRenderer {
         self.index_buffers.push(index_buffer);
 
         Ok(())
+    }
+
+    fn create_vertex_and_index_buffers(&mut self, mesh: &Mesh) -> anyhow::Result<(Buffer, Buffer)> {
+        let buffer_alloc_info = buffer_alloc_info();
+
+        let vertex_buffer_props = BufferProperties {
+            size: mem::size_of_val(&mesh.vertices) as vk::DeviceSize,
+            usage: vk::BufferUsageFlags::VERTEX_BUFFER,
+            ..Default::default()
+        };
+
+        let index_buffer_props = BufferProperties {
+            size: mem::size_of_val(&mesh.indices) as vk::DeviceSize,
+            usage: vk::BufferUsageFlags::INDEX_BUFFER,
+            ..Default::default()
+        };
+
+        // create buffers
+
+        let mut vertex_buffer =
+            self.create_buffer_from_pools(vertex_buffer_props, buffer_alloc_info.clone())?;
+
+        let mut index_buffer =
+            self.create_buffer_from_pools(index_buffer_props, buffer_alloc_info.clone())?;
+
+        // upload data
+
+        // todo can avoid the vec clones here! look at `gui::mesh_primitives` and `free_previous_vertex_and_index_buffers`
+
+        vertex_buffer
+            .write_iter(mesh.vertices.clone(), 0)
+            .context("uploading gui pass vertices")?;
+
+        index_buffer
+            .write_iter(mesh.indices.clone(), 0)
+            .context("uploading gui pass indices")?;
+
+        Ok((vertex_buffer, index_buffer))
+    }
+
+    fn create_buffer_from_pools(
+        &mut self,
+        buffer_props: BufferProperties,
+        buffer_alloc_info: AllocationCreateInfo,
+    ) -> anyhow::Result<Buffer> {
+        // a buffer pool may no longer have enough memory for the buffer allocation so we may need to try with other pools...
+        loop {
+            // try creating a buffer with an existing buffer pool
+            let buffer_res = Buffer::new(
+                self.buffer_pools[self.current_buffer_pool_index].clone(),
+                buffer_props.clone(),
+                buffer_alloc_info.clone(),
+            );
+
+            // `VK_ERROR_OUT_OF_DEVICE_MEMORY` means the vma pool has run out of space!
+            if let Err(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY) = buffer_res {
+                self.current_buffer_pool_index += 1;
+
+                if self.current_buffer_pool_index < self.buffer_pools.len() {
+                    // there are more buffer pools, lets try those...
+                    continue;
+                }
+
+                // run out of existing pools, need to make a new one!
+                let new_buffer_pool = Arc::new(create_buffer_pool(self.memory_allocator.clone())?);
+                self.buffer_pools.push(new_buffer_pool.clone());
+
+                // try one final time with new buffer pool
+                break Buffer::new(new_buffer_pool, buffer_props, buffer_alloc_info)
+                    .context("creating gui pass vertex/index buffer");
+            }
+
+            // stop loop at other errors or `Ok`
+            break buffer_res.context("creating gui pass vertex/index buffer");
+        }
     }
 }
 
@@ -676,6 +757,38 @@ fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorP
         .context("creating gui renderer descriptor pool")?;
 
     Ok(Arc::new(descriptor_pool))
+}
+
+fn buffer_alloc_info() -> AllocationCreateInfo {
+    AllocationCreateInfo {
+        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE
+            | vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        ..Default::default()
+    }
+}
+
+fn create_buffer_pool(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<MemoryPool> {
+    let buffer_info = vk::BufferCreateInfo::builder()
+        .size(BUFFER_POOL_SIZE)
+        .usage(vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::INDEX_BUFFER);
+
+    let memory_type_index = unsafe {
+        memory_allocator
+            .inner()
+            .find_memory_type_index_for_buffer_info(&buffer_info, &buffer_alloc_info())
+    }
+    .context("finding memory type index for gui pass buffer pool")?;
+
+    // using linear algorithm because we're creating new buffers each frame and freeing them all at once
+    // https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/custom_memory_pools.html#linear_algorithm_free_at_once
+    let pool_props = MemoryPoolPropeties {
+        flags: bort_vma::AllocatorPoolCreateFlags::LINEAR_ALGORITHM,
+        memory_type_index,
+        ..Default::default()
+    };
+
+    MemoryPool::new(memory_allocator, pool_props)
+        .context("creating gui pass vertex/index buffer pool")
 }
 
 fn create_texture_sampler(device: Arc<Device>) -> anyhow::Result<Arc<Sampler>> {
@@ -828,45 +941,6 @@ fn create_texture_data_buffer(
 
     let alloc_info = cpu_accessible_allocation_info();
     Buffer::new(memory_allocator, buffer_props, alloc_info).context("creating texture data buffer")
-}
-
-fn create_vertex_and_index_buffers(
-    memory_allocator: Arc<MemoryAllocator>,
-    mesh: &Mesh,
-) -> anyhow::Result<(Buffer, Buffer)> {
-    let buffer_alloc_info = AllocationCreateInfo {
-        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE
-            | vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        ..Default::default()
-    };
-
-    let vertex_buffer_props = BufferProperties {
-        size: mem::size_of_val(&mesh.vertices) as vk::DeviceSize,
-        usage: vk::BufferUsageFlags::VERTEX_BUFFER,
-        ..Default::default()
-    };
-
-    let index_buffer_props = BufferProperties {
-        size: mem::size_of_val(&mesh.indices) as vk::DeviceSize,
-        usage: vk::BufferUsageFlags::INDEX_BUFFER,
-        ..Default::default()
-    };
-
-    let vertex_buffer = Buffer::new(
-        memory_allocator.clone(),
-        vertex_buffer_props,
-        buffer_alloc_info.clone(),
-    )
-    .context("creating gui vertex buffer")?;
-
-    let index_buffer = Buffer::new(
-        memory_allocator.clone(),
-        index_buffer_props,
-        buffer_alloc_info,
-    )
-    .context("creating gui index buffer")?;
-
-    Ok((vertex_buffer, index_buffer))
 }
 
 // ~~~ Errors ~~~
