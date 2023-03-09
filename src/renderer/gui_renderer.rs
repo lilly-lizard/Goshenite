@@ -582,6 +582,7 @@ impl GuiRenderer {
     }
 
     fn create_vertex_and_index_buffers(&mut self, mesh: &Mesh) -> anyhow::Result<(Buffer, Buffer)> {
+        // note: this ends up getting ignored anyway because we're allocating from a pool (https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/custom_memory_pools.html#choosing_memory_type_index)
         let buffer_alloc_info = buffer_alloc_info();
 
         let vertex_buffer_props = BufferProperties {

@@ -9,7 +9,10 @@ use crate::engine::{
 };
 use anyhow::Context;
 use ash::vk;
-use bort::memory::MemoryAllocator;
+use bort::{
+    Buffer, BufferProperties, CommandBuffer, GraphicsPipeline, MemoryAllocator, PipelineAccess,
+};
+use bort_vma::AllocationCreateInfo;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{mem::size_of, sync::Arc};
@@ -22,56 +25,51 @@ const INIT_PRIMITIVE_OP_POOL_RESERVE: vk::DeviceSize =
 const INIT_BOUNDING_BOX_POOL_RESERVE: vk::DeviceSize =
     (16 * AABB_VERTEX_COUNT * size_of::<BoundingBoxVertex>()) as vk::DeviceSize;
 
-/// Manages per-object resources for the geometry pass
-pub struct ObjectBuffers {
-    bounding_box_buffer_pool: CpuBufferPool<BoundingBoxVertex>,
-    primitive_op_buffer_pool: CpuBufferPool<PrimitiveOpBufferUnit>,
-
-    ids: Vec<ObjectId>,
-    bounding_boxes: Vec<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>>,
-    bounding_box_vertex_counts: Vec<u32>,
-    primitive_ops: Vec<Arc<CpuBufferPoolChunk<PrimitiveOpBufferUnit>>>,
+struct PerObjectBuffers {
+    pub id: ObjectId,
+    pub bounding_box_buffer: Arc<Buffer>,
+    pub bounding_box_vertex_count: u32,
+    pub primitive_ops_buffer: Arc<Buffer>,
 }
 
-impl ObjectBuffers {
-    pub fn new(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Self> {
-        let bounding_box_buffer_pool = create_bounding_box_buffer_pool(memory_allocator.clone())?;
-        let primitive_op_buffer_pool = create_primitive_op_buffer_pool(memory_allocator)?;
+/// Manages per-object resources for the geometry pass
+pub struct ObjectBufferManager {
+    memory_allocator: Arc<MemoryAllocator>,
+    objects_buffers: Vec<PerObjectBuffers>,
+}
 
+impl ObjectBufferManager {
+    pub fn new(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Self> {
         Ok(Self {
-            bounding_box_buffer_pool,
-            primitive_op_buffer_pool,
-            ids: Vec::new(),
-            bounding_boxes: Vec::new(),
-            bounding_box_vertex_counts: Vec::new(),
-            primitive_ops: Vec::new(),
+            memory_allocator,
+            objects_buffers: Vec::new(),
         })
     }
 
     pub fn update_or_push(&mut self, object: &Object) -> anyhow::Result<()> {
-        self.debug_assert_per_object_resource_count();
-
         let id = object.id();
 
-        let primitive_ops_buffer = upload_primitive_ops(&self.primitive_op_buffer_pool, object)
+        let primitive_ops_buffer = upload_primitive_ops(self.memory_allocator.clone(), object)
             .context("initial upload object to buffer")?;
 
         if let Some(index) = self.get_index(id) {
-            let bounding_box_buffer = upload_bounding_box(&self.bounding_box_buffer_pool, object)?;
+            let bounding_box_buffer = upload_bounding_box(self.memory_allocator.clone(), object)?;
 
-            self.bounding_boxes[index] = bounding_box_buffer;
-            self.bounding_box_vertex_counts[index] = AABB_VERTEX_COUNT as u32;
-            self.primitive_ops[index] = primitive_ops_buffer;
+            self.objects_buffers[index].bounding_box_buffer = bounding_box_buffer;
+            self.objects_buffers[index].bounding_box_vertex_count = AABB_VERTEX_COUNT as u32;
+            self.objects_buffers[index].primitive_ops_buffer = primitive_ops_buffer;
 
             Ok(())
         } else {
-            let bounding_box_buffer = upload_bounding_box(&self.bounding_box_buffer_pool, object)?;
+            let bounding_box_buffer = upload_bounding_box(self.memory_allocator.clone(), object)?;
 
-            self.ids.push(id);
-            self.bounding_boxes.push(bounding_box_buffer);
-            self.bounding_box_vertex_counts
-                .push(AABB_VERTEX_COUNT as u32);
-            self.primitive_ops.push(primitive_ops_buffer);
+            let new_object = PerObjectBuffers {
+                id,
+                bounding_box_buffer,
+                bounding_box_vertex_count: AABB_VERTEX_COUNT as u32,
+                primitive_ops_buffer,
+            };
+            self.objects_buffers.push(new_object);
 
             Ok(())
         }
@@ -79,19 +77,39 @@ impl ObjectBuffers {
 
     pub fn draw_commands<L>(
         &self,
-        command_buffer: &mut AutoCommandBufferBuilder<L>,
-        pipeline: Arc<GraphicsPipeline>,
+        command_buffer: &CommandBuffer,
+        pipeline: &GraphicsPipeline,
     ) -> anyhow::Result<()> {
-        self.debug_assert_per_object_resource_count();
+        let device_ash = command_buffer.device().inner();
+        let command_buffer_handle = command_buffer.handle();
 
         // for each object
-        for index in 0..self.ids.len() {
+        for (index, per_object_buffers) in self.objects_buffers.iter().enumerate() {
             let object_index_push_constant = ObjectIndexPushConstant::new(index as u32);
-            command_buffer
-                .push_constants(pipeline.layout().clone(), 0, object_index_push_constant)
-                .bind_vertex_buffers(0, self.bounding_boxes[index].clone())
-                .draw(self.bounding_box_vertex_counts[index], 1, 0, 0)
-                .context("recording geometry pass commands")?;
+            let push_constant_bytes = bytemuck::bytes_of(&object_index_push_constant);
+
+            unsafe {
+                device_ash.cmd_push_constants(
+                    command_buffer_handle,
+                    pipeline.pipeline_layout().handle(),
+                    vk::ShaderStageFlags::VERTEX,
+                    0,
+                    push_constant_bytes,
+                );
+                device_ash.cmd_bind_vertex_buffers(
+                    command_buffer_handle,
+                    0,
+                    &[per_object_buffers.bounding_box_buffer.handle()],
+                    &[0],
+                );
+                device_ash.cmd_draw(
+                    command_buffer_handle,
+                    per_object_buffers.bounding_box_vertex_count,
+                    1,
+                    0,
+                    0,
+                );
+            }
         }
 
         Ok(())
@@ -99,101 +117,99 @@ impl ObjectBuffers {
 
     /// Returns the vec index if the id was found and removed.
     pub fn remove(&mut self, id: ObjectId) -> Option<usize> {
-        self.debug_assert_per_object_resource_count();
-
         let index_res = self.get_index(id);
         if let Some(index) = index_res {
-            self.ids.remove(index);
-            self.bounding_boxes.remove(index);
-            self.bounding_box_vertex_counts.remove(index);
-            self.primitive_ops.remove(index);
+            self.objects_buffers.remove(index);
         }
         index_res
     }
 
     pub fn get_index(&self, id: ObjectId) -> Option<usize> {
-        self.ids.iter().position(|&x| x == id)
+        self.objects_buffers.iter().position(|o| o.id == id)
     }
 
-    pub fn primitive_op_buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<PrimitiveOpBufferUnit>>> {
-        &self.primitive_ops
+    pub fn primitive_op_buffers(&self) -> Vec<Arc<Buffer>> {
+        self.objects_buffers
+            .iter()
+            .map(|o| o.primitive_ops_buffer.clone())
+            .collect::<Vec<_>>()
     }
 
-    pub fn bounding_box_buffers(&self) -> &Vec<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>> {
-        &self.bounding_boxes
+    pub fn bounding_box_buffers(&self) -> Vec<Arc<Buffer>> {
+        self.objects_buffers
+            .iter()
+            .map(|o| o.bounding_box_buffer.clone())
+            .collect::<Vec<_>>()
     }
-
-    #[inline]
-    fn debug_assert_per_object_resource_count(&self) {
-        debug_assert!(self.ids.len() == self.primitive_ops.len());
-        debug_assert!(self.ids.len() == self.bounding_boxes.len());
-        debug_assert!(self.ids.len() == self.bounding_box_vertex_counts.len());
-    }
-}
-
-fn create_bounding_box_buffer_pool(
-    memory_allocator: Arc<StandardMemoryAllocator>,
-) -> anyhow::Result<CpuBufferPool<BoundingBoxVertex>> {
-    debug!(
-        "reserving {} bytes for bounding box buffer pool",
-        INIT_BOUNDING_BOX_POOL_RESERVE
-    );
-    let buffer_pool: CpuBufferPool<BoundingBoxVertex> = CpuBufferPool::new(
-        memory_allocator,
-        BufferUsage {
-            vertex_buffer: true,
-            ..BufferUsage::empty()
-        },
-        MemoryUsage::Upload,
-    );
-    buffer_pool
-        .reserve(INIT_BOUNDING_BOX_POOL_RESERVE)
-        .context("reserving bounding box buffer pool")?;
-
-    Ok(buffer_pool)
-}
-
-fn create_primitive_op_buffer_pool(
-    memory_allocator: Arc<StandardMemoryAllocator>,
-) -> anyhow::Result<CpuBufferPool<PrimitiveOpBufferUnit>> {
-    debug!(
-        "reserving {} bytes for primitive op buffer pool",
-        INIT_PRIMITIVE_OP_POOL_RESERVE
-    );
-    let buffer_pool: CpuBufferPool<PrimitiveOpBufferUnit> = CpuBufferPool::new(
-        memory_allocator,
-        BufferUsage {
-            storage_buffer: true,
-            ..BufferUsage::empty()
-        },
-        MemoryUsage::Upload,
-    );
-    buffer_pool
-        .reserve(INIT_PRIMITIVE_OP_POOL_RESERVE)
-        .context("reserving primitive op buffer pool")?;
-
-    Ok(buffer_pool)
 }
 
 fn upload_bounding_box(
-    bounding_box_buffer_pool: &CpuBufferPool<BoundingBoxVertex>,
+    memory_allocator: Arc<MemoryAllocator>,
     object: &Object,
-) -> Result<Arc<CpuBufferPoolChunk<BoundingBoxVertex>>, AllocationCreationError> {
+) -> anyhow::Result<Arc<Buffer>> {
     let object_id = object.id();
     trace!(
         "uploading bounding box vertices for object id = {} to gpu buffer",
         object_id
     );
-    bounding_box_buffer_pool.from_iter(object.aabb().vertices(object_id))
+
+    let data = object.aabb().vertices(object_id);
+
+    let buffer_props = BufferProperties {
+        size: std::mem::size_of_val(&data) as vk::DeviceSize,
+        usage: vk::BufferUsageFlags::VERTEX_BUFFER,
+        ..Default::default()
+    };
+
+    let alloc_info = AllocationCreateInfo {
+        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE,
+        preferred_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        ..Default::default()
+    };
+
+    let mut new_buffer = Buffer::new(memory_allocator, buffer_props, alloc_info)
+        .context("creating geometry pass bounding box buffer")?;
+
+    // upload data
+
+    new_buffer
+        .write_iter(data, 0)
+        .context("uploading geometry pass bounding box vertices to buffer")?;
+
+    Ok(Arc::new(new_buffer))
 }
 
 fn upload_primitive_ops(
-    primtive_op_buffer_pool: &CpuBufferPool<PrimitiveOpBufferUnit>,
+    memory_allocator: Arc<MemoryAllocator>,
     object: &Object,
-) -> Result<Arc<CpuBufferPoolChunk<PrimitiveOpBufferUnit>>, AllocationCreationError> {
+) -> anyhow::Result<Arc<Buffer>> {
     trace!(
         "uploading primitive ops for object id = {} to gpu buffer",
         object.id()
     );
-    primtive_op_buffer_pool.from_iter(object.encoded_primitive_ops())
+
+    let data = object.encoded_primitive_ops();
+
+    let buffer_props = BufferProperties {
+        size: std::mem::size_of_val(&data) as vk::DeviceSize,
+        usage: vk::BufferUsageFlags::STORAGE_BUFFER,
+        ..Default::default()
+    };
+
+    let alloc_info = AllocationCreateInfo {
+        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE,
+        preferred_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        ..Default::default()
+    };
+
+    let mut new_buffer = Buffer::new(memory_allocator, buffer_props, alloc_info)
+        .context("creating geometry pass primitive op buffer")?;
+
+    // upload data
+
+    new_buffer
+        .write_iter(data, 0)
+        .context("uploading geometry pass primitive ops to buffer")?;
+
+    Ok(Arc::new(new_buffer))
 }
