@@ -141,8 +141,9 @@ impl GuiRenderer {
 
             // create new images and record upload commands
             for (id, image_delta) in textures_delta.set {
-                self.add_new_texture_data(id, image_delta, &command_buffer)?;
-                commands_recorded = true;
+                let new_commands_recorded =
+                    self.add_new_texture_data(id, image_delta, &command_buffer)?;
+                commands_recorded |= new_commands_recorded;
             }
         }
 
@@ -223,7 +224,6 @@ impl GuiRenderer {
         Ok(())
     }
 
-    /// TODO [free at once pool](https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/custom_memory_pools.html#linear_algorithm_free_at_once)
     /// Fress vertex and index buffers created in previous calls to `record_render_commands`.
     /// Call this when gui rendering commands from the previous frame have finished.
     pub fn free_previous_vertex_and_index_buffers(&mut self) {
@@ -236,13 +236,15 @@ impl GuiRenderer {
 // Private functions
 
 impl GuiRenderer {
-    /// todo desc
+    /// Either updates an existing texture or creates a new one as required for `texture_id` with the
+    /// data in `delta`. Returns `Ok(true)` if commands were recorded to `command_buffer` and `Ok(false)`
+    /// if this update was skipped for some reason.
     fn add_new_texture_data(
         &mut self,
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
         command_buffer: &CommandBuffer,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<bool> {
         // extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
             egui::ImageData::Color(image) => {
@@ -251,7 +253,7 @@ impl GuiRenderer {
                         "mismatch between gui texture size and texel count, skipping... texture_id = {:?}",
                         texture_id
                     );
-                    return Ok(());
+                    return Ok(false);
                 }
                 image
                     .pixels
@@ -264,12 +266,13 @@ impl GuiRenderer {
                 .flat_map(|color| color.to_array())
                 .collect(),
         };
+
         if data.len() == 0 {
             warn!(
                 "attempted to create gui texture with no data! skipping... texture_id = {:?}",
                 texture_id
             );
-            return Ok(());
+            return Ok(false);
         }
 
         // create buffer to be copied to the image
@@ -318,7 +321,7 @@ impl GuiRenderer {
             self.create_new_texture(command_buffer, texture_data_buffer, delta, texture_id)?;
         }
 
-        Ok(())
+        Ok(true)
     }
 
     /// Unregister a texture that is no longer required by the gui.
