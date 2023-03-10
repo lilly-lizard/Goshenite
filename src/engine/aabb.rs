@@ -77,6 +77,7 @@ impl Aabb {
         self.xn_yp_zn += offset;
     }
 
+    /// Counter-clockwise front face
     pub fn vertices(&self, object_id: ObjectId) -> [BoundingBoxVertex; AABB_VERTEX_COUNT] {
         [
             // positive x face 1

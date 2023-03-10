@@ -10,12 +10,15 @@ use crate::engine::{
 use anyhow::Context;
 use ash::vk;
 use bort::{
-    Buffer, BufferProperties, CommandBuffer, GraphicsPipeline, MemoryAllocator, PipelineAccess,
+    Buffer, BufferProperties, CommandBuffer, DeviceOwned, GraphicsPipeline, MemoryAllocator,
+    PipelineAccess,
 };
 use bort_vma::AllocationCreateInfo;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{mem::size_of, sync::Arc};
+
+// TODO biggest optimization is a staging buffer to make the vertex/storage buffers a more optimized memory type
 
 /// Reserve for 1024 operations
 const INIT_PRIMITIVE_OP_POOL_RESERVE: vk::DeviceSize =
@@ -75,7 +78,7 @@ impl ObjectBufferManager {
         }
     }
 
-    pub fn draw_commands<L>(
+    pub fn draw_commands(
         &self,
         command_buffer: &CommandBuffer,
         pipeline: &GraphicsPipeline,
@@ -140,6 +143,10 @@ impl ObjectBufferManager {
             .iter()
             .map(|o| o.bounding_box_buffer.clone())
             .collect::<Vec<_>>()
+    }
+
+    pub fn object_count(&self) -> usize {
+        self.objects_buffers.len()
     }
 }
 

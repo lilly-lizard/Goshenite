@@ -6,9 +6,9 @@ use ash::vk;
 use bort::{
     Buffer, ColorBlendState, CommandBuffer, DescriptorPool, DescriptorPoolProperties,
     DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
-    Device, DynamicState, GraphicsPipeline, GraphicsPipelineProperties, ImageViewAccess,
-    PipelineAccess, PipelineLayout, PipelineLayoutProperties, RenderPass, ShaderModule,
-    ShaderStage,
+    Device, DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties,
+    ImageViewAccess, PipelineAccess, PipelineLayout, PipelineLayoutProperties, RenderPass,
+    ShaderModule, ShaderStage,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -48,16 +48,11 @@ impl LightingPass {
     ) -> anyhow::Result<Self> {
         let descriptor_pool = create_descriptor_pool(device.clone())?;
 
-        let desc_set_camera = create_desc_set_camera(device.clone(), descriptor_pool.clone())?;
-        write_desc_set_camera(device.clone(), &desc_set_camera, camera_buffer)?;
+        let desc_set_camera = create_desc_set_camera(descriptor_pool.clone())?;
+        write_desc_set_camera(&desc_set_camera, camera_buffer)?;
 
-        let desc_set_g_buffers = create_desc_set_gbuffers(device.clone(), descriptor_pool.clone())?;
-        write_desc_set_gbuffers(
-            device.clone(),
-            &desc_set_g_buffers,
-            normal_buffer,
-            primitive_id_buffer,
-        )?;
+        let desc_set_g_buffers = create_desc_set_gbuffers(descriptor_pool.clone())?;
+        write_desc_set_gbuffers(&desc_set_g_buffers, normal_buffer, primitive_id_buffer)?;
 
         let pipeline_layout = create_pipeline_layout(
             device.clone(),
@@ -85,12 +80,11 @@ impl LightingPass {
         normal_buffer: &impl ImageViewAccess,
         primitive_id_buffer: &impl ImageViewAccess,
     ) -> anyhow::Result<()> {
-        write_desc_set_gbuffers(
-            self.device.clone(),
-            &self.desc_set_g_buffers,
-            normal_buffer,
-            primitive_id_buffer,
-        )
+        write_desc_set_gbuffers(&self.desc_set_g_buffers, normal_buffer, primitive_id_buffer)
+    }
+
+    pub fn update_camera_descriptor_set(&self, camera_buffer: &Buffer) -> anyhow::Result<()> {
+        write_desc_set_camera(&self.desc_set_camera, camera_buffer)
     }
 
     /// Records draw commands to a command buffer.
@@ -132,7 +126,7 @@ impl LightingPass {
 
 fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorPool>> {
     let descriptor_pool_props = DescriptorPoolProperties {
-        max_sets: 8,
+        max_sets: 3,
         pool_sizes: vec![
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::INPUT_ATTACHMENT,
@@ -153,7 +147,6 @@ fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorP
 }
 
 fn create_desc_set_camera(
-    device: Arc<Device>,
     descriptor_pool: Arc<DescriptorPool>,
 ) -> anyhow::Result<Arc<DescriptorSet>> {
     let desc_set_layout_props =
@@ -165,7 +158,7 @@ fn create_desc_set_camera(
         }]);
 
     let desc_set_layout = Arc::new(
-        DescriptorSetLayout::new(device, desc_set_layout_props)
+        DescriptorSetLayout::new(descriptor_pool.device().clone(), desc_set_layout_props)
             .context("creating lighting pass camera descriptor set layout")?,
     );
 
@@ -177,7 +170,6 @@ fn create_desc_set_camera(
 }
 
 fn write_desc_set_camera(
-    device: Arc<Device>,
     desc_set_camera: &DescriptorSet,
     camera_buffer: &Buffer,
 ) -> anyhow::Result<()> {
@@ -196,7 +188,8 @@ fn write_desc_set_camera(
     }];
 
     unsafe {
-        device
+        desc_set_camera
+            .device()
             .inner()
             .update_descriptor_sets(&descriptor_writes, &[]);
     }
@@ -205,7 +198,6 @@ fn write_desc_set_camera(
 }
 
 fn create_desc_set_gbuffers(
-    device: Arc<Device>,
     descriptor_pool: Arc<DescriptorPool>,
 ) -> anyhow::Result<Arc<DescriptorSet>> {
     let mut desc_set_layout_props = DescriptorSetLayoutProperties::default();
@@ -225,7 +217,7 @@ fn create_desc_set_gbuffers(
     ];
 
     let desc_set_layout = Arc::new(
-        DescriptorSetLayout::new(device, desc_set_layout_props)
+        DescriptorSetLayout::new(descriptor_pool.device().clone(), desc_set_layout_props)
             .context("creating lighting pass g-buffer descriptor set layout")?,
     );
 
@@ -237,7 +229,6 @@ fn create_desc_set_gbuffers(
 }
 
 fn write_desc_set_gbuffers(
-    device: Arc<Device>,
     desc_set_gbuffers: &DescriptorSet,
     normal_buffer: &impl ImageViewAccess,
     primitive_id_buffer: &impl ImageViewAccess,
@@ -272,7 +263,8 @@ fn write_desc_set_gbuffers(
     ];
 
     unsafe {
-        device
+        desc_set_gbuffers
+            .device()
             .inner()
             .update_descriptor_sets(&descriptor_writes, &[]);
     }
@@ -309,7 +301,7 @@ fn create_pipeline(
     let vert_stage = ShaderStage::new(
         vk::ShaderStageFlags::VERTEX,
         vert_shader,
-        CString::new(SHADER_ENTRY_POINT).context("shader entry point to c-string")?,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
     );
 
     let frag_shader = Arc::new(
@@ -319,10 +311,8 @@ fn create_pipeline(
     let frag_stage = ShaderStage::new(
         vk::ShaderStageFlags::FRAGMENT,
         frag_shader,
-        CString::new(SHADER_ENTRY_POINT).context("shader entry point to c-string")?,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
     );
-
-    let shader_stages = [vert_stage, frag_stage];
 
     let dynamic_state =
         DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
@@ -337,7 +327,7 @@ fn create_pipeline(
     let pipeline = GraphicsPipeline::new(
         pipeline_layout,
         pipeline_properties,
-        shader_stages,
+        [vert_stage, frag_stage],
         render_pass,
         None,
     )

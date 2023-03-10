@@ -11,7 +11,7 @@ use bort::{
     cpu_accessible_allocation_info, default_subresource_layers, Buffer, BufferProperties,
     ColorBlendState, CommandBuffer, CommandPool, CommandPoolProperties, DescriptorPool,
     DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
-    DescriptorSetLayoutProperties, Device, DynamicState, GraphicsPipeline,
+    DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState, GraphicsPipeline,
     GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions, ImageProperties, ImageView,
     ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool, MemoryPoolPropeties,
     PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue, RenderPass, Sampler,
@@ -81,8 +81,7 @@ impl GuiRenderer {
         let desc_set_layout = create_descriptor_layout(device.clone())?;
 
         let pipeline_layout = create_pipeline_layout(device.clone(), desc_set_layout)?;
-        let pipeline =
-            create_pipeline(device.clone(), pipeline_layout, render_pass, subpass_index)?;
+        let pipeline = create_pipeline(pipeline_layout, render_pass, subpass_index)?;
 
         let texture_sampler = create_texture_sampler(device.clone())?;
 
@@ -437,12 +436,7 @@ impl GuiRenderer {
 
         let font_desc_set = self.get_new_font_texture_desc_set()?;
 
-        write_font_texture_desc_set(
-            &self.device,
-            &font_desc_set,
-            &new_image_view,
-            &self.texture_sampler,
-        )?;
+        write_font_texture_desc_set(&font_desc_set, &new_image_view, &self.texture_sampler)?;
 
         self.texture_desc_sets.insert(texture_id, font_desc_set);
         self.texture_image_views.insert(texture_id, new_image_view);
@@ -719,7 +713,6 @@ fn upload_existing_font_texture(
 }
 
 fn write_font_texture_desc_set(
-    device: &Device,
     desc_set: &DescriptorSet,
     image_view: &ImageView<Image>,
     sampler: &Sampler,
@@ -739,7 +732,8 @@ fn write_font_texture_desc_set(
     }];
 
     unsafe {
-        device
+        desc_set
+            .device()
             .inner()
             .update_descriptor_sets(&descriptor_writes, &[]);
     }
@@ -834,13 +828,12 @@ fn create_pipeline_layout(
 }
 
 fn create_pipeline(
-    device: Arc<Device>,
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
     subpass_index: u32,
 ) -> anyhow::Result<Arc<GraphicsPipeline>> {
     let vert_shader = Arc::new(
-        ShaderModule::new_from_file(device.clone(), VERT_SHADER_PATH)
+        ShaderModule::new_from_file(pipeline_layout.device().clone(), VERT_SHADER_PATH)
             .context("creating gui pass vertex shader")?,
     );
     let vert_stage = ShaderStage::new(
@@ -850,7 +843,7 @@ fn create_pipeline(
     );
 
     let frag_shader = Arc::new(
-        ShaderModule::new_from_file(device.clone(), FRAG_SHADER_PATH)
+        ShaderModule::new_from_file(pipeline_layout.device().clone(), FRAG_SHADER_PATH)
             .context("creating gui pass fragment shader")?,
     );
     let frag_stage = ShaderStage::new(
@@ -858,8 +851,6 @@ fn create_pipeline(
         frag_shader,
         CString::new(SHADER_ENTRY_POINT).context("shader entry point to c-string")?,
     );
-
-    let shader_stages = [vert_stage, frag_stage];
 
     let dynamic_state =
         DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
@@ -875,7 +866,7 @@ fn create_pipeline(
     let pipeline = GraphicsPipeline::new(
         pipeline_layout,
         pipeline_properties,
-        shader_stages,
+        [vert_stage, frag_stage],
         render_pass,
         None,
     )
