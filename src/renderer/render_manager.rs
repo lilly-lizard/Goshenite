@@ -1,5 +1,9 @@
 use super::{
-    config_renderer::{ENABLE_VULKAN_VALIDATION, VULKAN_VER_MAJ, VULKAN_VER_MIN},
+    config_renderer::{
+        ENABLE_VULKAN_VALIDATION, FENCE_TIMEOUT_NANOSECS, VULKAN_VER_MAJ, VULKAN_VER_MIN,
+    },
+    geometry_pass::GeometryPass,
+    gui_pass::GuiPass,
     lighting_pass::LightingPass,
 };
 use crate::{
@@ -10,9 +14,9 @@ use crate::{
         vulkan_init::{
             choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
             create_depth_buffer, create_device_and_queues, create_framebuffers,
-            create_normal_buffer, create_primitive_id_buffer, create_render_pass, create_swapchain,
-            create_swapchain_images, render_pass_indices, ChoosePhysicalDeviceReturn,
-            CreateDeviceAndQueuesReturn,
+            create_normal_buffer, create_per_frame_fence, create_primitive_id_buffer,
+            create_render_pass, create_swapchain, create_swapchain_images, render_pass_indices,
+            ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
         },
     },
     user_interface::{camera::Camera, gui::Gui},
@@ -20,8 +24,8 @@ use crate::{
 use anyhow::Context;
 use ash::{vk, Entry};
 use bort::{
-    is_format_srgb, ApiVersion, Buffer, DebugCallback, Device, Framebuffer, Image, ImageView,
-    Instance, MemoryAllocator, Queue, RenderPass, Surface, Swapchain, SwapchainImage,
+    is_format_srgb, ApiVersion, Buffer, DebugCallback, Device, Fence, Framebuffer, Image,
+    ImageView, Instance, MemoryAllocator, Queue, RenderPass, Surface, Swapchain, SwapchainImage,
 };
 use egui::TexturesDelta;
 #[allow(unused_imports)]
@@ -38,7 +42,6 @@ pub struct RenderManager {
 
     device: Arc<Device>,
     render_queue: Queue,
-    transfer_queue: Option<Queue>,
 
     memory_allocator: Arc<MemoryAllocator>,
 
@@ -58,6 +61,10 @@ pub struct RenderManager {
     camera_ubo: Buffer,
 
     lighting_pass: LightingPass,
+    geometry_pass: GeometryPass,
+    gui_pass: GuiPass,
+
+    fence_previous_frame: Fence,
 
     /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
     /// without conflicting with commands currently being processed. This variable indicates
@@ -210,14 +217,29 @@ impl RenderManager {
         // clear values
         let clear_values = create_clear_values();
 
+        let geometry_pass = GeometryPass::new(
+            device.clone(),
+            memory_allocator.clone(),
+            &render_pass,
+            &camera_ubo,
+        )?;
+
         let lighting_pass = LightingPass::new(
             device.clone(),
             &render_pass,
-            render_pass_indices::SUBPASS_GBUFFER as u32,
             &camera_ubo,
             normal_buffer.as_ref(),
             primitive_id_buffer.as_ref(),
         )?;
+
+        let gui_pass = GuiPass::new(
+            device.clone(),
+            memory_allocator.clone(),
+            &render_pass,
+            render_queue_family_index,
+        )?;
+
+        let fence_previous_frame = create_per_frame_fence(device.clone())?;
 
         Ok(Self {
             entry,
@@ -226,7 +248,6 @@ impl RenderManager {
 
             device,
             render_queue,
-            transfer_queue,
 
             memory_allocator,
 
@@ -245,7 +266,11 @@ impl RenderManager {
             primitive_id_buffer,
             camera_ubo,
 
+            geometry_pass,
             lighting_pass,
+            gui_pass,
+
+            fence_previous_frame,
 
             next_frame: 0,
             recreate_swapchain: false,
@@ -271,7 +296,8 @@ impl RenderManager {
         object_collection: &ObjectCollection,
         object_delta: ObjectsDelta,
     ) -> anyhow::Result<()> {
-        todo!();
+        self.geometry_pass
+            .update_object_buffers(object_collection, object_delta)
     }
 
     pub fn update_gui_textures(
@@ -279,10 +305,28 @@ impl RenderManager {
         textures_delta_vec: Vec<TexturesDelta>,
     ) -> anyhow::Result<()> {
         todo!();
+        //self.gui_pass
+        //    .update_textures(textures_delta_vec, &self.render_queue, wait_semaphores);
     }
 
     /// Submits Vulkan commands for rendering a frame.
     pub fn render_frame(&mut self, window_resize: bool, gui: &mut Gui) -> anyhow::Result<()> {
+        // wait for previous frame render to finish
+        let fence_wait_res = unsafe {
+            self.device.inner().wait_for_fences(
+                &[self.fence_previous_frame.handle()],
+                true,
+                FENCE_TIMEOUT_NANOSECS,
+            )
+        };
+        if let Err(fence_wait_err) = fence_wait_res {
+            if fence_wait_err == vk::Result::TIMEOUT {
+                todo!();
+            } else {
+                return Err(fence_wait_err).context("waiting for previous frame fence");
+            }
+        }
+
         todo!();
     }
 }
@@ -291,12 +335,65 @@ impl RenderManager {
 
 impl RenderManager {
     fn wait_idle(&mut self) -> anyhow::Result<()> {
-        todo!();
+        self.device.wait_idle().context("calling vkDeviceWaitIdle")
     }
 
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
-        todo!();
+        self.swapchain = Arc::new(create_swapchain(
+            self.device.clone(),
+            self.surface.clone(),
+            &self.window,
+            self.device.physical_device(),
+        )?);
+        debug!(
+            "swapchain surface format = {:?}",
+            self.swapchain.properties().surface_format
+        );
+        debug!(
+            "swapchain present mode = {:?}",
+            self.swapchain.properties().present_mode
+        );
+        debug!(
+            "swapchain composite alpha = {:?}",
+            self.swapchain.properties().composite_alpha
+        );
+
+        self.is_swapchain_srgb = is_format_srgb(self.swapchain.properties().surface_format.format);
+        self.swapchain_images = create_swapchain_images(&self.swapchain)?;
+
+        self.render_pass = Arc::new(create_render_pass(self.device.clone(), &self.swapchain)?);
+
+        self.normal_buffer = Arc::new(create_normal_buffer(
+            self.memory_allocator.clone(),
+            self.swapchain.properties().dimensions(),
+        )?);
+
+        self.primitive_id_buffer = Arc::new(create_primitive_id_buffer(
+            self.memory_allocator.clone(),
+            self.swapchain.properties().dimensions(),
+        )?);
+
+        self.depth_buffer = Arc::new(create_depth_buffer(
+            self.memory_allocator.clone(),
+            self.swapchain.properties().dimensions(),
+        )?);
+
+        let framebuffers = create_framebuffers(
+            &self.render_pass,
+            &self.swapchain_images,
+            &self.normal_buffer,
+            &self.primitive_id_buffer,
+            &self.depth_buffer,
+        )?;
+        self.framebuffers = framebuffers.into_iter().map(|f| Arc::new(f)).collect();
+
+        self.lighting_pass
+            .update_g_buffers(&self.normal_buffer, &self.primitive_id_buffer)?;
+
+        self.recreate_swapchain = false;
+
+        Ok(())
     }
 }
 

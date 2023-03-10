@@ -2,6 +2,7 @@ use super::{
     config_renderer::SHADER_ENTRY_POINT,
     object_buffer_manager::ObjectBufferManager,
     shader_interfaces::{uniform_buffers::CameraUniformBuffer, vertex_inputs::BoundingBoxVertex},
+    vulkan_init::render_pass_indices,
 };
 use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
 use anyhow::Context;
@@ -48,7 +49,6 @@ impl GeometryPass {
         device: Arc<Device>,
         memory_allocator: Arc<MemoryAllocator>,
         render_pass: &RenderPass,
-        subpass_index: u32,
         camera_buffer: &Buffer,
     ) -> anyhow::Result<Self> {
         let descriptor_pool = create_descriptor_pool(device.clone())?;
@@ -64,7 +64,7 @@ impl GeometryPass {
             desc_set_primitive_ops.layout().clone(),
         )?;
 
-        let pipeline = create_pipeline(pipeline_layout, render_pass, subpass_index)?;
+        let pipeline = create_pipeline(pipeline_layout, render_pass)?;
 
         let object_buffer_manager = ObjectBufferManager::new(memory_allocator)?;
 
@@ -275,7 +275,6 @@ fn create_pipeline_layout(
 fn create_pipeline(
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
-    subpass_index: u32,
 ) -> anyhow::Result<Arc<GraphicsPipeline>> {
     let vert_shader = Arc::new(
         ShaderModule::new_from_file(pipeline_layout.device().clone(), VERT_SHADER_PATH)
@@ -303,7 +302,7 @@ fn create_pipeline(
         ColorBlendState::new_default(vec![ColorBlendState::blend_state_disabled()]);
 
     let mut pipeline_properties = GraphicsPipelineProperties::default();
-    pipeline_properties.subpass_index = subpass_index;
+    pipeline_properties.subpass_index = render_pass_indices::SUBPASS_GBUFFER as u32;
     pipeline_properties.dynamic_state = dynamic_state;
     pipeline_properties.color_blend_state = color_blend_state;
     pipeline_properties.vertex_input_state = BoundingBoxVertex::vertex_input_state();

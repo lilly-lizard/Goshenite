@@ -1,14 +1,15 @@
 use super::{
     config_renderer::SHADER_ENTRY_POINT, shader_interfaces::uniform_buffers::CameraUniformBuffer,
+    vulkan_init::render_pass_indices,
 };
 use anyhow::Context;
 use ash::vk;
 use bort::{
     Buffer, ColorBlendState, CommandBuffer, DescriptorPool, DescriptorPoolProperties,
     DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
-    Device, DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties,
-    ImageViewAccess, PipelineAccess, PipelineLayout, PipelineLayoutProperties, RenderPass,
-    ShaderModule, ShaderStage,
+    Device, DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties, Image,
+    ImageView, ImageViewAccess, PipelineAccess, PipelineLayout, PipelineLayoutProperties,
+    RenderPass, ShaderModule, ShaderStage,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -41,10 +42,9 @@ impl LightingPass {
     pub fn new(
         device: Arc<Device>,
         render_pass: &RenderPass,
-        subpass_index: u32,
         camera_buffer: &Buffer,
-        normal_buffer: &impl ImageViewAccess,
-        primitive_id_buffer: &impl ImageViewAccess,
+        normal_buffer: &ImageView<Image>,
+        primitive_id_buffer: &ImageView<Image>,
     ) -> anyhow::Result<Self> {
         let descriptor_pool = create_descriptor_pool(device.clone())?;
 
@@ -60,12 +60,7 @@ impl LightingPass {
             desc_set_g_buffers.layout().clone(),
         )?;
 
-        let pipeline = create_pipeline(
-            device.clone(),
-            pipeline_layout.clone(),
-            render_pass,
-            subpass_index,
-        )?;
+        let pipeline = create_pipeline(device.clone(), pipeline_layout.clone(), render_pass)?;
 
         Ok(Self {
             device,
@@ -77,8 +72,8 @@ impl LightingPass {
 
     pub fn update_g_buffers(
         &mut self,
-        normal_buffer: &impl ImageViewAccess,
-        primitive_id_buffer: &impl ImageViewAccess,
+        normal_buffer: &ImageView<Image>,
+        primitive_id_buffer: &ImageView<Image>,
     ) -> anyhow::Result<()> {
         write_desc_set_gbuffers(&self.desc_set_g_buffers, normal_buffer, primitive_id_buffer)
     }
@@ -292,7 +287,6 @@ fn create_pipeline(
     device: Arc<Device>,
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
-    subpass_index: u32,
 ) -> anyhow::Result<Arc<GraphicsPipeline>> {
     let vert_shader = Arc::new(
         ShaderModule::new_from_file(device.clone(), VERT_SHADER_PATH)
@@ -320,7 +314,7 @@ fn create_pipeline(
         ColorBlendState::new_default(vec![ColorBlendState::blend_state_disabled()]);
 
     let mut pipeline_properties = GraphicsPipelineProperties::default();
-    pipeline_properties.subpass_index = subpass_index;
+    pipeline_properties.subpass_index = render_pass_indices::SUBPASS_DEFERRED as u32;
     pipeline_properties.dynamic_state = dynamic_state;
     pipeline_properties.color_blend_state = color_blend_state;
 

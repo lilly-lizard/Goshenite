@@ -11,7 +11,7 @@ use anyhow::Context;
 use ash::vk;
 use bort::{
     choose_composite_alpha, cpu_accessible_allocation_info, get_first_srgb_surface_format, Buffer,
-    BufferProperties, Device, Framebuffer, FramebufferProperties, Image, ImageDimensions,
+    BufferProperties, Device, Fence, Framebuffer, FramebufferProperties, Image, ImageDimensions,
     ImageView, ImageViewAccess, ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice,
     Queue, RenderPass, Subpass, Surface, Swapchain, SwapchainImage,
 };
@@ -603,4 +603,9 @@ pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Resu
 
     let alloc_info = cpu_accessible_allocation_info();
     Buffer::new(memory_allocator, ubo_props, alloc_info).context("creating camera ubo buffer")
+}
+
+pub fn create_per_frame_fence(device: Arc<Device>) -> anyhow::Result<Fence> {
+    let create_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
+    Fence::new(device, create_info).context("creating per-frame fence")
 }

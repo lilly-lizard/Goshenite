@@ -2,6 +2,7 @@
 use super::{
     config_renderer::SHADER_ENTRY_POINT,
     shader_interfaces::{push_constants::GuiPushConstant, vertex_inputs::EguiVertex},
+    vulkan_init::render_pass_indices,
 };
 use crate::user_interface::gui::Gui;
 use ahash::AHashMap;
@@ -42,7 +43,7 @@ mod descriptor {
     pub const BINDING_FONT_TEXTURE: u32 = 0;
 }
 
-pub struct GuiRenderer {
+pub struct GuiPass {
     device: Arc<Device>,
 
     memory_allocator: Arc<MemoryAllocator>,
@@ -66,14 +67,13 @@ pub struct GuiRenderer {
 
 // Public functions
 
-impl GuiRenderer {
+impl GuiPass {
     /// Initializes the gui renderer
     pub fn new(
         device: Arc<Device>,
-        queue_family_index: u32,
         memory_allocator: Arc<MemoryAllocator>,
         render_pass: &RenderPass,
-        subpass_index: u32,
+        queue_family_index: u32,
     ) -> anyhow::Result<Self> {
         let transient_command_pool =
             create_transient_command_pool(device.clone(), queue_family_index)?;
@@ -81,7 +81,7 @@ impl GuiRenderer {
         let desc_set_layout = create_descriptor_layout(device.clone())?;
 
         let pipeline_layout = create_pipeline_layout(device.clone(), desc_set_layout)?;
-        let pipeline = create_pipeline(pipeline_layout, render_pass, subpass_index)?;
+        let pipeline = create_pipeline(pipeline_layout, render_pass)?;
 
         let texture_sampler = create_texture_sampler(device.clone())?;
 
@@ -234,7 +234,7 @@ impl GuiRenderer {
 
 // Private functions
 
-impl GuiRenderer {
+impl GuiPass {
     /// Either updates an existing texture or creates a new one as required for `texture_id` with the
     /// data in `delta`. Returns `Ok(true)` if commands were recorded to `command_buffer` and `Ok(false)`
     /// if this update was skipped for some reason.
@@ -830,7 +830,6 @@ fn create_pipeline_layout(
 fn create_pipeline(
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
-    subpass_index: u32,
 ) -> anyhow::Result<Arc<GraphicsPipeline>> {
     let vert_shader = Arc::new(
         ShaderModule::new_from_file(pipeline_layout.device().clone(), VERT_SHADER_PATH)
@@ -858,7 +857,7 @@ fn create_pipeline(
         ColorBlendState::new_default(vec![ColorBlendState::blend_state_alpha()]);
 
     let mut pipeline_properties = GraphicsPipelineProperties::default();
-    pipeline_properties.subpass_index = subpass_index;
+    pipeline_properties.subpass_index = render_pass_indices::SUBPASS_DEFERRED as u32;
     pipeline_properties.dynamic_state = dynamic_state;
     pipeline_properties.color_blend_state = color_blend_state;
     pipeline_properties.vertex_input_state = EguiVertex::vertex_input_state();
