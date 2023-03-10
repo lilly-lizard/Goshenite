@@ -102,7 +102,7 @@ impl GuiPass {
             texture_image_views: AHashMap::default(),
             texture_desc_sets: AHashMap::default(),
 
-            buffer_pools: vec![Arc::new(initial_buffer_pool)],
+            buffer_pools: vec![initial_buffer_pool],
             current_buffer_pool_index: 0,
             vertex_buffers: Vec::new(),
             index_buffers: Vec::new(),
@@ -638,7 +638,7 @@ impl GuiPass {
                 }
 
                 // run out of existing pools, need to make a new one!
-                let new_buffer_pool = Arc::new(create_buffer_pool(self.memory_allocator.clone())?);
+                let new_buffer_pool = create_buffer_pool(self.memory_allocator.clone())?;
                 self.buffer_pools.push(new_buffer_pool.clone());
 
                 // try one final time with new buffer pool
@@ -765,7 +765,7 @@ fn buffer_alloc_info() -> AllocationCreateInfo {
     }
 }
 
-fn create_buffer_pool(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<MemoryPool> {
+fn create_buffer_pool(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Arc<MemoryPool>> {
     let buffer_info = vk::BufferCreateInfo::builder()
         .size(BUFFER_POOL_SIZE)
         .usage(vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::INDEX_BUFFER);
@@ -785,8 +785,9 @@ fn create_buffer_pool(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<
         ..Default::default()
     };
 
-    MemoryPool::new(memory_allocator, pool_props)
-        .context("creating gui pass vertex/index buffer pool")
+    let memory_pool = MemoryPool::new(memory_allocator, pool_props)
+        .context("creating gui pass vertex/index buffer pool")?;
+    Ok(Arc::new(memory_pool))
 }
 
 fn create_texture_sampler(device: Arc<Device>) -> anyhow::Result<Arc<Sampler>> {

@@ -1,31 +1,28 @@
 use super::{
-    config_renderer::{
-        ENABLE_VULKAN_VALIDATION, FENCE_TIMEOUT_NANOSECS, VULKAN_VER_MAJ, VULKAN_VER_MIN,
-    },
+    config_renderer::{ENABLE_VULKAN_VALIDATION, TIMEOUT_NANOSECS, VULKAN_VER_MAJ, VULKAN_VER_MIN},
     geometry_pass::GeometryPass,
     gui_pass::GuiPass,
     lighting_pass::LightingPass,
+    shader_interfaces::uniform_buffers::CameraUniformBuffer,
+    vulkan_init::{
+        choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
+        create_depth_buffer, create_device_and_queues, create_framebuffers, create_normal_buffer,
+        create_per_frame_fence, create_primitive_id_buffer, create_render_pass, create_swapchain,
+        create_swapchain_images, ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
+    },
 };
 use crate::{
     config::ENGINE_NAME,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
-    renderer::{
-        shader_interfaces::uniform_buffers::CameraUniformBuffer,
-        vulkan_init::{
-            choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
-            create_depth_buffer, create_device_and_queues, create_framebuffers,
-            create_normal_buffer, create_per_frame_fence, create_primitive_id_buffer,
-            create_render_pass, create_swapchain, create_swapchain_images, render_pass_indices,
-            ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
-        },
-    },
+    renderer::vulkan_init::create_command_pool,
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::Context;
 use ash::{vk, Entry};
 use bort::{
-    is_format_srgb, ApiVersion, Buffer, DebugCallback, Device, Fence, Framebuffer, Image,
-    ImageView, Instance, MemoryAllocator, Queue, RenderPass, Surface, Swapchain, SwapchainImage,
+    is_format_srgb, ApiVersion, Buffer, CommandPool, DebugCallback, Device, Fence, Framebuffer,
+    Image, ImageView, Instance, MemoryAllocator, Queue, RenderPass, Surface, Swapchain,
+    SwapchainImage,
 };
 use egui::TexturesDelta;
 #[allow(unused_imports)]
@@ -44,6 +41,7 @@ pub struct RenderManager {
     render_queue: Queue,
 
     memory_allocator: Arc<MemoryAllocator>,
+    command_pool: Arc<CommandPool>,
 
     window: Arc<Window>,
     surface: Arc<Surface>,
@@ -70,8 +68,6 @@ pub struct RenderManager {
     /// without conflicting with commands currently being processed. This variable indicates
     /// which index to will be next submitted to the GPU.
     next_frame: usize,
-    /// Indicates that the swapchain needs to be recreated next frame
-    recreate_swapchain: bool,
 }
 
 // Public functions
@@ -82,7 +78,7 @@ impl RenderManager {
         let entry = unsafe { Entry::load() }
             .context("loading dynamic library. please install vulkan on your system...")?;
 
-        // create instance
+        // create vulkan instance
         let api_version = ApiVersion::new(VULKAN_VER_MAJ, VULKAN_VER_MIN);
         let instance = Arc::new(Instance::new(
             &entry,
@@ -115,7 +111,6 @@ impl RenderManager {
             None
         };
 
-        // create surface
         let surface = Arc::new(
             Surface::new(
                 &entry,
@@ -126,7 +121,6 @@ impl RenderManager {
             .context("creating vulkan surface")?,
         );
 
-        // choose physical device and queue families
         let ChoosePhysicalDeviceReturn {
             physical_device,
             render_queue_family_index,
@@ -144,7 +138,6 @@ impl RenderManager {
             transfer_queue_family_index
         );
 
-        // create device and queues
         let CreateDeviceAndQueuesReturn {
             device,
             render_queue,
@@ -155,16 +148,12 @@ impl RenderManager {
             transfer_queue_family_index,
         )?;
 
-        // create memory allocator
         let memory_allocator = Arc::new(MemoryAllocator::new(device.clone())?);
 
-        // create swapchain
-        let swapchain = Arc::new(create_swapchain(
-            device.clone(),
-            surface.clone(),
-            &window,
-            &physical_device,
-        )?);
+        let command_pool = create_command_pool(device.clone(), &render_queue)?;
+
+        let swapchain =
+            create_swapchain(device.clone(), surface.clone(), &window, &physical_device)?;
         debug!(
             "swapchain surface format = {:?}",
             swapchain.properties().surface_format
@@ -179,32 +168,26 @@ impl RenderManager {
         );
         let is_swapchain_srgb = is_format_srgb(swapchain.properties().surface_format.format);
 
-        // create swapchain images
         let swapchain_images = create_swapchain_images(&swapchain)?;
 
-        // create render pass
-        let render_pass = Arc::new(create_render_pass(device.clone(), &swapchain)?);
+        let render_pass = create_render_pass(device.clone(), &swapchain)?;
 
-        // create depth buffer
-        let depth_buffer = Arc::new(create_depth_buffer(
+        let depth_buffer = create_depth_buffer(
             memory_allocator.clone(),
             swapchain.properties().dimensions(),
-        )?);
+        )?;
 
-        // create camera ubo
         let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
 
-        // create g-buffers
-        let normal_buffer = Arc::new(create_normal_buffer(
+        let normal_buffer = create_normal_buffer(
             memory_allocator.clone(),
             swapchain.properties().dimensions(),
-        )?);
-        let primitive_id_buffer = Arc::new(create_primitive_id_buffer(
+        )?;
+        let primitive_id_buffer = create_primitive_id_buffer(
             memory_allocator.clone(),
             swapchain.properties().dimensions(),
-        )?);
+        )?;
 
-        // create framebuffers
         let framebuffers = create_framebuffers(
             &render_pass,
             &swapchain_images,
@@ -212,9 +195,7 @@ impl RenderManager {
             &primitive_id_buffer,
             &depth_buffer,
         )?;
-        let framebuffers = framebuffers.into_iter().map(|f| Arc::new(f)).collect();
 
-        // clear values
         let clear_values = create_clear_values();
 
         let geometry_pass = GeometryPass::new(
@@ -250,6 +231,7 @@ impl RenderManager {
             render_queue,
 
             memory_allocator,
+            command_pool,
 
             window,
             surface,
@@ -273,7 +255,6 @@ impl RenderManager {
             fence_previous_frame,
 
             next_frame: 0,
-            recreate_swapchain: false,
         })
     }
 
@@ -312,11 +293,12 @@ impl RenderManager {
     /// Submits Vulkan commands for rendering a frame.
     pub fn render_frame(&mut self, window_resize: bool, gui: &mut Gui) -> anyhow::Result<()> {
         // wait for previous frame render to finish
+
         let fence_wait_res = unsafe {
             self.device.inner().wait_for_fences(
                 &[self.fence_previous_frame.handle()],
                 true,
-                FENCE_TIMEOUT_NANOSECS,
+                TIMEOUT_NANOSECS,
             )
         };
         if let Err(fence_wait_err) = fence_wait_res {
@@ -326,6 +308,28 @@ impl RenderManager {
                 return Err(fence_wait_err).context("waiting for previous frame fence");
             }
         }
+
+        // aquire next swapchain image
+
+        let aquire_res = self
+            .swapchain
+            .aquire_next_image(TIMEOUT_NANOSECS, None, None);
+
+        if let Err(aquire_err) = aquire_res {
+            if aquire_err == vk::Result::ERROR_OUT_OF_DATE_KHR {
+                return self.recreate_swapchain();
+            } else {
+                return Err(aquire_err).context("calling vkAcquireNextImageKHR");
+            }
+        }
+
+        let (swapchain_index, swapchain_is_suboptimal) =
+            aquire_res.expect("handled err case in previous lines");
+        if swapchain_is_suboptimal {
+            return self.recreate_swapchain();
+        }
+
+        // record commands
 
         todo!();
     }
@@ -340,12 +344,12 @@ impl RenderManager {
 
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
-        self.swapchain = Arc::new(create_swapchain(
+        self.swapchain = create_swapchain(
             self.device.clone(),
             self.surface.clone(),
             &self.window,
             self.device.physical_device(),
-        )?);
+        )?;
         debug!(
             "swapchain surface format = {:?}",
             self.swapchain.properties().surface_format
@@ -362,36 +366,33 @@ impl RenderManager {
         self.is_swapchain_srgb = is_format_srgb(self.swapchain.properties().surface_format.format);
         self.swapchain_images = create_swapchain_images(&self.swapchain)?;
 
-        self.render_pass = Arc::new(create_render_pass(self.device.clone(), &self.swapchain)?);
+        self.render_pass = create_render_pass(self.device.clone(), &self.swapchain)?;
 
-        self.normal_buffer = Arc::new(create_normal_buffer(
+        self.normal_buffer = create_normal_buffer(
             self.memory_allocator.clone(),
             self.swapchain.properties().dimensions(),
-        )?);
+        )?;
 
-        self.primitive_id_buffer = Arc::new(create_primitive_id_buffer(
+        self.primitive_id_buffer = create_primitive_id_buffer(
             self.memory_allocator.clone(),
             self.swapchain.properties().dimensions(),
-        )?);
+        )?;
 
-        self.depth_buffer = Arc::new(create_depth_buffer(
+        self.depth_buffer = create_depth_buffer(
             self.memory_allocator.clone(),
             self.swapchain.properties().dimensions(),
-        )?);
+        )?;
 
-        let framebuffers = create_framebuffers(
+        self.framebuffers = create_framebuffers(
             &self.render_pass,
             &self.swapchain_images,
             &self.normal_buffer,
             &self.primitive_id_buffer,
             &self.depth_buffer,
         )?;
-        self.framebuffers = framebuffers.into_iter().map(|f| Arc::new(f)).collect();
 
         self.lighting_pass
             .update_g_buffers(&self.normal_buffer, &self.primitive_id_buffer)?;
-
-        self.recreate_swapchain = false;
 
         Ok(())
     }

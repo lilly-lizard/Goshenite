@@ -11,9 +11,10 @@ use anyhow::Context;
 use ash::vk;
 use bort::{
     choose_composite_alpha, cpu_accessible_allocation_info, get_first_srgb_surface_format, Buffer,
-    BufferProperties, Device, Fence, Framebuffer, FramebufferProperties, Image, ImageDimensions,
-    ImageView, ImageViewAccess, ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice,
-    Queue, RenderPass, Subpass, Surface, Swapchain, SwapchainImage,
+    BufferProperties, CommandPool, CommandPoolProperties, Device, Fence, Framebuffer,
+    FramebufferProperties, Image, ImageDimensions, ImageView, ImageViewAccess, ImageViewProperties,
+    Instance, MemoryAllocator, PhysicalDevice, Queue, RenderPass, Subpass, Surface, Swapchain,
+    SwapchainImage,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -245,12 +246,22 @@ pub fn create_device_and_queues(
     })
 }
 
+pub fn create_command_pool(device: Arc<Device>, queue: &Queue) -> anyhow::Result<Arc<CommandPool>> {
+    let command_pool_props = CommandPoolProperties {
+        flags: vk::CommandPoolCreateFlags::TRANSIENT,
+        queue_family_index: queue.famliy_index(),
+    };
+    let command_pool = CommandPool::new(device, command_pool_props)
+        .context("creating render manager command pool")?;
+    Ok(Arc::new(command_pool))
+}
+
 pub fn create_swapchain(
     device: Arc<Device>,
     surface: Arc<Surface>,
     window: &Window,
     physical_device: &PhysicalDevice,
-) -> anyhow::Result<Swapchain> {
+) -> anyhow::Result<Arc<Swapchain>> {
     let preferred_image_count = FRAMES_IN_FLIGHT as u32;
     let window_dimensions: [u32; 2] = window.inner_size().into();
 
@@ -267,7 +278,7 @@ pub fn create_swapchain(
 
     let image_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT;
 
-    Swapchain::new(
+    let swapchain = Swapchain::new(
         device,
         surface,
         preferred_image_count,
@@ -276,7 +287,8 @@ pub fn create_swapchain(
         image_usage,
         window_dimensions,
     )
-    .context("creating swapchain")
+    .context("creating swapchain")?;
+    Ok(Arc::new(swapchain))
 }
 
 pub fn create_swapchain_images(
@@ -449,24 +461,25 @@ fn subpass_dependencies() -> [vk::SubpassDependency; 2] {
 pub fn create_render_pass(
     device: Arc<Device>,
     swapchain: &Swapchain,
-) -> anyhow::Result<RenderPass> {
+) -> anyhow::Result<Arc<RenderPass>> {
     let attachment_descriptions = attachment_descriptions(swapchain);
     let subpasses = subpasses();
     let subpass_dependencies = subpass_dependencies();
 
-    RenderPass::new(
+    let render_pass = RenderPass::new(
         device,
         attachment_descriptions,
         subpasses,
         subpass_dependencies,
     )
-    .context("creating render pass")
+    .context("creating render pass")?;
+    Ok(Arc::new(render_pass))
 }
 
 pub fn create_depth_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
-) -> anyhow::Result<ImageView<Image>> {
+) -> anyhow::Result<Arc<ImageView<Image>>> {
     let image = Image::new_tranient(
         memory_allocator,
         dimensions,
@@ -477,14 +490,15 @@ pub fn create_depth_buffer(
 
     let image_view_properties =
         ImageViewProperties::from_image_properties_default(image.properties());
-    ImageView::new(Arc::new(image), image_view_properties)
-        .context("creating depth buffer image view")
+    let image_view = ImageView::new(Arc::new(image), image_view_properties)
+        .context("creating depth buffer image view")?;
+    Ok(Arc::new(image_view))
 }
 
 pub fn create_normal_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
-) -> anyhow::Result<ImageView<Image>> {
+) -> anyhow::Result<Arc<ImageView<Image>>> {
     let image = Image::new_tranient(
         memory_allocator,
         dimensions,
@@ -495,14 +509,15 @@ pub fn create_normal_buffer(
 
     let image_view_properties =
         ImageViewProperties::from_image_properties_default(image.properties());
-    ImageView::new(Arc::new(image), image_view_properties)
-        .context("creating normal buffer image view")
+    let image_view = ImageView::new(Arc::new(image), image_view_properties)
+        .context("creating normal buffer image view")?;
+    Ok(Arc::new(image_view))
 }
 
 pub fn create_primitive_id_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
-) -> anyhow::Result<ImageView<Image>> {
+) -> anyhow::Result<Arc<ImageView<Image>>> {
     let image = Image::new_tranient(
         memory_allocator,
         dimensions,
@@ -513,8 +528,9 @@ pub fn create_primitive_id_buffer(
 
     let image_view_properties =
         ImageViewProperties::from_image_properties_default(image.properties());
-    ImageView::new(Arc::new(image), image_view_properties)
-        .context("creating primitive id buffer image view")
+    let image_view = ImageView::new(Arc::new(image), image_view_properties)
+        .context("creating primitive id buffer image view")?;
+    Ok(Arc::new(image_view))
 }
 
 pub fn create_framebuffers(
@@ -523,7 +539,7 @@ pub fn create_framebuffers(
     normal_buffer: &Arc<ImageView<Image>>,
     primitive_id_buffer: &Arc<ImageView<Image>>,
     depth_buffer: &Arc<ImageView<Image>>,
-) -> anyhow::Result<Vec<Framebuffer>> {
+) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
     swapchain_images
         .iter()
         .map(|swapchain_image| {
@@ -549,8 +565,9 @@ pub fn create_framebuffers(
 
             let framebuffer_properties =
                 FramebufferProperties::new(attachments, swapchain_image.image().dimensions());
-            Framebuffer::new(render_pass.clone(), framebuffer_properties)
-                .context("creating framebuffer")
+            let framebuffer = Framebuffer::new(render_pass.clone(), framebuffer_properties)
+                .context("creating framebuffer")?;
+            Ok(Arc::new(framebuffer))
         })
         .collect::<anyhow::Result<Vec<_>>>()
 }
