@@ -121,7 +121,7 @@ impl GeometryPass {
         write_desc_set_camera(&self.desc_set_camera, camera_buffer)
     }
 
-    pub fn record_commands<L>(
+    pub fn record_commands(
         &self,
         command_buffer: &CommandBuffer,
         viewport: vk::Viewport,

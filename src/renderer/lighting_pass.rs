@@ -85,7 +85,7 @@ impl LightingPass {
     /// Records draw commands to a command buffer.
     ///
     /// **Assumes that the command buffer is already in a render pass state.**
-    pub fn record_commands<L>(
+    pub fn record_commands(
         &self,
         command_buffer: &CommandBuffer,
         viewport: vk::Viewport,

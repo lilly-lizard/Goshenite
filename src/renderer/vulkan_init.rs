@@ -13,8 +13,8 @@ use bort::{
     choose_composite_alpha, cpu_accessible_allocation_info, get_first_srgb_surface_format, Buffer,
     BufferProperties, CommandPool, CommandPoolProperties, Device, Fence, Framebuffer,
     FramebufferProperties, Image, ImageDimensions, ImageView, ImageViewAccess, ImageViewProperties,
-    Instance, MemoryAllocator, PhysicalDevice, Queue, RenderPass, Subpass, Surface, Swapchain,
-    SwapchainImage,
+    Instance, MemoryAllocator, PhysicalDevice, Queue, RenderPass, Semaphore, Subpass, Surface,
+    Swapchain, SwapchainImage,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -609,7 +609,7 @@ pub fn create_clear_values() -> Vec<vk::ClearValue> {
     clear_values
 }
 
-pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Buffer> {
+pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Arc<Buffer>> {
     let ubo_size = mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize;
     let ubo_props = BufferProperties {
         size: ubo_size,
@@ -619,10 +619,13 @@ pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Resu
     };
 
     let alloc_info = cpu_accessible_allocation_info();
-    Buffer::new(memory_allocator, ubo_props, alloc_info).context("creating camera ubo buffer")
+    let buffer = Buffer::new(memory_allocator, ubo_props, alloc_info)
+        .context("creating camera ubo buffer")?;
+    Ok(Arc::new(buffer))
 }
 
-pub fn create_per_frame_fence(device: Arc<Device>) -> anyhow::Result<Fence> {
+pub fn create_per_frame_fence(device: Arc<Device>) -> anyhow::Result<Arc<Fence>> {
     let create_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
-    Fence::new(device, create_info).context("creating per-frame fence")
+    let fence = Fence::new(device, create_info).context("creating per-frame fence")?;
+    Ok(Arc::new(fence))
 }

@@ -116,8 +116,8 @@ impl GuiPass {
         &mut self,
         textures_delta_vec: Vec<TexturesDelta>,
         queue: &Queue,
-        wait_semaphores: Vec<Semaphore>,
-    ) -> anyhow::Result<Option<Semaphore>> {
+        wait_semaphores: Vec<Arc<Semaphore>>,
+    ) -> anyhow::Result<Option<Arc<Semaphore>>> {
         // return if empty
         if textures_delta_vec.is_empty() {
             return Ok(None);
@@ -153,8 +153,9 @@ impl GuiPass {
                 .map(|semaphore| (semaphore.handle(), vk::PipelineStageFlags::TRANSFER))
                 .unzip();
 
-            let signal_semaphore =
-                Semaphore::new(self.device.clone()).context("creating texture upload semaphore")?;
+            let signal_semaphore = Arc::new(
+                Semaphore::new(self.device.clone()).context("creating texture upload semaphore")?,
+            );
             let signal_semaphore_handles = [signal_semaphore.handle()];
 
             let command_buffer_handles = [command_buffer.handle()];
@@ -176,7 +177,7 @@ impl GuiPass {
     }
 
     /// TODO don't forget to call free_previous_vertex_and_index_buffers!
-    pub fn record_render_commands<L>(
+    pub fn record_render_commands(
         &mut self,
         command_buffer: &CommandBuffer,
         gui: &Gui,

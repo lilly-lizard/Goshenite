@@ -20,9 +20,9 @@ use crate::{
 use anyhow::Context;
 use ash::{vk, Entry};
 use bort::{
-    is_format_srgb, ApiVersion, Buffer, CommandPool, DebugCallback, Device, Fence, Framebuffer,
-    Image, ImageView, Instance, MemoryAllocator, Queue, RenderPass, Surface, Swapchain,
-    SwapchainImage,
+    is_format_srgb, ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback, Device, Fence,
+    Framebuffer, Image, ImageView, Instance, MemoryAllocator, Queue, RenderPass, Semaphore,
+    Surface, Swapchain, SwapchainImage,
 };
 use egui::TexturesDelta;
 #[allow(unused_imports)]
@@ -56,13 +56,15 @@ pub struct RenderManager {
     depth_buffer: Arc<ImageView<Image>>,
     normal_buffer: Arc<ImageView<Image>>,
     primitive_id_buffer: Arc<ImageView<Image>>,
-    camera_ubo: Buffer,
+    camera_ubo: Arc<Buffer>,
 
     lighting_pass: LightingPass,
     geometry_pass: GeometryPass,
     gui_pass: GuiPass,
 
-    fence_previous_frame: Fence,
+    previous_render_fence: Arc<Fence>, // per frame in flight
+    next_frame_wait_semaphore: Arc<Semaphore>, // per frame in flight
+    swapchain_image_available_semaphores: Vec<Arc<Semaphore>>, // per swapchain image
 
     /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
     /// without conflicting with commands currently being processed. This variable indicates
@@ -220,7 +222,15 @@ impl RenderManager {
             render_queue_family_index,
         )?;
 
-        let fence_previous_frame = create_per_frame_fence(device.clone())?;
+        let previous_render_fence = create_per_frame_fence(device.clone())?;
+        let next_frame_wait_semaphore =
+            Arc::new(Semaphore::new(device.clone()).context("creating per-frame semaphore")?);
+        let mut swapchain_image_available_semaphores: Vec<Arc<Semaphore>> = Vec::new();
+        for _ in 0..swapchain_images.len() {
+            swapchain_image_available_semaphores.push(Arc::new(
+                Semaphore::new(device.clone()).context("creating per-swapchain-image semaphore")?,
+            ));
+        }
 
         Ok(Self {
             entry,
@@ -252,7 +262,9 @@ impl RenderManager {
             lighting_pass,
             gui_pass,
 
-            fence_previous_frame,
+            previous_render_fence,
+            next_frame_wait_semaphore,
+            swapchain_image_available_semaphores,
 
             next_frame: 0,
         })
@@ -265,7 +277,15 @@ impl RenderManager {
         let camera_data =
             CameraUniformBuffer::from_camera(camera, [dimensions[0] as f32, dimensions[1] as f32]);
 
-        self.camera_ubo
+        let camera_ubo_mut = match Arc::get_mut(&mut self.camera_ubo) {
+            Some(ubo) => ubo,
+            None => {
+                warn!("attempted to borrow camera buffer as mutable but couldn't! skipping update_camera()...");
+                return Ok(());
+            }
+        };
+
+        camera_ubo_mut
             .write_struct(camera_data, 0)
             .context("uploading camera ubo data")?;
 
@@ -285,9 +305,17 @@ impl RenderManager {
         &mut self,
         textures_delta_vec: Vec<TexturesDelta>,
     ) -> anyhow::Result<()> {
-        todo!();
-        //self.gui_pass
-        //    .update_textures(textures_delta_vec, &self.render_queue, wait_semaphores);
+        let texture_update_semaphore_option = self.gui_pass.update_textures(
+            textures_delta_vec,
+            &self.render_queue,
+            vec![self.next_frame_wait_semaphore.clone()],
+        )?;
+
+        if let Some(texture_update_semaphore) = texture_update_semaphore_option {
+            self.next_frame_wait_semaphore = texture_update_semaphore;
+        }
+
+        Ok(())
     }
 
     /// Submits Vulkan commands for rendering a frame.
@@ -296,7 +324,7 @@ impl RenderManager {
 
         let fence_wait_res = unsafe {
             self.device.inner().wait_for_fences(
-                &[self.fence_previous_frame.handle()],
+                &[self.previous_render_fence.handle()],
                 true,
                 TIMEOUT_NANOSECS,
             )
@@ -307,6 +335,10 @@ impl RenderManager {
             } else {
                 return Err(fence_wait_err).context("waiting for previous frame fence");
             }
+        }
+
+        if window_resize {
+            self.recreate_swapchain();
         }
 
         // aquire next swapchain image
@@ -325,11 +357,55 @@ impl RenderManager {
 
         let (swapchain_index, swapchain_is_suboptimal) =
             aquire_res.expect("handled err case in previous lines");
+        let swapchain_index = swapchain_index as usize;
         if swapchain_is_suboptimal {
             return self.recreate_swapchain();
         }
 
         // record commands
+
+        let command_buffer =
+            CommandBuffer::new(self.command_pool.clone(), vk::CommandBufferLevel::PRIMARY)
+                .context("allocating per-frame command buffer")?;
+        let command_buffer_handle = command_buffer.handle();
+        let device_ash = self.device.inner();
+        let viewport = self.framebuffers[swapchain_index].whole_viewport();
+
+        let render_pass_begin = vk::RenderPassBeginInfo::builder()
+            .render_pass(self.render_pass.handle())
+            .framebuffer(self.framebuffers[swapchain_index].handle())
+            .render_area(self.framebuffers[swapchain_index].full_render_area())
+            .clear_values(self.clear_values.as_slice());
+        unsafe {
+            device_ash.cmd_begin_render_pass(
+                command_buffer_handle,
+                &render_pass_begin,
+                vk::SubpassContents::INLINE,
+            );
+        }
+
+        self.geometry_pass
+            .record_commands(&command_buffer, viewport)?;
+
+        unsafe {
+            device_ash.cmd_next_subpass(command_buffer_handle, vk::SubpassContents::INLINE);
+        }
+
+        self.lighting_pass
+            .record_commands(&command_buffer, viewport)?;
+
+        self.gui_pass.record_render_commands(
+            &command_buffer,
+            gui,
+            self.is_swapchain_srgb,
+            [viewport.width, viewport.height],
+        )?;
+
+        unsafe {
+            device_ash.cmd_end_render_pass(command_buffer_handle);
+        }
+
+        // submit commands
 
         todo!();
     }
