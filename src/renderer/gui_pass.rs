@@ -9,16 +9,16 @@ use ahash::AHashMap;
 use anyhow::Context;
 use ash::vk;
 use bort::{
-    cpu_accessible_allocation_info, default_subresource_layers, Buffer, BufferProperties,
-    ColorBlendState, CommandBuffer, CommandPool, CommandPoolProperties, DescriptorPool,
-    DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
-    DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState, GraphicsPipeline,
-    GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions, ImageProperties, ImageView,
-    ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool, MemoryPoolPropeties,
-    PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue, RenderPass, Sampler,
-    SamplerProperties, Semaphore, ShaderModule, ShaderStage,
+    allocation_info_cpu_accessible, allocation_info_from_flags, default_subresource_layers, Buffer,
+    BufferProperties, ColorBlendState, CommandBuffer, CommandPool, CommandPoolProperties,
+    DescriptorPool, DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout,
+    DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
+    GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
+    ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool,
+    MemoryPoolPropeties, PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue,
+    RenderPass, Sampler, SamplerProperties, Semaphore, ShaderModule, ShaderStage,
 };
-use bort_vma::{Alloc, AllocationCreateInfo};
+use bort_vma::Alloc;
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -358,10 +358,10 @@ impl GuiPass {
             vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         );
-        let new_image_allocation_info = AllocationCreateInfo {
-            required_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
-            ..Default::default()
-        };
+        let new_image_allocation_info = allocation_info_from_flags(
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk::MemoryPropertyFlags::empty(),
+        );
         let new_image = Arc::new(
             Image::new(
                 self.memory_allocator.clone(),
@@ -577,28 +577,21 @@ impl GuiPass {
     }
 
     fn create_vertex_and_index_buffers(&mut self, mesh: &Mesh) -> anyhow::Result<(Buffer, Buffer)> {
-        // note: this ends up getting ignored anyway because we're allocating from a pool (https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/custom_memory_pools.html#choosing_memory_type_index)
-        let buffer_alloc_info = buffer_alloc_info();
+        let vertex_buffer_props = BufferProperties::new_default(
+            mem::size_of_val(&mesh.vertices) as vk::DeviceSize,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+        );
 
-        let vertex_buffer_props = BufferProperties {
-            size: mem::size_of_val(&mesh.vertices) as vk::DeviceSize,
-            usage: vk::BufferUsageFlags::VERTEX_BUFFER,
-            ..Default::default()
-        };
-
-        let index_buffer_props = BufferProperties {
-            size: mem::size_of_val(&mesh.indices) as vk::DeviceSize,
-            usage: vk::BufferUsageFlags::INDEX_BUFFER,
-            ..Default::default()
-        };
+        let index_buffer_props = BufferProperties::new_default(
+            mem::size_of_val(&mesh.indices) as vk::DeviceSize,
+            vk::BufferUsageFlags::INDEX_BUFFER,
+        );
 
         // create buffers
 
-        let mut vertex_buffer =
-            self.create_buffer_from_pools(vertex_buffer_props, buffer_alloc_info.clone())?;
+        let mut vertex_buffer = self.create_buffer_from_pools(vertex_buffer_props)?;
 
-        let mut index_buffer =
-            self.create_buffer_from_pools(index_buffer_props, buffer_alloc_info.clone())?;
+        let mut index_buffer = self.create_buffer_from_pools(index_buffer_props)?;
 
         // upload data
 
@@ -618,8 +611,13 @@ impl GuiPass {
     fn create_buffer_from_pools(
         &mut self,
         buffer_props: BufferProperties,
-        buffer_alloc_info: AllocationCreateInfo,
     ) -> anyhow::Result<Buffer> {
+        // note: this ends up getting ignored anyway because we're allocating from a pool (https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/custom_memory_pools.html#choosing_memory_type_index)
+        let buffer_alloc_info = allocation_info_from_flags(
+            vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk::MemoryPropertyFlags::empty(),
+        );
+
         // a buffer pool may no longer have enough memory for the buffer allocation so we may need to try with other pools...
         loop {
             // try creating a buffer with an existing buffer pool
@@ -758,15 +756,12 @@ fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorP
     Ok(Arc::new(descriptor_pool))
 }
 
-fn buffer_alloc_info() -> AllocationCreateInfo {
-    AllocationCreateInfo {
-        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE
-            | vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        ..Default::default()
-    }
-}
-
 fn create_buffer_pool(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Arc<MemoryPool>> {
+    let buffer_alloc_info = allocation_info_from_flags(
+        vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        vk::MemoryPropertyFlags::empty(),
+    );
+
     let buffer_info = vk::BufferCreateInfo::builder()
         .size(BUFFER_POOL_SIZE)
         .usage(vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::INDEX_BUFFER);
@@ -774,7 +769,7 @@ fn create_buffer_pool(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<
     let memory_type_index = unsafe {
         memory_allocator
             .inner()
-            .find_memory_type_index_for_buffer_info(&buffer_info, &buffer_alloc_info())
+            .find_memory_type_index_for_buffer_info(&buffer_info, &buffer_alloc_info)
     }
     .context("finding memory type index for gui pass buffer pool")?;
 
@@ -929,13 +924,9 @@ fn create_texture_data_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     size: vk::DeviceSize,
 ) -> anyhow::Result<Buffer> {
-    let buffer_props = BufferProperties {
-        size,
-        usage: vk::BufferUsageFlags::TRANSFER_SRC,
-        ..Default::default()
-    };
+    let buffer_props = BufferProperties::new_default(size, vk::BufferUsageFlags::TRANSFER_SRC);
 
-    let alloc_info = cpu_accessible_allocation_info();
+    let alloc_info = allocation_info_cpu_accessible();
     Buffer::new(memory_allocator, buffer_props, alloc_info).context("creating texture data buffer")
 }
 

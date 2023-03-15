@@ -10,10 +10,9 @@ use crate::engine::{
 use anyhow::Context;
 use ash::vk;
 use bort::{
-    Buffer, BufferProperties, CommandBuffer, DeviceOwned, GraphicsPipeline, MemoryAllocator,
-    PipelineAccess,
+    allocation_info_from_flags, Buffer, BufferProperties, CommandBuffer, DeviceOwned,
+    GraphicsPipeline, MemoryAllocator, PipelineAccess,
 };
-use bort_vma::AllocationCreateInfo;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{mem::size_of, sync::Arc};
@@ -162,17 +161,15 @@ fn upload_bounding_box(
 
     let data = object.aabb().vertices(object_id);
 
-    let buffer_props = BufferProperties {
-        size: std::mem::size_of_val(&data) as vk::DeviceSize,
-        usage: vk::BufferUsageFlags::VERTEX_BUFFER,
-        ..Default::default()
-    };
+    let buffer_props = BufferProperties::new_default(
+        std::mem::size_of_val(&data) as vk::DeviceSize,
+        vk::BufferUsageFlags::VERTEX_BUFFER,
+    );
 
-    let alloc_info = AllocationCreateInfo {
-        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE,
-        preferred_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        ..Default::default()
-    };
+    let alloc_info = allocation_info_from_flags(
+        vk::MemoryPropertyFlags::HOST_VISIBLE,
+        vk::MemoryPropertyFlags::DEVICE_LOCAL,
+    );
 
     let mut new_buffer = Buffer::new(memory_allocator, buffer_props, alloc_info)
         .context("creating geometry pass bounding box buffer")?;
@@ -197,17 +194,15 @@ fn upload_primitive_ops(
 
     let data = object.encoded_primitive_ops();
 
-    let buffer_props = BufferProperties {
-        size: std::mem::size_of_val(&data) as vk::DeviceSize,
-        usage: vk::BufferUsageFlags::STORAGE_BUFFER,
-        ..Default::default()
-    };
+    let buffer_props = BufferProperties::new_default(
+        std::mem::size_of_val(&data) as vk::DeviceSize,
+        vk::BufferUsageFlags::STORAGE_BUFFER,
+    );
 
-    let alloc_info = AllocationCreateInfo {
-        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE,
-        preferred_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
-        ..Default::default()
-    };
+    let alloc_info = allocation_info_from_flags(
+        vk::MemoryPropertyFlags::HOST_VISIBLE,
+        vk::MemoryPropertyFlags::DEVICE_LOCAL,
+    );
 
     let mut new_buffer = Buffer::new(memory_allocator, buffer_props, alloc_info)
         .context("creating geometry pass primitive op buffer")?;

@@ -328,7 +328,7 @@ fn write_desc_set_primitive_ops(
         .map(|buffer| vk::DescriptorBufferInfo {
             buffer: buffer.handle(),
             offset: 0,
-            range: buffer.buffer_properties().size,
+            range: buffer.properties().size,
         })
         .collect::<Vec<_>>();
 
