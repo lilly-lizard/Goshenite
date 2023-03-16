@@ -192,6 +192,7 @@ fn create_desc_set_camera(
             descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
             descriptor_count: 1,
             stage_flags: vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
+            ..Default::default()
         }]);
 
     let desc_set_layout = Arc::new(
@@ -243,6 +244,7 @@ fn create_desc_set_primitive_ops(
         descriptor_type: vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
         descriptor_count: 1,
         stage_flags: vk::ShaderStageFlags::FRAGMENT,
+        ..Default::default()
     }];
 
     let desc_set_layout = Arc::new(

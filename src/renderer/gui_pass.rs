@@ -805,6 +805,7 @@ fn create_descriptor_layout(device: Arc<Device>) -> anyhow::Result<Arc<Descripto
         descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
         descriptor_count: 1,
         stage_flags: vk::ShaderStageFlags::FRAGMENT,
+        ..Default::default()
     }]);
 
     let desc_layout = DescriptorSetLayout::new(device, layout_props)

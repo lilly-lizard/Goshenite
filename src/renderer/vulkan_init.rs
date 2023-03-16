@@ -11,10 +11,10 @@ use anyhow::Context;
 use ash::vk;
 use bort::{
     allocation_info_cpu_accessible, choose_composite_alpha, get_first_srgb_surface_format, Buffer,
-    BufferProperties, CommandPool, CommandPoolProperties, Device, Fence, Framebuffer,
-    FramebufferProperties, Image, ImageDimensions, ImageView, ImageViewAccess, ImageViewProperties,
-    Instance, MemoryAllocator, PhysicalDevice, Queue, RenderPass, Subpass, Surface, Swapchain,
-    SwapchainImage,
+    BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, Device, Fence,
+    Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageView, ImageViewAccess,
+    ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, Queue, RenderPass, Subpass,
+    Surface, Swapchain, SwapchainImage,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -248,7 +248,7 @@ pub fn create_device_and_queues(
 
 pub fn create_command_pool(device: Arc<Device>, queue: &Queue) -> anyhow::Result<Arc<CommandPool>> {
     let command_pool_props = CommandPoolProperties {
-        flags: vk::CommandPoolCreateFlags::TRANSIENT,
+        flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
         queue_family_index: queue.famliy_index(),
     };
     let command_pool = CommandPool::new(device, command_pool_props)
@@ -617,6 +617,20 @@ pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Resu
     let buffer = Buffer::new(memory_allocator, ubo_props, alloc_info)
         .context("creating camera ubo buffer")?;
     Ok(Arc::new(buffer))
+}
+
+pub fn create_render_command_buffers(
+    command_pool: Arc<CommandPool>,
+    swapchain_image_count: u32,
+) -> anyhow::Result<Vec<Arc<CommandBuffer>>> {
+    let command_buffers = command_pool
+        .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, swapchain_image_count)
+        .context("allocating per-frame command buffers")?;
+    let command_buffer_arcs = command_buffers
+        .into_iter()
+        .map(|cb| Arc::new(cb))
+        .collect::<Vec<_>>();
+    Ok(command_buffer_arcs)
 }
 
 pub fn create_per_frame_fence(device: Arc<Device>) -> anyhow::Result<Arc<Fence>> {

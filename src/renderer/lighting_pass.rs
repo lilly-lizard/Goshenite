@@ -150,6 +150,7 @@ fn create_desc_set_camera(
             descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
             descriptor_count: 1,
             stage_flags: vk::ShaderStageFlags::FRAGMENT,
+            ..Default::default()
         }]);
 
     let desc_set_layout = Arc::new(
@@ -202,12 +203,14 @@ fn create_desc_set_gbuffers(
             descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
             descriptor_count: 1,
             stage_flags: vk::ShaderStageFlags::FRAGMENT,
+            ..Default::default()
         },
         DescriptorSetLayoutBinding {
             binding: descriptor::BINDING_PRIMITIVE_ID,
             descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
             descriptor_count: 1,
             stage_flags: vk::ShaderStageFlags::FRAGMENT,
+            ..Default::default()
         },
     ];
 

@@ -14,7 +14,7 @@ use super::{
 use crate::{
     config::ENGINE_NAME,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
-    renderer::vulkan_init::create_command_pool,
+    renderer::vulkan_init::{create_command_pool, create_render_command_buffers},
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::Context;
@@ -62,9 +62,10 @@ pub struct RenderManager {
     geometry_pass: GeometryPass,
     gui_pass: GuiPass,
 
+    render_command_buffers: Vec<Arc<CommandBuffer>>,
     previous_render_fence: Arc<Fence>, // per frame in flight
     next_frame_wait_semaphore: Arc<Semaphore>, // per frame in flight
-    swapchain_image_available_semaphores: Vec<Arc<Semaphore>>, // per swapchain image
+    swapchain_image_available_semaphore: Arc<Semaphore>, // per frame in flight
 
     /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
     /// without conflicting with commands currently being processed. This variable indicates
@@ -222,15 +223,15 @@ impl RenderManager {
             render_queue_family_index,
         )?;
 
+        let render_command_buffers =
+            create_render_command_buffers(command_pool.clone(), swapchain_images.len() as u32)?;
+
         let previous_render_fence = create_per_frame_fence(device.clone())?;
         let next_frame_wait_semaphore =
             Arc::new(Semaphore::new(device.clone()).context("creating per-frame semaphore")?);
-        let mut swapchain_image_available_semaphores: Vec<Arc<Semaphore>> = Vec::new();
-        for _ in 0..swapchain_images.len() {
-            swapchain_image_available_semaphores.push(Arc::new(
-                Semaphore::new(device.clone()).context("creating per-swapchain-image semaphore")?,
-            ));
-        }
+        let swapchain_image_available_semaphore = Arc::new(
+            Semaphore::new(device.clone()).context("creating per-swapchain-image semaphore")?,
+        );
 
         Ok(Self {
             entry,
@@ -262,9 +263,10 @@ impl RenderManager {
             lighting_pass,
             gui_pass,
 
+            render_command_buffers,
             previous_render_fence,
             next_frame_wait_semaphore,
-            swapchain_image_available_semaphores,
+            swapchain_image_available_semaphore,
 
             next_frame: 0,
         })
@@ -331,21 +333,31 @@ impl RenderManager {
         };
         if let Err(fence_wait_err) = fence_wait_res {
             if fence_wait_err == vk::Result::TIMEOUT {
-                todo!();
+                error!(
+                    "previous render fence timed out! timeout set to {}ns",
+                    TIMEOUT_NANOSECS
+                );
+                // todo can handle this on caller side
+                return Err(fence_wait_err)
+                    .context("timeout while waiting for previous frame fence");
             } else {
                 return Err(fence_wait_err).context("waiting for previous frame fence");
             }
         }
 
+        // recreate resources if known window resize
+
         if window_resize {
-            self.recreate_swapchain();
+            self.recreate_swapchain()?;
         }
 
         // aquire next swapchain image
 
-        let aquire_res = self
-            .swapchain
-            .aquire_next_image(TIMEOUT_NANOSECS, None, None);
+        let aquire_res = self.swapchain.aquire_next_image(
+            TIMEOUT_NANOSECS,
+            Some(&self.swapchain_image_available_semaphore),
+            None,
+        );
 
         if let Err(aquire_err) = aquire_res {
             if aquire_err == vk::Result::ERROR_OUT_OF_DATE_KHR {
@@ -364,12 +376,17 @@ impl RenderManager {
 
         // record commands
 
-        let command_buffer =
-            CommandBuffer::new(self.command_pool.clone(), vk::CommandBufferLevel::PRIMARY)
-                .context("allocating per-frame command buffer")?;
+        // todo sub-command
+
+        let command_buffer = self.render_command_buffers[swapchain_index].clone();
         let command_buffer_handle = command_buffer.handle();
         let device_ash = self.device.inner();
         let viewport = self.framebuffers[swapchain_index].whole_viewport();
+
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        unsafe { device_ash.begin_command_buffer(command_buffer_handle, &begin_info) }
+            .context("beinning render command buffer recording")?;
 
         let render_pass_begin = vk::RenderPassBeginInfo::builder()
             .render_pass(self.render_pass.handle())
@@ -381,15 +398,13 @@ impl RenderManager {
                 command_buffer_handle,
                 &render_pass_begin,
                 vk::SubpassContents::INLINE,
-            );
-        }
+            )
+        };
 
         self.geometry_pass
             .record_commands(&command_buffer, viewport)?;
 
-        unsafe {
-            device_ash.cmd_next_subpass(command_buffer_handle, vk::SubpassContents::INLINE);
-        }
+        unsafe { device_ash.cmd_next_subpass(command_buffer_handle, vk::SubpassContents::INLINE) };
 
         self.lighting_pass
             .record_commands(&command_buffer, viewport)?;
@@ -401,13 +416,61 @@ impl RenderManager {
             [viewport.width, viewport.height],
         )?;
 
-        unsafe {
-            device_ash.cmd_end_render_pass(command_buffer_handle);
-        }
+        unsafe { device_ash.cmd_end_render_pass(command_buffer_handle) };
+
+        unsafe { device_ash.end_command_buffer(command_buffer_handle) }
+            .context("ending render command buffer recording")?;
 
         // submit commands
 
-        todo!();
+        let submit_command_buffers = [command_buffer_handle];
+
+        let wait_semaphores = [self.swapchain_image_available_semaphore.handle()];
+        let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+
+        let signal_semaphores = [self.next_frame_wait_semaphore.handle()];
+
+        let submit_info = vk::SubmitInfo::builder()
+            .command_buffers(&submit_command_buffers)
+            .wait_semaphores(&wait_semaphores)
+            .wait_dst_stage_mask(&wait_stages)
+            .signal_semaphores(&signal_semaphores);
+
+        unsafe {
+            device_ash.queue_submit(
+                self.render_queue.handle(),
+                &[submit_info.build()],
+                self.previous_render_fence.handle(),
+            )
+        }
+        .context("submitting render commands")?;
+
+        // submit present instruction
+
+        let swapchain_present_indices = [swapchain_index as u32];
+        let swapchain_handles = [self.swapchain.handle()];
+        let present_info = vk::PresentInfoKHR::builder()
+            .wait_semaphores(&signal_semaphores)
+            .image_indices(&swapchain_present_indices)
+            .swapchains(&swapchain_handles);
+
+        let present_res = unsafe {
+            self.swapchain
+                .swapchain_loader()
+                .queue_present(self.render_queue.handle(), &present_info)
+        };
+
+        if let Err(present_err) = present_res {
+            if present_err == vk::Result::ERROR_OUT_OF_DATE_KHR
+                || present_err == vk::Result::SUBOPTIMAL_KHR
+            {
+                self.recreate_swapchain()?;
+            } else {
+                return Err(present_err).context("submitting swapchain present instruction")?;
+            }
+        }
+
+        Ok(())
     }
 }
 
