@@ -217,13 +217,12 @@ fn write_desc_set_camera(
         range: mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize,
     };
 
-    let descriptor_writes = [vk::WriteDescriptorSet {
-        dst_set: desc_set_camera.handle(),
-        descriptor_count: 1,
-        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-        p_buffer_info: &camera_buffer_info,
-        ..Default::default()
-    }];
+    let descriptor_writes = [vk::WriteDescriptorSet::builder()
+        .dst_set(desc_set_camera.handle())
+        .dst_binding(descriptor::BINDING_CAMERA)
+        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+        .buffer_info(&[camera_buffer_info])
+        .build()];
 
     unsafe {
         desc_set_camera
@@ -336,6 +335,7 @@ fn write_desc_set_primitive_ops(
 
     let descriptor_writes = [vk::WriteDescriptorSet::builder()
         .dst_set(descriptor_set.handle())
+        .dst_binding(descriptor::BINDING_PRIMITIVE_OPS)
         .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
         .buffer_info(primitive_ops_buffer_infos.as_slice())
         .build()];

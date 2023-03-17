@@ -83,15 +83,18 @@ impl RenderManager {
 
         // create vulkan instance
         let api_version = ApiVersion::new(VULKAN_VER_MAJ, VULKAN_VER_MIN);
-        let instance = Arc::new(Instance::new(
-            &entry,
-            api_version,
-            ENGINE_NAME,
-            window.raw_display_handle(),
-            ENABLE_VULKAN_VALIDATION,
-            [],
-            [],
-        )?);
+        let instance = Arc::new(
+            Instance::new(
+                &entry,
+                api_version,
+                ENGINE_NAME,
+                window.raw_display_handle(),
+                ENABLE_VULKAN_VALIDATION,
+                [],
+                [],
+            )
+            .context("creating vulkan instance")?,
+        );
         info!(
             "created vulkan instance. api version = {:?}",
             instance.api_version()
@@ -180,16 +183,17 @@ impl RenderManager {
             swapchain.properties().dimensions(),
         )?;
 
-        let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
-
         let normal_buffer = create_normal_buffer(
             memory_allocator.clone(),
             swapchain.properties().dimensions(),
         )?;
+
         let primitive_id_buffer = create_primitive_id_buffer(
             memory_allocator.clone(),
             swapchain.properties().dimensions(),
         )?;
+
+        let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
 
         let framebuffers = create_framebuffers(
             &render_pass,

@@ -722,13 +722,12 @@ fn write_font_texture_desc_set(
         sampler: sampler.handle(),
     };
 
-    let descriptor_writes = [vk::WriteDescriptorSet {
-        dst_set: desc_set.handle(),
-        descriptor_count: 1,
-        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-        p_image_info: &texture_info,
-        ..Default::default()
-    }];
+    let descriptor_writes = [vk::WriteDescriptorSet::builder()
+        .dst_set(desc_set.handle())
+        .dst_binding(descriptor::BINDING_FONT_TEXTURE)
+        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+        .image_info(&[texture_info])
+        .build()];
 
     unsafe {
         desc_set

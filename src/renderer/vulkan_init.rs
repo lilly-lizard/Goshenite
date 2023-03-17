@@ -25,6 +25,13 @@ pub fn required_device_extensions() -> [&'static str; 2] {
     ["VK_KHR_swapchain", "VK_EXT_descriptor_indexing"]
 }
 
+pub fn required_device_extensions_cstr() -> [&'static std::ffi::CStr; 2] {
+    [
+        vk::KhrSwapchainFn::name(),
+        vk::ExtDescriptorIndexingFn::name(),
+    ]
+}
+
 /// Make sure to update `required_features_1_2` too!
 pub fn supports_required_features_1_2(
     supported_features: vk::PhysicalDeviceVulkan12Features,
@@ -149,7 +156,7 @@ fn check_physical_device_queue_support(
     let supported_features = instance
         .physical_device_features_1_2(physical_device.handle())
         .expect("instance should have been created for vulkan 1.2");
-    if supports_required_features_1_2(supported_features) {
+    if !supports_required_features_1_2(supported_features) {
         trace!(
             "physical device {} doesn't support required features. supported features: {:?}",
             physical_device.name(),
@@ -371,7 +378,7 @@ fn attachment_descriptions(
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::DONT_CARE)
             .initial_layout(vk::ImageLayout::UNDEFINED) // what it will be in at the beginning of the render pass
-            .final_layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL) // what it will transition to at the end of the render pass
+            .final_layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL) // what it will transition to at the end of the render pass
             .build();
 
     attachment_descriptions
@@ -389,18 +396,21 @@ fn subpasses() -> [Subpass; render_pass_indices::NUM_SUBPASSES] {
             .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .build(),
         vk::AttachmentReference::builder()
-            .attachment(render_pass_indices::ATTACHMENT_NORMAL as u32)
+            .attachment(render_pass_indices::ATTACHMENT_PRIMITIVE_ID as u32)
             .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .build(),
     ];
 
     let g_buffer_depth_attachment = vk::AttachmentReference::builder()
         .attachment(render_pass_indices::ATTACHMENT_DEPTH_BUFFER as u32)
-        .layout(vk::ImageLayout::DEPTH_ATTACHMENT_OPTIMAL)
+        .layout(vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL)
         .build();
 
-    subpasses[render_pass_indices::SUBPASS_GBUFFER] =
-        Subpass::new(g_buffer_color_attachments, g_buffer_depth_attachment, []);
+    subpasses[render_pass_indices::SUBPASS_GBUFFER] = Subpass::new(
+        g_buffer_color_attachments,
+        Some(g_buffer_depth_attachment),
+        [],
+    );
 
     // deferred subpass
 
@@ -420,11 +430,8 @@ fn subpasses() -> [Subpass; render_pass_indices::NUM_SUBPASSES] {
             .build(),
     ];
 
-    subpasses[render_pass_indices::SUBPASS_DEFERRED] = Subpass::new(
-        deferred_color_attachments,
-        Default::default(),
-        deferred_input_attachments,
-    );
+    subpasses[render_pass_indices::SUBPASS_DEFERRED] =
+        Subpass::new(deferred_color_attachments, None, deferred_input_attachments);
 
     subpasses
 }
@@ -450,7 +457,7 @@ fn subpass_dependencies() -> [vk::SubpassDependency; 2] {
         .src_subpass(render_pass_indices::SUBPASS_GBUFFER as u32)
         .dst_subpass(render_pass_indices::SUBPASS_DEFERRED as u32)
         .src_stage_mask(vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT)
-        .src_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
+        .dst_stage_mask(vk::PipelineStageFlags::FRAGMENT_SHADER)
         .src_access_mask(vk::AccessFlags::COLOR_ATTACHMENT_WRITE)
         .dst_access_mask(vk::AccessFlags::SHADER_READ)
         .build();

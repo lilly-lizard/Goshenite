@@ -175,13 +175,12 @@ fn write_desc_set_camera(
         range: mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize,
     };
 
-    let descriptor_writes = [vk::WriteDescriptorSet {
-        dst_set: desc_set_camera.handle(),
-        descriptor_count: 1,
-        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-        p_buffer_info: &camera_buffer_info,
-        ..Default::default()
-    }];
+    let descriptor_writes = [vk::WriteDescriptorSet::builder()
+        .dst_set(desc_set_camera.handle())
+        .dst_binding(descriptor::BINDING_CAMERA)
+        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+        .buffer_info(&[camera_buffer_info])
+        .build()];
 
     unsafe {
         desc_set_camera
@@ -244,20 +243,18 @@ fn write_desc_set_gbuffers(
     };
 
     let descriptor_writes = [
-        vk::WriteDescriptorSet {
-            dst_set: desc_set_gbuffers.handle(),
-            descriptor_count: 1,
-            descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
-            p_image_info: &normal_buffer_info,
-            ..Default::default()
-        },
-        vk::WriteDescriptorSet {
-            dst_set: desc_set_gbuffers.handle(),
-            descriptor_count: 1,
-            descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
-            p_image_info: &primitive_id_buffer_info,
-            ..Default::default()
-        },
+        vk::WriteDescriptorSet::builder()
+            .dst_set(desc_set_gbuffers.handle())
+            .dst_binding(descriptor::BINDING_NORMAL)
+            .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
+            .image_info(&[normal_buffer_info])
+            .build(),
+        vk::WriteDescriptorSet::builder()
+            .dst_set(desc_set_gbuffers.handle())
+            .dst_binding(descriptor::BINDING_PRIMITIVE_ID)
+            .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
+            .image_info(&[primitive_id_buffer_info])
+            .build(),
     ];
 
     unsafe {
