@@ -16,7 +16,7 @@ use bort::{
     GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
     ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool,
     MemoryPoolPropeties, PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue,
-    RenderPass, Sampler, SamplerProperties, Semaphore, ShaderModule, ShaderStage,
+    RenderPass, Sampler, SamplerProperties, Semaphore, ShaderModule, ShaderStage, ViewportState,
 };
 use bort_vma::Alloc;
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
@@ -278,7 +278,7 @@ impl GuiPass {
         // create buffer to be copied to the image
         let mut texture_data_buffer = create_texture_data_buffer(
             self.memory_allocator.clone(),
-            std::mem::size_of_val(&data) as u64,
+            std::mem::size_of_val(data.as_slice()) as u64,
         )?;
         texture_data_buffer
             .write_iter(data, 0)
@@ -578,12 +578,12 @@ impl GuiPass {
 
     fn create_vertex_and_index_buffers(&mut self, mesh: &Mesh) -> anyhow::Result<(Buffer, Buffer)> {
         let vertex_buffer_props = BufferProperties::new_default(
-            mem::size_of_val(&mesh.vertices) as vk::DeviceSize,
+            mem::size_of_val(mesh.vertices.as_slice()) as vk::DeviceSize,
             vk::BufferUsageFlags::VERTEX_BUFFER,
         );
 
         let index_buffer_props = BufferProperties::new_default(
-            mem::size_of_val(&mesh.indices) as vk::DeviceSize,
+            mem::size_of_val(mesh.indices.as_slice()) as vk::DeviceSize,
             vk::BufferUsageFlags::INDEX_BUFFER,
         );
 
@@ -743,7 +743,7 @@ fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorP
     let descriptor_pool_props = DescriptorPoolProperties {
         max_sets: MAX_DESC_SETS_PER_POOL,
         pool_sizes: vec![vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::SAMPLED_IMAGE,
+            ty: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
             descriptor_count: MAX_DESC_SETS_PER_POOL,
         }],
         ..Default::default()
@@ -801,7 +801,7 @@ fn create_texture_sampler(device: Arc<Device>) -> anyhow::Result<Arc<Sampler>> {
 fn create_descriptor_layout(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorSetLayout>> {
     let layout_props = DescriptorSetLayoutProperties::new(vec![DescriptorSetLayoutBinding {
         binding: descriptor::BINDING_FONT_TEXTURE,
-        descriptor_type: vk::DescriptorType::SAMPLED_IMAGE,
+        descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
         descriptor_count: 1,
         stage_flags: vk::ShaderStageFlags::FRAGMENT,
         ..Default::default()
@@ -816,8 +816,14 @@ fn create_pipeline_layout(
     device: Arc<Device>,
     desc_set_layout_texture: Arc<DescriptorSetLayout>,
 ) -> anyhow::Result<Arc<PipelineLayout>> {
+    let push_constant_range = vk::PushConstantRange::builder()
+        .stage_flags(vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX)
+        .offset(0)
+        .size(std::mem::size_of::<GuiPushConstant>() as u32)
+        .build();
+
     let pipeline_layout_props =
-        PipelineLayoutProperties::new(vec![desc_set_layout_texture], Vec::new());
+        PipelineLayoutProperties::new(vec![desc_set_layout_texture], vec![push_constant_range]);
 
     let pipeline_layout = PipelineLayout::new(device, pipeline_layout_props)
         .context("creating gui pass pipeline layout")?;
@@ -850,6 +856,9 @@ fn create_pipeline(
 
     let dynamic_state =
         DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
+
+    let viewport_state = ViewportState::new_dynamic(1, 1);
+
     let color_blend_state =
         ColorBlendState::new_default(vec![ColorBlendState::blend_state_alpha()]);
 
@@ -858,11 +867,12 @@ fn create_pipeline(
     pipeline_properties.dynamic_state = dynamic_state;
     pipeline_properties.color_blend_state = color_blend_state;
     pipeline_properties.vertex_input_state = EguiVertex::vertex_input_state();
+    pipeline_properties.viewport_state = viewport_state;
 
     let pipeline = GraphicsPipeline::new(
         pipeline_layout,
         pipeline_properties,
-        [vert_stage, frag_stage],
+        &[vert_stage, frag_stage],
         render_pass,
         None,
     )

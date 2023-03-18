@@ -1,18 +1,6 @@
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec4};
 
-/// Should match definition in `bounding_box.vert`
-#[repr(C)]
-#[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
-pub struct ObjectIndexPushConstant {
-    pub object_index: u32,
-}
-impl ObjectIndexPushConstant {
-    pub fn new(object_index: u32) -> Self {
-        Self { object_index }
-    }
-}
-
 /// Should match definitions in `gui.vert` and `gui.frag`.
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]

@@ -18,9 +18,9 @@ pub fn anyhow_panic(error: &anyhow::Error, failed_to: &str) -> ! {
     error!("failed to {} while: {}", failed_to, error);
     if let Some(source) = error.source() {
         // log raw source error contents
-        error!("source error(s):");
+        error!("error message stack:");
         let depth: usize = 0;
-        error!("\t{}: {:?}", depth, source);
+        error!("\t{}: {}", depth, source);
         log_error_souce(source, depth + 1);
     }
     // panic
@@ -30,7 +30,7 @@ pub fn anyhow_panic(error: &anyhow::Error, failed_to: &str) -> ! {
 #[track_caller]
 fn log_error_souce(e: &dyn std::error::Error, depth: usize) {
     if let Some(source) = e.source() {
-        error!("\t{}: {:?}", depth, source);
+        error!("\t{}: {}", depth, source);
         log_error_souce(source, depth + 1);
     }
 }

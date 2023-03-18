@@ -1,6 +1,6 @@
 use super::{
     config_renderer::SHADER_ENTRY_POINT,
-    object_buffer_manager::ObjectBufferManager,
+    object_resource_manager::ObjectResourceManager,
     shader_interfaces::{uniform_buffers::CameraUniformBuffer, vertex_inputs::BoundingBoxVertex},
     vulkan_init::render_pass_indices,
 };
@@ -12,13 +12,11 @@ use bort::{
     DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
     Device, DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties,
     MemoryAllocator, PipelineAccess, PipelineLayout, PipelineLayoutProperties, RenderPass,
-    ShaderModule, ShaderStage,
+    ShaderModule, ShaderStage, ViewportState,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{ffi::CString, mem, sync::Arc};
-
-const MAX_OBJECT_BUFFERS: u32 = 256;
 
 const VERT_SHADER_PATH: &str = "assets/shader_binaries/bounding_box.vert.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
@@ -37,10 +35,9 @@ pub struct GeometryPass {
     device: Arc<Device>,
 
     desc_set_camera: Arc<DescriptorSet>,
-    desc_set_primitive_ops: Arc<DescriptorSet>,
 
     pipeline: Arc<GraphicsPipeline>,
-    object_buffer_manager: ObjectBufferManager,
+    object_buffer_manager: ObjectResourceManager,
 }
 
 // Public functions
@@ -56,22 +53,22 @@ impl GeometryPass {
         let desc_set_camera = create_desc_set_camera(descriptor_pool.clone())?;
         write_desc_set_camera(&desc_set_camera, camera_buffer)?;
 
-        let desc_set_primitive_ops = create_desc_set_primitive_ops(descriptor_pool.clone())?;
+        let primitive_ops_desc_set_layout = create_primitive_ops_desc_set_layout(device.clone())?;
 
         let pipeline_layout = create_pipeline_layout(
             device.clone(),
             desc_set_camera.layout().clone(),
-            desc_set_primitive_ops.layout().clone(),
+            primitive_ops_desc_set_layout.clone(),
         )?;
 
         let pipeline = create_pipeline(pipeline_layout, render_pass)?;
 
-        let object_buffer_manager = ObjectBufferManager::new(memory_allocator)?;
+        let object_buffer_manager =
+            ObjectResourceManager::new(memory_allocator, primitive_ops_desc_set_layout)?;
 
         Ok(Self {
             device,
             desc_set_camera,
-            desc_set_primitive_ops,
             pipeline,
             object_buffer_manager,
         })
@@ -108,12 +105,6 @@ impl GeometryPass {
             }
         }
 
-        // update descriptor set
-        write_desc_set_primitive_ops(
-            &self.desc_set_primitive_ops,
-            &self.object_buffer_manager.primitive_op_buffers(),
-        )?;
-
         Ok(())
     }
 
@@ -133,10 +124,7 @@ impl GeometryPass {
 
         let device_ash = self.device.inner();
         let command_buffer_handle = command_buffer.handle();
-        let descriptor_set_handles = [
-            self.desc_set_camera.handle(),
-            self.desc_set_primitive_ops.handle(),
-        ];
+        let descriptor_set_handles = [self.desc_set_camera.handle()];
 
         unsafe {
             device_ash.cmd_bind_pipeline(
@@ -163,17 +151,11 @@ impl GeometryPass {
 
 fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorPool>> {
     let descriptor_pool_props = DescriptorPoolProperties {
-        max_sets: 2,
-        pool_sizes: vec![
-            vk::DescriptorPoolSize {
-                ty: vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
-                descriptor_count: 1,
-            },
-            vk::DescriptorPoolSize {
-                ty: vk::DescriptorType::UNIFORM_BUFFER,
-                descriptor_count: 1,
-            },
-        ],
+        max_sets: 1,
+        pool_sizes: vec![vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::UNIFORM_BUFFER,
+            descriptor_count: 1,
+        }],
         ..Default::default()
     };
 
@@ -234,27 +216,22 @@ fn write_desc_set_camera(
     Ok(())
 }
 
-fn create_desc_set_primitive_ops(
-    descriptor_pool: Arc<DescriptorPool>,
-) -> anyhow::Result<Arc<DescriptorSet>> {
+fn create_primitive_ops_desc_set_layout(
+    device: Arc<Device>,
+) -> anyhow::Result<Arc<DescriptorSetLayout>> {
     let mut desc_set_layout_props = DescriptorSetLayoutProperties::default();
     desc_set_layout_props.bindings = vec![DescriptorSetLayoutBinding {
         binding: descriptor::BINDING_PRIMITIVE_OPS,
-        descriptor_type: vk::DescriptorType::STORAGE_BUFFER_DYNAMIC,
+        descriptor_type: vk::DescriptorType::STORAGE_BUFFER,
         descriptor_count: 1,
         stage_flags: vk::ShaderStageFlags::FRAGMENT,
         ..Default::default()
     }];
 
-    let desc_set_layout = Arc::new(
-        DescriptorSetLayout::new(descriptor_pool.device().clone(), desc_set_layout_props)
-            .context("creating geometry pass primitive-ops descriptor set layout")?,
-    );
+    let desc_set_layout = DescriptorSetLayout::new(device, desc_set_layout_props)
+        .context("creating geometry pass primitive-ops descriptor set layout")?;
 
-    let desc_set = DescriptorSet::new(descriptor_pool, desc_set_layout)
-        .context("allocating primitive ops desc set")?;
-
-    Ok(Arc::new(desc_set))
+    Ok(Arc::new(desc_set_layout))
 }
 
 fn create_pipeline_layout(
@@ -299,19 +276,23 @@ fn create_pipeline(
 
     let dynamic_state =
         DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
+
+    let viewport_state = ViewportState::new_dynamic(1, 1);
+
     let color_blend_state =
-        ColorBlendState::new_default(vec![ColorBlendState::blend_state_disabled()]);
+        ColorBlendState::new_default(vec![ColorBlendState::blend_state_disabled(); 2]);
 
     let mut pipeline_properties = GraphicsPipelineProperties::default();
     pipeline_properties.subpass_index = render_pass_indices::SUBPASS_GBUFFER as u32;
     pipeline_properties.dynamic_state = dynamic_state;
     pipeline_properties.color_blend_state = color_blend_state;
     pipeline_properties.vertex_input_state = BoundingBoxVertex::vertex_input_state();
+    pipeline_properties.viewport_state = viewport_state;
 
     let pipeline = GraphicsPipeline::new(
         pipeline_layout,
         pipeline_properties,
-        [vert_stage, frag_stage],
+        &[vert_stage, frag_stage],
         render_pass,
         None,
     )
@@ -336,7 +317,7 @@ fn write_desc_set_primitive_ops(
     let descriptor_writes = [vk::WriteDescriptorSet::builder()
         .dst_set(descriptor_set.handle())
         .dst_binding(descriptor::BINDING_PRIMITIVE_OPS)
-        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
         .buffer_info(primitive_ops_buffer_infos.as_slice())
         .build()];
 

@@ -1,6 +1,5 @@
 use super::shader_interfaces::{
     primitive_op_buffer::{PrimitiveOpBufferUnit, PRIMITIVE_OP_UNIT_LEN},
-    push_constants::ObjectIndexPushConstant,
     vertex_inputs::BoundingBoxVertex,
 };
 use crate::engine::{
@@ -10,12 +9,15 @@ use crate::engine::{
 use anyhow::Context;
 use ash::vk;
 use bort::{
-    allocation_info_from_flags, Buffer, BufferProperties, CommandBuffer, DeviceOwned,
-    GraphicsPipeline, MemoryAllocator, PipelineAccess,
+    allocation_info_from_flags, AllocAccess, Buffer, BufferProperties, CommandBuffer,
+    DescriptorPool, DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, Device,
+    DeviceOwned, GraphicsPipeline, MemoryAllocator, PipelineAccess,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{mem::size_of, sync::Arc};
+
+const DESCRIPTOR_POOL_SIZE: u32 = 256;
 
 // TODO biggest optimization is a staging buffer to make the vertex/storage buffers a more optimized memory type
 
@@ -27,24 +29,34 @@ const INIT_PRIMITIVE_OP_POOL_RESERVE: vk::DeviceSize =
 const INIT_BOUNDING_BOX_POOL_RESERVE: vk::DeviceSize =
     (16 * AABB_VERTEX_COUNT * size_of::<BoundingBoxVertex>()) as vk::DeviceSize;
 
-struct PerObjectBuffers {
+struct PerObjectResources {
     pub id: ObjectId,
     pub bounding_box_buffer: Arc<Buffer>,
     pub bounding_box_vertex_count: u32,
     pub primitive_ops_buffer: Arc<Buffer>,
+    pub primitive_ops_descriptor_set: Arc<DescriptorSet>,
 }
 
 /// Manages per-object resources for the geometry pass
-pub struct ObjectBufferManager {
+pub struct ObjectResourceManager {
     memory_allocator: Arc<MemoryAllocator>,
-    objects_buffers: Vec<PerObjectBuffers>,
+    objects_buffers: Vec<PerObjectResources>,
+    descriptor_pools: Vec<Arc<DescriptorPool>>,
+    primitive_ops_desc_set_layout: Arc<DescriptorSetLayout>,
 }
 
-impl ObjectBufferManager {
-    pub fn new(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Self> {
+impl ObjectResourceManager {
+    pub fn new(
+        memory_allocator: Arc<MemoryAllocator>,
+        primitive_ops_desc_set_layout: Arc<DescriptorSetLayout>,
+    ) -> anyhow::Result<Self> {
+        let initial_descriptor_pool = create_descriptor_pool(memory_allocator.device().clone())?;
+
         Ok(Self {
             memory_allocator,
             objects_buffers: Vec::new(),
+            descriptor_pools: vec![initial_descriptor_pool],
+            primitive_ops_desc_set_layout,
         })
     }
 
@@ -65,11 +77,14 @@ impl ObjectBufferManager {
         } else {
             let bounding_box_buffer = upload_bounding_box(self.memory_allocator.clone(), object)?;
 
-            let new_object = PerObjectBuffers {
+            let primitive_ops_descriptor_set = self.allocate_primitive_ops_descriptor_set()?;
+
+            let new_object = PerObjectResources {
                 id,
                 bounding_box_buffer,
                 bounding_box_vertex_count: AABB_VERTEX_COUNT as u32,
                 primitive_ops_buffer,
+                primitive_ops_descriptor_set,
             };
             self.objects_buffers.push(new_object);
 
@@ -86,17 +101,15 @@ impl ObjectBufferManager {
         let command_buffer_handle = command_buffer.handle();
 
         // for each object
-        for (index, per_object_buffers) in self.objects_buffers.iter().enumerate() {
-            let object_index_push_constant = ObjectIndexPushConstant::new(index as u32);
-            let push_constant_bytes = bytemuck::bytes_of(&object_index_push_constant);
-
+        for per_object_buffers in self.objects_buffers.iter() {
             unsafe {
-                device_ash.cmd_push_constants(
+                device_ash.cmd_bind_descriptor_sets(
                     command_buffer_handle,
+                    vk::PipelineBindPoint::GRAPHICS,
                     pipeline.pipeline_layout().handle(),
-                    vk::ShaderStageFlags::VERTEX,
-                    0,
-                    push_constant_bytes,
+                    1,
+                    &[per_object_buffers.primitive_ops_descriptor_set.handle()],
+                    &[],
                 );
                 device_ash.cmd_bind_vertex_buffers(
                     command_buffer_handle,
@@ -149,6 +162,46 @@ impl ObjectBufferManager {
     }
 }
 
+// Private functions
+
+impl ObjectResourceManager {
+    fn allocate_primitive_ops_descriptor_set(&mut self) -> anyhow::Result<Arc<DescriptorSet>> {
+        let descriptor_pool = self.descriptor_pools[self.descriptor_pools.len() - 1].clone();
+
+        let alloc_res =
+            DescriptorSet::new(descriptor_pool, self.primitive_ops_desc_set_layout.clone());
+
+        let desc_set = match alloc_res {
+            Err(alloc_err) => {
+                if alloc_err == vk::Result::ERROR_OUT_OF_POOL_MEMORY {
+                    todo!();
+                } else {
+                    return Err(alloc_err).context("allocating primitive ops desc set");
+                }
+            }
+            Ok(desc_set) => desc_set,
+        };
+
+        Ok(Arc::new(desc_set))
+    }
+}
+
+fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorPool>> {
+    let descriptor_pool_props = DescriptorPoolProperties {
+        max_sets: DESCRIPTOR_POOL_SIZE,
+        pool_sizes: vec![vk::DescriptorPoolSize {
+            ty: vk::DescriptorType::STORAGE_BUFFER,
+            descriptor_count: DESCRIPTOR_POOL_SIZE,
+        }],
+        ..Default::default()
+    };
+
+    let descriptor_pool = DescriptorPool::new(device, descriptor_pool_props)
+        .context("creating geometry pass descriptor pool")?;
+
+    Ok(Arc::new(descriptor_pool))
+}
+
 fn upload_bounding_box(
     memory_allocator: Arc<MemoryAllocator>,
     object: &Object,
@@ -195,7 +248,7 @@ fn upload_primitive_ops(
     let data = object.encoded_primitive_ops();
 
     let buffer_props = BufferProperties::new_default(
-        std::mem::size_of_val(&data) as vk::DeviceSize,
+        std::mem::size_of_val(data.as_slice()) as vk::DeviceSize,
         vk::BufferUsageFlags::STORAGE_BUFFER,
     );
 

@@ -113,7 +113,7 @@ impl Engine {
 
         anyhow_unwrap(
             renderer.update_object_buffers(&object_collection, objects_delta),
-            "bruh",
+            "update object buffers",
         );
 
         // TESTING OBJECTS END

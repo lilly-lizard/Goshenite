@@ -407,9 +407,9 @@ fn subpasses() -> [Subpass; render_pass_indices::NUM_SUBPASSES] {
         .build();
 
     subpasses[render_pass_indices::SUBPASS_GBUFFER] = Subpass::new(
-        g_buffer_color_attachments,
+        &g_buffer_color_attachments,
         Some(g_buffer_depth_attachment),
-        [],
+        &[],
     );
 
     // deferred subpass
@@ -430,8 +430,11 @@ fn subpasses() -> [Subpass; render_pass_indices::NUM_SUBPASSES] {
             .build(),
     ];
 
-    subpasses[render_pass_indices::SUBPASS_DEFERRED] =
-        Subpass::new(deferred_color_attachments, None, deferred_input_attachments);
+    subpasses[render_pass_indices::SUBPASS_DEFERRED] = Subpass::new(
+        &deferred_color_attachments,
+        None,
+        &deferred_input_attachments,
+    );
 
     subpasses
 }

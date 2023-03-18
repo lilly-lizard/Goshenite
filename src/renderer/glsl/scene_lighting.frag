@@ -3,8 +3,8 @@
 #include "common.glsl"
 
 // g-buffer input attachments
-layout (input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput in_normal;
-layout (input_attachment_index = 1, set = 0, binding = 1) uniform usubpassInput in_prmitive_id;
+layout (set = 0, binding = 0, input_attachment_index = 0) uniform subpassInput in_normal;
+layout (set = 0, binding = 1, input_attachment_index = 1) uniform usubpassInput in_prmitive_id;
 // input UV from full_screen.vert
 layout (location = 0) in vec2 in_uv;
 

@@ -9,7 +9,7 @@ use bort::{
     DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
     Device, DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties, Image,
     ImageView, ImageViewAccess, PipelineAccess, PipelineLayout, PipelineLayoutProperties,
-    RenderPass, ShaderModule, ShaderStage,
+    RenderPass, ShaderModule, ShaderStage, ViewportState,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, warn};
@@ -231,13 +231,13 @@ fn write_desc_set_gbuffers(
     primitive_id_buffer: &impl ImageViewAccess,
 ) -> anyhow::Result<()> {
     let normal_buffer_info = vk::DescriptorImageInfo {
-        image_layout: vk::ImageLayout::ATTACHMENT_OPTIMAL,
+        image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         image_view: normal_buffer.handle(),
         ..Default::default()
     };
 
     let primitive_id_buffer_info = vk::DescriptorImageInfo {
-        image_layout: vk::ImageLayout::ATTACHMENT_OPTIMAL,
+        image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         image_view: primitive_id_buffer.handle(),
         ..Default::default()
     };
@@ -273,7 +273,7 @@ fn create_pipeline_layout(
     desc_set_layout_g_buffers: Arc<DescriptorSetLayout>,
 ) -> anyhow::Result<Arc<PipelineLayout>> {
     let pipeline_layout_props = PipelineLayoutProperties::new(
-        vec![desc_set_layout_camera, desc_set_layout_g_buffers],
+        vec![desc_set_layout_g_buffers, desc_set_layout_camera],
         Vec::new(),
     );
 
@@ -310,6 +310,9 @@ fn create_pipeline(
 
     let dynamic_state =
         DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
+
+    let viewport_state = ViewportState::new_dynamic(1, 1);
+
     let color_blend_state =
         ColorBlendState::new_default(vec![ColorBlendState::blend_state_disabled()]);
 
@@ -317,11 +320,12 @@ fn create_pipeline(
     pipeline_properties.subpass_index = render_pass_indices::SUBPASS_DEFERRED as u32;
     pipeline_properties.dynamic_state = dynamic_state;
     pipeline_properties.color_blend_state = color_blend_state;
+    pipeline_properties.viewport_state = viewport_state;
 
     let pipeline = GraphicsPipeline::new(
         pipeline_layout,
         pipeline_properties,
-        [vert_stage, frag_stage],
+        &[vert_stage, frag_stage],
         render_pass,
         None,
     )
