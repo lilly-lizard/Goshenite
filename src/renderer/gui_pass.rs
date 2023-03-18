@@ -129,6 +129,16 @@ impl GuiPass {
             vk::CommandBufferLevel::PRIMARY,
         )
         .context("creating command buffer for gui texture upload")?;
+        let command_buffer_handle = command_buffer.handle();
+
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        unsafe {
+            self.device
+                .inner()
+                .begin_command_buffer(command_buffer_handle, &begin_info)
+                .context("beginning gui texture upload command buffer")?;
+        }
 
         let mut commands_recorded = false;
 
@@ -144,6 +154,13 @@ impl GuiPass {
                     self.add_new_texture_data(id, image_delta, &command_buffer)?;
                 commands_recorded |= new_commands_recorded;
             }
+        }
+
+        unsafe {
+            self.device
+                .inner()
+                .end_command_buffer(command_buffer_handle)
+                .context("ending gui texture upload command buffer")?;
         }
 
         // execute command buffer
@@ -356,7 +373,6 @@ impl GuiPass {
             TEXTURE_FORMAT,
             ImageDimensions::new_2d(delta.image.width() as u32, delta.image.height() as u32),
             vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
         );
         let new_image_allocation_info = allocation_info_from_flags(
             vk::MemoryPropertyFlags::DEVICE_LOCAL,
@@ -394,10 +410,12 @@ impl GuiPass {
             texture_id, copy_region.image_offset, copy_region.image_extent
         );
 
+        todo!("transition image layout to TRANSFER_DST_OPTIMAL");
+
         let to_shader_read_image_barrier = vk::ImageMemoryBarrier::builder()
             .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
             .dst_access_mask(vk::AccessFlags::SHADER_READ)
-            .old_layout(vk::ImageLayout::GENERAL)
+            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
             .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .image(new_image_view.image().handle())
             .subresource_range(new_image_view.properties().subresource_range);
@@ -420,7 +438,7 @@ impl GuiPass {
                 command_buffer_handle,
                 texture_data_buffer.handle(),
                 new_image.handle(),
-                vk::ImageLayout::GENERAL,
+                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 &[copy_region],
             );
 
