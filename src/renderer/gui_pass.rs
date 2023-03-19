@@ -572,7 +572,7 @@ impl GuiPass {
             device_ash.cmd_push_constants(
                 command_buffer_handle,
                 self.pipeline.pipeline_layout().handle(),
-                vk::ShaderStageFlags::FRAGMENT,
+                vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
                 0,
                 push_constant_bytes,
             );

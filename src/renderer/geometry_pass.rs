@@ -22,7 +22,7 @@ const VERT_SHADER_PATH: &str = "assets/shader_binaries/bounding_box.vert.spv";
 const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
 
 // descriptor set and binding indices
-mod descriptor {
+pub(super) mod descriptor {
     pub const SET_CAMERA: usize = 0;
     pub const BINDING_CAMERA: u32 = 0;
 
@@ -116,6 +116,7 @@ impl GeometryPass {
         &self,
         command_buffer: &CommandBuffer,
         viewport: vk::Viewport,
+        scissor: vk::Rect2D,
     ) -> anyhow::Result<()> {
         if self.object_buffer_manager.object_count() == 0 {
             trace!("no object buffers found. skipping geometry pass commands...");
@@ -133,6 +134,7 @@ impl GeometryPass {
                 self.pipeline.handle(),
             );
             device_ash.cmd_set_viewport(command_buffer_handle, 0, &[viewport]);
+            device_ash.cmd_set_scissor(command_buffer_handle, 0, &[scissor]);
             device_ash.cmd_bind_descriptor_sets(
                 command_buffer_handle,
                 vk::PipelineBindPoint::GRAPHICS,
@@ -142,6 +144,7 @@ impl GeometryPass {
                 &[],
             );
         }
+
         self.object_buffer_manager
             .draw_commands(command_buffer, &self.pipeline)?;
 
@@ -299,34 +302,4 @@ fn create_pipeline(
     .context("creating geometry pass pipeline")?;
 
     Ok(Arc::new(pipeline))
-}
-
-fn write_desc_set_primitive_ops(
-    descriptor_set: &DescriptorSet,
-    primitive_op_buffers: &Vec<Arc<Buffer>>,
-) -> anyhow::Result<()> {
-    let primitive_ops_buffer_infos = primitive_op_buffers
-        .iter()
-        .map(|buffer| vk::DescriptorBufferInfo {
-            buffer: buffer.handle(),
-            offset: 0,
-            range: buffer.properties().size,
-        })
-        .collect::<Vec<_>>();
-
-    let descriptor_writes = [vk::WriteDescriptorSet::builder()
-        .dst_set(descriptor_set.handle())
-        .dst_binding(descriptor::BINDING_PRIMITIVE_OPS)
-        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER_DYNAMIC)
-        .buffer_info(primitive_ops_buffer_infos.as_slice())
-        .build()];
-
-    unsafe {
-        descriptor_set
-            .device()
-            .inner()
-            .update_descriptor_sets(&descriptor_writes, &[]);
-    }
-
-    Ok(())
 }

@@ -352,6 +352,8 @@ impl RenderManager {
             }
         }
 
+        self.previous_upload_fence = None;
+
         self.gui_pass.free_previous_vertex_and_index_buffers();
 
         if window_resize {
@@ -389,6 +391,7 @@ impl RenderManager {
         let command_buffer_handle = command_buffer.handle();
         let device_ash = self.device.inner();
         let viewport = self.framebuffers[swapchain_index].whole_viewport();
+        let rect_2d = self.framebuffers[swapchain_index].whole_rect();
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -398,7 +401,7 @@ impl RenderManager {
         let render_pass_begin = vk::RenderPassBeginInfo::builder()
             .render_pass(self.render_pass.handle())
             .framebuffer(self.framebuffers[swapchain_index].handle())
-            .render_area(self.framebuffers[swapchain_index].full_render_area())
+            .render_area(rect_2d)
             .clear_values(self.clear_values.as_slice());
         unsafe {
             device_ash.cmd_begin_render_pass(
@@ -409,12 +412,12 @@ impl RenderManager {
         };
 
         self.geometry_pass
-            .record_commands(&command_buffer, viewport)?;
+            .record_commands(&command_buffer, viewport, rect_2d)?;
 
         unsafe { device_ash.cmd_next_subpass(command_buffer_handle, vk::SubpassContents::INLINE) };
 
         self.lighting_pass
-            .record_commands(&command_buffer, viewport)?;
+            .record_commands(&command_buffer, viewport, rect_2d)?;
 
         self.gui_pass.record_render_commands(
             &command_buffer,
@@ -429,6 +432,10 @@ impl RenderManager {
             .context("ending render command buffer recording")?;
 
         // submit commands
+
+        let previous_render_fence_handle = self.previous_render_fence.handle();
+        unsafe { device_ash.reset_fences(&[previous_render_fence_handle]) }
+            .context("reseting previous render fence")?;
 
         let submit_command_buffers = [command_buffer_handle];
 
@@ -447,7 +454,7 @@ impl RenderManager {
             device_ash.queue_submit(
                 self.render_queue.handle(),
                 &[submit_info.build()],
-                self.previous_render_fence.handle(),
+                previous_render_fence_handle,
             )
         }
         .context("submitting render commands")?;

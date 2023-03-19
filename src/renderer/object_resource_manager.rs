@@ -1,6 +1,9 @@
-use super::shader_interfaces::{
-    primitive_op_buffer::{PrimitiveOpBufferUnit, PRIMITIVE_OP_UNIT_LEN},
-    vertex_inputs::BoundingBoxVertex,
+use super::{
+    geometry_pass::descriptor,
+    shader_interfaces::{
+        primitive_op_buffer::{PrimitiveOpBufferUnit, PRIMITIVE_OP_UNIT_LEN},
+        vertex_inputs::BoundingBoxVertex,
+    },
 };
 use crate::engine::{
     aabb::AABB_VERTEX_COUNT,
@@ -78,6 +81,8 @@ impl ObjectResourceManager {
             let bounding_box_buffer = upload_bounding_box(self.memory_allocator.clone(), object)?;
 
             let primitive_ops_descriptor_set = self.allocate_primitive_ops_descriptor_set()?;
+
+            write_desc_set_primitive_ops(&primitive_ops_descriptor_set, &primitive_ops_buffer)?;
 
             let new_object = PerObjectResources {
                 id,
@@ -267,4 +272,31 @@ fn upload_primitive_ops(
         .context("uploading geometry pass primitive ops to buffer")?;
 
     Ok(Arc::new(new_buffer))
+}
+
+fn write_desc_set_primitive_ops(
+    descriptor_set: &DescriptorSet,
+    primitive_op_buffer: &Buffer,
+) -> anyhow::Result<()> {
+    let primitive_ops_buffer_info = vk::DescriptorBufferInfo {
+        buffer: primitive_op_buffer.handle(),
+        offset: 0,
+        range: primitive_op_buffer.properties().size,
+    };
+
+    let descriptor_writes = [vk::WriteDescriptorSet::builder()
+        .dst_set(descriptor_set.handle())
+        .dst_binding(descriptor::BINDING_PRIMITIVE_OPS)
+        .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
+        .buffer_info(&[primitive_ops_buffer_info])
+        .build()];
+
+    unsafe {
+        descriptor_set
+            .device()
+            .inner()
+            .update_descriptor_sets(&descriptor_writes, &[]);
+    }
+
+    Ok(())
 }

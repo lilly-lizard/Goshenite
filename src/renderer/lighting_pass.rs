@@ -89,12 +89,13 @@ impl LightingPass {
         &self,
         command_buffer: &CommandBuffer,
         viewport: vk::Viewport,
+        scissor: vk::Rect2D,
     ) -> anyhow::Result<()> {
         let device_ash = self.device.inner();
         let command_buffer_handle = command_buffer.handle();
         let descriptor_set_handles = [
-            self.desc_set_camera.handle(),
             self.desc_set_g_buffers.handle(),
+            self.desc_set_camera.handle(),
         ];
 
         unsafe {
@@ -104,6 +105,7 @@ impl LightingPass {
                 self.pipeline.handle(),
             );
             device_ash.cmd_set_viewport(command_buffer_handle, 0, &[viewport]);
+            device_ash.cmd_set_scissor(command_buffer_handle, 0, &[scissor]);
             device_ash.cmd_bind_descriptor_sets(
                 command_buffer_handle,
                 vk::PipelineBindPoint::GRAPHICS,
