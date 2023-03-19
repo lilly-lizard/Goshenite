@@ -14,7 +14,7 @@ use bort::{
     BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, Device, Fence,
     Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageView, ImageViewAccess,
     ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, Queue, RenderPass, Subpass,
-    Surface, Swapchain, SwapchainImage,
+    Surface, Swapchain, SwapchainImage, SwapchainProperties,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -268,7 +268,7 @@ pub fn create_swapchain(
     surface: Arc<Surface>,
     window: &Window,
     physical_device: &PhysicalDevice,
-) -> anyhow::Result<Arc<Swapchain>> {
+) -> anyhow::Result<Swapchain> {
     let preferred_image_count = FRAMES_IN_FLIGHT as u32;
     let window_dimensions: [u32; 2] = window.inner_size().into();
 
@@ -295,20 +295,18 @@ pub fn create_swapchain(
         window_dimensions,
     )
     .context("creating swapchain")?;
-    Ok(Arc::new(swapchain))
+    Ok(swapchain)
 }
 
-pub fn create_swapchain_images(
-    swapchain: &Arc<Swapchain>,
+pub fn create_swapchain_image_views(
+    swapchain: &Swapchain,
 ) -> anyhow::Result<Vec<Arc<ImageView<SwapchainImage>>>> {
-    let swapchain_images = SwapchainImage::from_swapchain(swapchain.clone())?;
+    let image_view_properties = swapchain.image_view_properties();
 
-    let swapchain_images = swapchain_images
-        .into_iter()
-        .map(|image| {
-            let image_view_properties = image.image_view_properties();
-            ImageView::new(Arc::new(image), image_view_properties)
-        })
+    let swapchain_images = swapchain
+        .swapchain_images()
+        .iter()
+        .map(|image| ImageView::new(image.clone(), image_view_properties))
         .collect::<Result<Vec<_>, _>>()?;
 
     let swapchain_images = swapchain_images
@@ -332,7 +330,7 @@ pub mod render_pass_indices {
 }
 
 fn attachment_descriptions(
-    swapchain: &Swapchain,
+    swapchain_properties: &SwapchainProperties,
 ) -> [vk::AttachmentDescription; render_pass_indices::NUM_ATTACHMENTS] {
     let mut attachment_descriptions =
         [vk::AttachmentDescription::default(); render_pass_indices::NUM_ATTACHMENTS];
@@ -340,7 +338,7 @@ fn attachment_descriptions(
     // swapchain
     attachment_descriptions[render_pass_indices::ATTACHMENT_SWAPCHAIN] =
         vk::AttachmentDescription::builder()
-            .format(swapchain.properties().surface_format.format)
+            .format(swapchain_properties.surface_format.format)
             .samples(vk::SampleCountFlags::TYPE_1)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::STORE)
@@ -470,9 +468,9 @@ fn subpass_dependencies() -> [vk::SubpassDependency; 2] {
 
 pub fn create_render_pass(
     device: Arc<Device>,
-    swapchain: &Swapchain,
+    swapchain_properties: &SwapchainProperties,
 ) -> anyhow::Result<Arc<RenderPass>> {
-    let attachment_descriptions = attachment_descriptions(swapchain);
+    let attachment_descriptions = attachment_descriptions(swapchain_properties);
     let subpasses = subpasses();
     let subpass_dependencies = subpass_dependencies();
 
@@ -545,20 +543,20 @@ pub fn create_primitive_id_buffer(
 
 pub fn create_framebuffers(
     render_pass: &Arc<RenderPass>,
-    swapchain_images: &Vec<Arc<ImageView<SwapchainImage>>>,
+    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
     normal_buffer: &Arc<ImageView<Image>>,
     primitive_id_buffer: &Arc<ImageView<Image>>,
     depth_buffer: &Arc<ImageView<Image>>,
 ) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
-    swapchain_images
+    swapchain_image_views
         .iter()
-        .map(|swapchain_image| {
+        .map(|swapchain_image_view| {
             let mut attachments = Vec::<Arc<dyn ImageViewAccess>>::with_capacity(
                 render_pass_indices::NUM_ATTACHMENTS,
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_SWAPCHAIN,
-                swapchain_image.clone(),
+                swapchain_image_view.clone(),
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_NORMAL,
@@ -574,7 +572,7 @@ pub fn create_framebuffers(
             );
 
             let framebuffer_properties =
-                FramebufferProperties::new(attachments, swapchain_image.image().dimensions());
+                FramebufferProperties::new(attachments, swapchain_image_view.image().dimensions());
             let framebuffer = Framebuffer::new(render_pass.clone(), framebuffer_properties)
                 .context("creating framebuffer")?;
             Ok(Arc::new(framebuffer))

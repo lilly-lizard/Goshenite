@@ -8,7 +8,7 @@ use super::{
         choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
         create_depth_buffer, create_device_and_queues, create_framebuffers, create_normal_buffer,
         create_per_frame_fence, create_primitive_id_buffer, create_render_pass, create_swapchain,
-        create_swapchain_images, ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
+        create_swapchain_image_views, ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
     },
 };
 use crate::{
@@ -45,8 +45,8 @@ pub struct RenderManager {
 
     window: Arc<Window>,
     surface: Arc<Surface>,
-    swapchain: Arc<Swapchain>,
-    swapchain_images: Vec<Arc<ImageView<SwapchainImage>>>,
+    swapchain: Swapchain,
+    swapchain_image_views: Vec<Arc<ImageView<SwapchainImage>>>,
     is_swapchain_srgb: bool,
 
     render_pass: Arc<RenderPass>,
@@ -64,6 +64,7 @@ pub struct RenderManager {
 
     render_command_buffers: Vec<Arc<CommandBuffer>>,
     previous_render_fence: Arc<Fence>, // per frame in flight
+    previous_upload_fence: Option<Arc<Fence>>, // just one
     next_frame_wait_semaphore: Arc<Semaphore>, // per frame in flight
     swapchain_image_available_semaphore: Arc<Semaphore>, // per frame in flight
 
@@ -174,9 +175,9 @@ impl RenderManager {
         );
         let is_swapchain_srgb = is_format_srgb(swapchain.properties().surface_format.format);
 
-        let swapchain_images = create_swapchain_images(&swapchain)?;
+        let swapchain_image_views = create_swapchain_image_views(&swapchain)?;
 
-        let render_pass = create_render_pass(device.clone(), &swapchain)?;
+        let render_pass = create_render_pass(device.clone(), swapchain.properties())?;
 
         let depth_buffer = create_depth_buffer(
             memory_allocator.clone(),
@@ -197,7 +198,7 @@ impl RenderManager {
 
         let framebuffers = create_framebuffers(
             &render_pass,
-            &swapchain_images,
+            &swapchain_image_views,
             &normal_buffer,
             &primitive_id_buffer,
             &depth_buffer,
@@ -227,8 +228,10 @@ impl RenderManager {
             render_queue_family_index,
         )?;
 
-        let render_command_buffers =
-            create_render_command_buffers(command_pool.clone(), swapchain_images.len() as u32)?;
+        let render_command_buffers = create_render_command_buffers(
+            command_pool.clone(),
+            swapchain_image_views.len() as u32,
+        )?;
 
         let previous_render_fence = create_per_frame_fence(device.clone())?;
         let next_frame_wait_semaphore =
@@ -251,7 +254,7 @@ impl RenderManager {
             window,
             surface,
             swapchain,
-            swapchain_images,
+            swapchain_image_views,
             is_swapchain_srgb,
 
             render_pass,
@@ -269,6 +272,7 @@ impl RenderManager {
 
             render_command_buffers,
             previous_render_fence,
+            previous_upload_fence: None,
             next_frame_wait_semaphore,
             swapchain_image_available_semaphore,
 
@@ -311,29 +315,28 @@ impl RenderManager {
         &mut self,
         textures_delta_vec: Vec<TexturesDelta>,
     ) -> anyhow::Result<()> {
-        let texture_update_semaphore_option = self.gui_pass.update_textures(
-            textures_delta_vec,
-            &self.render_queue,
-            vec![self.next_frame_wait_semaphore.clone()],
-        )?;
+        let texture_update_fence_option = self
+            .gui_pass
+            .update_textures(textures_delta_vec, &self.render_queue)?;
 
-        if let Some(texture_update_semaphore) = texture_update_semaphore_option {
-            self.next_frame_wait_semaphore = texture_update_semaphore;
-        }
+        self.previous_upload_fence = texture_update_fence_option;
 
         Ok(())
     }
 
     /// Submits Vulkan commands for rendering a frame.
     pub fn render_frame(&mut self, window_resize: bool, gui: &mut Gui) -> anyhow::Result<()> {
-        // wait for previous frame render to finish
+        // wait for previous frame render/resource upload to finish
+
+        let mut wait_fence_handles = vec![self.previous_render_fence.handle()];
+        if let Some(previous_upload_fence) = &self.previous_upload_fence {
+            wait_fence_handles.push(previous_upload_fence.handle());
+        }
 
         let fence_wait_res = unsafe {
-            self.device.inner().wait_for_fences(
-                &[self.previous_render_fence.handle()],
-                true,
-                TIMEOUT_NANOSECS,
-            )
+            self.device
+                .inner()
+                .wait_for_fences(&wait_fence_handles, true, TIMEOUT_NANOSECS)
         };
         if let Err(fence_wait_err) = fence_wait_res {
             if fence_wait_err == vk::Result::TIMEOUT {
@@ -349,7 +352,7 @@ impl RenderManager {
             }
         }
 
-        // recreate resources if known window resize
+        self.gui_pass.free_previous_vertex_and_index_buffers();
 
         if window_resize {
             self.recreate_swapchain()?;
@@ -487,29 +490,18 @@ impl RenderManager {
 
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
-        self.swapchain = create_swapchain(
-            self.device.clone(),
-            self.surface.clone(),
-            &self.window,
-            self.device.physical_device(),
-        )?;
-        debug!(
-            "swapchain surface format = {:?}",
-            self.swapchain.properties().surface_format
-        );
-        debug!(
-            "swapchain present mode = {:?}",
-            self.swapchain.properties().present_mode
-        );
-        debug!(
-            "swapchain composite alpha = {:?}",
-            self.swapchain.properties().composite_alpha
-        );
+        // clean up resources depending on the swapchain
+        self.framebuffers.clear();
+        self.swapchain_image_views.clear();
 
+        // recreate the swapchain
+        self.swapchain.recreate().context("recreating swapchain")?;
+
+        // reinitialize related resources
         self.is_swapchain_srgb = is_format_srgb(self.swapchain.properties().surface_format.format);
-        self.swapchain_images = create_swapchain_images(&self.swapchain)?;
+        self.swapchain_image_views = create_swapchain_image_views(&self.swapchain)?;
 
-        self.render_pass = create_render_pass(self.device.clone(), &self.swapchain)?;
+        self.render_pass = create_render_pass(self.device.clone(), self.swapchain.properties())?;
 
         self.normal_buffer = create_normal_buffer(
             self.memory_allocator.clone(),
@@ -528,7 +520,7 @@ impl RenderManager {
 
         self.framebuffers = create_framebuffers(
             &self.render_pass,
-            &self.swapchain_images,
+            &self.swapchain_image_views,
             &self.normal_buffer,
             &self.primitive_id_buffer,
             &self.depth_buffer,

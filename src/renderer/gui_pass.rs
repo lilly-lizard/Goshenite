@@ -1,4 +1,5 @@
-/// shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
+//! shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
+
 use super::{
     config_renderer::SHADER_ENTRY_POINT,
     shader_interfaces::{push_constants::GuiPushConstant, vertex_inputs::EguiVertex},
@@ -13,10 +14,10 @@ use bort::{
     BufferProperties, ColorBlendState, CommandBuffer, CommandPool, CommandPoolProperties,
     DescriptorPool, DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout,
     DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
-    GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
+    Fence, GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
     ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool,
     MemoryPoolPropeties, PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue,
-    RenderPass, Sampler, SamplerProperties, Semaphore, ShaderModule, ShaderStage, ViewportState,
+    RenderPass, Sampler, SamplerProperties, ShaderModule, ShaderStage, ViewportState,
 };
 use bort_vma::Alloc;
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
@@ -63,6 +64,7 @@ pub struct GuiPass {
     current_buffer_pool_index: usize,
     vertex_buffers: Vec<Buffer>,
     index_buffers: Vec<Buffer>,
+    texture_upload_buffers: Vec<Buffer>,
 }
 
 // Public functions
@@ -106,6 +108,7 @@ impl GuiPass {
             current_buffer_pool_index: 0,
             vertex_buffers: Vec::new(),
             index_buffers: Vec::new(),
+            texture_upload_buffers: Vec::new(),
         })
     }
 
@@ -116,8 +119,7 @@ impl GuiPass {
         &mut self,
         textures_delta_vec: Vec<TexturesDelta>,
         queue: &Queue,
-        wait_semaphores: Vec<Arc<Semaphore>>,
-    ) -> anyhow::Result<Option<Arc<Semaphore>>> {
+    ) -> anyhow::Result<Option<Arc<Fence>>> {
         // return if empty
         if textures_delta_vec.is_empty() {
             return Ok(None);
@@ -141,6 +143,7 @@ impl GuiPass {
         }
 
         let mut commands_recorded = false;
+        let mut upload_buffers = Vec::<Buffer>::new();
 
         for textures_delta in textures_delta_vec {
             // release unused texture resources
@@ -150,9 +153,13 @@ impl GuiPass {
 
             // create new images and record upload commands
             for (id, image_delta) in textures_delta.set {
-                let new_commands_recorded =
+                let add_new_texture_res =
                     self.add_new_texture_data(id, image_delta, &command_buffer)?;
-                commands_recorded |= new_commands_recorded;
+
+                if let Some(upload_buffer) = add_new_texture_res {
+                    commands_recorded = true;
+                    upload_buffers.push(upload_buffer);
+                }
             }
         }
 
@@ -163,31 +170,22 @@ impl GuiPass {
                 .context("ending gui texture upload command buffer")?;
         }
 
+        self.texture_upload_buffers.append(&mut upload_buffers);
+
         // execute command buffer
         if commands_recorded {
-            let (wait_semaphore_handles, wait_semaphore_stages): (Vec<_>, Vec<_>) = wait_semaphores
-                .iter()
-                .map(|semaphore| (semaphore.handle(), vk::PipelineStageFlags::TRANSFER))
-                .unzip();
-
-            let signal_semaphore = Arc::new(
-                Semaphore::new(self.device.clone()).context("creating texture upload semaphore")?,
-            );
-            let signal_semaphore_handles = [signal_semaphore.handle()];
+            let upload_finished_fence =
+                Fence::new(self.device.clone(), vk::FenceCreateInfo::builder())
+                    .context("creating gui texture upload fence")?;
 
             let command_buffer_handles = [command_buffer.handle()];
-
-            let submit_info = vk::SubmitInfo::builder()
-                .wait_semaphores(wait_semaphore_handles.as_slice())
-                .wait_dst_stage_mask(wait_semaphore_stages.as_slice())
-                .signal_semaphores(&signal_semaphore_handles)
-                .command_buffers(&command_buffer_handles);
+            let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffer_handles);
 
             queue
-                .submit(&[*submit_info], None)
+                .submit(&[*submit_info], Some(upload_finished_fence.handle()))
                 .context("submitting gui texture upload commands")?;
 
-            return Ok(Some(signal_semaphore));
+            return Ok(Some(Arc::new(upload_finished_fence)));
         }
 
         Ok(None)
@@ -243,9 +241,11 @@ impl GuiPass {
 
     /// Fress vertex and index buffers created in previous calls to `record_render_commands`.
     /// Call this when gui rendering commands from the previous frame have finished.
+    /// todo mention texture_upload_buffers. actually, make it a separate function...
     pub fn free_previous_vertex_and_index_buffers(&mut self) {
         self.vertex_buffers.clear();
         self.index_buffers.clear();
+        self.texture_upload_buffers.clear();
         self.current_buffer_pool_index = 0;
     }
 }
@@ -254,14 +254,15 @@ impl GuiPass {
 
 impl GuiPass {
     /// Either updates an existing texture or creates a new one as required for `texture_id` with the
-    /// data in `delta`. Returns `Ok(true)` if commands were recorded to `command_buffer` and `Ok(false)`
-    /// if this update was skipped for some reason.
+    /// data in `delta`. If commands were recorded to `command_buffer`, returns the buffer that will
+    /// be used to upload the texture data. Otherwise returns `Ok(None)` if this update was skipped
+    /// for some reason.
     fn add_new_texture_data(
         &mut self,
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
         command_buffer: &CommandBuffer,
-    ) -> anyhow::Result<bool> {
+    ) -> anyhow::Result<Option<Buffer>> {
         // extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
             egui::ImageData::Color(image) => {
@@ -270,7 +271,7 @@ impl GuiPass {
                         "mismatch between gui texture size and texel count, skipping... texture_id = {:?}",
                         texture_id
                     );
-                    return Ok(false);
+                    return Ok(None);
                 }
                 image
                     .pixels
@@ -289,7 +290,7 @@ impl GuiPass {
                 "attempted to create gui texture with no data! skipping... texture_id = {:?}",
                 texture_id
             );
-            return Ok(false);
+            return Ok(None);
         }
 
         // create buffer to be copied to the image
@@ -332,13 +333,13 @@ impl GuiPass {
                 );
             }
         } else {
-            // usually `ImageDelta.pos` is `None` meaning a new image needs to be created
+            // but usually `ImageDelta.pos` is `None` meaning a new image needs to be created
             debug!("creating new gui texture. id = {:?}", texture_id);
 
-            self.create_new_texture(command_buffer, texture_data_buffer, delta, texture_id)?;
+            self.create_new_texture(command_buffer, &texture_data_buffer, delta, texture_id)?;
         }
 
-        Ok(true)
+        Ok(Some(texture_data_buffer))
     }
 
     /// Unregister a texture that is no longer required by the gui.
@@ -365,7 +366,7 @@ impl GuiPass {
     fn create_new_texture(
         &mut self,
         command_buffer: &CommandBuffer,
-        texture_data_buffer: Buffer,
+        texture_data_buffer: &Buffer,
         delta: egui::epaint::ImageDelta,
         texture_id: TextureId,
     ) -> anyhow::Result<()> {
@@ -410,15 +411,25 @@ impl GuiPass {
             texture_id, copy_region.image_offset, copy_region.image_extent
         );
 
-        todo!("transition image layout to TRANSFER_DST_OPTIMAL");
+        // we need to transition the image layout to vk::ImageLayout::TRANSFER_DST_OPTIMAL
+        let to_transfer_dst_image_barrier = vk::ImageMemoryBarrier::builder()
+            .src_access_mask(vk::AccessFlags::empty())
+            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .old_layout(vk::ImageLayout::UNDEFINED)
+            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .image(new_image_view.image().handle())
+            .subresource_range(new_image_view.properties().subresource_range)
+            .build();
 
+        // then transition to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
         let to_shader_read_image_barrier = vk::ImageMemoryBarrier::builder()
             .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
             .dst_access_mask(vk::AccessFlags::SHADER_READ)
             .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
             .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .image(new_image_view.image().handle())
-            .subresource_range(new_image_view.properties().subresource_range);
+            .subresource_range(new_image_view.properties().subresource_range)
+            .build();
 
         unsafe {
             let device_ash = self.device.inner();
@@ -426,12 +437,12 @@ impl GuiPass {
 
             device_ash.cmd_pipeline_barrier(
                 command_buffer_handle,
-                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::PipelineStageFlags::TOP_OF_PIPE,
                 vk::PipelineStageFlags::TRANSFER,
                 vk::DependencyFlags::empty(),
                 &[],
                 &[],
-                &[],
+                &[to_transfer_dst_image_barrier],
             );
 
             device_ash.cmd_copy_buffer_to_image(
@@ -449,7 +460,7 @@ impl GuiPass {
                 vk::DependencyFlags::empty(),
                 &[],
                 &[],
-                &[*to_shader_read_image_barrier],
+                &[to_shader_read_image_barrier],
             );
         }
 
@@ -676,12 +687,12 @@ fn upload_existing_font_texture(
     texture_data_buffer: &Buffer,
     copy_region: vk::BufferImageCopy,
 ) {
-    // we need to transition the image layout to vk::ImageLayout::GENERAL
+    // we need to transition the image layout to vk::ImageLayout::TRANSFER_DST_OPTIMAL
     let to_general_image_barrier = vk::ImageMemoryBarrier::builder()
         .src_access_mask(vk::AccessFlags::SHADER_READ)
         .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
         .old_layout(vk::ImageLayout::UNDEFINED)
-        .new_layout(vk::ImageLayout::GENERAL)
+        .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
         .image(existing_image_view.image().handle())
         .subresource_range(existing_image_view.properties().subresource_range);
 
@@ -689,7 +700,7 @@ fn upload_existing_font_texture(
     let to_shader_read_image_barrier = vk::ImageMemoryBarrier::builder()
         .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
         .dst_access_mask(vk::AccessFlags::SHADER_READ)
-        .old_layout(vk::ImageLayout::GENERAL)
+        .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
         .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
         .image(existing_image_view.image().handle())
         .subresource_range(existing_image_view.properties().subresource_range);
@@ -713,7 +724,7 @@ fn upload_existing_font_texture(
             command_buffer_handle,
             texture_data_buffer.handle(),
             existing_image_view.image().handle(),
-            vk::ImageLayout::GENERAL,
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             &[copy_region],
         );
 
@@ -743,7 +754,7 @@ fn write_font_texture_desc_set(
     let descriptor_writes = [vk::WriteDescriptorSet::builder()
         .dst_set(desc_set.handle())
         .dst_binding(descriptor::BINDING_FONT_TEXTURE)
-        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+        .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
         .image_info(&[texture_info])
         .build()];
 
