@@ -34,6 +34,21 @@ pub struct EguiVertex {
 }
 
 impl EguiVertex {
+    pub fn from_egui_vertex(egui_vertex: &egui::epaint::Vertex) -> Self {
+        let color = [
+            egui_vertex.color.r() as f32,
+            egui_vertex.color.g() as f32,
+            egui_vertex.color.b() as f32,
+            egui_vertex.color.a() as f32,
+        ];
+
+        Self {
+            in_position: egui_vertex.pos.into(),
+            in_tex_coords: egui_vertex.uv.into(),
+            in_color: color,
+        }
+    }
+
     pub fn binding_description() -> vk::VertexInputBindingDescription {
         vk::VertexInputBindingDescription {
             binding: 0,

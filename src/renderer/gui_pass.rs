@@ -606,8 +606,14 @@ impl GuiPass {
     }
 
     fn create_vertex_and_index_buffers(&mut self, mesh: &Mesh) -> anyhow::Result<(Buffer, Buffer)> {
+        let vertices = mesh
+            .vertices
+            .iter()
+            .map(|egui_vertex| EguiVertex::from_egui_vertex(egui_vertex))
+            .collect::<Vec<_>>();
+
         let vertex_buffer_props = BufferProperties::new_default(
-            mem::size_of_val(mesh.vertices.as_slice()) as vk::DeviceSize,
+            mem::size_of_val(vertices.as_slice()) as vk::DeviceSize,
             vk::BufferUsageFlags::VERTEX_BUFFER,
         );
 
@@ -627,7 +633,7 @@ impl GuiPass {
         // todo can avoid the vec clones here! look at `gui::mesh_primitives` and `free_previous_vertex_and_index_buffers`
 
         vertex_buffer
-            .write_iter(mesh.vertices.clone(), 0)
+            .write_iter(vertices.clone(), 0)
             .context("uploading gui pass vertices")?;
 
         index_buffer
