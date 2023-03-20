@@ -36,10 +36,10 @@ pub struct EguiVertex {
 impl EguiVertex {
     pub fn from_egui_vertex(egui_vertex: &egui::epaint::Vertex) -> Self {
         let color = [
-            egui_vertex.color.r() as f32,
-            egui_vertex.color.g() as f32,
-            egui_vertex.color.b() as f32,
-            egui_vertex.color.a() as f32,
+            egui_vertex.color.r() as f32 / 255.,
+            egui_vertex.color.g() as f32 / 255.,
+            egui_vertex.color.b() as f32 / 255.,
+            egui_vertex.color.a() as f32 / 255.,
         ];
 
         Self {

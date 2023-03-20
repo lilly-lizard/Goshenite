@@ -191,7 +191,6 @@ impl GuiPass {
         Ok(None)
     }
 
-    /// TODO don't forget to call free_previous_vertex_and_index_buffers!
     pub fn record_render_commands(
         &mut self,
         command_buffer: &CommandBuffer,
@@ -894,8 +893,18 @@ fn create_pipeline(
 
     let viewport_state = ViewportState::new_dynamic(1, 1);
 
-    let color_blend_state =
-        ColorBlendState::new_default(vec![ColorBlendState::blend_state_alpha()]);
+    let color_blend_attachment_state = vk::PipelineColorBlendAttachmentState {
+        blend_enable: 1,
+        src_color_blend_factor: vk::BlendFactor::ONE,
+        dst_color_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+        color_blend_op: vk::BlendOp::ADD,
+        src_alpha_blend_factor: vk::BlendFactor::SRC_ALPHA,
+        dst_alpha_blend_factor: vk::BlendFactor::ONE_MINUS_SRC_ALPHA,
+        alpha_blend_op: vk::BlendOp::ADD,
+        color_write_mask: vk::ColorComponentFlags::RGBA,
+        ..Default::default()
+    };
+    let color_blend_state = ColorBlendState::new_default(vec![color_blend_attachment_state]);
 
     let mut pipeline_properties = GraphicsPipelineProperties::default();
     pipeline_properties.subpass_index = render_pass_indices::SUBPASS_DEFERRED as u32;

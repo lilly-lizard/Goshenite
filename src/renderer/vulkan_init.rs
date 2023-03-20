@@ -281,7 +281,9 @@ pub fn create_swapchain(
     let surface_formats = surface
         .get_physical_device_surface_formats(physical_device)
         .context("get_physical_device_surface_formats")?;
-    let surface_format = get_first_srgb_surface_format(&surface_formats);
+    // todo try with linear
+    let surface_format = surface_formats[0];
+    //let surface_format = get_first_srgb_surface_format(&surface_formats);
 
     let image_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT;
 

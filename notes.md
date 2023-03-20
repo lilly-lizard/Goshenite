@@ -62,6 +62,10 @@ https://www.marshallplan.at/images/All-Papers/MP-2017/Mroz+Michael_746.pdf
 
 ## low priority
 
+- [scripting language](https://github.com/rhaiscript/rhai) + glsl for extensions!
+	- install extension -> select new background pattern, texture pattern etc. 
+	- similar capabilities to shadertoy i.e. 2, passes, preset inputs
+	- installation includes rhai file, glsl file(s) and possible png/jpgs
 - hemisphere (circle) clamps on looking too far up/down (quaternions?)
 - clickable primitives
 - preview new primitive, greyed out/transparent until add?

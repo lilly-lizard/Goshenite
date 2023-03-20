@@ -315,11 +315,15 @@ impl RenderManager {
         &mut self,
         textures_delta_vec: Vec<TexturesDelta>,
     ) -> anyhow::Result<()> {
+        self.wait_for_fences()?;
+
         let texture_update_fence_option = self
             .gui_pass
             .update_textures(textures_delta_vec, &self.render_queue)?;
 
-        self.previous_upload_fence = texture_update_fence_option;
+        if let Some(previous_upload_fence) = texture_update_fence_option {
+            self.previous_upload_fence = Some(previous_upload_fence);
+        }
 
         Ok(())
     }
@@ -328,31 +332,7 @@ impl RenderManager {
     pub fn render_frame(&mut self, window_resize: bool, gui: &mut Gui) -> anyhow::Result<()> {
         // wait for previous frame render/resource upload to finish
 
-        let mut wait_fence_handles = vec![self.previous_render_fence.handle()];
-        if let Some(previous_upload_fence) = &self.previous_upload_fence {
-            wait_fence_handles.push(previous_upload_fence.handle());
-        }
-
-        let fence_wait_res = unsafe {
-            self.device
-                .inner()
-                .wait_for_fences(&wait_fence_handles, true, TIMEOUT_NANOSECS)
-        };
-        if let Err(fence_wait_err) = fence_wait_res {
-            if fence_wait_err == vk::Result::TIMEOUT {
-                error!(
-                    "previous render fence timed out! timeout set to {}ns",
-                    TIMEOUT_NANOSECS
-                );
-                // todo can handle this on caller side
-                return Err(fence_wait_err)
-                    .context("timeout while waiting for previous frame fence");
-            } else {
-                return Err(fence_wait_err).context("waiting for previous frame fence");
-            }
-        }
-
-        self.previous_upload_fence = None;
+        self.wait_for_fences()?;
 
         self.gui_pass.free_previous_vertex_and_index_buffers();
 
@@ -535,6 +515,37 @@ impl RenderManager {
 
         self.lighting_pass
             .update_g_buffers(&self.normal_buffer, &self.primitive_id_buffer)?;
+
+        Ok(())
+    }
+
+    fn wait_for_fences(&mut self) -> anyhow::Result<()> {
+        let mut wait_fence_handles = vec![self.previous_render_fence.handle()];
+        if let Some(previous_upload_fence) = &self.previous_upload_fence {
+            wait_fence_handles.push(previous_upload_fence.handle());
+        }
+
+        let fence_wait_res = unsafe {
+            self.device
+                .inner()
+                .wait_for_fences(&wait_fence_handles, true, TIMEOUT_NANOSECS)
+        };
+
+        if let Err(fence_wait_err) = fence_wait_res {
+            if fence_wait_err == vk::Result::TIMEOUT {
+                error!(
+                    "previous render fence timed out! timeout set to {}ns",
+                    TIMEOUT_NANOSECS
+                );
+                // todo can handle this on caller side
+                return Err(fence_wait_err)
+                    .context("timeout while waiting for previous frame fence");
+            } else {
+                return Err(fence_wait_err).context("waiting for previous frame fence");
+            }
+        }
+
+        self.previous_upload_fence = None;
 
         Ok(())
     }
