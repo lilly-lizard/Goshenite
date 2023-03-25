@@ -11,7 +11,7 @@ use engine::engine::Engine;
 use helper::logger::ConsoleLogger;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use winit::{event_loop::EventLoop, platform::run_return::EventLoopExtRunReturn};
+use winit::event_loop::EventLoop;
 
 const SPLASH: &str = "
      ___        ___        ___        ___        ___        ___        ___       ___        ___     
@@ -27,11 +27,12 @@ const SPLASH: &str = "
     \\/__/      \\/__/      \\/__/      \\/__/      \\/__/      \\/__/      \\/__/                \\/__/    
 ";
 
+static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
+
 fn main() {
     println!("{}", SPLASH);
 
     // init logger
-    static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
     if let Err(e) = log::set_logger(&CONSOLE_LOGGER) {
         println!("Goshenite ERROR - Failed to initialize logger: {:?}", e);
     };

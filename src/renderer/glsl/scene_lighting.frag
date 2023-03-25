@@ -17,6 +17,7 @@ layout (set = 1, binding = 0) uniform Camera {
 	vec2 _framebuffer_dims;
 	float _near;
 	float _far;
+    uint is_srgb_framebuffer;
 } cam;
 
 /// Returns a sky color for a ray miss
@@ -44,4 +45,9 @@ void main()
 		// ray hit: just output normal as color for now
 		out_color = vec4(normal, 1.);
 	}
+
+    if (cam.is_srgb_framebuffer == 1) {
+        // need to convert linear colors to srgb
+        out_color.xyz = pow(out_color.xyz, vec3(2.2));
+    }
 }

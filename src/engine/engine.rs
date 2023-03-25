@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     config,
-    helper::anyhow_panic::{anyhow_unwrap, log_anyhow_error_and_sources},
+    helper::anyhow_panic::anyhow_unwrap,
     renderer::render_manager::RenderManager,
     user_interface::camera::Camera,
     user_interface::{

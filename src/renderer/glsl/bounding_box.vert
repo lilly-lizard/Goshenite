@@ -11,6 +11,7 @@ layout (set = 0, binding = 0) uniform Camera {
 	vec2 _framebuffer_dims;
 	float _near;
 	float _far;
+    uint _is_srgb_framebuffer;
 } cam;
 
 void main()

@@ -9,7 +9,7 @@ layout (location = 1) out vec2 out_tex_coords;
 
 layout (push_constant) uniform GuiPushConstant {
     vec2 screen_size;
-    uint srgb_framebuffer;
+    uint _is_srgb_framebuffer;
 } pc;
 
 // 0-1 linear  from  0-255 sRGB

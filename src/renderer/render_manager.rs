@@ -284,8 +284,11 @@ impl RenderManager {
         self.wait_idle_device()?;
 
         let dimensions = self.swapchain.properties().width_height;
-        let camera_data =
-            CameraUniformBuffer::from_camera(camera, [dimensions[0] as f32, dimensions[1] as f32]);
+        let camera_data = CameraUniformBuffer::from_camera(
+            camera,
+            [dimensions[0] as f32, dimensions[1] as f32],
+            self.is_swapchain_srgb,
+        );
 
         let camera_ubo_mut = match Arc::get_mut(&mut self.camera_ubo) {
             Some(ubo) => ubo,
