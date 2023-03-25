@@ -152,6 +152,12 @@ impl GeometryPass {
     }
 }
 
+impl Drop for GeometryPass {
+    fn drop(&mut self) {
+        debug!("dropping geometry pass");
+    }
+}
+
 fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorPool>> {
     let descriptor_pool_props = DescriptorPoolProperties {
         max_sets: 1,

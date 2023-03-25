@@ -249,6 +249,12 @@ impl GuiPass {
     }
 }
 
+impl Drop for GuiPass {
+    fn drop(&mut self) {
+        debug!("dropping gui pass");
+    }
+}
+
 // Private functions
 
 impl GuiPass {

@@ -335,3 +335,9 @@ fn create_pipeline(
 
     Ok(Arc::new(pipeline))
 }
+
+impl Drop for LightingPass {
+    fn drop(&mut self) {
+        debug!("dropping lighting pass");
+    }
+}
