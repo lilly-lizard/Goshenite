@@ -14,6 +14,7 @@ use super::{
 use crate::{
     config::ENGINE_NAME,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
+    helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
     renderer::vulkan_init::{create_command_pool, create_render_command_buffers},
     user_interface::{camera::Camera, gui::Gui},
 };
@@ -280,7 +281,7 @@ impl RenderManager {
     }
 
     pub fn update_camera(&mut self, camera: &mut Camera) -> anyhow::Result<()> {
-        self.wait_idle()?;
+        self.wait_idle_device()?;
 
         let dimensions = self.swapchain.properties().width_height;
         let camera_data =
@@ -466,8 +467,12 @@ impl RenderManager {
         Ok(())
     }
 
+    pub fn wait_idle_device(&self) -> anyhow::Result<()> {
+        self.device.wait_idle().context("calling vkDeviceWaitIdle")
+    }
+
     pub fn reset_render_command_buffers(&self) -> anyhow::Result<()> {
-        self.device.wait_idle()?;
+        self.wait_idle_device()?;
 
         for command_buffer in &self.render_command_buffers {
             unsafe {
@@ -485,10 +490,6 @@ impl RenderManager {
 // Private functions
 
 impl RenderManager {
-    fn wait_idle(&mut self) -> anyhow::Result<()> {
-        self.device.wait_idle().context("calling vkDeviceWaitIdle")
-    }
-
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
         // do host-device sync and reset command buffers
@@ -570,7 +571,23 @@ impl RenderManager {
 
 impl Drop for RenderManager {
     fn drop(&mut self) {
-        debug!("dropping render manager");
+        debug!("dropping render manager...");
+
+        let wait_res = self.wait_idle_device();
+        if let Err(e) = wait_res {
+            log_anyhow_error_and_sources(&e, "renderer clean up");
+        }
+
+        let command_pool_reset_res = unsafe {
+            self.device.inner().reset_command_pool(
+                self.command_pool.handle(),
+                vk::CommandPoolResetFlags::RELEASE_RESOURCES,
+            )
+        };
+        if let Err(e) = command_pool_reset_res {
+            log_error_sources(&e, 0);
+        }
+        self.render_command_buffers.clear();
     }
 }
 

@@ -251,7 +251,7 @@ impl GuiPass {
 
 impl Drop for GuiPass {
     fn drop(&mut self) {
-        debug!("dropping gui pass");
+        debug!("dropping gui pass...");
     }
 }
 

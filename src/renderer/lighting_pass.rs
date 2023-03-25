@@ -338,6 +338,6 @@ fn create_pipeline(
 
 impl Drop for LightingPass {
     fn drop(&mut self) {
-        debug!("dropping lighting pass");
+        debug!("dropping lighting pass...");
     }
 }
