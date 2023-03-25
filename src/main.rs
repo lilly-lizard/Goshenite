@@ -48,4 +48,6 @@ fn main() {
     // start engine
     event_loop
         .run_return(|event, _, control_flow| engine_instance.control_flow(event, control_flow));
+
+    info!("exiting main loop...");
 }

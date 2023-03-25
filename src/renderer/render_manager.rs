@@ -33,7 +33,6 @@ use winit::window::Window;
 
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
-    entry: ash::Entry,
     instance: Arc<Instance>,
     debug_callback: Option<DebugCallback>,
 
@@ -80,13 +79,14 @@ impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initiver_minoralize, returns a string explanation.
     pub fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         let entry = unsafe { Entry::load() }
-            .context("loading dynamic library. please install vulkan on your system...")?;
+            .context("loading vulkan dynamic library. please install vulkan on your system...")?;
+        let entry = Arc::new(entry);
 
         // create vulkan instance
         let api_version = ApiVersion::new(VULKAN_VER_MAJ, VULKAN_VER_MIN);
         let instance = Arc::new(
             Instance::new(
-                &entry,
+                entry.clone(),
                 api_version,
                 ENGINE_NAME,
                 window.raw_display_handle(),
@@ -241,7 +241,6 @@ impl RenderManager {
         );
 
         Ok(Self {
-            entry,
             instance,
             debug_callback,
 
@@ -548,6 +547,12 @@ impl RenderManager {
         self.previous_upload_fence = None;
 
         Ok(())
+    }
+}
+
+impl Drop for RenderManager {
+    fn drop(&mut self) {
+        debug!("dropping render manager");
     }
 }
 
