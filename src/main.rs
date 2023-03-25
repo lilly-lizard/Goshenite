@@ -42,10 +42,9 @@ fn main() {
     );
 
     // init engine
-    let mut event_loop = EventLoop::new();
+    let event_loop = EventLoop::new();
     let mut engine_instance = Engine::new(&event_loop);
 
     // start engine
-    event_loop
-        .run_return(|event, _, control_flow| engine_instance.control_flow(event, control_flow));
+    event_loop.run(move |event, _, control_flow| engine_instance.control_flow(event, control_flow));
 }

@@ -466,6 +466,21 @@ impl RenderManager {
 
         Ok(())
     }
+
+    pub fn reset_render_command_buffers(&self) -> anyhow::Result<()> {
+        self.device.wait_idle()?;
+
+        for command_buffer in &self.render_command_buffers {
+            unsafe {
+                self.device.inner().reset_command_buffer(
+                    command_buffer.handle(),
+                    vk::CommandBufferResetFlags::empty(),
+                )
+            }
+            .context("resetting render command pool")?;
+        }
+        Ok(())
+    }
 }
 
 // Private functions
@@ -477,6 +492,9 @@ impl RenderManager {
 
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
+        // do host-device sync and reset command buffers
+        self.reset_render_command_buffers()?;
+
         // clean up resources depending on the swapchain
         self.framebuffers.clear();
         self.swapchain_image_views.clear();

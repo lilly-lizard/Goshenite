@@ -6,7 +6,7 @@ use super::{
 };
 use crate::{
     config,
-    helper::anyhow_panic::anyhow_unwrap,
+    helper::anyhow_panic::{anyhow_unwrap, log_anyhow_error_and_sources},
     renderer::render_manager::RenderManager,
     user_interface::camera::Camera,
     user_interface::{
@@ -142,7 +142,10 @@ impl Engine {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
-            } => *control_flow = ControlFlow::Exit,
+            } => {
+                self.closing_clean_up();
+                *control_flow = ControlFlow::Exit;
+            }
             // process window events and update state
             Event::WindowEvent { event, .. } => self.process_input(event),
             // per frame logic
@@ -270,5 +273,12 @@ impl Engine {
         // zoom in/out logic
         let scroll_delta = self.cursor_state.get_and_clear_scroll_delta();
         self.camera.scroll_zoom(scroll_delta.y);
+    }
+
+    fn closing_clean_up(&self) {
+        let wait_res = self.renderer.reset_render_command_buffers();
+        if let Err(e) = wait_res {
+            log_anyhow_error_and_sources(&e, "renderer clean up");
+        }
     }
 }
