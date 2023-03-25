@@ -1,4 +1,5 @@
 mod config_renderer;
+mod debug_callback;
 mod geometry_pass;
 mod gui_pass;
 mod lighting_pass;

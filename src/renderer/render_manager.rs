@@ -1,5 +1,6 @@
 use super::{
     config_renderer::{ENABLE_VULKAN_VALIDATION, TIMEOUT_NANOSECS, VULKAN_VER_MAJ, VULKAN_VER_MIN},
+    debug_callback::log_vulkan_debug_callback,
     geometry_pass::GeometryPass,
     gui_pass::GuiPass,
     lighting_pass::LightingPass,
@@ -8,7 +9,8 @@ use super::{
         choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
         create_depth_buffer, create_device_and_queues, create_framebuffers, create_normal_buffer,
         create_per_frame_fence, create_primitive_id_buffer, create_render_pass, create_swapchain,
-        create_swapchain_image_views, ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
+        create_swapchain_image_views, swapchain_properties, ChoosePhysicalDeviceReturn,
+        CreateDeviceAndQueuesReturn,
     },
 };
 use crate::{
@@ -29,7 +31,7 @@ use egui::TexturesDelta;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
-use std::{borrow::Cow, ffi::CStr, sync::Arc};
+use std::sync::Arc;
 use winit::window::Window;
 
 /// Contains Vulkan resources and methods to manage rendering
@@ -160,8 +162,7 @@ impl RenderManager {
 
         let command_pool = create_command_pool(device.clone(), &render_queue)?;
 
-        let swapchain =
-            create_swapchain(device.clone(), surface.clone(), &window, &physical_device)?;
+        let swapchain = create_swapchain(device.clone(), surface.clone(), &window)?;
         debug!(
             "swapchain surface format = {:?}",
             swapchain.properties().surface_format
@@ -332,16 +333,12 @@ impl RenderManager {
     }
 
     /// Submits Vulkan commands for rendering a frame.
-    pub fn render_frame(&mut self, window_resize: bool, gui: &mut Gui) -> anyhow::Result<()> {
+    pub fn render_frame(&mut self, gui: &mut Gui) -> anyhow::Result<()> {
         // wait for previous frame render/resource upload to finish
 
         self.wait_for_fences()?;
 
         self.gui_pass.free_previous_vertex_and_index_buffers();
-
-        if window_resize {
-            self.recreate_swapchain()?;
-        }
 
         // aquire next swapchain image
 
@@ -353,6 +350,7 @@ impl RenderManager {
 
         if let Err(aquire_err) = aquire_res {
             if aquire_err == vk::Result::ERROR_OUT_OF_DATE_KHR {
+                debug!("out of date swapchain on aquire");
                 return self.recreate_swapchain();
             } else {
                 return Err(aquire_err).context("calling vkAcquireNextImageKHR");
@@ -363,6 +361,7 @@ impl RenderManager {
             aquire_res.expect("handled err case in previous lines");
         let swapchain_index = swapchain_index as usize;
         if swapchain_is_suboptimal {
+            debug!("suboptimal swapchain");
             return self.recreate_swapchain();
         }
 
@@ -461,6 +460,7 @@ impl RenderManager {
             if present_err == vk::Result::ERROR_OUT_OF_DATE_KHR
                 || present_err == vk::Result::SUBOPTIMAL_KHR
             {
+                debug!("out of date or suboptimal swapchain upon present");
                 self.recreate_swapchain()?;
             } else {
                 return Err(present_err).context("submitting swapchain present instruction")?;
@@ -495,6 +495,8 @@ impl RenderManager {
 impl RenderManager {
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
+        debug!("recreating swapchain...");
+
         // do host-device sync and reset command buffers
         self.reset_render_command_buffers()?;
 
@@ -503,7 +505,10 @@ impl RenderManager {
         self.swapchain_image_views.clear();
 
         // recreate the swapchain
-        self.swapchain.recreate().context("recreating swapchain")?;
+        let swapchain_properties = swapchain_properties(&self.device, &self.surface, &self.window)?;
+        self.swapchain
+            .recreate(swapchain_properties)
+            .context("recreating swapchain")?;
 
         // reinitialize related resources
         self.is_swapchain_srgb = is_format_srgb(self.swapchain.properties().surface_format.format);
@@ -592,41 +597,4 @@ impl Drop for RenderManager {
         }
         self.render_command_buffers.clear();
     }
-}
-
-unsafe extern "system" fn log_vulkan_debug_callback(
-    message_severity: vk::DebugUtilsMessageSeverityFlagsEXT,
-    message_type: vk::DebugUtilsMessageTypeFlagsEXT,
-    p_callback_data: *const vk::DebugUtilsMessengerCallbackDataEXT,
-    _user_data: *mut std::os::raw::c_void,
-) -> vk::Bool32 {
-    let callback_data = *p_callback_data;
-
-    let message = if callback_data.p_message.is_null() {
-        Cow::from("")
-    } else {
-        CStr::from_ptr(callback_data.p_message).to_string_lossy()
-    };
-
-    match message_severity {
-        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => {
-            error!("Vulkan [{:?}]:\n{}", message_type, message);
-        }
-        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => {
-            warn!("Vulkan [{:?}]:\n{}", message_type, message);
-        }
-        vk::DebugUtilsMessageSeverityFlagsEXT::INFO => {
-            info!("Vulkan [{:?}]:\n{}", message_type, message);
-        }
-        vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => {
-            trace!("Vulkan [{:?}]:\n{}", message_type, message);
-        }
-        _ => trace!(
-            "Vulkan [{:?}] (UNKONWN SEVERITY):\n{}",
-            message_type,
-            message
-        ),
-    }
-
-    vk::FALSE
 }

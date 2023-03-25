@@ -263,29 +263,28 @@ pub fn create_command_pool(device: Arc<Device>, queue: &Queue) -> anyhow::Result
     Ok(Arc::new(command_pool))
 }
 
-pub fn create_swapchain(
-    device: Arc<Device>,
-    surface: Arc<Surface>,
+pub fn swapchain_properties(
+    device: &Device,
+    surface: &Surface,
     window: &Window,
-    physical_device: &PhysicalDevice,
-) -> anyhow::Result<Swapchain> {
+) -> anyhow::Result<SwapchainProperties> {
     let preferred_image_count = FRAMES_IN_FLIGHT as u32;
     let window_dimensions: [u32; 2] = window.inner_size().into();
 
     let surface_capabilities = surface
-        .get_physical_device_surface_capabilities(physical_device)
+        .get_physical_device_surface_capabilities(device.physical_device())
         .context("get_physical_device_surface_capabilities")?;
 
     let composite_alpha = choose_composite_alpha(surface_capabilities);
 
     let surface_formats = surface
-        .get_physical_device_surface_formats(physical_device)
+        .get_physical_device_surface_formats(device.physical_device())
         .context("get_physical_device_surface_formats")?;
     let surface_format = get_first_srgb_surface_format(&surface_formats);
 
     let image_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT;
 
-    let swapchain = Swapchain::new(
+    SwapchainProperties::new_default(
         device,
         surface,
         preferred_image_count,
@@ -294,7 +293,18 @@ pub fn create_swapchain(
         image_usage,
         window_dimensions,
     )
-    .context("creating swapchain")?;
+    .context("determining swapchain properties")
+}
+
+pub fn create_swapchain(
+    device: Arc<Device>,
+    surface: Arc<Surface>,
+    window: &Window,
+) -> anyhow::Result<Swapchain> {
+    let swapchain_properties = swapchain_properties(&device, &surface, window)?;
+
+    let swapchain =
+        Swapchain::new(device, surface, swapchain_properties).context("creating swapchain")?;
     Ok(swapchain)
 }
 
