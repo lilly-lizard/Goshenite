@@ -213,10 +213,6 @@ impl Engine {
 
     /// Per frame engine logic and rendering
     fn process_frame(&mut self) {
-        if self.frame_number == 2 {
-            self.gui.set_theme_egui(egui::Visuals::light());
-        }
-
         // process recieved events for cursor state
         self.cursor_state.process_frame();
 

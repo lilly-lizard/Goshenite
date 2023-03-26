@@ -713,7 +713,7 @@ fn upload_existing_font_texture(
     let to_general_image_barrier = vk::ImageMemoryBarrier::builder()
         .src_access_mask(vk::AccessFlags::SHADER_READ)
         .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-        .old_layout(vk::ImageLayout::UNDEFINED)
+        .old_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
         .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
         .image(existing_image_view.image().handle())
         .subresource_range(existing_image_view.properties().subresource_range);
