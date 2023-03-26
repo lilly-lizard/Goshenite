@@ -333,12 +333,17 @@ impl RenderManager {
     }
 
     /// Submits Vulkan commands for rendering a frame.
-    pub fn render_frame(&mut self, gui: &mut Gui) -> anyhow::Result<()> {
+    pub fn render_frame(&mut self, gui: &mut Gui, window_resized: bool) -> anyhow::Result<()> {
         // wait for previous frame render/resource upload to finish
 
         self.wait_for_fences()?;
 
         self.gui_pass.free_previous_vertex_and_index_buffers();
+
+        // I found that this check is needed on hyprland because the later commnads weren't returning 'out of date'...
+        if window_resized {
+            self.recreate_swapchain()?;
+        }
 
         // aquire next swapchain image
 
@@ -367,59 +372,17 @@ impl RenderManager {
 
         // record commands
 
-        // todo sub-command
-
         let command_buffer = self.render_command_buffers[swapchain_index].clone();
-        let command_buffer_handle = command_buffer.handle();
-        let device_ash = self.device.inner();
-        let viewport = self.framebuffers[swapchain_index].whole_viewport();
-        let rect_2d = self.framebuffers[swapchain_index].whole_rect();
-
-        let begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        unsafe { device_ash.begin_command_buffer(command_buffer_handle, &begin_info) }
-            .context("beinning render command buffer recording")?;
-
-        let render_pass_begin = vk::RenderPassBeginInfo::builder()
-            .render_pass(self.render_pass.handle())
-            .framebuffer(self.framebuffers[swapchain_index].handle())
-            .render_area(rect_2d)
-            .clear_values(self.clear_values.as_slice());
-        unsafe {
-            device_ash.cmd_begin_render_pass(
-                command_buffer_handle,
-                &render_pass_begin,
-                vk::SubpassContents::INLINE,
-            )
-        };
-
-        self.geometry_pass
-            .record_commands(&command_buffer, viewport, rect_2d)?;
-
-        unsafe { device_ash.cmd_next_subpass(command_buffer_handle, vk::SubpassContents::INLINE) };
-
-        self.lighting_pass
-            .record_commands(&command_buffer, viewport, rect_2d)?;
-
-        self.gui_pass.record_render_commands(
-            &command_buffer,
-            gui,
-            self.is_swapchain_srgb,
-            [viewport.width, viewport.height],
-        )?;
-
-        unsafe { device_ash.cmd_end_render_pass(command_buffer_handle) };
-
-        unsafe { device_ash.end_command_buffer(command_buffer_handle) }
-            .context("ending render command buffer recording")?;
+        self.record_render_commands(&command_buffer, gui, swapchain_index)?;
 
         // submit commands
 
+        let device_ash = self.device.inner();
         let previous_render_fence_handle = self.previous_render_fence.handle();
         unsafe { device_ash.reset_fences(&[previous_render_fence_handle]) }
             .context("reseting previous render fence")?;
 
-        let submit_command_buffers = [command_buffer_handle];
+        let submit_command_buffers = [command_buffer.handle()];
 
         let wait_semaphores = [self.swapchain_image_available_semaphore.handle()];
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
@@ -572,6 +535,59 @@ impl RenderManager {
         }
 
         self.previous_upload_fence = None;
+
+        Ok(())
+    }
+
+    fn record_render_commands(
+        &mut self,
+        command_buffer: &CommandBuffer,
+        gui: &Gui,
+        swapchain_index: usize,
+    ) -> anyhow::Result<()> {
+        let command_buffer_handle = command_buffer.handle();
+        let device_ash = self.device.inner();
+
+        let viewport = self.framebuffers[swapchain_index].whole_viewport();
+        let rect_2d = self.framebuffers[swapchain_index].whole_rect();
+
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        unsafe { device_ash.begin_command_buffer(command_buffer_handle, &begin_info) }
+            .context("beinning render command buffer recording")?;
+
+        let render_pass_begin = vk::RenderPassBeginInfo::builder()
+            .render_pass(self.render_pass.handle())
+            .framebuffer(self.framebuffers[swapchain_index].handle())
+            .render_area(rect_2d)
+            .clear_values(self.clear_values.as_slice());
+        unsafe {
+            device_ash.cmd_begin_render_pass(
+                command_buffer_handle,
+                &render_pass_begin,
+                vk::SubpassContents::INLINE,
+            )
+        };
+
+        self.geometry_pass
+            .record_commands(&command_buffer, viewport, rect_2d)?;
+
+        unsafe { device_ash.cmd_next_subpass(command_buffer_handle, vk::SubpassContents::INLINE) };
+
+        self.lighting_pass
+            .record_commands(&command_buffer, viewport, rect_2d)?;
+
+        self.gui_pass.record_render_commands(
+            &command_buffer,
+            gui,
+            self.is_swapchain_srgb,
+            [viewport.width, viewport.height],
+        )?;
+
+        unsafe { device_ash.cmd_end_render_pass(command_buffer_handle) };
+
+        unsafe { device_ash.end_command_buffer(command_buffer_handle) }
+            .context("ending render command buffer recording")?;
 
         Ok(())
     }
