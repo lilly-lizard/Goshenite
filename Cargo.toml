@@ -29,7 +29,7 @@ ash-window = "0.12"
 bort = { path = "../bort" }
 # AMD vulkan memory allocator bindings
 bort-vma = { version = "0.2.3", path = "../bort-vma" }
-# bit-casting crate (for cpu<->gpu buffers) todo needed? try removing pod derives...
+# bit-casting crate (for cpu<->gpu buffers)
 bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
 egui = "0.21"

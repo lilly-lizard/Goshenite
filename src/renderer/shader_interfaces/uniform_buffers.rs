@@ -1,9 +1,8 @@
 use crate::user_interface::camera::Camera;
-use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
 #[repr(C)]
-#[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct CameraUniformBuffer {
     /// Inverse of projection matrix multiplied by view matrix. Converts clip space coordinates to world space
     pub proj_view_inverse: [f32; 16],

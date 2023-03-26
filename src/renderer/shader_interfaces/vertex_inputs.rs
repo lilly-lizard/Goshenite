@@ -1,13 +1,12 @@
 use crate::engine::object::object::ObjectId;
 use ash::vk;
 use bort::VertexInputState;
-use bytemuck::{Pod, Zeroable};
 use glam::Vec3;
 use memoffset::offset_of;
 
 /// Should match inputs in `overlay.vert`
 #[repr(C)]
-#[derive(Default, Debug, Clone, Copy, Zeroable, Pod)] // todo bytemuck needed now?
+#[derive(Default, Debug, Clone, Copy)] // todo bytemuck needed now?
 pub struct OverlayVertex {
     pub in_position: [f32; 4],
     pub in_normal: [f32; 4],
@@ -26,7 +25,7 @@ impl OverlayVertex {
 
 /// Should match vertex definition for `gui.vert` (except color is `[f32; 4]`)
 #[repr(C)]
-#[derive(Default, Debug, Clone, Copy, Zeroable, Pod)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct EguiVertex {
     pub in_position: [f32; 2],
     pub in_tex_coords: [f32; 2],
@@ -94,7 +93,7 @@ impl EguiVertex {
 
 /// Should match inputs in `bounding_box.vert`
 #[repr(C)]
-#[derive(Default, Debug, Clone, Copy, Zeroable, Pod)]
+#[derive(Default, Debug, Clone, Copy)]
 pub struct BoundingBoxVertex {
     pub in_position: [f32; 4],
     pub in_object_id: u32,
