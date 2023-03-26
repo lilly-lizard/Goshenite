@@ -8,11 +8,11 @@ use crate::engine::object::{object_collection::ObjectCollection, objects_delta::
 use anyhow::Context;
 use ash::vk;
 use bort::{
-    Buffer, ColorBlendState, CommandBuffer, DescriptorPool, DescriptorPoolProperties,
-    DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
-    Device, DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties,
-    MemoryAllocator, PipelineAccess, PipelineLayout, PipelineLayoutProperties, RenderPass,
-    ShaderModule, ShaderStage, ViewportState,
+    Buffer, ColorBlendState, CommandBuffer, DepthStencilState, DescriptorPool,
+    DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
+    DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState, GraphicsPipeline,
+    GraphicsPipelineProperties, MemoryAllocator, PipelineAccess, PipelineLayout,
+    PipelineLayoutProperties, RenderPass, ShaderModule, ShaderStage, ViewportState,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -291,12 +291,22 @@ fn create_pipeline(
     let color_blend_state =
         ColorBlendState::new_default(vec![ColorBlendState::blend_state_disabled(); 2]);
 
+    let depth_stencil_state = DepthStencilState {
+        depth_test_enable: true,
+        depth_write_enable: true,
+        depth_compare_op: vk::CompareOp::LESS,
+        depth_bounds_test_enable: false,
+        stencil_test_enable: false,
+        ..Default::default()
+    };
+
     let mut pipeline_properties = GraphicsPipelineProperties::default();
     pipeline_properties.subpass_index = render_pass_indices::SUBPASS_GBUFFER as u32;
     pipeline_properties.dynamic_state = dynamic_state;
     pipeline_properties.color_blend_state = color_blend_state;
     pipeline_properties.vertex_input_state = BoundingBoxVertex::vertex_input_state();
     pipeline_properties.viewport_state = viewport_state;
+    pipeline_properties.depth_stencil_state = depth_stencil_state;
 
     let pipeline = GraphicsPipeline::new(
         pipeline_layout,
