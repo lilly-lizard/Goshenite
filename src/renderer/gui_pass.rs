@@ -154,7 +154,7 @@ impl GuiPass {
             // create new images and record upload commands
             for (id, image_delta) in textures_delta.set {
                 let add_new_texture_res =
-                    self.add_new_texture_data(id, image_delta, &command_buffer)?;
+                    self.process_texture_data(id, image_delta, &command_buffer)?;
 
                 if let Some(upload_buffer) = add_new_texture_res {
                     commands_recorded = true;
@@ -262,21 +262,22 @@ impl GuiPass {
     /// data in `delta`. If commands were recorded to `command_buffer`, returns the buffer that will
     /// be used to upload the texture data. Otherwise returns `Ok(None)` if this update was skipped
     /// for some reason.
-    fn add_new_texture_data(
+    fn process_texture_data(
         &mut self,
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
         command_buffer: &CommandBuffer,
     ) -> anyhow::Result<Option<Buffer>> {
+        // todo delta.options: TextureOptions mag/min filter for sampler
+
         // extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
             egui::ImageData::Color(image) => {
                 if image.width() * image.height() != image.pixels.len() {
                     warn!(
-                        "mismatch between gui texture size and texel count, skipping... texture_id = {:?}",
+                        "mismatch between gui color texture size and texel count. texture_id = {:?}",
                         texture_id
                     );
-                    return Ok(None);
                 }
                 image
                     .pixels
@@ -284,19 +285,32 @@ impl GuiPass {
                     .flat_map(|color| color.to_array())
                     .collect()
             }
-            egui::ImageData::Font(image) => image
-                .srgba_pixels(None)
-                .flat_map(|color| color.to_array())
-                .collect(),
+            egui::ImageData::Font(image) => {
+                if image.width() * image.height() != image.pixels.len() {
+                    warn!(
+                        "mismatch between gui font texture size and texel count. texture_id = {:?}",
+                        texture_id
+                    );
+                }
+                image
+                    .srgba_pixels(None)
+                    .flat_map(|color| color.to_array())
+                    .collect()
+            }
         };
 
         if data.len() == 0 {
-            warn!(
+            info!(
                 "attempted to create gui texture with no data! skipping... texture_id = {:?}",
                 texture_id
             );
             return Ok(None);
         }
+
+        let upload_data_dimensions: [usize; 2] = match &delta.image {
+            egui::ImageData::Color(image) => [image.width(), image.height()],
+            egui::ImageData::Font(image) => [image.width(), image.height()],
+        };
 
         // create buffer to be copied to the image
         let mut texture_data_buffer = create_texture_data_buffer(
@@ -318,14 +332,16 @@ impl GuiPass {
                         z: 0,
                     },
                     image_extent: vk::Extent3D {
-                        width: delta.image.width() as u32,
-                        height: delta.image.height() as u32,
+                        width: upload_data_dimensions[0] as u32,
+                        height: upload_data_dimensions[1] as u32,
                         depth: 1,
                     },
-                    ..Default::default()
+                    buffer_offset: 0,
+                    buffer_row_length: 0,
+                    buffer_image_height: 0,
                 };
                 debug!(
-                    "updating existing gui texture id = {:?}, region offset = {:?}, region extent = {:?}",
+                    "updating existing gui texture. id = {:?}, region offset = {:?}, region extent = {:?}",
                     texture_id, copy_region.image_offset, copy_region.image_extent
                 );
 
@@ -410,11 +426,6 @@ impl GuiPass {
             },
             ..Default::default()
         };
-
-        debug!(
-            "updating existing gui texture id = {:?}, region offset = {:?}, region extent = {:?}",
-            texture_id, copy_region.image_offset, copy_region.image_extent
-        );
 
         // we need to transition the image layout to vk::ImageLayout::TRANSFER_DST_OPTIMAL
         let to_transfer_dst_image_barrier = vk::ImageMemoryBarrier::builder()

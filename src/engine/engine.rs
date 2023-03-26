@@ -40,6 +40,8 @@ pub struct Engine {
 
     // model data
     object_collection: ObjectCollection,
+
+    frame_number: u64,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
@@ -130,6 +132,8 @@ impl Engine {
             renderer,
 
             object_collection: object_collection,
+
+            frame_number: 0,
         }
     }
 
@@ -201,7 +205,7 @@ impl Engine {
             }
 
             WindowEvent::ThemeChanged(winit_theme) => {
-                self.gui.set_theme(winit_theme);
+                self.gui.set_theme_winit(winit_theme);
             }
             _ => (),
         }
@@ -209,6 +213,10 @@ impl Engine {
 
     /// Per frame engine logic and rendering
     fn process_frame(&mut self) {
+        if self.frame_number == 2 {
+            self.gui.set_theme_egui(egui::Visuals::light());
+        }
+
         // process recieved events for cursor state
         self.cursor_state.process_frame();
 
@@ -252,6 +260,7 @@ impl Engine {
         );
 
         self.window_resize = false;
+        self.frame_number += 1;
     }
 
     fn update_camera(&mut self) {
