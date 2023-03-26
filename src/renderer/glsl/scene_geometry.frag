@@ -15,8 +15,7 @@ const vec2 NORMAL_OFFSET = vec2(NORMAL_EPSILON, -NORMAL_EPSILON);
 
 // ~~~ IO ~~~
 
-layout (location = 0) in flat uint in_object_index;
-layout (location = 1) in flat uint in_object_id;
+layout (location = 0) in flat uint in_object_id;
 
 layout (location = 0) out vec4 out_normal;
 layout (location = 1) out uint out_object_id; // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side??
@@ -27,13 +26,14 @@ layout (set = 0, binding = 0) uniform Camera {
 	vec2 framebuffer_dims;
 	float near;
 	float far;
+    uint _is_srgb_framebuffer;
 } cam;
 
 layout (set = 1, binding = 0, std430) readonly buffer Object {
 	uint _id;
 	uint op_count;
 	uint primitive_ops[];
-} objects[];
+} object;
 
 // ~~~ Signed Distance Fields ~~~
 
@@ -60,30 +60,30 @@ float sdf_box(vec3 pos, vec3 center, vec3 dimensions)
 
 SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 {
-	uint primitive_type = objects[in_object_index].primitive_ops[buffer_index++];
+	uint primitive_type = object.primitive_ops[buffer_index++];
 	float dist;
 
 	if (primitive_type == PRIMITIVE_SPHERE)
 	{
 		vec3 center = vec3(
-			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]),
-			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]),
-			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++])
+			uintBitsToFloat(object.primitive_ops[buffer_index++]),
+			uintBitsToFloat(object.primitive_ops[buffer_index++]),
+			uintBitsToFloat(object.primitive_ops[buffer_index++])
 		);
-		float radius = uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]);
+		float radius = uintBitsToFloat(object.primitive_ops[buffer_index++]);
 		dist = sdf_sphere(pos, center, radius);
 	}
 	else if (primitive_type == PRIMITIVE_CUBE)
 	{
 		vec3 center = vec3(
-			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]),
-			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]),
-			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++])
+			uintBitsToFloat(object.primitive_ops[buffer_index++]),
+			uintBitsToFloat(object.primitive_ops[buffer_index++]),
+			uintBitsToFloat(object.primitive_ops[buffer_index++])
 		);
 		vec3 dimensions = vec3(
-			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]),
-			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++]),
-			uintBitsToFloat(objects[in_object_index].primitive_ops[buffer_index++])
+			uintBitsToFloat(object.primitive_ops[buffer_index++]),
+			uintBitsToFloat(object.primitive_ops[buffer_index++]),
+			uintBitsToFloat(object.primitive_ops[buffer_index++])
 		);
 		dist = sdf_box(pos, center, dimensions);
 	}
@@ -141,10 +141,10 @@ SdfResult map(vec3 pos)
 	SdfResult closest_res = { cam.far, ID_INVALID };
 
 	// loop through the primitive operations
-	for (uint op_index = 0; op_index < objects[in_object_index].op_count; op_index++) {
+	for (uint op_index = 0; op_index < object.op_count; op_index++) {
 
 		uint buffer_index = op_index * OP_UNIT_LENGTH;
-		uint op = objects[in_object_index].primitive_ops[buffer_index++];
+		uint op = object.primitive_ops[buffer_index++];
 
 		SdfResult primitive_res = process_primitive(buffer_index, op_index, pos);
 		closest_res = process_op(op, closest_res, primitive_res);

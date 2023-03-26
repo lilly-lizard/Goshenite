@@ -1,379 +1,309 @@
 use super::{
-    config_renderer::{
-        ENABLE_VULKAN_VALIDATION, FORMAT_DEPTH_BUFFER, FORMAT_G_BUFFER_NORMAL, FRAMES_IN_FLIGHT,
-    },
+    config_renderer::{ENABLE_VULKAN_VALIDATION, TIMEOUT_NANOSECS, VULKAN_VER_MAJ, VULKAN_VER_MIN},
+    debug_callback::log_vulkan_debug_callback,
     geometry_pass::GeometryPass,
-    gui_renderer::GuiRenderer,
+    gui_pass::GuiPass,
     lighting_pass::LightingPass,
-    shader_interfaces::{
-        primitive_op_buffer::primitive_codes, uniform_buffers::CameraUniformBuffer,
+    shader_interfaces::uniform_buffers::CameraUniformBuffer,
+    vulkan_init::{
+        choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
+        create_depth_buffer, create_device_and_queues, create_framebuffers, create_normal_buffer,
+        create_per_frame_fence, create_primitive_id_buffer, create_render_pass, create_swapchain,
+        create_swapchain_image_views, swapchain_properties, ChoosePhysicalDeviceReturn,
+        CreateDeviceAndQueuesReturn,
     },
-    vulkan_helper::{render_pass_indices::ATTACHMENT_COUNT, *},
 };
 use crate::{
+    config::ENGINE_NAME,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
-    renderer::config_renderer::FORMAT_G_BUFFER_PRIMITIVE_ID,
+    helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
+    renderer::vulkan_init::{create_command_pool, create_render_command_buffers},
     user_interface::{camera::Camera, gui::Gui},
 };
-use anyhow::{anyhow, Context};
+use anyhow::Context;
+use ash::{vk, Entry};
+use bort::{
+    is_format_srgb, ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback, Device, Fence,
+    Framebuffer, Image, ImageView, Instance, MemoryAllocator, Queue, RenderPass, Semaphore,
+    Surface, Swapchain, SwapchainImage,
+};
 use egui::TexturesDelta;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::sync::Arc;
-use vulkano::{
-    command_buffer::{
-        self,
-        allocator::{StandardCommandBufferAllocator, StandardCommandBufferAllocatorCreateInfo},
-        RenderPassBeginInfo, SubpassContents,
-    },
-    descriptor_set::allocator::StandardDescriptorSetAllocator,
-    device::{Device, DeviceCreateInfo, Queue, QueueCreateInfo},
-    format::ClearValue,
-    image::{
-        view::ImageView, AttachmentImage, ImageAccess, ImageUsage, SampleCount, SwapchainImage,
-    },
-    instance::debug::DebugUtilsMessenger,
-    instance::{Instance, InstanceCreateInfo},
-    memory::allocator::StandardMemoryAllocator,
-    pipeline::graphics::viewport::Viewport,
-    render_pass::{Framebuffer, RenderPass, Subpass},
-    swapchain::{self, Surface, Swapchain, SwapchainCreationError, SwapchainPresentInfo},
-    sync::{self, FlushError, GpuFuture},
-    VulkanLibrary,
-};
 use winit::window::Window;
-
-// number of primary and secondary command buffers to initially allocate
-const PRE_ALLOCATE_PRIMARY_COMMAND_BUFFERS: usize = 64;
-const PRE_ALLOCATE_SECONDARY_COMMAND_BUFFERS: usize = 0;
 
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
+    instance: Arc<Instance>,
+    debug_callback: Option<DebugCallback>,
+
     device: Arc<Device>,
-    render_queue: Arc<Queue>,
-    _transfer_queue: Arc<Queue>,
-    _debug_callback: Option<DebugUtilsMessenger>,
+    render_queue: Queue,
+
+    memory_allocator: Arc<MemoryAllocator>,
+    command_pool: Arc<CommandPool>,
 
     window: Arc<Window>,
-    _surface: Arc<Surface>,
-    swapchain: Arc<Swapchain>,
+    surface: Arc<Surface>,
+    swapchain: Swapchain,
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage>>>,
-    is_srgb_framebuffer: bool,
+    is_swapchain_srgb: bool,
 
-    memory_allocator: Arc<StandardMemoryAllocator>,
-    command_buffer_allocator: StandardCommandBufferAllocator,
-    descriptor_allocator: Arc<StandardDescriptorSetAllocator>,
-
-    depth_buffer: Arc<ImageView<AttachmentImage>>,
-    g_buffer_normal: Arc<ImageView<AttachmentImage>>,
-    g_buffer_primitive_id: Arc<ImageView<AttachmentImage>>,
-
-    viewport: Viewport,
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
-    clear_values: [Option<ClearValue>; ATTACHMENT_COUNT],
+    clear_values: Vec<vk::ClearValue>,
 
-    geometry_pass: GeometryPass,
+    depth_buffer: Arc<ImageView<Image>>,
+    normal_buffer: Arc<ImageView<Image>>,
+    primitive_id_buffer: Arc<ImageView<Image>>,
+    camera_ubo: Arc<Buffer>,
+
     lighting_pass: LightingPass,
-    //overlay_pass: OverlayPass,
-    gui_pass: GuiRenderer,
+    geometry_pass: GeometryPass,
+    gui_pass: GuiPass,
+
+    render_command_buffers: Vec<Arc<CommandBuffer>>,
+    previous_render_fence: Arc<Fence>, // per frame in flight
+    previous_upload_fence: Option<Arc<Fence>>, // just one
+    next_frame_wait_semaphore: Arc<Semaphore>, // per frame in flight
+    swapchain_image_available_semaphore: Arc<Semaphore>, // per frame in flight
 
     /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
     /// without conflicting with commands currently being processed. This variable indicates
     /// which index to will be next submitted to the GPU.
     next_frame: usize,
-    /// Can be used to synchronize commands with the submission for the previous frame
-    future_previous_frame: Option<Box<dyn GpuFuture>>,
-    /// Indicates that the swapchain needs to be recreated next frame
-    recreate_swapchain: bool,
 }
 
 // Public functions
 
 impl RenderManager {
-    /// Initializes Vulkan resources. If renderer fails to initialize, returns a string explanation.
+    /// Initializes Vulkan resources. If renderer fails to initiver_minoralize, returns a string explanation.
     pub fn new(window: Arc<Window>) -> anyhow::Result<Self> {
-        let vulkan_library = VulkanLibrary::new().context("loading vulkan library")?;
+        let entry = unsafe { Entry::load() }
+            .context("loading vulkan dynamic library. please install vulkan on your system...")?;
+        let entry = Arc::new(entry);
+
+        // create vulkan instance
+        let api_version = ApiVersion::new(VULKAN_VER_MAJ, VULKAN_VER_MIN);
+        let instance = Arc::new(
+            Instance::new(
+                entry.clone(),
+                api_version,
+                ENGINE_NAME,
+                window.raw_display_handle(),
+                ENABLE_VULKAN_VALIDATION,
+                [],
+                [],
+            )
+            .context("creating vulkan instance")?,
+        );
         info!(
-            "loaded vulkan library, api version = {}",
-            vulkan_library.api_version()
+            "created vulkan instance. api version = {:?}",
+            instance.api_version()
         );
 
-        // required instance extensions for platform surface rendering
-        let mut instance_extensions = vulkano_win::required_extensions(&vulkan_library);
-        let mut instance_layers: Vec<String> = Vec::new();
-
-        // check for validation layer/debug callback support
-        let enable_debug_callback = if ENABLE_VULKAN_VALIDATION {
-            if add_debug_validation(
-                vulkan_library.clone(),
-                &mut instance_extensions,
-                &mut instance_layers,
-            )
-            .is_ok()
-            {
-                info!("enabling Vulkan validation layers and debug callback");
-                true
-            } else {
-                warn!("validation layer debug callback requested but cannot be enabled");
-                false
+        // setup validation layer debug callback
+        let debug_callback = if ENABLE_VULKAN_VALIDATION {
+            match DebugCallback::new(&entry, instance.clone(), Some(log_vulkan_debug_callback)) {
+                Ok(x) => {
+                    info!("enabling vulkan validation layers and debug callback");
+                    Some(x)
+                }
+                Err(e) => {
+                    warn!("validation layer debug callback requested but cannot be setup due to: {:?}", e);
+                    None
+                }
             }
         } else {
-            debug!("Vulkan validation layers disabled via config.rs");
-            false
-        };
-
-        // create instance
-        debug!("enabling instance extensions: {:?}", instance_extensions);
-        debug!("enabling vulkan layers: {:?}", instance_layers);
-        let instance = Instance::new(
-            vulkan_library.clone(),
-            InstanceCreateInfo {
-                enabled_extensions: instance_extensions,
-                enumerate_portability: true, // enable enumerating devices that use non-conformant vulkan implementations. (ex. MoltenVK)
-                enabled_layers: instance_layers,
-                ..Default::default()
-            },
-        )
-        .context("creating vulkan instance")?;
-
-        // setup debug callback
-        let debug_callback = if enable_debug_callback {
-            setup_debug_callback(instance.clone())
-        } else {
+            debug!("vulkan validation layers disabled");
             None
         };
 
-        // create surface
-        let surface = vulkano_win::create_surface_from_winit(window.clone(), instance.clone())
-            .context("creating vulkan surface")?;
+        let surface = Arc::new(
+            Surface::new(
+                &entry,
+                instance.clone(),
+                window.raw_display_handle(),
+                window.raw_window_handle(),
+            )
+            .context("creating vulkan surface")?,
+        );
 
-        // required device extensions
-        let device_extensions = required_device_extensions();
-        debug!("required vulkan device extensions: {:?}", device_extensions);
-
-        // print available physical devices
-        debug!("available Vulkan physical devices:");
-        for pd in instance
-            .enumerate_physical_devices()
-            .context("enumerating physical devices")?
-        {
-            debug!("\t{}", pd.properties().device_name);
-        }
-        // choose physical device and queue families
         let ChoosePhysicalDeviceReturn {
             physical_device,
-            render_queue_family,
-            transfer_queue_family,
-        } = choose_physical_device(instance.clone(), &device_extensions, &surface)?;
+            render_queue_family_index,
+            transfer_queue_family_index,
+        } = choose_physical_device_and_queue_families(instance.clone(), &surface)?;
+        let physical_device = Arc::new(physical_device);
         info!(
-            "Using Vulkan device: {} (type: {:?})",
-            physical_device.properties().device_name,
+            "using vulkan physical device: {} (type: {:?})",
+            physical_device.name(),
             physical_device.properties().device_type,
         );
-        debug!("render queue family index = {}", render_queue_family);
-        debug!("transfer queue family index = {}", transfer_queue_family);
-
-        // queue create info(s) for creating render and transfer queues
-        let single_queue = (render_queue_family == transfer_queue_family)
-            && (physical_device.queue_family_properties()[render_queue_family as usize]
-                .queue_count
-                == 1);
-        let queue_create_infos = if render_queue_family == transfer_queue_family {
-            vec![QueueCreateInfo {
-                queue_family_index: render_queue_family,
-                queues: if single_queue {
-                    vec![0.5]
-                } else {
-                    vec![0.5; 2]
-                },
-                ..Default::default()
-            }]
-        } else {
-            vec![
-                QueueCreateInfo {
-                    queue_family_index: render_queue_family,
-                    ..Default::default()
-                },
-                QueueCreateInfo {
-                    queue_family_index: transfer_queue_family,
-                    ..Default::default()
-                },
-            ]
-        };
-
-        // create device and queues
-        let (device, mut queues) = Device::new(
-            physical_device.clone(),
-            DeviceCreateInfo {
-                enabled_extensions: device_extensions,
-                enabled_features: required_features(),
-                queue_create_infos,
-                ..Default::default()
-            },
-        )
-        .context("creating vulkan device and queues")?;
-        let render_queue = queues
-            .next()
-            .expect("requested 1 queue from render_queue_family");
-        let transfer_queue = if single_queue {
-            render_queue.clone()
-        } else {
-            queues.next().expect("requested 1 unique transfer queue")
-        };
-
-        // swapchain
-        let (swapchain, swapchain_images) = create_swapchain(
-            device.clone(),
-            physical_device.clone(),
-            surface.clone(),
-            &window,
-        )?;
+        debug!("render queue family index = {}", render_queue_family_index);
         debug!(
-            "initial swapchain image size = {:?}",
-            swapchain_images[0].dimensions()
+            "transfer queue family index = {}",
+            transfer_queue_family_index
         );
-        let is_srgb_framebuffer = is_srgb_framebuffer(swapchain_images[0].clone());
-        let swapchain_image_views = swapchain_images
-            .iter()
-            .map(|image| ImageView::new_default(image.clone()))
-            .collect::<Result<Vec<_>, _>>()
-            .context("creating swapchain image views")?;
 
-        // dynamic viewport
-        let framebuffer_dimensions = swapchain_images[0].dimensions().width_height();
-        let viewport = Viewport {
-            origin: [0.0, 0.0],
-            dimensions: [
-                framebuffer_dimensions[0] as f32,
-                framebuffer_dimensions[1] as f32,
-            ],
-            depth_range: 0.0..1.0,
-        };
+        let CreateDeviceAndQueuesReturn {
+            device,
+            render_queue,
+            transfer_queue,
+        } = create_device_and_queues(
+            physical_device.clone(),
+            render_queue_family_index,
+            transfer_queue_family_index,
+        )?;
 
-        // create render_pass
-        let multisample = SampleCount::Sample1;
-        let render_pass = create_render_pass(device.clone(), &swapchain_image_views, multisample)?;
+        let memory_allocator = Arc::new(MemoryAllocator::new(device.clone())?);
 
-        // describe subpasses
-        let subpass_gbuffer = Subpass::from(
-            render_pass.clone(),
-            render_pass_indices::SUBPASS_GBUFFER as u32,
-        )
-        .ok_or(anyhow!(
-            "render pass does not contain subpass at index {}",
-            render_pass_indices::SUBPASS_GBUFFER
-        ))?;
-        let subpass_swapchain = Subpass::from(
-            render_pass.clone(),
-            render_pass_indices::SUBPASS_SWAPCHAIN as u32,
-        )
-        .ok_or(anyhow!(
-            "render pass does not contain subpass at index {}",
-            render_pass_indices::SUBPASS_SWAPCHAIN
-        ))?;
+        let command_pool = create_command_pool(device.clone(), &render_queue)?;
 
-        // allocators
-        let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
-        let command_buffer_allocator = StandardCommandBufferAllocator::new(
-            device.clone(),
-            StandardCommandBufferAllocatorCreateInfo {
-                primary_buffer_count: PRE_ALLOCATE_PRIMARY_COMMAND_BUFFERS,
-                secondary_buffer_count: PRE_ALLOCATE_SECONDARY_COMMAND_BUFFERS,
-                ..StandardCommandBufferAllocatorCreateInfo::default()
-            },
+        let swapchain = create_swapchain(device.clone(), surface.clone(), &window)?;
+        debug!(
+            "swapchain surface format = {:?}",
+            swapchain.properties().surface_format
         );
-        let descriptor_allocator = Arc::new(StandardDescriptorSetAllocator::new(device.clone()));
+        debug!(
+            "swapchain present mode = {:?}",
+            swapchain.properties().present_mode
+        );
+        debug!(
+            "swapchain composite alpha = {:?}",
+            swapchain.properties().composite_alpha
+        );
+        let is_swapchain_srgb = is_format_srgb(swapchain.properties().surface_format.format);
 
-        // depth buffer
-        let depth_buffer = create_depth_buffer(&memory_allocator, framebuffer_dimensions)?;
+        let swapchain_image_views = create_swapchain_image_views(&swapchain)?;
 
-        // g-buffers
-        let g_buffer_normal = create_g_buffer_normals(&memory_allocator, framebuffer_dimensions)?;
-        let g_buffer_primitive_id =
-            create_g_buffer_primitive_ids(&memory_allocator, framebuffer_dimensions)?;
+        let render_pass = create_render_pass(device.clone(), swapchain.properties())?;
 
-        // create framebuffers
+        let depth_buffer = create_depth_buffer(
+            memory_allocator.clone(),
+            swapchain.properties().dimensions(),
+        )?;
+
+        let normal_buffer = create_normal_buffer(
+            memory_allocator.clone(),
+            swapchain.properties().dimensions(),
+        )?;
+
+        let primitive_id_buffer = create_primitive_id_buffer(
+            memory_allocator.clone(),
+            swapchain.properties().dimensions(),
+        )?;
+
+        let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
+
         let framebuffers = create_framebuffers(
-            render_pass.clone(),
+            &render_pass,
             &swapchain_image_views,
-            g_buffer_normal.clone(),
-            g_buffer_primitive_id.clone(),
-            depth_buffer.clone(),
-        )?;
-        let mut clear_values: [Option<ClearValue>; ATTACHMENT_COUNT] = Default::default();
-        clear_values[render_pass_indices::ATTACHMENT_SWAPCHAIN] = Some([0., 0., 0., 1.].into());
-        clear_values[render_pass_indices::ATTACHMENT_NORMAL] = Some([0.; 4].into());
-        clear_values[render_pass_indices::ATTACHMENT_PRIMITIVE_ID] =
-            Some([primitive_codes::INVALID; 4].into());
-        clear_values[render_pass_indices::ATTACHMENT_DEPTH_BUFFER] = Some(ClearValue::Depth(1.));
-
-        // init lighting pass
-        let lighting_pass = LightingPass::new(
-            device.clone(),
-            descriptor_allocator.clone(),
-            g_buffer_normal.clone(),
-            g_buffer_primitive_id.clone(),
-            subpass_swapchain.clone(),
+            &normal_buffer,
+            &primitive_id_buffer,
+            &depth_buffer,
         )?;
 
-        // init geometry pass
+        let clear_values = create_clear_values();
+
         let geometry_pass = GeometryPass::new(
             device.clone(),
             memory_allocator.clone(),
-            descriptor_allocator.clone(),
-            subpass_gbuffer,
+            &render_pass,
+            &camera_ubo,
         )?;
 
-        // init overlay pass
-        //let overlay_pass =
-        //    OverlayPass::new(device.clone(), &memory_allocator, subpass_swapchain.clone())?;
+        let lighting_pass = LightingPass::new(
+            device.clone(),
+            &render_pass,
+            &camera_ubo,
+            normal_buffer.as_ref(),
+            primitive_id_buffer.as_ref(),
+        )?;
 
-        // init gui renderer
-        let gui_pass = GuiRenderer::new(
+        let gui_pass = GuiPass::new(
             device.clone(),
             memory_allocator.clone(),
-            render_queue.clone(),
-            subpass_swapchain.clone(),
+            &render_pass,
+            render_queue_family_index,
         )?;
 
-        // create futures used for frame synchronization
-        let future_previous_frame = Some(sync::now(device.clone()).boxed());
+        let render_command_buffers = create_render_command_buffers(
+            command_pool.clone(),
+            swapchain_image_views.len() as u32,
+        )?;
+
+        let previous_render_fence = create_per_frame_fence(device.clone())?;
+        let next_frame_wait_semaphore =
+            Arc::new(Semaphore::new(device.clone()).context("creating per-frame semaphore")?);
+        let swapchain_image_available_semaphore = Arc::new(
+            Semaphore::new(device.clone()).context("creating per-swapchain-image semaphore")?,
+        );
 
         Ok(Self {
+            instance,
+            debug_callback,
+
             device,
             render_queue,
-            _transfer_queue: transfer_queue,
-            _debug_callback: debug_callback,
-
-            window,
-            _surface: surface,
-            swapchain,
-            swapchain_image_views,
-            is_srgb_framebuffer,
 
             memory_allocator,
-            command_buffer_allocator,
-            descriptor_allocator,
+            command_pool,
 
-            depth_buffer,
-            g_buffer_normal,
-            g_buffer_primitive_id,
+            window,
+            surface,
+            swapchain,
+            swapchain_image_views,
+            is_swapchain_srgb,
 
-            viewport,
             render_pass,
             framebuffers,
             clear_values,
 
+            depth_buffer,
+            normal_buffer,
+            primitive_id_buffer,
+            camera_ubo,
+
             geometry_pass,
             lighting_pass,
-            //overlay_pass,
             gui_pass,
 
+            render_command_buffers,
+            previous_render_fence,
+            previous_upload_fence: None,
+            next_frame_wait_semaphore,
+            swapchain_image_available_semaphore,
+
             next_frame: 0,
-            future_previous_frame,
-            recreate_swapchain: false,
         })
+    }
+
+    pub fn update_camera(&mut self, camera: &mut Camera) -> anyhow::Result<()> {
+        self.wait_idle_device()?;
+
+        let dimensions = self.swapchain.properties().width_height;
+        let camera_data = CameraUniformBuffer::from_camera(
+            camera,
+            [dimensions[0] as f32, dimensions[1] as f32],
+            self.is_swapchain_srgb,
+        );
+
+        let camera_ubo_mut = match Arc::get_mut(&mut self.camera_ubo) {
+            Some(ubo) => ubo,
+            None => {
+                warn!("attempted to borrow camera buffer as mutable but couldn't! skipping update_camera()...");
+                return Ok(());
+            }
+        };
+
+        camera_ubo_mut
+            .write_struct(camera_data, 0)
+            .context("uploading camera ubo data")?;
+
+        Ok(())
     }
 
     pub fn update_object_buffers(
@@ -389,153 +319,136 @@ impl RenderManager {
         &mut self,
         textures_delta_vec: Vec<TexturesDelta>,
     ) -> anyhow::Result<()> {
-        self.wait_and_unlock_previous_frame();
+        self.wait_for_fences()?;
 
-        self.future_previous_frame = Some(
-            self.gui_pass.update_textures(
-                self.future_previous_frame
-                    .take()
-                    .unwrap_or(sync::now(self.device.clone()).boxed()), // should never be None anyway...
-                &self.command_buffer_allocator,
-                &self.descriptor_allocator,
-                textures_delta_vec,
-                self.render_queue.clone(),
-            )?,
-        );
+        let texture_update_fence_option = self
+            .gui_pass
+            .update_textures(textures_delta_vec, &self.render_queue)?;
+
+        if let Some(previous_upload_fence) = texture_update_fence_option {
+            self.previous_upload_fence = Some(previous_upload_fence);
+        }
+
         Ok(())
     }
 
     /// Submits Vulkan commands for rendering a frame.
-    pub fn render_frame(
-        &mut self,
-        window_resize: bool,
-        gui: &mut Gui,
-        camera: &mut Camera,
-    ) -> anyhow::Result<()> {
-        let camera_buffer = create_camera_buffer(
-            &self.memory_allocator,
-            CameraUniformBuffer::from_camera(camera, self.viewport.dimensions),
-        )?;
+    pub fn render_frame(&mut self, gui: &mut Gui, window_resized: bool) -> anyhow::Result<()> {
+        // wait for previous frame render/resource upload to finish
 
-        self.wait_and_unlock_previous_frame();
+        self.wait_for_fences()?;
 
-        self.recreate_swapchain = self.recreate_swapchain || window_resize;
-        if self.recreate_swapchain {
-            // recreate swapchain
+        self.gui_pass.free_previous_vertex_and_index_buffers();
+
+        // I found that this check is needed on hyprland because the later commnads weren't returning 'out of date'...
+        if window_resized {
             self.recreate_swapchain()?;
         }
 
-        // blocks when no images currently available (all have been submitted already)
-        let (swapchain_index, suboptimal, acquire_future) =
-            match swapchain::acquire_next_image(self.swapchain.clone(), None) {
-                Ok(r) => r,
-                Err(swapchain::AcquireError::OutOfDate) => {
-                    // recreate swapchain and skip frame render
-                    return self.recreate_swapchain();
-                }
-                Err(e) => {
-                    return Err(anyhow!(e)).context("aquiring swapchain image");
-                }
-            };
-        // 'suboptimal' indicates that the swapchain image will still work but may not be displayed correctly
-        // we'll render the frame anyway hehe
-        if suboptimal {
-            debug!(
-                "suboptimal swapchain image {}, rendering anyway...",
-                swapchain_index
-            );
-            self.recreate_swapchain = true;
-        }
+        // aquire next swapchain image
 
-        // record command buffer
-        let mut builder = command_buffer::AutoCommandBufferBuilder::primary(
-            &self.command_buffer_allocator,
-            self.render_queue.queue_family_index(),
-            command_buffer::CommandBufferUsage::OneTimeSubmit,
-        )
-        .context("beginning primary command buffer")?;
+        let aquire_res = self.swapchain.aquire_next_image(
+            TIMEOUT_NANOSECS,
+            Some(&self.swapchain_image_available_semaphore),
+            None,
+        );
 
-        // begin render pass
-        builder
-            .begin_render_pass(
-                RenderPassBeginInfo {
-                    clear_values: self.clear_values.into(),
-                    ..RenderPassBeginInfo::framebuffer(
-                        self.framebuffers[swapchain_index as usize].clone(),
-                    )
-                },
-                SubpassContents::Inline,
-            )
-            .context("recording begin render pass command")?;
-
-        // geometry ray-marching pass (outputs to g-buffer)
-        self.geometry_pass.record_commands(
-            &mut builder,
-            self.viewport.clone(),
-            camera_buffer.clone(),
-        )?;
-
-        builder
-            .next_subpass(SubpassContents::Inline)
-            .context("recording next subpass command")?;
-
-        // execute deferred lighting pass (reads from g-buffer)
-        self.lighting_pass.record_commands(
-            &mut builder,
-            self.viewport.clone(),
-            camera_buffer.clone(),
-        )?;
-
-        // draw editor overlay
-        //self.overlay_pass
-        //    .record_commands(&mut builder, camera, self.viewport.clone())?;
-
-        // render gui
-        self.gui_pass.record_commands(
-            &mut builder,
-            gui,
-            self.is_srgb_framebuffer,
-            self.viewport.dimensions,
-        )?;
-
-        // end render pass
-        builder
-            .end_render_pass()
-            .context("recording end render pass command")?;
-        let command_buffer = builder.build().context("building frame command buffer")?;
-
-        // submit
-        let future = self
-            .future_previous_frame
-            .take()
-            .unwrap_or(sync::now(self.device.clone()).boxed()) // should never be None anyway...
-            .join(acquire_future)
-            .then_execute(self.render_queue.clone(), command_buffer)
-            .context("executing vulkan primary command buffer")?
-            .then_swapchain_present(
-                self.render_queue.clone(),
-                SwapchainPresentInfo::swapchain_image_index(
-                    self.swapchain.clone(),
-                    swapchain_index,
-                ),
-            )
-            .then_signal_fence_and_flush();
-
-        match future {
-            Ok(future) => {
-                self.future_previous_frame = Some(future.boxed());
-            }
-            Err(FlushError::OutOfDate) => {
-                self.recreate_swapchain = true;
-                self.future_previous_frame = Some(sync::now(self.device.clone()).boxed());
-            }
-            Err(e) => {
-                error!("Failed to flush future: {}", e);
-                self.future_previous_frame = Some(sync::now(self.device.clone()).boxed());
+        if let Err(aquire_err) = aquire_res {
+            if aquire_err == vk::Result::ERROR_OUT_OF_DATE_KHR {
+                debug!("out of date swapchain on aquire");
+                return self.recreate_swapchain();
+            } else {
+                return Err(aquire_err).context("calling vkAcquireNextImageKHR");
             }
         }
 
-        self.next_frame = (self.next_frame + 1) % FRAMES_IN_FLIGHT;
+        let (swapchain_index, swapchain_is_suboptimal) =
+            aquire_res.expect("handled err case in previous lines");
+        let swapchain_index = swapchain_index as usize;
+        if swapchain_is_suboptimal {
+            debug!("suboptimal swapchain");
+            return self.recreate_swapchain();
+        }
+
+        // record commands
+
+        let command_buffer = self.render_command_buffers[swapchain_index].clone();
+        self.record_render_commands(&command_buffer, gui, swapchain_index)?;
+
+        // submit commands
+
+        let device_ash = self.device.inner();
+        let previous_render_fence_handle = self.previous_render_fence.handle();
+        unsafe { device_ash.reset_fences(&[previous_render_fence_handle]) }
+            .context("reseting previous render fence")?;
+
+        let submit_command_buffers = [command_buffer.handle()];
+
+        let wait_semaphores = [self.swapchain_image_available_semaphore.handle()];
+        let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
+
+        let signal_semaphores = [self.next_frame_wait_semaphore.handle()];
+
+        let submit_info = vk::SubmitInfo::builder()
+            .command_buffers(&submit_command_buffers)
+            .wait_semaphores(&wait_semaphores)
+            .wait_dst_stage_mask(&wait_stages)
+            .signal_semaphores(&signal_semaphores);
+
+        unsafe {
+            device_ash.queue_submit(
+                self.render_queue.handle(),
+                &[submit_info.build()],
+                previous_render_fence_handle,
+            )
+        }
+        .context("submitting render commands")?;
+
+        // submit present instruction
+
+        let swapchain_present_indices = [swapchain_index as u32];
+        let swapchain_handles = [self.swapchain.handle()];
+        let present_info = vk::PresentInfoKHR::builder()
+            .wait_semaphores(&signal_semaphores)
+            .image_indices(&swapchain_present_indices)
+            .swapchains(&swapchain_handles);
+
+        let present_res = unsafe {
+            self.swapchain
+                .swapchain_loader()
+                .queue_present(self.render_queue.handle(), &present_info)
+        };
+
+        if let Err(present_err) = present_res {
+            if present_err == vk::Result::ERROR_OUT_OF_DATE_KHR
+                || present_err == vk::Result::SUBOPTIMAL_KHR
+            {
+                debug!("out of date or suboptimal swapchain upon present");
+                self.recreate_swapchain()?;
+            } else {
+                return Err(present_err).context("submitting swapchain present instruction")?;
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn wait_idle_device(&self) -> anyhow::Result<()> {
+        self.device.wait_idle().context("calling vkDeviceWaitIdle")
+    }
+
+    pub fn reset_render_command_buffers(&self) -> anyhow::Result<()> {
+        self.wait_idle_device()?;
+
+        for command_buffer in &self.render_command_buffers {
+            unsafe {
+                self.device.inner().reset_command_buffer(
+                    command_buffer.handle(),
+                    vk::CommandBufferResetFlags::empty(),
+                )
+            }
+            .context("resetting render command pool")?;
+        }
         Ok(())
     }
 }
@@ -545,121 +458,159 @@ impl RenderManager {
 impl RenderManager {
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
-        let new_size: [u32; 2] = self.window.inner_size().into();
+        debug!("recreating swapchain...");
 
-        debug!(
-            "recreating swapchain and render targets to size: {:?}",
-            new_size
-        );
-        let (new_swapchain, swapchain_images) =
-            match self.swapchain.recreate(swapchain::SwapchainCreateInfo {
-                image_extent: new_size,
-                ..self.swapchain.create_info()
-            }) {
-                Ok(r) => r,
-                // this error tends to happen when the user is manually resizing the window.
-                // simply restarting the loop is the easiest way to fix this issue.
-                Err(e @ SwapchainCreationError::ImageExtentNotSupported { .. }) => {
-                    debug!("failed to recreate swapchain due to {}", e);
-                    return Ok(());
-                }
-                Err(e) => return Err(e).context("recreating swapchain"),
-            };
+        // do host-device sync and reset command buffers
+        self.reset_render_command_buffers()?;
 
-        self.swapchain = new_swapchain;
-        self.swapchain_image_views = swapchain_images
-            .iter()
-            .map(|image| {
-                ImageView::new_default(image.clone()).context("recreating swapchaing image view")
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
+        // clean up resources depending on the swapchain
+        self.framebuffers.clear();
+        self.swapchain_image_views.clear();
 
-        let resolution = swapchain_images[0].dimensions().width_height();
-        self.viewport.dimensions = [resolution[0] as f32, resolution[1] as f32];
+        // recreate the swapchain
+        let swapchain_properties = swapchain_properties(&self.device, &self.surface, &self.window)?;
+        self.swapchain
+            .recreate(swapchain_properties)
+            .context("recreating swapchain")?;
 
-        // depth buffer
-        self.depth_buffer = create_depth_buffer(&self.memory_allocator, resolution)?;
+        // reinitialize related resources
+        self.is_swapchain_srgb = is_format_srgb(self.swapchain.properties().surface_format.format);
+        self.swapchain_image_views = create_swapchain_image_views(&self.swapchain)?;
 
-        // g-buffers
-        self.g_buffer_normal = create_g_buffer_normals(&self.memory_allocator, resolution)?;
-        self.g_buffer_primitive_id =
-            create_g_buffer_primitive_ids(&self.memory_allocator, resolution)?;
+        self.render_pass = create_render_pass(self.device.clone(), self.swapchain.properties())?;
+
+        self.normal_buffer = create_normal_buffer(
+            self.memory_allocator.clone(),
+            self.swapchain.properties().dimensions(),
+        )?;
+
+        self.primitive_id_buffer = create_primitive_id_buffer(
+            self.memory_allocator.clone(),
+            self.swapchain.properties().dimensions(),
+        )?;
+
+        self.depth_buffer = create_depth_buffer(
+            self.memory_allocator.clone(),
+            self.swapchain.properties().dimensions(),
+        )?;
 
         self.framebuffers = create_framebuffers(
-            self.render_pass.clone(),
+            &self.render_pass,
             &self.swapchain_image_views,
-            self.g_buffer_normal.clone(),
-            self.g_buffer_primitive_id.clone(),
-            self.depth_buffer.clone(),
+            &self.normal_buffer,
+            &self.primitive_id_buffer,
+            &self.depth_buffer,
         )?;
 
-        self.lighting_pass.update_g_buffers(
-            &self.descriptor_allocator,
-            self.g_buffer_normal.clone(),
-            self.g_buffer_primitive_id.clone(),
-        )?;
+        self.lighting_pass
+            .update_g_buffers(&self.normal_buffer, &self.primitive_id_buffer)?;
 
-        self.is_srgb_framebuffer = is_srgb_framebuffer(swapchain_images[0].clone());
-
-        self.recreate_swapchain = false;
         Ok(())
     }
 
-    /// Checks for submission finish and free locks on gpu resources
-    fn wait_and_unlock_previous_frame(&mut self) {
-        if let Some(future_previous_frame) = self.future_previous_frame.as_mut() {
-            future_previous_frame.cleanup_finished();
+    fn wait_for_fences(&mut self) -> anyhow::Result<()> {
+        let mut wait_fence_handles = vec![self.previous_render_fence.handle()];
+        if let Some(previous_upload_fence) = &self.previous_upload_fence {
+            wait_fence_handles.push(previous_upload_fence.handle());
         }
+
+        let fence_wait_res = unsafe {
+            self.device
+                .inner()
+                .wait_for_fences(&wait_fence_handles, true, TIMEOUT_NANOSECS)
+        };
+
+        if let Err(fence_wait_err) = fence_wait_res {
+            if fence_wait_err == vk::Result::TIMEOUT {
+                error!(
+                    "previous render fence timed out! timeout set to {}ns",
+                    TIMEOUT_NANOSECS
+                );
+                // todo can handle this on caller side
+                return Err(fence_wait_err)
+                    .context("timeout while waiting for previous frame fence");
+            } else {
+                return Err(fence_wait_err).context("waiting for previous frame fence");
+            }
+        }
+
+        self.previous_upload_fence = None;
+
+        Ok(())
+    }
+
+    fn record_render_commands(
+        &mut self,
+        command_buffer: &CommandBuffer,
+        gui: &Gui,
+        swapchain_index: usize,
+    ) -> anyhow::Result<()> {
+        let command_buffer_handle = command_buffer.handle();
+        let device_ash = self.device.inner();
+
+        let viewport = self.framebuffers[swapchain_index].whole_viewport();
+        let rect_2d = self.framebuffers[swapchain_index].whole_rect();
+
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        unsafe { device_ash.begin_command_buffer(command_buffer_handle, &begin_info) }
+            .context("beinning render command buffer recording")?;
+
+        let render_pass_begin = vk::RenderPassBeginInfo::builder()
+            .render_pass(self.render_pass.handle())
+            .framebuffer(self.framebuffers[swapchain_index].handle())
+            .render_area(rect_2d)
+            .clear_values(self.clear_values.as_slice());
+        unsafe {
+            device_ash.cmd_begin_render_pass(
+                command_buffer_handle,
+                &render_pass_begin,
+                vk::SubpassContents::INLINE,
+            )
+        };
+
+        self.geometry_pass
+            .record_commands(&command_buffer, viewport, rect_2d)?;
+
+        unsafe { device_ash.cmd_next_subpass(command_buffer_handle, vk::SubpassContents::INLINE) };
+
+        self.lighting_pass
+            .record_commands(&command_buffer, viewport, rect_2d)?;
+
+        self.gui_pass.record_render_commands(
+            &command_buffer,
+            gui,
+            self.is_swapchain_srgb,
+            [viewport.width, viewport.height],
+        )?;
+
+        unsafe { device_ash.cmd_end_render_pass(command_buffer_handle) };
+
+        unsafe { device_ash.end_command_buffer(command_buffer_handle) }
+            .context("ending render command buffer recording")?;
+
+        Ok(())
     }
 }
 
-fn create_depth_buffer(
-    memory_allocator: &StandardMemoryAllocator,
-    dimensions: [u32; 2],
-) -> Result<Arc<ImageView<AttachmentImage>>, anyhow::Error> {
-    ImageView::new_default(
-        AttachmentImage::transient(memory_allocator, dimensions, FORMAT_DEPTH_BUFFER)
-            .context("creating depth buffer image")?,
-    )
-    .context("creating depth buffer image view")
-}
+impl Drop for RenderManager {
+    fn drop(&mut self) {
+        debug!("dropping render manager...");
 
-fn create_g_buffer_normals(
-    memory_allocator: &StandardMemoryAllocator,
-    dimensions: [u32; 2],
-) -> Result<Arc<ImageView<AttachmentImage>>, anyhow::Error> {
-    ImageView::new_default(
-        AttachmentImage::with_usage(
-            memory_allocator,
-            dimensions,
-            FORMAT_G_BUFFER_NORMAL,
-            ImageUsage {
-                transient_attachment: true,
-                input_attachment: true,
-                ..ImageUsage::empty()
-            },
-        )
-        .context("creating normal g-buffer image")?,
-    )
-    .context("creating normal g-buffer image view")
-}
+        let wait_res = self.wait_idle_device();
+        if let Err(e) = wait_res {
+            log_anyhow_error_and_sources(&e, "renderer clean up");
+        }
 
-fn create_g_buffer_primitive_ids(
-    memory_allocator: &StandardMemoryAllocator,
-    dimensions: [u32; 2],
-) -> Result<Arc<ImageView<AttachmentImage>>, anyhow::Error> {
-    ImageView::new_default(
-        AttachmentImage::with_usage(
-            memory_allocator,
-            dimensions,
-            FORMAT_G_BUFFER_PRIMITIVE_ID,
-            ImageUsage {
-                transient_attachment: false,
-                input_attachment: true,
-                ..ImageUsage::empty()
-            },
-        )
-        .context("creating g-buffer")?,
-    )
-    .context("creating g-buffer image view")
+        let command_pool_reset_res = unsafe {
+            self.device.inner().reset_command_pool(
+                self.command_pool.handle(),
+                vk::CommandPoolResetFlags::RELEASE_RESOURCES,
+            )
+        };
+        if let Err(e) = command_pool_reset_res {
+            log_error_sources(&e, 0);
+        }
+        self.render_command_buffers.clear();
+    }
 }

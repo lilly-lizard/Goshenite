@@ -3,8 +3,8 @@
 #include "common.glsl"
 
 // g-buffer input attachments
-layout (input_attachment_index = 0, set = 0, binding = 0) uniform subpassInput in_normal;
-layout (input_attachment_index = 1, set = 0, binding = 1) uniform usubpassInput in_prmitive_id;
+layout (set = 0, binding = 0, input_attachment_index = 0) uniform subpassInput in_normal;
+layout (set = 0, binding = 1, input_attachment_index = 1) uniform usubpassInput in_prmitive_id;
 // input UV from full_screen.vert
 layout (location = 0) in vec2 in_uv;
 
@@ -14,6 +14,10 @@ layout (location = 0) out vec4 out_color;
 layout (set = 1, binding = 0) uniform Camera {
 	mat4 proj_view_inverse;
 	vec4 _position;
+	vec2 _framebuffer_dims;
+	float _near;
+	float _far;
+    uint is_srgb_framebuffer;
 } cam;
 
 /// Returns a sky color for a ray miss
@@ -41,4 +45,9 @@ void main()
 		// ray hit: just output normal as color for now
 		out_color = vec4(normal, 1.);
 	}
+
+    if (cam.is_srgb_framebuffer == 1) {
+        // need to convert linear colors to srgb
+        out_color.xyz = pow(out_color.xyz, vec3(2.2));
+    }
 }

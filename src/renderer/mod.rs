@@ -1,9 +1,9 @@
-mod geometry_pass;
-mod gui_renderer;
-mod lighting_pass;
-//mod overlay_pass;
 mod config_renderer;
-mod object_buffers;
+mod debug_callback;
+mod geometry_pass;
+mod gui_pass;
+mod lighting_pass;
+mod object_resource_manager;
 pub mod render_manager;
 pub mod shader_interfaces;
-mod vulkan_helper;
+mod vulkan_init;

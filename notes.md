@@ -4,8 +4,14 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- switch from vulkano to ash. reasons:
+	- keep running into restrictions that slow down dev work
+	- wrestling with vulkano on top of wrestling with borrow checker
+	- lack of flexibility slows dev time
+	- don't know what's going on under the hood (buffers, descriptor etc)
+	- shit load of compile time
+	- writing raw vulkan isn't even that hard anyway
 - surface patterns (natural looking noise stuff)
-- switch from vulkano to ash
 - path tracing heat map
 - geometry pass depth buffer
 - frame time display
@@ -20,6 +26,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - bounding box viewer
 - custom bounding boxes
 - anti-aliased gui
+- 'waiting' cursor when other code taking time...
 
 ## ui additions
 
@@ -55,6 +62,10 @@ https://www.marshallplan.at/images/All-Papers/MP-2017/Mroz+Michael_746.pdf
 
 ## low priority
 
+- [scripting language](https://github.com/rhaiscript/rhai) + glsl for extensions!
+	- install extension -> select new background pattern, texture pattern etc. 
+	- similar capabilities to shadertoy i.e. 2, passes, preset inputs
+	- installation includes rhai file, glsl file(s) and possible png/jpgs
 - hemisphere (circle) clamps on looking too far up/down (quaternions?)
 - clickable primitives
 - preview new primitive, greyed out/transparent until add?

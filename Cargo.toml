@@ -12,32 +12,36 @@ colored-term = ["colored"]
 shader-compile = ["shaderc"]
 
 [dependencies]
-# logging
 log = "0.4"
 # error propogation and backtrace management
 anyhow = { version = "1.0", features = ["backtrace"] }
-# like vec but small!
-smallvec = "1.10"
 # terminal output formatting
 colored = { version = "2.0", optional = true }
 # glam is a vector and math library well suited for 3D graphics (noticeably more lightweight than cgmath)
 glam = { version = "0.22", features = ["debug-glam-assert"] }
 # winit is a cross-platform window creation and management library (version must match vulkano-win support)
-winit = "0.27"
-# vulkano is a safe and convenient vulkan (ash) wrapper
-vulkano = "0.32"
-vulkano-win = "0.32" # winit interop boilerplate
+winit = "0.28"
+raw-window-handle = "0.5"
+# ash is a lightweight vulkan wrapper. note that with default features, the vulkan library will (attempt to) be loaded dynamically at runtime.
+ash = "0.37.2"
+ash-window = "0.12"
+# bort has a bunch of helper structs and functions wrapped around ash
+bort = { path = "../bort" }
+# AMD vulkan memory allocator bindings
+bort-vma = { version = "0.2.3", path = "../bort-vma" }
 # bit-casting crate (for cpu<->gpu buffers)
 bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
-egui = "0.20"
-egui-winit = "0.20"
-egui_dnd = { git = "https://github.com/lilly-lizard/egui_dnd-fork/", ref = "3a33813" }
+egui = "0.21"
+egui-winit = "0.21"
+egui_dnd = { path = "../egui_dnd-fork" }
 # hash library used by egui (fast af boii)
 ahash = { version = "0.8", default-features = false, features = [
     "no-rng", # we don't need DOS-protection, so we let users opt-in to it instead
     "std",
 ] }
+# for offset_of macro
+memoffset = "0.8"
 
 # slotmap
 # specs: ECS

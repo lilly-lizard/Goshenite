@@ -125,7 +125,7 @@ impl Gui {
     }
 
     pub fn set_cursor_icon(&self, cursor_icon: egui::CursorIcon) {
-        self.context.output().cursor_icon = cursor_icon;
+        self.context.set_cursor_icon(cursor_icon);
     }
 
     /// Returns texture update info accumulated since the last call to this function.
@@ -142,8 +142,16 @@ impl Gui {
         self.gui_state.selected_object().clone()
     }
 
-    pub fn set_theme(&self, theme: winit::window::Theme) {
-        set_theme(&self.context, theme);
+    pub fn set_theme_winit(&self, theme: winit::window::Theme) {
+        let visuals = match theme {
+            winit::window::Theme::Dark => Visuals::dark(),
+            winit::window::Theme::Light => Visuals::light(),
+        };
+        self.set_theme_egui(visuals);
+    }
+
+    pub fn set_theme_egui(&self, theme: egui::Visuals) {
+        self.context.set_visuals(theme);
     }
 }
 
@@ -225,12 +233,4 @@ impl Gui {
             .hscroll(true)
             .show(&self.context, add_contents);
     }
-}
-
-fn set_theme(context: &Context, theme: winit::window::Theme) {
-    let visuals = match theme {
-        winit::window::Theme::Dark => Visuals::dark(),
-        winit::window::Theme::Light => Visuals::light(),
-    };
-    context.set_visuals(visuals);
 }

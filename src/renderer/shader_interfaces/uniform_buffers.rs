@@ -1,9 +1,8 @@
 use crate::user_interface::camera::Camera;
-use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
 
 #[repr(C)]
-#[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
+#[derive(Clone, Copy, Default, Debug)]
 pub struct CameraUniformBuffer {
     /// Inverse of projection matrix multiplied by view matrix. Converts clip space coordinates to world space
     pub proj_view_inverse: [f32; 16],
@@ -15,6 +14,8 @@ pub struct CameraUniformBuffer {
     pub near: f32,
     /// Far plane
     pub far: f32,
+    // 0 if false, 1 if true
+    pub is_srgb_framebuffer: u32,
 }
 impl CameraUniformBuffer {
     pub fn new(
@@ -23,6 +24,7 @@ impl CameraUniformBuffer {
         framebuffer_dimensions: [f32; 2],
         near: f32,
         far: f32,
+        is_srgb_framebuffer: bool,
     ) -> Self {
         Self {
             proj_view_inverse: proj_view_inverse.to_cols_array(),
@@ -30,16 +32,22 @@ impl CameraUniformBuffer {
             framebuffer_dims: framebuffer_dimensions,
             near,
             far,
+            is_srgb_framebuffer: is_srgb_framebuffer as u32,
         }
     }
 
-    pub fn from_camera(camera: &mut Camera, framebuffer_dimensions: [f32; 2]) -> Self {
+    pub fn from_camera(
+        camera: &mut Camera,
+        framebuffer_dimensions: [f32; 2],
+        is_srgb_framebuffer: bool,
+    ) -> Self {
         Self::new(
             glam::DMat4::inverse(&(camera.proj_matrix() * camera.view_matrix())).as_mat4(),
             camera.position().as_vec3(),
             framebuffer_dimensions,
             camera.near_plane() as f32,
             camera.far_plane() as f32,
+            is_srgb_framebuffer,
         )
     }
 }

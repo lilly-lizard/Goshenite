@@ -40,6 +40,8 @@ pub struct Engine {
 
     // model data
     object_collection: ObjectCollection,
+
+    frame_number: u64,
 }
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
@@ -113,7 +115,7 @@ impl Engine {
 
         anyhow_unwrap(
             renderer.update_object_buffers(&object_collection, objects_delta),
-            "bruh",
+            "update object buffers",
         );
 
         // TESTING OBJECTS END
@@ -130,6 +132,8 @@ impl Engine {
             renderer,
 
             object_collection: object_collection,
+
+            frame_number: 0,
         }
     }
 
@@ -142,7 +146,10 @@ impl Engine {
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
                 ..
-            } => *control_flow = ControlFlow::Exit,
+            } => {
+                info!("closing engine...");
+                *control_flow = ControlFlow::Exit;
+            }
             // process window events and update state
             Event::WindowEvent { event, .. } => self.process_input(event),
             // per frame logic
@@ -198,7 +205,7 @@ impl Engine {
             }
 
             WindowEvent::ThemeChanged(winit_theme) => {
-                self.gui.set_theme(winit_theme);
+                self.gui.set_theme_winit(winit_theme);
             }
             _ => (),
         }
@@ -220,6 +227,10 @@ impl Engine {
 
         // update camera based on now processed user inputs
         self.update_camera();
+        anyhow_unwrap(
+            self.renderer.update_camera(&mut self.camera),
+            "update camera buffer",
+        );
 
         // update object buffers
         anyhow_unwrap(
@@ -240,11 +251,12 @@ impl Engine {
         // now that frame processing is done, submit rendering commands
         anyhow_unwrap(
             self.renderer
-                .render_frame(self.window_resize, &mut self.gui, &mut self.camera),
+                .render_frame(&mut self.gui, self.window_resize),
             "render frame",
         );
 
         self.window_resize = false;
+        self.frame_number += 1;
     }
 
     fn update_camera(&mut self) {
