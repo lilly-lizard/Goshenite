@@ -26,15 +26,15 @@ raw-window-handle = "0.5"
 ash = "0.37.2"
 ash-window = "0.12"
 # bort has a bunch of helper structs and functions wrapped around ash
-bort = { path = "../bort" }
+bort = { git = "https://github.com/lilly-lizard/bort/", ref = "9bf4eb3" }
 # AMD vulkan memory allocator bindings
-bort-vma = { version = "0.2.3", path = "../bort-vma" }
+bort-vma = { git = "https://github.com/lilly-lizard/bort-vma/", ref = "bc80e6b" }
 # bit-casting crate (for cpu<->gpu buffers)
 bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
 egui = "0.21"
 egui-winit = "0.21"
-egui_dnd = { path = "../egui_dnd-fork" }
+egui_dnd = { git = "https://github.com/lilly-lizard/egui_dnd-fork/", ref = "48a90ee" }
 # hash library used by egui (fast af boii)
 ahash = { version = "0.8", default-features = false, features = [
     "no-rng", # we don't need DOS-protection, so we let users opt-in to it instead

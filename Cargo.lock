@@ -199,6 +199,7 @@ dependencies = [
 [[package]]
 name = "bort"
 version = "0.1.0"
+source = "git+https://github.com/lilly-lizard/bort/#9bf4eb3eb90b4bfd9f40bbf084c8b332bb6639ff"
 dependencies = [
  "ash",
  "ash-window",
@@ -209,6 +210,7 @@ dependencies = [
 [[package]]
 name = "bort-vma"
 version = "0.2.3"
+source = "git+https://github.com/lilly-lizard/bort-vma/#bc80e6ba6ac7d5f4a35f1d6e67cba8e8b6a4896e"
 dependencies = [
  "ash",
  "bitflags",
@@ -493,6 +495,7 @@ dependencies = [
 [[package]]
 name = "egui_dnd"
 version = "0.3.0"
+source = "git+https://github.com/lilly-lizard/egui_dnd-fork/#48a90ee93d2a814d3213b28a69777d9ad8ebdc51"
 dependencies = [
  "egui",
  "epaint",
