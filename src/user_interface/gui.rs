@@ -8,7 +8,7 @@ use crate::engine::{
     object::{object::ObjectRef, object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     primitives::primitive_references::PrimitiveReferences,
 };
-use egui::{Button, Context, FontFamily::Proportional, FontId, TextStyle, TexturesDelta, Visuals};
+use egui::{Button, FontFamily::Proportional, FontId, TextStyle, TexturesDelta, Visuals};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};

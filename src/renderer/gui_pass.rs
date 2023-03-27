@@ -850,13 +850,14 @@ fn create_texture_sampler(device: Arc<Device>) -> anyhow::Result<Arc<Sampler>> {
 }
 
 fn create_descriptor_layout(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorSetLayout>> {
-    let layout_props = DescriptorSetLayoutProperties::new(vec![DescriptorSetLayoutBinding {
-        binding: descriptor::BINDING_FONT_TEXTURE,
-        descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-        descriptor_count: 1,
-        stage_flags: vk::ShaderStageFlags::FRAGMENT,
-        ..Default::default()
-    }]);
+    let layout_props =
+        DescriptorSetLayoutProperties::new_default(vec![DescriptorSetLayoutBinding {
+            binding: descriptor::BINDING_FONT_TEXTURE,
+            descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: 1,
+            stage_flags: vk::ShaderStageFlags::FRAGMENT,
+            ..Default::default()
+        }]);
 
     let desc_layout = DescriptorSetLayout::new(device, layout_props)
         .context("creating gui pass descriptor set layout")?;

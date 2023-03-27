@@ -47,7 +47,7 @@ pub struct RenderManager {
 
     window: Arc<Window>,
     surface: Arc<Surface>,
-    swapchain: Swapchain,
+    swapchain: Arc<Swapchain>,
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage>>>,
     is_swapchain_srgb: bool,
 
@@ -469,8 +469,9 @@ impl RenderManager {
 
         // recreate the swapchain
         let swapchain_properties = swapchain_properties(&self.device, &self.surface, &self.window)?;
-        self.swapchain
-            .recreate(swapchain_properties)
+        self.swapchain = self
+            .swapchain
+            .recreate_replace(swapchain_properties)
             .context("recreating swapchain")?;
 
         // reinitialize related resources

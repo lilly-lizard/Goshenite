@@ -300,12 +300,12 @@ pub fn create_swapchain(
     device: Arc<Device>,
     surface: Arc<Surface>,
     window: &Window,
-) -> anyhow::Result<Swapchain> {
+) -> anyhow::Result<Arc<Swapchain>> {
     let swapchain_properties = swapchain_properties(&device, &surface, window)?;
 
     let swapchain =
         Swapchain::new(device, surface, swapchain_properties).context("creating swapchain")?;
-    Ok(swapchain)
+    Ok(Arc::new(swapchain))
 }
 
 pub fn create_swapchain_image_views(

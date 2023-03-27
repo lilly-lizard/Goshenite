@@ -178,7 +178,7 @@ fn create_desc_set_camera(
     descriptor_pool: Arc<DescriptorPool>,
 ) -> anyhow::Result<Arc<DescriptorSet>> {
     let desc_set_layout_props =
-        DescriptorSetLayoutProperties::new(vec![DescriptorSetLayoutBinding {
+        DescriptorSetLayoutProperties::new_default(vec![DescriptorSetLayoutBinding {
             binding: descriptor::BINDING_CAMERA,
             descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
             descriptor_count: 1,
