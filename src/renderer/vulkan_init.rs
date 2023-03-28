@@ -11,8 +11,8 @@ use anyhow::Context;
 use ash::vk;
 use bort::{
     allocation_info_cpu_accessible, choose_composite_alpha, get_first_srgb_surface_format, Buffer,
-    BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, Device, Fence,
-    Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageView, ImageViewAccess,
+    BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback, Device,
+    Fence, Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageView, ImageViewAccess,
     ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, Queue, RenderPass, Subpass,
     Surface, Swapchain, SwapchainImage, SwapchainProperties,
 };
@@ -200,6 +200,7 @@ pub struct CreateDeviceAndQueuesReturn {
 
 pub fn create_device_and_queues(
     physical_device: Arc<PhysicalDevice>,
+    debug_callback: Option<Arc<DebugCallback>>,
     render_queue_family_index: u32,
     transfer_queue_family_index: u32,
 ) -> anyhow::Result<CreateDeviceAndQueuesReturn> {
@@ -236,6 +237,7 @@ pub fn create_device_and_queues(
         features_1_2,
         extension_names,
         [],
+        debug_callback,
     )?);
 
     let render_queue = Queue::new(device.clone(), render_queue_family_index, 0);
@@ -581,8 +583,10 @@ pub fn create_framebuffers(
                 depth_buffer.clone(),
             );
 
-            let framebuffer_properties =
-                FramebufferProperties::new(attachments, swapchain_image_view.image().dimensions());
+            let framebuffer_properties = FramebufferProperties::new_default(
+                attachments,
+                swapchain_image_view.image().dimensions(),
+            );
             let framebuffer = Framebuffer::new(render_pass.clone(), framebuffer_properties)
                 .context("creating framebuffer")?;
             Ok(Arc::new(framebuffer))

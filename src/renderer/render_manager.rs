@@ -23,9 +23,9 @@ use crate::{
 use anyhow::Context;
 use ash::{vk, Entry};
 use bort::{
-    is_format_srgb, ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback, Device, Fence,
-    Framebuffer, Image, ImageView, Instance, MemoryAllocator, Queue, RenderPass, Semaphore,
-    Surface, Swapchain, SwapchainImage,
+    is_format_srgb, ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback,
+    DebugCallbackProperties, Device, Fence, Framebuffer, Image, ImageView, Instance,
+    MemoryAllocator, Queue, RenderPass, Semaphore, Surface, Swapchain, SwapchainImage,
 };
 use egui::TexturesDelta;
 #[allow(unused_imports)]
@@ -37,7 +37,7 @@ use winit::window::Window;
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
     instance: Arc<Instance>,
-    debug_callback: Option<DebugCallback>,
+    debug_callback: Option<Arc<DebugCallback>>,
 
     device: Arc<Device>,
     render_queue: Queue,
@@ -105,11 +105,16 @@ impl RenderManager {
         );
 
         // setup validation layer debug callback
+        let debug_callback_properties = DebugCallbackProperties::default();
         let debug_callback = if ENABLE_VULKAN_VALIDATION {
-            match DebugCallback::new(&entry, instance.clone(), Some(log_vulkan_debug_callback)) {
+            match DebugCallback::new(
+                instance.clone(),
+                Some(log_vulkan_debug_callback),
+                debug_callback_properties,
+            ) {
                 Ok(x) => {
                     info!("enabling vulkan validation layers and debug callback");
-                    Some(x)
+                    Some(Arc::new(x))
                 }
                 Err(e) => {
                     warn!("validation layer debug callback requested but cannot be setup due to: {:?}", e);
@@ -154,6 +159,7 @@ impl RenderManager {
             transfer_queue,
         } = create_device_and_queues(
             physical_device.clone(),
+            debug_callback.clone(),
             render_queue_family_index,
             transfer_queue_family_index,
         )?;
