@@ -72,6 +72,11 @@ impl ObjectResourceManager {
         if let Some(index) = self.get_index(id) {
             let bounding_box_buffer = upload_bounding_box(self.memory_allocator.clone(), object)?;
 
+            write_desc_set_primitive_ops(
+                &self.objects_buffers[index].primitive_ops_descriptor_set,
+                &primitive_ops_buffer,
+            )?;
+
             self.objects_buffers[index].bounding_box_buffer = bounding_box_buffer;
             self.objects_buffers[index].bounding_box_vertex_count = AABB_VERTEX_COUNT as u32;
             self.objects_buffers[index].primitive_ops_buffer = primitive_ops_buffer;

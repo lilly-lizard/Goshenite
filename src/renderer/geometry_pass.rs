@@ -77,10 +77,10 @@ impl GeometryPass {
     pub fn update_object_buffers(
         &mut self,
         object_collection: &ObjectCollection,
-        object_delta: ObjectsDelta,
+        objects_delta: ObjectsDelta,
     ) -> anyhow::Result<()> {
         // freed objects
-        for free_id in object_delta.remove {
+        for free_id in objects_delta.remove {
             if let Some(_removed_index) = self.object_buffer_manager.remove(free_id) {
                 trace!("removing object buffer id = {}", free_id);
             } else {
@@ -92,7 +92,7 @@ impl GeometryPass {
         }
 
         // added objects
-        for set_id in object_delta.update {
+        for set_id in objects_delta.update {
             if let Some(object_ref) = object_collection.get(set_id) {
                 trace!("adding or updating object buffer id = {}", set_id);
                 let object = &*object_ref.as_ref().borrow();

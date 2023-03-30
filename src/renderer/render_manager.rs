@@ -315,10 +315,10 @@ impl RenderManager {
     pub fn update_object_buffers(
         &mut self,
         object_collection: &ObjectCollection,
-        object_delta: ObjectsDelta,
+        objects_delta: ObjectsDelta,
     ) -> anyhow::Result<()> {
         self.geometry_pass
-            .update_object_buffers(object_collection, object_delta)
+            .update_object_buffers(object_collection, objects_delta)
     }
 
     pub fn update_gui_textures(

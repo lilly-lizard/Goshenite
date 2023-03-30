@@ -37,10 +37,10 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - see egui_demo_app for ideas
 - Bang Wong color palette
 
-## bugz
+## bugz!
 
 - vulkano complains about having no descriptor writes when there are no objects!
-- subtraction op broken. record bug before fixing tho lol
+- subtraction op broken
 - CursorState not initialized properly! e.g. cursor position 0,0 at start so start dragging before moving it and a big jump occurs. also check latest winit in case querying was made better?
 - Gui::_bug_test_window
 
