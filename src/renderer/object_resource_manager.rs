@@ -86,7 +86,6 @@ impl ObjectResourceManager {
             let bounding_box_buffer = upload_bounding_box(self.memory_allocator.clone(), object)?;
 
             let primitive_ops_descriptor_set = self.allocate_primitive_ops_descriptor_set()?;
-
             write_desc_set_primitive_ops(&primitive_ops_descriptor_set, &primitive_ops_buffer)?;
 
             let new_object = PerObjectResources {
@@ -218,7 +217,7 @@ fn upload_bounding_box(
 ) -> anyhow::Result<Arc<Buffer>> {
     let object_id = object.id();
     trace!(
-        "uploading bounding box vertices for object id = {} to gpu buffer",
+        "uploading bounding box vertices for object id = {:?} to gpu buffer",
         object_id
     );
 
@@ -251,7 +250,7 @@ fn upload_primitive_ops(
     object: &Object,
 ) -> anyhow::Result<Arc<Buffer>> {
     trace!(
-        "uploading primitive ops for object id = {} to gpu buffer",
+        "uploading primitive ops for object id = {:?} to gpu buffer",
         object.id()
     );
 

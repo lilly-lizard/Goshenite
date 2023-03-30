@@ -82,10 +82,10 @@ impl GeometryPass {
         // freed objects
         for free_id in objects_delta.remove {
             if let Some(_removed_index) = self.object_buffer_manager.remove(free_id) {
-                trace!("removing object buffer id = {}", free_id);
+                trace!("removing object buffer id = {:?}", free_id);
             } else {
                 debug!(
-                    "object buffer id = {} was requested to be removed but not found!",
+                    "object buffer id = {:?} was requested to be removed but not found!",
                     free_id
                 );
             }
@@ -94,12 +94,12 @@ impl GeometryPass {
         // added objects
         for set_id in objects_delta.update {
             if let Some(object_ref) = object_collection.get(set_id) {
-                trace!("adding or updating object buffer id = {}", set_id);
+                trace!("adding or updating object buffer id = {:?}", set_id);
                 let object = &*object_ref.as_ref().borrow();
                 self.object_buffer_manager.update_or_push(object)?;
             } else {
                 warn!(
-                    "requsted update for object id = {} but wasn't found in object collection!",
+                    "requsted update for object id = {:?} but wasn't found in object collection!",
                     set_id
                 );
             }

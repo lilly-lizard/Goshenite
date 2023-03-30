@@ -6,8 +6,7 @@ use crate::{
     config,
     engine::{
         object::{
-            object::{Object, ObjectId, PrimitiveOp},
-            object_collection::ObjectCollection,
+            object::{Object, ObjectId, PrimitiveOp, PrimitiveOpId},
             objects_delta::ObjectsDelta,
             operation::Operation,
         },
@@ -23,64 +22,6 @@ use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::rc::Rc;
-
-pub fn object_list(
-    ui: &mut egui::Ui,
-    gui_state: &mut GuiState,
-    object_collection: &mut ObjectCollection,
-) {
-    ui.horizontal(|ui_h| {
-        // add object button
-        let add_response = ui_h.button("Add object");
-        if add_response.clicked() {
-            object_collection.new_empty_object();
-        }
-
-        // delete object button
-        if let Some(selected_obeject_ref) = gui_state.selected_object() {
-            if let Some(selected_object) = selected_obeject_ref.upgrade() {
-                let delete_response =
-                    ui_h.button(format!("Delete: \"{}\"", selected_object.borrow().name()));
-                if delete_response.clicked() {
-                    object_collection.remove_object(selected_object.borrow().id());
-                }
-            } else {
-                debug!("selected object dropped. deselecting object...");
-                gui_state.deselect_object();
-            }
-        }
-    });
-
-    // object list
-    let objects = object_collection.objects();
-    for (current_id, current_object) in objects.iter() {
-        let label_text = RichText::new(format!(
-            "{} - {}",
-            current_id,
-            current_object.borrow().name()
-        ))
-        .text_style(TextStyle::Monospace);
-
-        let is_selected = if let Some(selected_obeject_ref) = gui_state.selected_object() {
-            if let Some(selected_object) = selected_obeject_ref.upgrade() {
-                selected_object.borrow().id() == current_object.borrow().id()
-            } else {
-                debug!("selected object dropped. deselecting object...");
-                gui_state.deselect_object();
-                false
-            }
-        } else {
-            false
-        };
-
-        if ui.selectable_label(is_selected, label_text).clicked() {
-            if !is_selected {
-                gui_state.set_selected_object(Rc::downgrade(current_object));
-                gui_state.deselect_primitive_op();
-            }
-        }
-    }
-}
 
 pub fn object_editor(
     ui: &mut egui::Ui,
@@ -160,7 +101,7 @@ fn existing_primitive_op_editor(
     objects_delta: &mut ObjectsDelta,
     selected_object: &mut Object,
     primitive_references: &mut PrimitiveReferences,
-    selected_prim_op_id: usize,
+    selected_prim_op_id: PrimitiveOpId,
 ) {
     let object_id = selected_object.id();
     let (selected_prim_op_index, selected_prim_op) =
@@ -194,7 +135,7 @@ fn existing_primitive_op_editor(
 
         // primitive type drop down menu
         let mut new_primitive_type = primitive_type;
-        ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
+        ComboBox::from_id_source(format!("primitive type drop down {:?}", object_id))
             .selected_text(old_primitive_type_name)
             .show_ui(ui_h, |ui_p| {
                 for (p_type, p_name) in PrimitiveRefType::variant_names() {
@@ -253,7 +194,7 @@ fn existing_primitive_op_editor(
         if let Err(_) = remove_res {
             // invalid index! what's going on??
             warn!(
-                "invalid index {} when attempting to remove primitive op from object {}",
+                "invalid index {} when attempting to remove primitive op from object {:?}",
                 selected_prim_op_index, object_id
             );
             gui_state.deselect_primitive_op();
@@ -281,7 +222,7 @@ fn new_primitive_op_editor(
 
         // primitive type drop down menu
         let primitive_type_name: &str = gui_state.primitive_fields().p_type.into();
-        ComboBox::from_id_source(format!("primitive type drop down {}", object_id))
+        ComboBox::from_id_source(format!("primitive type drop down {:?}", object_id))
             .selected_text(primitive_type_name)
             .show_ui(ui_h, |ui_p| {
                 for (p_type, p_name) in PrimitiveRefType::variant_names() {
@@ -356,7 +297,7 @@ fn op_drop_down(
     selected_op: &mut Operation,
 ) {
     let mut new_op = selected_op.clone();
-    ComboBox::from_id_source(format!("op drop down {}", object_id))
+    ComboBox::from_id_source(format!("op drop down {:?}", object_id))
         .selected_text(selected_op.name())
         .show_ui(ui, |ui_op| {
             for (op, op_name) in Operation::variant_names() {

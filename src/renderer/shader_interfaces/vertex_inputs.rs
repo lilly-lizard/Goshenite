@@ -103,7 +103,7 @@ impl BoundingBoxVertex {
     pub const fn new(position: Vec3, object_id: ObjectId) -> Self {
         Self {
             in_position: [position.x, position.y, position.z, 1.],
-            in_object_id: object_id as u32,
+            in_object_id: object_id.raw_id() as u32,
         }
     }
 

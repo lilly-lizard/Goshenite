@@ -114,7 +114,7 @@ SdfResult op_intersection(SdfResult p1, SdfResult p2)
 // Subtracts the volume of primitive 2 from primitive 1
 SdfResult op_subtraction(SdfResult p1, SdfResult p2)
 {
-	return -p1.d > p2.d ? p1 : p2;
+	return p1.d > -p2.d ? p1 : p2;
 }
 
 SdfResult process_op(uint op, SdfResult lhs, SdfResult rhs)

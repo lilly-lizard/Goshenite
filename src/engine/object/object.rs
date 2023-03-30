@@ -26,8 +26,31 @@ pub fn new_object_ref(object: Object) -> Rc<ObjectRef> {
 // this is because the shaders store the primitive op index in the lower 16 bits of a u32
 const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
 
-pub type ObjectId = UniqueId;
-pub type PrimitiveOpId = UniqueId;
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ObjectId(pub UniqueId);
+impl ObjectId {
+    pub const fn raw_id(&self) -> UniqueId {
+        self.0
+    }
+}
+impl From<UniqueId> for ObjectId {
+    fn from(id: UniqueId) -> Self {
+        Self(id)
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PrimitiveOpId(pub UniqueId);
+impl PrimitiveOpId {
+    pub const fn raw_id(&self) -> UniqueId {
+        self.0
+    }
+}
+impl From<UniqueId> for PrimitiveOpId {
+    fn from(id: UniqueId) -> Self {
+        Self(id)
+    }
+}
 
 pub struct PrimitiveOp {
     id: PrimitiveOpId,
@@ -69,7 +92,7 @@ impl Object {
             name,
             origin,
             primitive_ops: vec![PrimitiveOp::new(
-                primitive_op_id_gen.new_id(),
+                PrimitiveOpId(primitive_op_id_gen.new_id()),
                 Operation::Union,
                 base_primitive,
             )],
@@ -83,7 +106,9 @@ impl Object {
             self.primitive_ops.remove(index);
             Ok(())
         } else {
-            Err(CollectionError::InvalidId { id })
+            Err(CollectionError::InvalidId {
+                raw_id: id.raw_id(),
+            })
         }
     }
 
@@ -101,7 +126,7 @@ impl Object {
 
     /// Returns the id of the newly created primitive op
     pub fn push_op(&mut self, operation: Operation, primitive: Rc<PrimitiveRef>) -> PrimitiveOpId {
-        let id = self.primitive_op_id_gen.new_id();
+        let id = PrimitiveOpId(self.primitive_op_id_gen.new_id());
         self.primitive_ops
             .push(PrimitiveOp::new(id, operation, primitive));
         id
@@ -115,7 +140,7 @@ impl Object {
         // avoiding this case should be the responsibility of the functions adding to `primtive_ops`
         debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);
         let mut encoded = vec![
-            self.id as PrimitiveOpBufferUnit,
+            self.id.raw_id() as PrimitiveOpBufferUnit,
             self.primitive_ops.len() as PrimitiveOpBufferUnit,
         ];
         for primitive_op in &self.primitive_ops {

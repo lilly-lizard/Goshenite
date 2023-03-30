@@ -28,20 +28,21 @@ impl ObjectCollection {
         origin: Vec3,
         base_primitive: Rc<PrimitiveRef>,
     ) -> Rc<ObjectRef> {
-        let object_id = self.unique_id_gen.new_id();
+        let object_id = ObjectId(self.unique_id_gen.new_id());
         let object = new_object_ref(Object::new(object_id, name, origin, base_primitive));
         self.objects.insert(object_id, object.clone());
         object
     }
 
     pub fn new_empty_object(&mut self) -> Rc<ObjectRef> {
-        let object_id = self.unique_id_gen.new_id();
+        let object_id = ObjectId(self.unique_id_gen.new_id());
         let object = new_object_ref(Object::new(
             object_id,
-            format!("New Object {}", object_id),
+            format!("New Object {}", object_id.raw_id()),
             Vec3::ZERO,
             self.primitive_references.null_primitive(),
         ));
+
         self.objects.insert(object_id, object.clone());
         object
     }

@@ -1,7 +1,8 @@
 use super::{
     config_ui::EGUI_TRACE,
     gui_state::{GuiState, WindowStates},
-    layouts_object_editor::{object_editor, object_list},
+    layouts_object_editor::object_editor,
+    layouts_object_list::object_list,
     layouts_panel::bottom_panel_layout,
 };
 use crate::engine::{
@@ -173,7 +174,12 @@ impl Gui {
             if EGUI_TRACE {
                 egui::trace!(ui);
             }
-            object_list(ui, &mut self.gui_state, object_collection);
+            object_list(
+                ui,
+                &mut self.gui_state,
+                &mut self.objects_delta,
+                object_collection,
+            );
         };
 
         // add window to egui context
