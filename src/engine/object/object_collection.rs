@@ -28,14 +28,24 @@ impl ObjectCollection {
         origin: Vec3,
         base_primitive: Rc<PrimitiveRef>,
     ) -> Rc<ObjectRef> {
-        let object_id = ObjectId(self.unique_id_gen.new_id());
+        let new_raw_id = self
+            .unique_id_gen
+            .new_id()
+            .expect("todo should probably handle this somehow...");
+        let object_id = ObjectId(new_raw_id);
+
         let object = new_object_ref(Object::new(object_id, name, origin, base_primitive));
         self.objects.insert(object_id, object.clone());
         object
     }
 
     pub fn new_empty_object(&mut self) -> Rc<ObjectRef> {
-        let object_id = ObjectId(self.unique_id_gen.new_id());
+        let new_raw_id = self
+            .unique_id_gen
+            .new_id()
+            .expect("todo should probably handle this somehow...");
+        let object_id = ObjectId(new_raw_id);
+
         let object = new_object_ref(Object::new(
             object_id,
             format!("New Object {}", object_id.raw_id()),
@@ -47,11 +57,16 @@ impl ObjectCollection {
         object
     }
 
-    pub fn remove_object(&mut self, object_id: ObjectId) -> Option<Rc<ObjectRef>> {
-        let removed_obeject = self.objects.remove(&object_id);
-        // will probably have some 0-ref-count weak primitive ptrs now, so lets clean those up
-        self.primitive_references.clean_unused_references();
-        removed_obeject
+    pub fn remove_object(&mut self, object_id: ObjectId) {
+        let removed_object = self.objects.remove(&object_id);
+
+        if removed_object.is_some() {
+            // will probably have some 0-ref-count weak primitive ptrs now, so lets clean those up
+            self.primitive_references.clean_unused_references();
+
+            // tell object id generator it can reuse the old object id now
+            self.unique_id_gen.recycle_id(object_id.raw_id());
+        }
     }
 
     pub fn primitive_references(&self) -> &PrimitiveReferences {

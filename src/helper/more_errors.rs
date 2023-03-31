@@ -1,7 +1,7 @@
 use super::unique_id_gen::UniqueId;
 use std::{error, fmt};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum CollectionError {
     OutOfBounds { index: usize, size: usize },
     InvalidId { raw_id: UniqueId },

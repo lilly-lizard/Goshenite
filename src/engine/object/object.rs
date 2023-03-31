@@ -87,12 +87,16 @@ pub struct Object {
 impl Object {
     pub fn new(id: ObjectId, name: String, origin: Vec3, base_primitive: Rc<PrimitiveRef>) -> Self {
         let mut primitive_op_id_gen = UniqueIdGen::new();
+        let new_raw_id = primitive_op_id_gen
+            .new_id()
+            .expect("todo should probably handle this somehow...");
+
         Self {
             id,
             name,
             origin,
             primitive_ops: vec![PrimitiveOp::new(
-                PrimitiveOpId(primitive_op_id_gen.new_id()),
+                PrimitiveOpId(new_raw_id),
                 Operation::Union,
                 base_primitive,
             )],
@@ -126,7 +130,12 @@ impl Object {
 
     /// Returns the id of the newly created primitive op
     pub fn push_op(&mut self, operation: Operation, primitive: Rc<PrimitiveRef>) -> PrimitiveOpId {
-        let id = PrimitiveOpId(self.primitive_op_id_gen.new_id());
+        let new_raw_id = self
+            .primitive_op_id_gen
+            .new_id()
+            .expect("todo should probably handle this somehow...");
+        let id = PrimitiveOpId(new_raw_id);
+
         self.primitive_ops
             .push(PrimitiveOp::new(id, operation, primitive));
         id

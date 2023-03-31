@@ -4,6 +4,8 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- move object
+- json save theme setting
 - surface patterns (natural looking noise stuff)
 - path tracing heat map
 - geometry pass depth buffer

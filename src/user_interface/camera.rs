@@ -9,6 +9,8 @@ use glam::{DMat3, DMat4, DVec2, DVec3};
 use log::{debug, error, info, trace, warn};
 use std::rc::Weak;
 
+use super::config_ui;
+
 #[derive(Clone)]
 pub enum LookTargetType {
     Position(DVec3),
@@ -49,6 +51,7 @@ impl Camera {
             "config::WORLD_SPACE_UP can not be set to the x axis. this is a bug!"
         );
         let normal = up.cross(direction).normalize();
+
         Ok(Camera {
             position,
             look_mode: LookMode::Direction(),
@@ -64,23 +67,23 @@ impl Camera {
     /// Changes the viewing direction based on the pixel amount the cursor has moved
     pub fn rotate(&mut self, delta_cursor_position: DVec2) {
         let delta_angle = self.delta_cursor_to_angle(delta_cursor_position.into());
-        let [horizontal, vertical] = delta_angle.map(|a| a.radians());
+
         match &self.look_mode {
             // no lock-on target so maintain position adjust looking direction
             LookMode::Direction() => {
-                let rotation_matrix = DMat3::from_axis_angle(self.normal, -vertical)
-                    * DMat3::from_rotation_z(horizontal);
-                self.direction = rotation_matrix * self.direction;
+                self.rotate_fixed_pos(delta_angle[0], delta_angle[1]);
             }
+
             // lock on target stays the same but camera position rotates around it
             LookMode::Target(target_type) => {
                 if let Some(target_pos) =
                     self.get_target_position_or_switch_look_modes(target_type.clone())
                 {
-                    self.arcball(self.normal, target_pos, vertical, horizontal);
+                    self.arcball(self.normal, target_pos, delta_angle[0], delta_angle[1]);
                 }
             }
         }
+
         // update normal now that camera orientation has changed
         self.update_normal();
     }
@@ -91,6 +94,7 @@ impl Camera {
             LookMode::Direction() => {
                 self.set_position(self.position + scroll_delta * self.direction);
             }
+
             LookMode::Target(target_type) => {
                 if let Some(target_pos) =
                     self.get_target_position_or_switch_look_modes(target_type.clone())
@@ -218,18 +222,44 @@ impl Camera {
         self.direction = (target_pos - self.position).normalize()
     }
 
-    fn arcball(
-        &mut self,
-        normal: DVec3,
-        target_pos: DVec3,
-        delta_vertical: f64,
-        delta_horizontal: f64,
-    ) {
+    fn rotate_fixed_pos(&mut self, delta_h: Angle, delta_v: Angle) {
+        let delta_v_clamped = self.clamp_vertical_angle_delta(delta_v.invert());
+
+        let rotation_matrix = DMat3::from_axis_angle(self.normal, delta_v_clamped.radians())
+            * DMat3::from_rotation_z(delta_h.radians());
+        self.direction = rotation_matrix * self.direction;
+    }
+
+    fn arcball(&mut self, normal: DVec3, target_pos: DVec3, delta_h: Angle, delta_v: Angle) {
+        let delta_v_clamped = self.clamp_vertical_angle_delta(delta_v);
+
         // lock on target stays the same but camera position rotates around it
-        let rotation_matrix = DMat3::from_axis_angle(normal, delta_vertical)
-            * DMat3::from_rotation_z(-delta_horizontal);
+        let rotation_matrix = DMat3::from_axis_angle(normal, delta_v_clamped.radians())
+            * DMat3::from_rotation_z(-delta_h.radians());
+
         self.set_position(rotation_matrix * (self.position - target_pos) + target_pos);
         self.set_direction(target_pos);
+    }
+
+    /// Limits how close camera vertical direction can get to world space up.
+    /// Also prevents camera angle from crossing over world space up and doing a disorienting flip.
+    fn clamp_vertical_angle_delta(&self, delta_v: Angle) -> Angle {
+        let current_v_radians = config::WORLD_SPACE_UP
+            .as_dvec3()
+            .angle_between(self.direction);
+        let final_v_radians = current_v_radians + delta_v.radians();
+
+        let min_radians = config_ui::VERTICAL_ANGLE_CLAMP.radians();
+        if final_v_radians < min_radians {
+            return Angle::from_radians(min_radians - current_v_radians);
+        }
+
+        let max_radians = std::f64::consts::PI - config_ui::VERTICAL_ANGLE_CLAMP.radians();
+        if final_v_radians > max_radians {
+            return Angle::from_radians(max_radians - current_v_radians);
+        }
+
+        delta_v
     }
 
     fn scroll_zoom_target(&mut self, scroll_delta: f64, target_pos: DVec3) {
@@ -239,7 +269,9 @@ impl Camera {
         let new_position = self.position + travel;
         let new_target_vector = target_pos - new_position;
         let new_target_dist = new_target_vector.length();
+
         // clamp distance to target
+        todo!("doesnt work!");
         if config::CAMERA_MIN_TARGET_DISTANCE < new_target_dist
             && new_target_dist < config::CAMERA_MAX_TARGET_DISTANCE
         {
