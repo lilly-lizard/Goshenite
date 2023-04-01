@@ -173,6 +173,10 @@ impl Object {
         aabb.offset(self.origin);
         aabb
     }
+
+    pub fn set_origin(&mut self, origin: Vec3) {
+        self.origin = origin;
+    }
 }
 
 // Getters

@@ -52,6 +52,8 @@ pub fn object_editor(
         ui.text_edit_singleline(selected_object_ref.borrow_mut().name_mut());
     });
 
+    object_properties_editor(ui, objects_delta, &mut selected_object_ref.borrow_mut());
+
     primitive_op_editor(
         ui,
         gui_state,
@@ -66,6 +68,28 @@ pub fn object_editor(
         objects_delta,
         &mut selected_object_ref.borrow_mut(),
     );
+}
+
+pub fn object_properties_editor(
+    ui: &mut egui::Ui,
+    objects_delta: &mut ObjectsDelta,
+    object: &mut Object,
+) {
+    ui.separator();
+
+    let original_origin = object.origin();
+    let mut origin_mut = original_origin;
+    ui.horizontal(|ui| {
+        ui.label("Origin:");
+        ui.add(DragValue::new(&mut origin_mut.x).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut origin_mut.y).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut origin_mut.z).speed(DRAG_INC));
+    });
+
+    if original_origin != origin_mut {
+        object.set_origin(origin_mut);
+        objects_delta.update.insert(object.id());
+    }
 }
 
 pub fn primitive_op_editor(
@@ -210,9 +234,8 @@ fn new_primitive_op_editor(
     selected_object: &mut Object,
     primitive_references: &mut PrimitiveReferences,
 ) {
-    let object_id = selected_object.id();
-
     ui.separator();
+    let object_id = selected_object.id();
 
     ui.label("New primitive");
 
@@ -315,6 +338,7 @@ fn op_drop_down(
 pub fn sphere_struct_ui(ui: &mut egui::Ui, sphere: &mut Sphere) {
     sphere_editor_ui(ui, &mut sphere.center, &mut sphere.radius);
 }
+
 pub fn sphere_editor_ui(ui: &mut egui::Ui, center: &mut Vec3, radius: &mut f32) {
     ui.horizontal(|ui| {
         ui.label("Center:");
@@ -336,6 +360,7 @@ pub fn sphere_editor_ui(ui: &mut egui::Ui, center: &mut Vec3, radius: &mut f32) 
 pub fn cube_struct_ui(ui: &mut egui::Ui, cube: &mut Cube) {
     cube_editor_ui(ui, &mut cube.center, &mut cube.dimensions);
 }
+
 pub fn cube_editor_ui(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &mut Vec3) {
     ui.horizontal(|ui| {
         ui.label("Center:");

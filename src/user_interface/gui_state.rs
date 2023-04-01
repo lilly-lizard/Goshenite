@@ -14,12 +14,14 @@ use std::rc::Weak;
 pub struct WindowStates {
     pub object_list: bool,
     pub object_editor: bool,
+    pub camera_control: bool,
 }
 impl Default for WindowStates {
     fn default() -> Self {
         Self {
             object_list: true,
             object_editor: true,
+            camera_control: false,
         }
     }
 }

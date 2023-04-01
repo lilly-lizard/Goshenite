@@ -1,8 +1,10 @@
 use super::{
+    camera::Camera,
     config_ui::EGUI_TRACE,
     gui_state::{GuiState, WindowStates},
+    layout_camera_control::camera_control_layout,
     layout_object_editor::object_editor,
-    layout_object_list::object_list,
+    layout_object_list::object_list_layout,
     layout_panel::bottom_panel_layout,
 };
 use crate::engine::{
@@ -87,7 +89,11 @@ impl Gui {
         self.winit_state.set_pixels_per_point(scale_factor);
     }
 
-    pub fn update_gui(&mut self, object_collection: &mut ObjectCollection) -> anyhow::Result<()> {
+    pub fn update_gui(
+        &mut self,
+        object_collection: &mut ObjectCollection,
+        camera: &mut Camera,
+    ) -> anyhow::Result<()> {
         // begin frame
         let raw_input = self.winit_state.take_egui_input(self.window.as_ref());
         self.context.begin_frame(raw_input);
@@ -99,6 +105,9 @@ impl Gui {
         }
         if self.window_states.object_editor {
             self.object_editor_window(object_collection.primitive_references_mut());
+        }
+        if self.window_states.camera_control {
+            self.camera_control_window(camera);
         }
 
         // end frame
@@ -169,12 +178,11 @@ impl Gui {
     }
 
     fn object_list_window(&mut self, object_collection: &mut ObjectCollection) {
-        // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
             if EGUI_TRACE {
                 egui::trace!(ui);
             }
-            object_list(
+            object_list_layout(
                 ui,
                 &mut self.gui_state,
                 &mut self.objects_delta,
@@ -182,7 +190,6 @@ impl Gui {
             );
         };
 
-        // add window to egui context
         egui::Window::new("Objects")
             .open(&mut self.window_states.object_list)
             .resizable(true)
@@ -192,7 +199,6 @@ impl Gui {
     }
 
     fn object_editor_window(&mut self, primitive_references: &mut PrimitiveReferences) {
-        // ui layout closure
         let add_contents = |ui: &mut egui::Ui| {
             if EGUI_TRACE {
                 egui::trace!(ui);
@@ -205,9 +211,24 @@ impl Gui {
             );
         };
 
-        // add window to egui context
         egui::Window::new("Object Editor")
             .open(&mut self.window_states.object_editor)
+            .resizable(true)
+            .vscroll(true)
+            .hscroll(true)
+            .show(&self.context, add_contents);
+    }
+
+    fn camera_control_window(&mut self, camera: &mut Camera) {
+        let add_contents = |ui: &mut egui::Ui| {
+            if EGUI_TRACE {
+                egui::trace!(ui);
+            }
+            camera_control_layout(ui, camera);
+        };
+
+        egui::Window::new("Camera")
+            .open(&mut self.window_states.camera_control)
             .resizable(true)
             .vscroll(true)
             .hscroll(true)

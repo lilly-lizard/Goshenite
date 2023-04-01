@@ -1,3 +1,4 @@
+use super::config_ui;
 use crate::{
     config,
     engine::{object::object::ObjectRef, primitives::primitive::Primitive},
@@ -8,8 +9,6 @@ use glam::{DMat3, DMat4, DVec2, DVec3};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::rc::Weak;
-
-use super::config_ui;
 
 #[derive(Clone)]
 pub enum LookTargetType {
@@ -41,8 +40,8 @@ pub struct Camera {
 // Public functions
 impl Camera {
     pub fn new(resolution: [f32; 2]) -> anyhow::Result<Self> {
-        let position = DVec3::splat(3.);
-        let target_pos = DVec3::ZERO;
+        let position = config_ui::CAMERA_DEFAULT_POSITION;
+        let target_pos = config_ui::CAMERA_DEFAULT_TARGET;
         let direction = target_pos - position;
         let up = config::WORLD_SPACE_UP.as_dvec3();
         // ensures initial normal value won't be 0
@@ -57,7 +56,7 @@ impl Camera {
             look_mode: LookMode::Direction(),
             direction,
             normal,
-            fov: config_ui::FIELD_OF_VIEW,
+            fov: config_ui::CAMERA_DEFAULT_FOV,
             aspect_ratio: calc_aspect_ratio(resolution),
             near_plane: config_ui::CAMERA_NEAR_PLANE,
             far_plane: config_ui::CAMERA_FAR_PLANE,
@@ -103,6 +102,27 @@ impl Camera {
                 }
             }
         }
+    }
+
+    /// Resets the following properties to their defaults:
+    /// - position
+    /// - direction (and normal)
+    /// - look_mode
+    /// - fov
+    /// - near/far plane limits
+    pub fn reset(&mut self) {
+        self.position = config_ui::CAMERA_DEFAULT_POSITION;
+        let target_pos = config_ui::CAMERA_DEFAULT_TARGET;
+        self.direction = target_pos - self.position;
+        self.normal = config::WORLD_SPACE_UP
+            .as_dvec3()
+            .cross(self.direction)
+            .normalize();
+
+        self.look_mode = LookMode::Direction();
+        self.fov = config_ui::CAMERA_DEFAULT_FOV;
+        self.near_plane = config_ui::CAMERA_NEAR_PLANE;
+        self.far_plane = config_ui::CAMERA_FAR_PLANE;
     }
 
     // Setters

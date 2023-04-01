@@ -221,7 +221,8 @@ impl Engine {
             self.gui.set_cursor_icon(cursor_icon);
         }
         anyhow_unwrap(
-            self.gui.update_gui(&mut self.object_collection),
+            self.gui
+                .update_gui(&mut self.object_collection, &mut self.camera),
             "update gui",
         );
 
@@ -265,6 +266,7 @@ impl Engine {
             // set lock on target to selected primitive
             self.camera.set_lock_on_object(selected_object_ref);
         } else {
+            // todo keep this
             // if no primitive selected use arcball mode
             self.camera.unset_lock_on_target();
         }
