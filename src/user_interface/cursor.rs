@@ -1,4 +1,4 @@
-use crate::config;
+use super::config_ui;
 use glam::DVec2;
 use log::debug;
 use winit::event::{ElementState, MouseScrollDelta};
@@ -78,11 +78,12 @@ impl Cursor {
             match delta {
                 // can happen with mouse wheel or touchpad
                 MouseScrollDelta::LineDelta(h, v) => {
-                    self.scroll_delta += config::SCROLL_SENSITIVITY * DVec2::new(h as f64, v as f64)
+                    self.scroll_delta +=
+                        config_ui::SCROLL_SENSITIVITY * DVec2::new(h as f64, v as f64)
                 }
                 // happens if system supports it (whatever that means)
                 MouseScrollDelta::PixelDelta(d) => {
-                    self.scroll_delta += config::SCROLL_SENSITIVITY * DVec2::new(d.x, d.y)
+                    self.scroll_delta += config_ui::SCROLL_SENSITIVITY * DVec2::new(d.x, d.y)
                 }
             }
         }

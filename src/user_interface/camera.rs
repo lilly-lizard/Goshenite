@@ -57,10 +57,10 @@ impl Camera {
             look_mode: LookMode::Direction(),
             direction,
             normal,
-            fov: config::FIELD_OF_VIEW,
+            fov: config_ui::FIELD_OF_VIEW,
             aspect_ratio: calc_aspect_ratio(resolution),
-            near_plane: config::CAMERA_NEAR_PLANE,
-            far_plane: config::CAMERA_FAR_PLANE,
+            near_plane: config_ui::CAMERA_NEAR_PLANE,
+            far_plane: config_ui::CAMERA_FAR_PLANE,
         })
     }
 
@@ -203,10 +203,10 @@ impl Camera {
     fn delta_cursor_to_angle(&self, delta_cursor_position: [f64; 2]) -> [Angle; 2] {
         delta_cursor_position.map(|delta| match self.look_mode {
             LookMode::Direction() => {
-                Angle::from_radians(delta * config::LOOK_SENSITIVITY.radians())
+                Angle::from_radians(delta * config_ui::LOOK_SENSITIVITY.radians())
             }
             LookMode::Target(_) => {
-                Angle::from_radians(delta * config::ARC_BALL_SENSITIVITY.radians())
+                Angle::from_radians(delta * config_ui::ARC_BALL_SENSITIVITY.radians())
             }
         })
     }
@@ -262,21 +262,30 @@ impl Camera {
         delta_v
     }
 
+    // `scroll_delta` is number of scroll clicks
     fn scroll_zoom_target(&mut self, scroll_delta: f64, target_pos: DVec3) {
-        // move towards/away from target. can never quite reach target because lim(scroll_delta -> ∞) = 1
-        let target_vector = self.direction;
-        let travel = target_vector * (1. - 1. / (-scroll_delta).exp());
-        let new_position = self.position + travel;
-        let new_target_vector = target_pos - new_position;
-        let new_target_dist = new_target_vector.length();
-
-        // clamp distance to target
-        todo!("doesnt work!");
-        if config::CAMERA_MIN_TARGET_DISTANCE < new_target_dist
-            && new_target_dist < config::CAMERA_MAX_TARGET_DISTANCE
-        {
-            self.set_position(new_position);
+        if scroll_delta == 0. {
+            return;
         }
+
+        // vector from camera position to target
+        let target_vector = target_pos - self.position;
+        // how far along that vector we want to travel
+        let mut travel_factor = dual_asymptote(scroll_delta);
+
+        // clamp travel distance
+        let target_vector_length = target_vector.length();
+        let max_travel_factor = 1. - config_ui::CAMERA_MIN_TARGET_DISTANCE / target_vector_length;
+        let min_travel_factor = 1. - config_ui::CAMERA_MAX_TARGET_DISTANCE / target_vector_length;
+        if travel_factor > max_travel_factor {
+            travel_factor = max_travel_factor;
+        } else if travel_factor < min_travel_factor {
+            travel_factor = min_travel_factor;
+        }
+
+        let new_position = self.position + target_vector * travel_factor;
+
+        self.set_position(new_position);
     }
 
     /// Get the target position depending on the type of `target_type`. If the target position is
@@ -321,4 +330,12 @@ fn target_pos(target_type: LookTargetType) -> Option<DVec3> {
 
 fn calc_aspect_ratio(resolution: [f32; 2]) -> f32 {
     resolution[0] / resolution[1]
+}
+
+/// (2^x - 1) / (2^x + 1)
+///
+/// Has asymptote at y = 1 when x = +∞ and another at y = -1 when x = -∞.
+/// Gradient is 1 at x = 0. Inspired by tanh but with lighter gradient falloff.
+fn dual_asymptote(x: f64) -> f64 {
+    (2_f64.powf(x) - 1.) / (2_f64.powf(x) + 1.)
 }

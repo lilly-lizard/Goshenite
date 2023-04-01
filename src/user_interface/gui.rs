@@ -1,9 +1,9 @@
 use super::{
     config_ui::EGUI_TRACE,
     gui_state::{GuiState, WindowStates},
-    layouts_object_editor::object_editor,
-    layouts_object_list::object_list,
-    layouts_panel::bottom_panel_layout,
+    layout_object_editor::object_editor,
+    layout_object_list::object_list,
+    layout_panel::bottom_panel_layout,
 };
 use crate::engine::{
     object::{object::ObjectRef, object_collection::ObjectCollection, objects_delta::ObjectsDelta},

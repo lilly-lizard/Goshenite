@@ -4,6 +4,8 @@ use crate::{
     helper::unique_id_gen::UniqueIdGen,
 };
 use glam::Vec3;
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 use std::{collections::BTreeMap, rc::Rc};
 
 /// Should only be one per engine instance.
@@ -65,7 +67,10 @@ impl ObjectCollection {
             self.primitive_references.clean_unused_references();
 
             // tell object id generator it can reuse the old object id now
-            self.unique_id_gen.recycle_id(object_id.raw_id());
+            todo!();
+            if let Err(e) = self.unique_id_gen.recycle_id(object_id.raw_id()) {
+                warn!("{}", e);
+            }
         }
     }
 
