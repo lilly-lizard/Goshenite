@@ -30,9 +30,6 @@ use std::{
     sync::Arc,
 };
 
-const VERT_SHADER_PATH: &str = "assets/shader_binaries/gui.vert.spv";
-const FRAG_SHADER_PATH: &str = "assets/shader_binaries/gui.frag.spv";
-
 /// 2048 vertices and 1024 indices todo breakpoint to get estimate of how much actually required...
 const BUFFER_POOL_SIZE: vk::DeviceSize =
     (4096 * mem::size_of::<egui::epaint::Vertex>() + 1024 * 4) as vk::DeviceSize;
@@ -886,25 +883,7 @@ fn create_pipeline(
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
 ) -> anyhow::Result<Arc<GraphicsPipeline>> {
-    let vert_shader = Arc::new(
-        ShaderModule::new_from_file(pipeline_layout.device().clone(), VERT_SHADER_PATH)
-            .context("creating gui pass vertex shader")?,
-    );
-    let vert_stage = ShaderStage::new(
-        vk::ShaderStageFlags::VERTEX,
-        vert_shader,
-        CString::new(SHADER_ENTRY_POINT).context("shader entry point to c-string")?,
-    );
-
-    let frag_shader = Arc::new(
-        ShaderModule::new_from_file(pipeline_layout.device().clone(), FRAG_SHADER_PATH)
-            .context("creating gui pass fragment shader")?,
-    );
-    let frag_stage = ShaderStage::new(
-        vk::ShaderStageFlags::FRAGMENT,
-        frag_shader,
-        CString::new(SHADER_ENTRY_POINT).context("shader entry point to c-string")?,
-    );
+    let (vert_stage, frag_stage) = create_shader_stages(pipeline_layout.device())?;
 
     let dynamic_state =
         DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
@@ -941,6 +920,63 @@ fn create_pipeline(
     .context("creating gui pass pipeline")?;
 
     Ok(Arc::new(pipeline))
+}
+
+#[cfg(feature = "include-spirv-bytes")]
+fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
+    let mut vertex_spv_file =
+        std::io::Cursor::new(&include_bytes!("../../assets/shader_binaries/gui.vert.spv")[..]);
+    let vert_shader = Arc::new(
+        ShaderModule::new_from_spirv(device.clone(), &mut vertex_spv_file)
+            .context("creating lighting pass vertex shader")?,
+    );
+    let vert_stage = ShaderStage::new(
+        vk::ShaderStageFlags::VERTEX,
+        vert_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+    );
+
+    let mut frag_spv_file =
+        std::io::Cursor::new(&include_bytes!("../../assets/shader_binaries/gui.frag.spv")[..]);
+    let frag_shader = Arc::new(
+        ShaderModule::new_from_spirv(device.clone(), &mut frag_spv_file)
+            .context("creating lighting pass fragment shader")?,
+    );
+    let frag_stage = ShaderStage::new(
+        vk::ShaderStageFlags::FRAGMENT,
+        frag_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+    );
+
+    Ok((vert_stage, frag_stage))
+}
+
+#[cfg(not(feature = "include-spirv-bytes"))]
+fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
+    const VERT_SHADER_PATH: &str = "assets/shader_binaries/gui.vert.spv";
+    const FRAG_SHADER_PATH: &str = "assets/shader_binaries/gui.frag.spv";
+
+    let vert_shader = Arc::new(
+        ShaderModule::new_from_file(device.clone(), VERT_SHADER_PATH)
+            .context("creating lighting pass vertex shader")?,
+    );
+    let vert_stage = ShaderStage::new(
+        vk::ShaderStageFlags::VERTEX,
+        vert_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+    );
+
+    let frag_shader = Arc::new(
+        ShaderModule::new_from_file(device.clone(), FRAG_SHADER_PATH)
+            .context("creating lighting pass fragment shader")?,
+    );
+    let frag_stage = ShaderStage::new(
+        vk::ShaderStageFlags::FRAGMENT,
+        frag_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+    );
+
+    Ok((vert_stage, frag_stage))
 }
 
 fn create_transient_command_pool(
