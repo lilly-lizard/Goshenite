@@ -6,9 +6,7 @@
 // Maximum number of ray marching steps before confirming a miss
 const uint MAX_STEPS = 50;
 // Distance required to confirm a hit
-const float MIN_DIST = 0.001;
-// Minimum step distance
-const float MIN_STEP = 0.001; // todo test
+const float MIN_MARCH_STEP = 0.001;
 // Offset used for calculating normals.
 const float NORMAL_EPSILON = 0.001;
 const vec2 NORMAL_OFFSET = vec2(NORMAL_EPSILON, -NORMAL_EPSILON);
@@ -99,22 +97,23 @@ SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 
 // ~~~ Combination Ops ~~~
 
-// Results in the union (OR) of 2 primitives
+// Results in the union (min) of 2 primitives
 SdfResult op_union(SdfResult p1, SdfResult p2)
 {
 	return p1.d < p2.d ? p1 : p2;
 }
 
-// Results in the intersection (AND) of 2 primitives
+// Results in the intersection (max) of 2 primitives
 SdfResult op_intersection(SdfResult p1, SdfResult p2)
 {
 	return p1.d > p2.d ? p1 : p2;
 }
 
-// Subtracts the volume of primitive 2 from primitive 1
+// Subtracts the volume of primitive 2 (max) from primitive 1 (max inverted)
 SdfResult op_subtraction(SdfResult p1, SdfResult p2)
 {
-	return p1.d > -p2.d ? p1 : p2;
+	SdfResult p2_neg = { -p2.d, p2.op_index };
+	return op_intersection(p1, p2_neg);
 }
 
 SdfResult process_op(uint op, SdfResult lhs, SdfResult rhs)
@@ -164,9 +163,9 @@ vec3 calcNormal(vec3 pos)
 }
 
 // Render the scene with sphere tracing and write the normal and object id.
-// Returns the depth of a hit primitive. When the ray misses, calls discard.
+// When the ray misses, calls discard. Otherwise writes depth of a hit primitive.
 // https://michaelwalczyk.com/blog-ray-marching.html
-float ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint object_id)
+void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist, out vec3 o_normal, out uint o_object_id)
 {
 	// total distance traveled
 	float dist = 0.;
@@ -177,10 +176,11 @@ float ray_march(const vec3 ray_o, const vec3 ray_d, out vec3 normal, out uint ob
 		SdfResult closest_primitive = map(current_pos);
 
 		// ray hit
-		if (closest_primitive.d < MIN_DIST) {
-			normal = calcNormal(current_pos) / 2. + .5;
-			object_id = closest_primitive.op_index | (in_object_id << 16);
-			return dist;
+		if (closest_primitive.d < MIN_MARCH_STEP) {
+			o_normal = calcNormal(current_pos) / 2. + .5;
+			o_object_id = closest_primitive.op_index | (in_object_id << 16);
+			o_dist = dist;
+			return;
 		}
 
 		// incriment the distance travelled by the distance to the closest primitive
@@ -208,7 +208,8 @@ void main()
 	// render scene
 	vec3 normal;
 	uint object_id;
-	float z = ray_march(cam.position.xyz, ray_d_norm, normal, object_id);
+	float z;
+	ray_march(cam.position.xyz, ray_d_norm, z, normal, object_id);
 
 	gl_FragDepth = depth(cam.near, cam.far, z);
 	out_normal = vec4(normal, 0.);

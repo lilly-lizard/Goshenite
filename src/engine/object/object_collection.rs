@@ -67,7 +67,6 @@ impl ObjectCollection {
             self.primitive_references.clean_unused_references();
 
             // tell object id generator it can reuse the old object id now
-            todo!();
             if let Err(e) = self.unique_id_gen.recycle_id(object_id.raw_id()) {
                 warn!("{}", e);
             }
