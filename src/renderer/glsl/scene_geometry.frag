@@ -1,7 +1,8 @@
 #version 450
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_GOOGLE_include_directive : require
-#include "common.glsl"
+#include "config.glsl"
+#include "sdf_functions.glsl"
 
 // Maximum number of ray marching steps before confirming a miss
 const uint MAX_STEPS = 50;
@@ -33,35 +34,16 @@ layout (set = 1, binding = 0, std430) readonly buffer Object {
 	uint primitive_ops[];
 } object;
 
-// ~~~ Signed Distance Fields ~~~
-
-// Represents a signed distance field result
-struct SdfResult {
-	// Distance from pos to primitive
-	float d;
-	// operation index
-	uint op_index;
-};
-
-// Signed distance function for a sphere
-float sdf_sphere(vec3 pos, vec3 center, float radius)
-{
-	return length(pos - center) - radius;
-}
-
-// Signed distance function for a box
-float sdf_box(vec3 pos, vec3 center, vec3 dimensions)
-{
-	vec3 d = abs(pos - center) - dimensions / 2.;
-	return min(max(d.x, max(d.y, d.z)), 0.) + length(max(d, 0.));
-}
+// ~~~ Code interpreters ~~~
 
 SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 {
 	uint primitive_type = object.primitive_ops[buffer_index++];
 	float dist;
 
-	if (primitive_type == PRIMITIVE_SPHERE)
+	// todo perf comparison: load OP_UNIT_LENGTH values at once then decode below
+
+	if (primitive_type == PRIM_SPHERE)
 	{
 		vec3 center = vec3(
 			uintBitsToFloat(object.primitive_ops[buffer_index++]),
@@ -71,7 +53,7 @@ SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 		float radius = uintBitsToFloat(object.primitive_ops[buffer_index++]);
 		dist = sdf_sphere(pos, center, radius);
 	}
-	else if (primitive_type == PRIMITIVE_CUBE)
+	else if (primitive_type == PRIM_BOX)
 	{
 		vec3 center = vec3(
 			uintBitsToFloat(object.primitive_ops[buffer_index++]),
@@ -85,35 +67,29 @@ SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 		);
 		dist = sdf_box(pos, center, dimensions);
 	}
+	else if (primitive_type == PRIM_BOX_FRAME)
+	{
+		vec3 center = vec3(
+			uintBitsToFloat(object.primitive_ops[buffer_index++]),
+			uintBitsToFloat(object.primitive_ops[buffer_index++]),
+			uintBitsToFloat(object.primitive_ops[buffer_index++])
+		);
+		float dimension_inner = uintBitsToFloat(object.primitive_ops[buffer_index++]);
+		vec3 dimensions_outer = vec3(
+			uintBitsToFloat(object.primitive_ops[buffer_index++]),
+			uintBitsToFloat(object.primitive_ops[buffer_index++]),
+			uintBitsToFloat(object.primitive_ops[buffer_index++])
+		);
+		dist = sdf_box_frame(pos, center, dimension_inner, dimensions_outer);
+	}
 	else
 	{
-		// else do nothing e.g. PRIMITIVE_NULL
+		// else do nothing e.g. PRIM_NULL
 		dist = cam.far;
 	}
 
 	SdfResult ret = { dist, op_index };
 	return ret;
-}
-
-// ~~~ Combination Ops ~~~
-
-// Results in the union (min) of 2 primitives
-SdfResult op_union(SdfResult p1, SdfResult p2)
-{
-	return p1.d < p2.d ? p1 : p2;
-}
-
-// Results in the intersection (max) of 2 primitives
-SdfResult op_intersection(SdfResult p1, SdfResult p2)
-{
-	return p1.d > p2.d ? p1 : p2;
-}
-
-// Subtracts the volume of primitive 2 (max) from primitive 1 (max inverted)
-SdfResult op_subtraction(SdfResult p1, SdfResult p2)
-{
-	SdfResult p2_neg = { -p2.d, p2.op_index };
-	return op_intersection(p1, p2_neg);
 }
 
 SdfResult process_op(uint op, SdfResult lhs, SdfResult rhs)
