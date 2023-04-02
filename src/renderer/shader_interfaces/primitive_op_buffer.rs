@@ -12,7 +12,7 @@ pub mod op_codes {
 }
 
 /// Number of 32-bit values to store an op_code and a primitive.
-/// _Must match value defined in `common.glsl`_
+/// _Must match value defined in `confg.glsl`_
 pub const PRIMITIVE_OP_UNIT_LEN: usize = 8;
 /// Each primitive is encoded into an array of length `PRIMITIVE_UNIT_LEN`.
 pub const PRIMITIVE_UNIT_LEN: usize = 7;

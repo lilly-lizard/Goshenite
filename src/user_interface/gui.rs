@@ -101,7 +101,7 @@ impl Gui {
         // draw
         self.top_panel();
         if self.window_states.object_list {
-            self.object_list_window(object_collection);
+            self.object_list_window(object_collection, camera);
         }
         if self.window_states.object_editor {
             self.object_editor_window(object_collection.primitive_references_mut());
@@ -177,7 +177,11 @@ impl Gui {
         });
     }
 
-    fn object_list_window(&mut self, object_collection: &mut ObjectCollection) {
+    fn object_list_window(
+        &mut self,
+        object_collection: &mut ObjectCollection,
+        camera: &mut Camera,
+    ) {
         let add_contents = |ui: &mut egui::Ui| {
             if EGUI_TRACE {
                 egui::trace!(ui);
@@ -187,6 +191,7 @@ impl Gui {
                 &mut self.gui_state,
                 &mut self.objects_delta,
                 object_collection,
+                camera,
             );
         };
 

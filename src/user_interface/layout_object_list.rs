@@ -1,4 +1,4 @@
-use super::gui_state::GuiState;
+use super::{camera::Camera, gui_state::GuiState};
 use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
 use egui::{RichText, TextStyle};
 #[allow(unused_imports)]
@@ -10,6 +10,7 @@ pub fn object_list_layout(
     gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
     object_collection: &mut ObjectCollection,
+    camera: &mut Camera,
 ) {
     ui.horizontal(|ui_h| {
         // add object button
@@ -19,8 +20,14 @@ pub fn object_list_layout(
             let new_object_ref = object_collection.new_empty_object();
             // tell the rest of the engine there's been a change to the object collection
             objects_delta.update.insert(new_object_ref.borrow().id());
+
             // select new object in the object editor
-            gui_state.set_selected_object(Rc::downgrade(&new_object_ref));
+            let selected_object_ref = Rc::downgrade(&new_object_ref);
+            gui_state.set_selected_object(selected_object_ref.clone());
+            // set lock on target to selected object
+            camera.set_lock_on_object(selected_object_ref);
+            // deselect primitive op (previous one would have been for different object)
+            gui_state.deselect_primitive_op();
         }
 
         // delete object button
@@ -64,7 +71,12 @@ pub fn object_list_layout(
 
         if ui.selectable_label(is_selected, label_text).clicked() {
             if !is_selected {
-                gui_state.set_selected_object(Rc::downgrade(current_object));
+                // select object in the object editor
+                let selected_object_ref = Rc::downgrade(&current_object);
+                gui_state.set_selected_object(selected_object_ref.clone());
+                // set lock on target to selected object
+                camera.set_lock_on_object(selected_object_ref);
+                // deselect primitive op (previous one would have been for different object)
                 gui_state.deselect_primitive_op();
             }
         }
