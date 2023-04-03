@@ -261,11 +261,6 @@ impl Engine {
     }
 
     fn update_camera(&mut self) {
-        // if let Some(selected_object_ref) = self.gui.selected_object() {
-        //     // set lock on target to selected primitive
-        //     self.camera.set_lock_on_object(selected_object_ref);
-        // } else {
-
         // if no primitive selected use arcball mode
         if self.gui.selected_object().is_none() {
             self.camera.unset_lock_on_target();

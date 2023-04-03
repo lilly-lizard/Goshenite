@@ -1,7 +1,7 @@
 use crate::renderer::shader_interfaces::vertex_inputs::BoundingBoxVertex;
 use glam::Vec3;
 
-use super::object::object::ObjectId;
+use super::{object::object::ObjectId, primitives::primitive_transform::PrimitiveTransform};
 
 pub const AABB_VERTEX_COUNT: usize = 36;
 
@@ -21,18 +21,18 @@ pub struct Aabb {
 }
 
 impl Aabb {
-    pub fn new(center: Vec3, dimensions: Vec3) -> Self {
+    pub fn new(transform: PrimitiveTransform, dimensions: Vec3) -> Self {
         Self {
-            xp_yp_zp: center + dimensions,
-            xn_yn_zn: center - dimensions,
+            xp_yp_zp: transform.center + dimensions,
+            xn_yn_zn: transform.center - dimensions,
 
-            xn_yp_zp: center + dimensions * Vec3::new(-1., 1., 1.),
-            xp_yn_zp: center + dimensions * Vec3::new(1., -1., 1.),
-            xp_yp_zn: center + dimensions * Vec3::new(1., 1., -1.),
+            xn_yp_zp: transform.center + dimensions * Vec3::new(-1., 1., 1.),
+            xp_yn_zp: transform.center + dimensions * Vec3::new(1., -1., 1.),
+            xp_yp_zn: transform.center + dimensions * Vec3::new(1., 1., -1.),
 
-            xn_yn_zp: center + dimensions * Vec3::new(-1., -1., 1.),
-            xp_yn_zn: center + dimensions * Vec3::new(1., -1., -1.),
-            xn_yp_zn: center + dimensions * Vec3::new(-1., 1., -1.),
+            xn_yn_zp: transform.center + dimensions * Vec3::new(-1., -1., 1.),
+            xp_yn_zn: transform.center + dimensions * Vec3::new(1., -1., -1.),
+            xn_yp_zn: transform.center + dimensions * Vec3::new(-1., 1., -1.),
         }
     }
 

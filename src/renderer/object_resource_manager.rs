@@ -1,7 +1,7 @@
 use super::{
     geometry_pass::descriptor,
     shader_interfaces::{
-        primitive_op_buffer::{PrimitiveOpBufferUnit, PRIMITIVE_OP_UNIT_LEN},
+        primitive_op_buffer::{PrimitiveOpBufferUnit, PRIMITIVE_PACKET_LEN},
         vertex_inputs::BoundingBoxVertex,
     },
 };
@@ -24,11 +24,11 @@ const DESCRIPTOR_POOL_SIZE: u32 = 256;
 
 // TODO biggest optimization is a staging buffer to make the vertex/storage buffers a more optimized memory type
 
-/// Reserve for 1024 operations
+/// Reserve for 1024 primitive ops
 const INIT_PRIMITIVE_OP_POOL_RESERVE: vk::DeviceSize =
-    (1024 * PRIMITIVE_OP_UNIT_LEN * size_of::<PrimitiveOpBufferUnit>()) as vk::DeviceSize;
+    (1024 * PRIMITIVE_PACKET_LEN * size_of::<PrimitiveOpBufferUnit>()) as vk::DeviceSize;
 
-/// Reserve for 16 AABBs
+/// Reserve for 16 AABBs (one aabb per object)
 const INIT_BOUNDING_BOX_POOL_RESERVE: vk::DeviceSize =
     (16 * AABB_VERTEX_COUNT * size_of::<BoundingBoxVertex>()) as vk::DeviceSize;
 

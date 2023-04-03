@@ -8,7 +8,9 @@ use super::{
     layout_panel::bottom_panel_layout,
 };
 use crate::engine::{
-    object::{object::ObjectRef, object_collection::ObjectCollection, objects_delta::ObjectsDelta},
+    object::{
+        object::ObjectCell, object_collection::ObjectCollection, objects_delta::ObjectsDelta,
+    },
     primitives::primitive_references::PrimitiveReferences,
 };
 use egui::{Button, FontFamily::Proportional, FontId, TextStyle, TexturesDelta, Visuals};
@@ -148,7 +150,7 @@ impl Gui {
         std::mem::take(&mut self.objects_delta)
     }
 
-    pub fn selected_object(&self) -> Option<Weak<ObjectRef>> {
+    pub fn selected_object(&self) -> Option<Weak<ObjectCell>> {
         self.gui_state.selected_object().clone()
     }
 

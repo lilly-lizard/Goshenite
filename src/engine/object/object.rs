@@ -2,24 +2,24 @@ use super::operation::Operation;
 use crate::{
     engine::{
         aabb::Aabb,
-        primitives::{
-            null_primitive::NullPrimitive,
-            primitive::{Primitive, PrimitiveRef},
-        },
+        primitives::{null_primitive::NullPrimitive, primitive::PrimitiveCell},
     },
     helper::{
         more_errors::CollectionError,
         unique_id_gen::{UniqueId, UniqueIdGen},
     },
-    renderer::shader_interfaces::primitive_op_buffer::PrimitiveOpBufferUnit,
+    renderer::shader_interfaces::primitive_op_buffer::{
+        create_primitive_op_packet, nop_primitive_op_packet, PrimitiveOpBufferUnit,
+        PrimitiveOpPacket,
+    },
 };
 use glam::Vec3;
 use std::{cell::RefCell, rc::Rc};
 
 /// Use functions `borrow` and `borrow_mut` to access the `Object`.
-pub type ObjectRef = RefCell<Object>;
+pub type ObjectCell = RefCell<Object>;
 #[inline]
-pub fn new_object_ref(object: Object) -> Rc<ObjectRef> {
+pub fn new_object_ref(object: Object) -> Rc<ObjectCell> {
     Rc::new(RefCell::new(object))
 }
 
@@ -55,15 +55,11 @@ impl From<UniqueId> for PrimitiveOpId {
 pub struct PrimitiveOp {
     id: PrimitiveOpId,
     pub op: Operation,
-    pub prim: Rc<PrimitiveRef>,
+    pub primitive: Rc<PrimitiveCell>,
 }
 impl PrimitiveOp {
-    pub fn new(id: PrimitiveOpId, op: Operation, primitive: Rc<PrimitiveRef>) -> Self {
-        Self {
-            id,
-            op,
-            prim: primitive,
-        }
+    pub fn new(id: PrimitiveOpId, op: Operation, primitive: Rc<PrimitiveCell>) -> Self {
+        Self { id, op, primitive }
     }
 
     pub fn new_default(id: PrimitiveOpId) -> Self {
@@ -85,7 +81,12 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn new(id: ObjectId, name: String, origin: Vec3, base_primitive: Rc<PrimitiveRef>) -> Self {
+    pub fn new(
+        id: ObjectId,
+        name: String,
+        origin: Vec3,
+        base_primitive: Rc<PrimitiveCell>,
+    ) -> Self {
         let mut primitive_op_id_gen = UniqueIdGen::new();
         let new_raw_id = primitive_op_id_gen
             .new_id()
@@ -129,7 +130,7 @@ impl Object {
     }
 
     /// Returns the id of the newly created primitive op
-    pub fn push_op(&mut self, operation: Operation, primitive: Rc<PrimitiveRef>) -> PrimitiveOpId {
+    pub fn push_op(&mut self, operation: Operation, primitive: Rc<PrimitiveCell>) -> PrimitiveOpId {
         let new_raw_id = self
             .primitive_op_id_gen
             .new_id()
@@ -148,27 +149,42 @@ impl Object {
     pub fn encoded_primitive_ops(&self) -> Vec<PrimitiveOpBufferUnit> {
         // avoiding this case should be the responsibility of the functions adding to `primtive_ops`
         debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);
-        let mut encoded = vec![
-            self.id.raw_id() as PrimitiveOpBufferUnit,
-            self.primitive_ops.len() as PrimitiveOpBufferUnit,
-        ];
+
+        let mut encoded_primitives = Vec::<PrimitiveOpPacket>::new();
         for primitive_op in &self.primitive_ops {
-            encoded.push(primitive_op.op.op_code());
-            encoded.extend_from_slice(&primitive_op.prim.borrow().encode(self.origin));
+            let op_code = primitive_op.op.op_code();
+            let primitive_type_code = primitive_op.primitive.borrow().type_code();
+
+            let transform = primitive_op
+                .primitive
+                .borrow()
+                .transform()
+                .encoded(self.origin);
+            let props = primitive_op.primitive.borrow().encoded_props();
+
+            let packet = create_primitive_op_packet(op_code, primitive_type_code, transform, props);
+            encoded_primitives.push(packet);
         }
         if self.primitive_ops.len() == 0 {
             // having no primitive ops would probably break something so lets put a NOP here...
-            let null_prim = NullPrimitive {};
-            encoded.push(Operation::NOP.op_code());
-            encoded.extend_from_slice(&null_prim.encode(self.origin));
+            let packet = nop_primitive_op_packet();
+            encoded_primitives.push(packet);
         }
-        encoded
+
+        let mut encoded_object = vec![
+            self.id.raw_id() as PrimitiveOpBufferUnit,
+            self.primitive_ops.len() as PrimitiveOpBufferUnit,
+        ];
+        let encoded_primitives_flattened =
+            encoded_primitives.into_iter().flatten().collect::<Vec<_>>();
+        encoded_object.extend_from_slice(&encoded_primitives_flattened);
+        encoded_object
     }
 
     pub fn aabb(&self) -> Aabb {
         let mut aabb = Aabb::new_zero();
         for primitive_op in &self.primitive_ops {
-            aabb.union(primitive_op.prim.borrow().aabb());
+            aabb.union(primitive_op.primitive.borrow().aabb());
         }
         aabb.offset(self.origin);
         aabb

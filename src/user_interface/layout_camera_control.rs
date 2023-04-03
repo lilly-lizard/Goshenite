@@ -45,7 +45,7 @@ pub fn camera_control_layout(ui: &mut Ui, camera: &mut Camera) {
                 LookTargetType::Primitive(primitive_ref) => {
                     if let Some(primitive) = primitive_ref.upgrade() {
                         let type_name = primitive.type_name().clone();
-                        let center = primitive.center();
+                        let center = primitive.transform().center;
 
                         ui.label(format!(
                             "Target primtive:\n- type: {}\n- position: [{}, {}, {}]",

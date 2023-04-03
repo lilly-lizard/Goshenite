@@ -11,7 +11,7 @@ use crate::{
             operation::Operation,
         },
         primitives::{
-            cube::Cube, primitive::PrimitiveRef, primitive_ref_types::PrimitiveRefType,
+            cube::Cube, primitive::PrimitiveCell, primitive_ref_types::PrimitiveRefType,
             primitive_references::PrimitiveReferences, sphere::Sphere,
         },
     },
@@ -149,8 +149,8 @@ fn existing_primitive_op_editor(
 
     ui.label(format!("Primitive op {}:", selected_prim_op_index));
 
-    let mut primitive_id = selected_prim_op.prim.borrow().id();
-    let old_primitive_type_name = selected_prim_op.prim.borrow().type_name();
+    let mut primitive_id = selected_prim_op.primitive.borrow().id();
+    let old_primitive_type_name = selected_prim_op.primitive.borrow().type_name();
     let mut primitive_type: PrimitiveRefType = old_primitive_type_name.into();
 
     ui.horizontal(|ui_h| {
@@ -169,12 +169,12 @@ fn existing_primitive_op_editor(
 
         if primitive_type != new_primitive_type {
             // replace old primitive according to new type
-            selected_prim_op.prim = primitive_references.new_default(new_primitive_type);
+            selected_prim_op.primitive = primitive_references.new_default(new_primitive_type);
             objects_delta.update.insert(object_id);
 
             // update local vars for primitive editor
             primitive_type = new_primitive_type;
-            primitive_id = selected_prim_op.prim.borrow().id();
+            primitive_id = selected_prim_op.primitive.borrow().id();
         }
     });
 
@@ -288,7 +288,7 @@ fn new_primitive_op_editor(
     });
     if clicked_add {
         // create primitive
-        let new_primitive: Rc<PrimitiveRef> = match gui_state.primitive_fields().p_type {
+        let new_primitive: Rc<PrimitiveCell> = match gui_state.primitive_fields().p_type {
             PrimitiveRefType::Sphere => primitive_references.new_sphere(
                 gui_state.primitive_fields().center,
                 gui_state.primitive_fields().radius,
@@ -336,7 +336,7 @@ fn op_drop_down(
 
 /// Same as `sphere_editor_ui` but takes a `Sphere` as arg
 pub fn sphere_struct_ui(ui: &mut egui::Ui, sphere: &mut Sphere) {
-    sphere_editor_ui(ui, &mut sphere.center, &mut sphere.radius);
+    sphere_editor_ui(ui, &mut sphere.transform.center, &mut sphere.radius);
 }
 
 pub fn sphere_editor_ui(ui: &mut egui::Ui, center: &mut Vec3, radius: &mut f32) {
@@ -358,7 +358,7 @@ pub fn sphere_editor_ui(ui: &mut egui::Ui, center: &mut Vec3, radius: &mut f32) 
 
 /// Same as `cube_editor_ui` but takes a `Cube` as arg
 pub fn cube_struct_ui(ui: &mut egui::Ui, cube: &mut Cube) {
-    cube_editor_ui(ui, &mut cube.center, &mut cube.dimensions);
+    cube_editor_ui(ui, &mut cube.transform.center, &mut cube.dimensions);
 }
 
 pub fn cube_editor_ui(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &mut Vec3) {
@@ -378,7 +378,7 @@ pub fn cube_editor_ui(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &mut Vec
 
 impl DragableItem for PrimitiveOp {
     fn id(&self) -> egui::Id {
-        egui::Id::new(format!("primitive op {}", self.prim.borrow().id()))
+        egui::Id::new(format!("primitive op {}", self.primitive.borrow().id()))
     }
 }
 /// Draw the primitive op list. each list element can be dragged/dropped elsewhere in the list,
@@ -427,7 +427,7 @@ pub fn primitive_op_list(
             let button_text = RichText::new(format!(
                 "{} {}",
                 primitive_op.op.name(),
-                primitive_op.prim.borrow().type_name()
+                primitive_op.primitive.borrow().type_name()
             ))
             .text_style(TextStyle::Monospace);
 

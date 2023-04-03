@@ -1,6 +1,6 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
-#include "common.glsl"
+#include "config.glsl"
 
 // g-buffer input attachments
 layout (set = 0, binding = 0, input_attachment_index = 0) uniform subpassInput in_normal;

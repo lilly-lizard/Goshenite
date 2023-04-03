@@ -1,6 +1,6 @@
-use super::object::{new_object_ref, Object, ObjectId, ObjectRef};
+use super::object::{new_object_ref, Object, ObjectCell, ObjectId};
 use crate::{
-    engine::primitives::{primitive::PrimitiveRef, primitive_references::PrimitiveReferences},
+    engine::primitives::{primitive::PrimitiveCell, primitive_references::PrimitiveReferences},
     helper::unique_id_gen::UniqueIdGen,
 };
 use glam::Vec3;
@@ -12,7 +12,7 @@ use std::{collections::BTreeMap, rc::Rc};
 pub struct ObjectCollection {
     unique_id_gen: UniqueIdGen,
     primitive_references: PrimitiveReferences,
-    objects: BTreeMap<ObjectId, Rc<ObjectRef>>,
+    objects: BTreeMap<ObjectId, Rc<ObjectCell>>,
 }
 
 impl ObjectCollection {
@@ -28,8 +28,8 @@ impl ObjectCollection {
         &mut self,
         name: String,
         origin: Vec3,
-        base_primitive: Rc<PrimitiveRef>,
-    ) -> Rc<ObjectRef> {
+        base_primitive: Rc<PrimitiveCell>,
+    ) -> Rc<ObjectCell> {
         let new_raw_id = self
             .unique_id_gen
             .new_id()
@@ -41,7 +41,7 @@ impl ObjectCollection {
         object
     }
 
-    pub fn new_empty_object(&mut self) -> Rc<ObjectRef> {
+    pub fn new_empty_object(&mut self) -> Rc<ObjectCell> {
         let new_raw_id = self
             .unique_id_gen
             .new_id()
@@ -81,11 +81,11 @@ impl ObjectCollection {
         &mut self.primitive_references
     }
 
-    pub fn objects(&self) -> &BTreeMap<ObjectId, Rc<ObjectRef>> {
+    pub fn objects(&self) -> &BTreeMap<ObjectId, Rc<ObjectCell>> {
         &self.objects
     }
 
-    pub fn get(&self, object_id: ObjectId) -> Option<&Rc<ObjectRef>> {
+    pub fn get(&self, object_id: ObjectId) -> Option<&Rc<ObjectCell>> {
         self.objects.get(&object_id)
     }
 }

@@ -1,6 +1,10 @@
+use super::primitive_transform::PrimitiveTransform;
 use crate::{
-    engine::aabb::Aabb, helper::unique_id_gen::UniqueId,
-    renderer::shader_interfaces::primitive_op_buffer::PrimitiveDataSlice,
+    engine::aabb::Aabb,
+    helper::unique_id_gen::UniqueId,
+    renderer::shader_interfaces::primitive_op_buffer::{
+        PrimitiveOpBufferUnit, PrimitivePropsSlice,
+    },
 };
 use glam::Vec3;
 use std::{cell::RefCell, rc::Rc};
@@ -8,9 +12,9 @@ use std::{cell::RefCell, rc::Rc};
 pub type PrimitiveId = UniqueId;
 
 /// Use functions `borrow` and `borrow_mut` to access the `Primitive`.
-pub type PrimitiveRef = RefCell<dyn Primitive>;
+pub type PrimitiveCell = RefCell<dyn Primitive>;
 #[inline]
-pub fn new_primitive_ref<T: Primitive + 'static>(inner: T) -> Rc<PrimitiveRef> {
+pub fn new_primitive_ref<T: Primitive + 'static>(inner: T) -> Rc<PrimitiveCell> {
     Rc::new(RefCell::new(inner))
 }
 
@@ -19,16 +23,23 @@ pub fn new_primitive_ref<T: Primitive + 'static>(inner: T) -> Rc<PrimitiveRef> {
 pub trait Primitive {
     /// Unique id that can be passed to `PrimitiveReferences` to lookup the actual struct
     fn id(&self) -> PrimitiveId;
-    /// Returns buffer compatible primitive data as a [`PrimitiveDataSlice`].
+
+    /// Returns the primitive type code. See [`primitive_type_codes`].
+    fn type_code(&self) -> PrimitiveOpBufferUnit;
+
+    /// Returns the primitive type as a str
+    fn type_name(&self) -> &'static str;
+
+    /// Returns buffer compatible primitive data as a [`PrimitivePropsSlice`].
     /// `parent_origin` is the world space origin of the parent object, which should be added to
     /// the primitive center before encoding.
     ///
     /// _Note: must match the decode process in `scene_geometry.frag`_
-    fn encode(&self, parent_origin: Vec3) -> PrimitiveDataSlice;
-    /// Returns the center of mass of the primitive, relative to the center of the parent object.
-    fn center(&self) -> Vec3;
-    /// Returns the primitive type as a str
-    fn type_name(&self) -> &'static str;
+    fn encoded_props(&self) -> PrimitivePropsSlice;
+
+    /// Returns a reference to the primitive tranform of this instance
+    fn transform(&self) -> &PrimitiveTransform;
+
     /// Axis aligned bounding box
     fn aabb(&self) -> Aabb;
 }

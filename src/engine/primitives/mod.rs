@@ -3,4 +3,5 @@ pub mod null_primitive;
 pub mod primitive;
 pub mod primitive_ref_types;
 pub mod primitive_references;
+pub mod primitive_transform;
 pub mod sphere;

@@ -1,7 +1,7 @@
 use super::{
     cube::Cube,
     null_primitive::NullPrimitive,
-    primitive::{default_center, default_dimensions, default_radius, PrimitiveId, PrimitiveRef},
+    primitive::{default_center, default_dimensions, default_radius, PrimitiveCell, PrimitiveId},
     primitive_ref_types::{new_cube_ref, new_sphere_ref, CubeRef, PrimitiveRefType, SphereRef},
     sphere::Sphere,
 };
@@ -37,7 +37,7 @@ impl PrimitiveReferences {
 
     /// Creates a new default primitive of type `primitive_type`. If type `PrimitiveRefType::Unknown`
     /// requested, returns a `NullPrimitive`.
-    pub fn new_default(&mut self, primitive_type: PrimitiveRefType) -> Rc<PrimitiveRef> {
+    pub fn new_default(&mut self, primitive_type: PrimitiveRefType) -> Rc<PrimitiveCell> {
         match primitive_type {
             PrimitiveRefType::Null => self.null_primitive(),
             PrimitiveRefType::Sphere => self.new_sphere(default_center(), default_radius()),
@@ -82,13 +82,13 @@ impl PrimitiveReferences {
         &self,
         primitive_type: PrimitiveRefType,
         primitive_id: PrimitiveId,
-    ) -> Option<Rc<PrimitiveRef>> {
+    ) -> Option<Rc<PrimitiveCell>> {
         match primitive_type {
-            PrimitiveRefType::Null => Some(self.null_primitive() as Rc<PrimitiveRef>),
-            PrimitiveRefType::Sphere => {
-                self.get_sphere(primitive_id).map(|x| x as Rc<PrimitiveRef>)
-            }
-            PrimitiveRefType::Cube => self.get_cube(primitive_id).map(|x| x as Rc<PrimitiveRef>),
+            PrimitiveRefType::Null => Some(self.null_primitive() as Rc<PrimitiveCell>),
+            PrimitiveRefType::Sphere => self
+                .get_sphere(primitive_id)
+                .map(|x| x as Rc<PrimitiveCell>),
+            PrimitiveRefType::Cube => self.get_cube(primitive_id).map(|x| x as Rc<PrimitiveCell>),
             PrimitiveRefType::Unknown => None,
         }
     }

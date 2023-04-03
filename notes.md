@@ -6,7 +6,8 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - transformation matrix for individual primitives
 	- start with hard-coded rotation matrix in shader
-	- replaces center var
+	- if this works, scaling makes radius/dimensions redundant?
+	- get rid of center arg and hard-code it after tranform
 - json save theme setting
 - surface patterns (natural looking noise stuff)
 - path tracing heat map

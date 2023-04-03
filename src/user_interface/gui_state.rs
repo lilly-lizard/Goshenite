@@ -1,6 +1,6 @@
 use crate::engine::{
     object::{
-        object::{ObjectRef, PrimitiveOpId},
+        object::{ObjectCell, PrimitiveOpId},
         operation::Operation,
     },
     primitives::{primitive, primitive_ref_types::PrimitiveRefType},
@@ -31,7 +31,7 @@ pub const DRAG_INC: f64 = 0.02;
 
 /// State persisting between frames
 pub struct GuiState {
-    selected_object: Option<Weak<ObjectRef>>,
+    selected_object: Option<Weak<ObjectCell>>,
     selected_primitive_op_id: Option<PrimitiveOpId>,
     /// Stotes state of the op field in the 'New Primitive Op' editor
     op_field: Operation,
@@ -43,7 +43,7 @@ pub struct GuiState {
 
 // Setters
 impl GuiState {
-    pub fn set_selected_object(&mut self, selected_object: Weak<ObjectRef>) {
+    pub fn set_selected_object(&mut self, selected_object: Weak<ObjectCell>) {
         self.selected_object = Some(selected_object);
     }
 
@@ -73,7 +73,7 @@ impl GuiState {
 
 // Getters
 impl GuiState {
-    pub fn selected_object(&self) -> Option<Weak<ObjectRef>> {
+    pub fn selected_object(&self) -> Option<Weak<ObjectCell>> {
         self.selected_object.clone()
     }
 
