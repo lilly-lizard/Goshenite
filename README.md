@@ -9,7 +9,8 @@ If debugging, run with environment variable `RUST_BACKTRACE=1` to see [anyhow](h
 ## Cargo features
 
 - __colored-term__: (default) enables colored terminal log messages.
-- __shader-compile__: enables a build script to compile spirv binaries whenever shader source is changed. _NOTE: will add a notable increase to initial build time if you don't already have shaderc libraries installed on your system._
+- __include-spirv-bytes__: (default) load spirv bytecode at compile-time. if disabled, the engine will attempt to read spirv files from the `./assets` directory at runtime (relative to the executable location).
+- __shader-compile__: enables a build script to compile spirv binaries whenever shader source is changed. _NOTE: will add a notable increase to the build time if you don't already have shaderc libraries installed on your system._
 
 ## Design objectives
 
@@ -40,7 +41,7 @@ subpass ┆ subpass      gui
 3. __O__ = Overlay pass - rendered ui elements e.g. coordinate indicators
 4. __E__ = Egui pass - egui stuff
 
-Subpass outputs:m
+Subpass outputs:
 1. Subpass 0 - g-buffers:
 	- rgba8 - normal.xyz, 0
 	- u32 - object-id, primitive-id
