@@ -59,6 +59,7 @@ impl Primitive for Cube {
     }
 
     fn aabb(&self) -> Aabb {
+        todo!("dimensions need to ba adjusted for rotation!");
         Aabb::new(self.transform, self.dimensions)
     }
 }

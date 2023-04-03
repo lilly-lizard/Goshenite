@@ -21,18 +21,20 @@ pub struct Aabb {
 }
 
 impl Aabb {
+    /// `dimensions` is the x/y/z lengths of the box.
     pub fn new(transform: PrimitiveTransform, dimensions: Vec3) -> Self {
+        let dimensions_halved = dimensions / 2.;
         Self {
-            xp_yp_zp: transform.center + dimensions,
-            xn_yn_zn: transform.center - dimensions,
+            xp_yp_zp: transform.center + dimensions_halved,
+            xn_yn_zn: transform.center - dimensions_halved,
 
-            xn_yp_zp: transform.center + dimensions * Vec3::new(-1., 1., 1.),
-            xp_yn_zp: transform.center + dimensions * Vec3::new(1., -1., 1.),
-            xp_yp_zn: transform.center + dimensions * Vec3::new(1., 1., -1.),
+            xn_yp_zp: transform.center + dimensions_halved * Vec3::new(-1., 1., 1.),
+            xp_yn_zp: transform.center + dimensions_halved * Vec3::new(1., -1., 1.),
+            xp_yp_zn: transform.center + dimensions_halved * Vec3::new(1., 1., -1.),
 
-            xn_yn_zp: transform.center + dimensions * Vec3::new(-1., -1., 1.),
-            xp_yn_zn: transform.center + dimensions * Vec3::new(1., -1., -1.),
-            xn_yp_zn: transform.center + dimensions * Vec3::new(-1., 1., -1.),
+            xn_yn_zp: transform.center + dimensions_halved * Vec3::new(-1., -1., 1.),
+            xp_yn_zn: transform.center + dimensions_halved * Vec3::new(1., -1., -1.),
+            xn_yp_zn: transform.center + dimensions_halved * Vec3::new(-1., 1., -1.),
         }
     }
 

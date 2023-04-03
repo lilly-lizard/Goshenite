@@ -115,8 +115,8 @@ SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 	); // column 3
 
 	// apply to position
-	pos = pos * rotation;
 	pos = pos - center; // todo before or after transform?
+	pos = pos * rotation;
 
 	float dist;
 	if (primitive_type == PRIM_SPHERE)

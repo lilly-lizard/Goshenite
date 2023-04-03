@@ -12,8 +12,14 @@ impl PrimitiveTransform {
         Self { center: Vec3::ZERO }
     }
 
+    pub fn rotation_matrix(&self) -> Mat3 {
+        Mat3::from_rotation_x(std::f32::consts::TAU / 8.)
+    }
+
     pub fn encoded(&self, parent_origin: Vec3) -> PrimitiveTransformSlice {
-        let rotation_cols_array = Mat3::IDENTITY.to_cols_array();
+        let inverse_rotation_mat = self.rotation_matrix().inverse();
+        let rotation_cols_array = inverse_rotation_mat.to_cols_array();
+
         let center = self.center + parent_origin;
         [
             center.x.to_bits(),

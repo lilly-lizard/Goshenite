@@ -59,6 +59,6 @@ impl Primitive for Sphere {
     }
 
     fn aabb(&self) -> Aabb {
-        Aabb::new(self.transform, Vec3::splat(self.radius))
+        Aabb::new(self.transform, Vec3::splat(2. * self.radius))
     }
 }
