@@ -183,7 +183,16 @@ impl ObjectResourceManager {
         let desc_set = match alloc_res {
             Err(alloc_err) => {
                 if alloc_err == vk::Result::ERROR_OUT_OF_POOL_MEMORY {
-                    todo!();
+                    // old pool ran out of space -> create a new descriptor pool
+                    let new_descriptor_pool =
+                        create_descriptor_pool(self.memory_allocator.device().clone())?;
+                    self.descriptor_pools.push(new_descriptor_pool.clone());
+
+                    DescriptorSet::new(
+                        new_descriptor_pool,
+                        self.primitive_ops_desc_set_layout.clone(),
+                    )
+                    .context("allocating primitive ops desc set after creating new pool")?
                 } else {
                     return Err(alloc_err).context("allocating primitive ops desc set");
                 }

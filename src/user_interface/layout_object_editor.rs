@@ -216,6 +216,9 @@ fn existing_primitive_op_editor(
     let delete_clicked = ui.button("Delete").clicked();
     if delete_clicked {
         let remove_res = selected_object.remove_primitive_op_index(selected_prim_op_index);
+
+        todo!(" fn select_closest_index");
+
         if let Err(_) = remove_res {
             // invalid index! what's going on??
             warn!(
