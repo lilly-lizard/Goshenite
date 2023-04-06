@@ -18,7 +18,7 @@ use crate::{
 };
 use egui::{ComboBox, DragValue, RichText, TextStyle};
 use egui_dnd::{DragDropResponse, DragableItem};
-use glam::Vec3;
+use glam::{Quat, Vec3};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::rc::Rc;
@@ -169,7 +169,8 @@ fn existing_primitive_op_editor(
 
         if primitive_type != new_primitive_type {
             // replace old primitive according to new type
-            selected_prim_op.primitive = primitive_references.new_default(new_primitive_type);
+            selected_prim_op.primitive =
+                primitive_references.create_primitive_default(new_primitive_type);
             objects_delta.update.insert(object_id);
 
             // update local vars for primitive editor
@@ -289,15 +290,17 @@ fn new_primitive_op_editor(
     if clicked_add {
         // create primitive
         let new_primitive: Rc<PrimitiveCell> = match gui_state.primitive_fields().p_type {
-            PrimitiveRefType::Sphere => primitive_references.new_sphere(
+            PrimitiveRefType::Sphere => primitive_references.create_sphere(
                 gui_state.primitive_fields().center,
+                Quat::IDENTITY,
                 gui_state.primitive_fields().radius,
             ),
-            PrimitiveRefType::Cube => primitive_references.new_cube(
+            PrimitiveRefType::Cube => primitive_references.create_cube(
                 gui_state.primitive_fields().center,
+                Quat::IDENTITY,
                 gui_state.primitive_fields().dimensions,
             ),
-            _ => primitive_references.new_default(gui_state.primitive_fields().p_type),
+            _ => primitive_references.create_primitive_default(gui_state.primitive_fields().p_type),
         };
 
         // append primitive op to selected object and mark for updating

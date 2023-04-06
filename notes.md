@@ -4,10 +4,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
-- transformation matrix for individual primitives
-	- start with hard-coded rotation matrix in shader
-	- if this works, scaling makes radius/dimensions redundant?
-	- get rid of center arg and hard-code it after tranform
+- gui code that edits engine stuff e.g. camera, objects, primitives -> funcitons that could be called via command interface!
 - json save theme setting
 - surface patterns (natural looking noise stuff)
 - path tracing heat map

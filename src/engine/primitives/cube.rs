@@ -1,5 +1,5 @@
 use super::{
-    primitive::{Primitive, PrimitiveId},
+    primitive::{default_dimensions, Primitive, PrimitiveId},
     primitive_ref_types::primitive_names,
     primitive_transform::PrimitiveTransform,
 };
@@ -9,7 +9,7 @@ use crate::{
         primitive_type_codes, PrimitiveOpBufferUnit, PrimitivePropsSlice,
     },
 };
-use glam::Vec3;
+use glam::{Quat, Vec3};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cube {
@@ -19,8 +19,16 @@ pub struct Cube {
 }
 
 impl Cube {
-    pub const fn new(id: PrimitiveId, center: Vec3, dimensions: Vec3) -> Self {
-        let transform = PrimitiveTransform { center };
+    pub const fn new_default(id: PrimitiveId) -> Self {
+        Self {
+            id,
+            transform: PrimitiveTransform::new_default(),
+            dimensions: default_dimensions(),
+        }
+    }
+
+    pub const fn new(id: PrimitiveId, center: Vec3, rotation: Quat, dimensions: Vec3) -> Self {
+        let transform = PrimitiveTransform { center, rotation };
         Self {
             id,
             transform,
@@ -59,7 +67,8 @@ impl Primitive for Cube {
     }
 
     fn aabb(&self) -> Aabb {
-        todo!("dimensions need to ba adjusted for rotation!");
+        // todo calculate only when props/transform changed!
+        //todo!("dimensions need to ba adjusted for rotation!");
         Aabb::new(self.transform, self.dimensions)
     }
 }

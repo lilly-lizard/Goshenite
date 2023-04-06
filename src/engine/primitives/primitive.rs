@@ -44,14 +44,12 @@ pub trait Primitive {
     fn aabb(&self) -> Aabb;
 }
 
-pub fn default_center() -> Vec3 {
-    Vec3::ZERO
-}
-
-pub fn default_radius() -> f32 {
+#[inline]
+pub const fn default_radius() -> f32 {
     1.
 }
 
-pub fn default_dimensions() -> Vec3 {
+#[inline]
+pub const fn default_dimensions() -> Vec3 {
     Vec3::ONE
 }

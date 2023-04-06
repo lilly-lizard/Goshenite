@@ -125,7 +125,7 @@ impl Default for PrimitiveEditorState {
     fn default() -> Self {
         Self {
             p_type: Default::default(),
-            center: primitive::default_center(),
+            center: Vec3::ZERO,
             radius: primitive::default_radius(),
             dimensions: primitive::default_dimensions(),
         }

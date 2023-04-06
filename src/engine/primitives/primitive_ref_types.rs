@@ -62,15 +62,15 @@ impl Default for PrimitiveRefType {
 }
 
 /// Use functions `borrow` and `borrow_mut` to access the `Sphere`.
-pub type SphereRef = RefCell<Sphere>;
+pub type SphereCell = RefCell<Sphere>;
 #[inline]
-pub fn new_sphere_ref(inner: Sphere) -> Rc<SphereRef> {
+pub fn new_sphere_ref(inner: Sphere) -> Rc<SphereCell> {
     Rc::new(RefCell::new(inner))
 }
 
 /// Use functions `borrow` and `borrow_mut` to access the `Cube`.
-pub type CubeRef = RefCell<Cube>;
+pub type CubeCell = RefCell<Cube>;
 #[inline]
-pub fn new_cube_ref(inner: Cube) -> Rc<CubeRef> {
+pub fn new_cube_ref(inner: Cube) -> Rc<CubeCell> {
     Rc::new(RefCell::new(inner))
 }

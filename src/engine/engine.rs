@@ -14,7 +14,7 @@ use crate::{
         gui::Gui,
     },
 };
-use glam::Vec3;
+use glam::{Quat, Vec3};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{env, sync::Arc};
@@ -78,15 +78,21 @@ impl Engine {
 
         // TESTING OBJECTS START
 
-        let sphere = object_collection
-            .primitive_references_mut()
-            .new_sphere(Vec3::new(0., 0., 0.), 0.5);
-        let cube = object_collection
-            .primitive_references_mut()
-            .new_cube(Vec3::new(-0.2, 0.2, 0.), glam::Vec3::splat(0.8));
-        let another_sphere = object_collection
-            .primitive_references_mut()
-            .new_sphere(Vec3::new(0.2, -0.2, 0.), 0.83);
+        let sphere = object_collection.primitive_references_mut().create_sphere(
+            Vec3::new(0., 0., 0.),
+            Quat::IDENTITY,
+            0.5,
+        );
+        let cube = object_collection.primitive_references_mut().create_cube(
+            Vec3::new(-0.2, 0.2, 0.),
+            Quat::IDENTITY,
+            glam::Vec3::splat(0.8),
+        );
+        let another_sphere = object_collection.primitive_references_mut().create_sphere(
+            Vec3::new(0.2, -0.2, 0.),
+            Quat::IDENTITY,
+            0.83,
+        );
 
         let object = object_collection.new_object(
             "Bruh".to_string(),

@@ -1,5 +1,5 @@
 use super::{
-    primitive::{Primitive, PrimitiveId},
+    primitive::{default_radius, Primitive, PrimitiveId},
     primitive_ref_types::primitive_names,
     primitive_transform::PrimitiveTransform,
 };
@@ -9,7 +9,7 @@ use crate::{
         primitive_type_codes, PrimitiveOpBufferUnit, PrimitivePropsSlice,
     },
 };
-use glam::Vec3;
+use glam::{Quat, Vec3};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sphere {
@@ -19,8 +19,16 @@ pub struct Sphere {
 }
 
 impl Sphere {
-    pub const fn new(id: PrimitiveId, center: Vec3, radius: f32) -> Self {
-        let transform = PrimitiveTransform { center };
+    pub const fn new_default(id: PrimitiveId) -> Self {
+        Self {
+            id,
+            transform: PrimitiveTransform::new_default(),
+            radius: default_radius(),
+        }
+    }
+
+    pub const fn new(id: PrimitiveId, center: Vec3, rotation: Quat, radius: f32) -> Self {
+        let transform = PrimitiveTransform { center, rotation };
         Self {
             id,
             transform,
@@ -59,6 +67,7 @@ impl Primitive for Sphere {
     }
 
     fn aabb(&self) -> Aabb {
+        // todo calculate only when props/transform changed!
         Aabb::new(self.transform, Vec3::splat(2. * self.radius))
     }
 }
