@@ -1,13 +1,17 @@
-use crate::engine::{
-    object::{
-        object::{ObjectCell, PrimitiveOpId},
-        operation::Operation,
+use crate::{
+    engine::{
+        object::{
+            object::{ObjectCell, ObjectId, PrimitiveOp, PrimitiveOpId},
+            object_collection::ObjectCollection,
+            operation::Operation,
+        },
+        primitives::{primitive, primitive_ref_types::PrimitiveRefType},
     },
-    primitives::{primitive, primitive_ref_types::PrimitiveRefType},
+    helper::list::choose_closest_valid_index,
 };
 use egui_dnd::DragDropUi;
 use glam::Vec3;
-use std::rc::Weak;
+use std::rc::{Rc, Weak};
 
 /// Wherver or not different windows are open
 #[derive(Clone)]
@@ -68,6 +72,38 @@ impl GuiState {
     pub fn reset_primitive_op_fields(&mut self) {
         self.op_field = Default::default();
         self.primitive_fields = Default::default();
+    }
+
+    /// Selects a primitive op in `self` from `primitive_ops` which has the closest index to
+    /// `target_prim_op_index`. If `primitive_ops` is empty, deselects primitive op in `self`.
+    pub fn select_primitive_op_closest_index(
+        &mut self,
+        primitive_ops: &Vec<PrimitiveOp>,
+        target_prim_op_index: usize,
+    ) {
+        if let Some(select_index) = choose_closest_valid_index(primitive_ops, target_prim_op_index)
+        {
+            let select_primitive_op_id = primitive_ops[select_index].id();
+            self.set_selected_primitive_op_id(select_primitive_op_id)
+        } else {
+            self.deselect_primitive_op();
+        }
+    }
+
+    /// Selects an object in `self` from `object_collection` which has the closest id to
+    /// `target_object_id`. If `object_collection` is empty, deselects object in `self`.
+    pub fn select_object_closest_index(
+        &mut self,
+        object_collection: &ObjectCollection,
+        target_object_id: ObjectId,
+    ) {
+        if let Some(select_object) =
+            choose_object_closest_index(object_collection, target_object_id)
+        {
+            self.set_selected_object(Rc::downgrade(&select_object));
+        } else {
+            self.deselect_object();
+        }
     }
 }
 
@@ -130,4 +166,20 @@ impl Default for PrimitiveEditorState {
             dimensions: primitive::default_dimensions(),
         }
     }
+}
+
+/// Returns an `Rc` to an object from `object_collection` which has the closest id to
+/// the object `target_object_id`.
+pub fn choose_object_closest_index(
+    object_collection: &ObjectCollection,
+    target_object_id: ObjectId,
+) -> Option<Rc<ObjectCell>> {
+    let mut select_object: Option<Rc<ObjectCell>> = None;
+    for (&current_id, current_object) in object_collection.objects().iter() {
+        select_object = Some(current_object.clone());
+        if current_id >= target_object_id {
+            break;
+        }
+    }
+    return select_object;
 }

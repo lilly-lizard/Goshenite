@@ -15,7 +15,6 @@ use crate::{
             primitive_references::PrimitiveReferences, sphere::Sphere,
         },
     },
-    helper::list::choose_closest_valid_index,
 };
 use egui::{ComboBox, DragValue, RichText, TextStyle};
 use egui_dnd::{DragDropResponse, DragableItem};
@@ -224,21 +223,16 @@ fn existing_primitive_op_editor(
                 "invalid index {} when attempting to remove primitive op from object {:?}",
                 selected_prim_op_index, object_id
             );
-            gui_state.deselect_primitive_op();
         } else {
             // successful removal -> mark object for update
             objects_delta.update.insert(object_id);
-
-            // now select a different primitive op
-            if let Some(select_index) =
-                choose_closest_valid_index(selected_object.primitive_ops(), selected_prim_op_index)
-            {
-                let select_primitive_op_id = selected_object.primitive_ops()[select_index].id();
-                gui_state.set_selected_primitive_op_id(select_primitive_op_id)
-            } else {
-                gui_state.deselect_primitive_op();
-            }
         }
+
+        // now select a different primitive op
+        gui_state.select_primitive_op_closest_index(
+            selected_object.primitive_ops(),
+            selected_prim_op_index,
+        );
     }
 }
 

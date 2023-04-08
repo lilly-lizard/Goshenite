@@ -125,6 +125,7 @@ impl Object {
                 raw_id: id.raw_id(),
             })
         }
+        // todo recycle_id (for primitive too? on drop?)
     }
 
     pub fn remove_primitive_op_index(&mut self, index: usize) -> Result<(), CollectionError> {
@@ -137,6 +138,7 @@ impl Object {
         }
         self.primitive_ops.remove(index);
         Ok(())
+        // todo recycle_id
     }
 
     /// Returns the id of the newly created primitive op

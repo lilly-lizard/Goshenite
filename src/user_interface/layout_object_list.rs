@@ -33,12 +33,19 @@ pub fn object_list_layout(
         // delete object button
         if let Some(selected_obeject_ref) = gui_state.selected_object() {
             if let Some(selected_object) = selected_obeject_ref.upgrade() {
-                let delete_response =
-                    ui_h.button(format!("Delete: \"{}\"", selected_object.borrow().name()));
-                if delete_response.clicked() {
-                    object_collection.remove_object(selected_object.borrow().id());
+                let delete_clicked = ui_h
+                    .button(format!("Delete: \"{}\"", selected_object.borrow().name()))
+                    .clicked();
+
+                if delete_clicked {
+                    let selected_object_id = selected_object.borrow().id();
+                    let _ = object_collection.remove_object(selected_object_id);
+
                     // tell the rest of the engine there's been a change to the object collection
                     objects_delta.remove.insert(selected_object.borrow().id());
+
+                    // select closest object in list
+                    gui_state.select_object_closest_index(&object_collection, selected_object_id);
                 }
             } else {
                 debug!("selected object dropped. deselecting object...");
@@ -48,8 +55,7 @@ pub fn object_list_layout(
     });
 
     // object list
-    let objects = object_collection.objects();
-    for (current_id, current_object) in objects.iter() {
+    for (current_id, current_object) in object_collection.objects().iter() {
         let label_text = RichText::new(format!(
             "{} - {}",
             current_id.raw_id(),

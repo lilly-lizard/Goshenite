@@ -1,7 +1,6 @@
+use super::object::object::ObjectId;
 use crate::renderer::shader_interfaces::vertex_inputs::BoundingBoxVertex;
 use glam::Vec3;
-
-use super::{object::object::ObjectId, primitives::primitive_transform::PrimitiveTransform};
 
 pub const AABB_VERTEX_COUNT: usize = 36;
 

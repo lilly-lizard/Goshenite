@@ -1,7 +1,7 @@
 use super::object::{new_object_ref, Object, ObjectCell, ObjectId};
 use crate::{
     engine::primitives::{primitive::PrimitiveCell, primitive_references::PrimitiveReferences},
-    helper::unique_id_gen::UniqueIdGen,
+    helper::{more_errors::CollectionError, unique_id_gen::UniqueIdGen},
 };
 use glam::Vec3;
 #[allow(unused_imports)]
@@ -59,7 +59,7 @@ impl ObjectCollection {
         object
     }
 
-    pub fn remove_object(&mut self, object_id: ObjectId) {
+    pub fn remove_object(&mut self, object_id: ObjectId) -> Result<(), CollectionError> {
         let removed_object = self.objects.remove(&object_id);
 
         if removed_object.is_some() {
@@ -68,8 +68,14 @@ impl ObjectCollection {
 
             // tell object id generator it can reuse the old object id now
             if let Err(e) = self.unique_id_gen.recycle_id(object_id.raw_id()) {
-                warn!("{}", e);
+                warn!("{}", e); // todo should probably handle this somehow...
             }
+
+            return Ok(());
+        } else {
+            return Err(CollectionError::InvalidId {
+                raw_id: object_id.raw_id(),
+            });
         }
     }
 
