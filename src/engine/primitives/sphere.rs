@@ -67,7 +67,7 @@ impl Primitive for Sphere {
     }
 
     fn aabb(&self) -> Aabb {
-        // todo calculate only when props/transform changed!
-        Aabb::new(self.transform, Vec3::splat(2. * self.radius))
+        // todo calculate only when props/transform changed? will need to make members private...
+        Aabb::new(self.transform.center, Vec3::splat(2. * self.radius))
     }
 }

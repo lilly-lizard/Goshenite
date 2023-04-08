@@ -68,7 +68,7 @@ impl Primitive for Cube {
 
     fn aabb(&self) -> Aabb {
         // todo calculate only when props/transform changed!
-        //todo!("dimensions need to ba adjusted for rotation!");
-        Aabb::new(self.transform, self.dimensions)
+        //todo!("dimensions need to be adjusted for rotation!");
+        Aabb::new(self.transform.center, self.dimensions)
     }
 }

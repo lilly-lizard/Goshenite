@@ -9,7 +9,23 @@ use crate::{
 use glam::Vec3;
 use std::{cell::RefCell, rc::Rc};
 
-pub type PrimitiveId = UniqueId;
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PrimitiveId(pub UniqueId);
+impl PrimitiveId {
+    pub const fn raw_id(&self) -> UniqueId {
+        self.0
+    }
+}
+impl From<UniqueId> for PrimitiveId {
+    fn from(id: UniqueId) -> Self {
+        Self(id)
+    }
+}
+impl std::fmt::Display for PrimitiveId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.raw_id())
+    }
+}
 
 /// Use functions `borrow` and `borrow_mut` to access the `Primitive`.
 pub type PrimitiveCell = RefCell<dyn Primitive>;
@@ -46,7 +62,7 @@ pub trait Primitive {
 
 #[inline]
 pub const fn default_radius() -> f32 {
-    1.
+    0.5
 }
 
 #[inline]

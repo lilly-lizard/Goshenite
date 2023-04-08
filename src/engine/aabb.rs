@@ -15,11 +15,11 @@ pub struct Aabb {
 }
 
 impl Aabb {
-    /// `dimensions` is the x/y/z lengths of the box.
-    pub fn new(transform: PrimitiveTransform, dimensions: Vec3) -> Self {
+    /// `dimensions` are the x/y/z lengths of the box.
+    pub fn new(center: Vec3, dimensions: Vec3) -> Self {
         let dimensions_halved = dimensions / 2.;
-        let max = transform.center + dimensions_halved;
-        let min = transform.center - dimensions_halved;
+        let max = center + dimensions_halved;
+        let min = center - dimensions_halved;
 
         Self { max, min }
     }

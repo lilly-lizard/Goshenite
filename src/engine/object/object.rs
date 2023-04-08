@@ -38,6 +38,11 @@ impl From<UniqueId> for ObjectId {
         Self(id)
     }
 }
+impl std::fmt::Display for ObjectId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.raw_id())
+    }
+}
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PrimitiveOpId(pub UniqueId);
@@ -49,6 +54,11 @@ impl PrimitiveOpId {
 impl From<UniqueId> for PrimitiveOpId {
     fn from(id: UniqueId) -> Self {
         Self(id)
+    }
+}
+impl std::fmt::Display for PrimitiveOpId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.raw_id())
     }
 }
 
