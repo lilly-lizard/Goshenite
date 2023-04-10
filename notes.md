@@ -4,6 +4,10 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- can all gui manip stuff be passed to command manager?
+	- would be great to have ui in its own thread so that input is always processed
+	- would be great to get rid of weak ptrs/ref counting/cells
+	- gonna have command pallete anyway so ideal to unify interface
 - debug outline for aabbs
 - gui code that edits engine stuff e.g. camera, objects, primitives -> funcitons that could be called via command interface!
 - json save theme setting

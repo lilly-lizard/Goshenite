@@ -13,6 +13,7 @@ use crate::{
         PrimitiveOpPacket,
     },
 };
+use egui_dnd::utils::{shift_slice, ShiftSliceError};
 use glam::Vec3;
 use std::{cell::RefCell, rc::Rc};
 
@@ -154,8 +155,12 @@ impl Object {
         id
     }
 
-    pub fn shift_primitive_ops(&mut self, source_index: usize, target_index: usize) {
-        egui_dnd::utils::shift_vec(source_index, target_index, &mut self.primitive_ops);
+    pub fn shift_primitive_ops(
+        &mut self,
+        source_index: usize,
+        target_index: usize,
+    ) -> Result<(), ShiftSliceError> {
+        shift_slice(source_index, target_index, &mut self.primitive_ops)
     }
 
     pub fn encoded_primitive_ops(&self) -> Vec<PrimitiveOpBufferUnit> {

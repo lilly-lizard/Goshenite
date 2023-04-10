@@ -132,8 +132,9 @@ fn existing_primitive_op_editor(
         match selected_object.get_primitive_op_mut(selected_prim_op_id) {
             Some((index, prim_op)) => (index, prim_op),
             None => {
-                // selected_prim_op_id not in selected_obejct! invalid id so we deselect primitive op.
+                // selected_prim_op_id not in selected_obejct -> invalid id
                 gui_state.deselect_primitive_op();
+
                 new_primitive_op_editor(
                     ui,
                     gui_state,
@@ -388,10 +389,11 @@ pub fn cube_editor_ui(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &mut Vec
 }
 
 impl DragableItem for PrimitiveOp {
-    fn id(&self) -> egui::Id {
-        egui::Id::new(format!("primitive op {}", self.primitive.borrow().id()))
+    fn drag_id(&self) -> egui::Id {
+        egui::Id::new(format!("p-op-drag{}", self.id()))
     }
 }
+
 /// Draw the primitive op list. each list element can be dragged/dropped elsewhere in the list,
 /// or selected with a button for editing.
 pub fn primitive_op_list(
@@ -411,7 +413,6 @@ pub fn primitive_op_list(
         gui_state.deselect_primitive_op();
     }
 
-    let mut list_drag_state = gui_state.primtive_op_list().clone().unwrap_or_default();
     let selected_prim_op = match gui_state.selected_primitive_op_id() {
         Some(selected_prim_op_id) => {
             match selected_object.get_primitive_op(selected_prim_op_id) {
@@ -427,21 +428,24 @@ pub fn primitive_op_list(
     };
 
     // draw each item in the primitive op list
-    let drag_drop_response = list_drag_state.ui::<PrimitiveOp>(
+    let mut prim_op_list_drag_state = gui_state.primtive_op_list().clone();
+    let drag_drop_response = prim_op_list_drag_state.list_ui::<PrimitiveOp>(
         ui,
         selected_object.primitive_ops().iter(),
-        // function to draw a single item in the list
-        |ui, handle, index, primitive_op| {
+        // function to draw a single primitive op entry in the list
+        |ui, drag_handle, index, primitive_op| {
             let draggable_text =
                 RichText::new(format!("{}", index)).text_style(TextStyle::Monospace);
 
-            let button_text = RichText::new(format!(
+            // label text
+            let primitive_op_text = RichText::new(format!(
                 "{} {}",
                 primitive_op.op.name(),
                 primitive_op.primitive.borrow().type_name()
             ))
             .text_style(TextStyle::Monospace);
 
+            // check if this primitive op is selected
             let is_selected = match selected_prim_op {
                 Some((_i, selected_prim_op)) => selected_prim_op.id() == primitive_op.id(),
                 None => false,
@@ -450,23 +454,27 @@ pub fn primitive_op_list(
             // draw ui for this primitive op
             ui.horizontal(|ui_h| {
                 // anything inside the handle can be used to drag the item
-                handle.ui(ui_h, primitive_op, |handle_ui| {
+                drag_handle.ui(ui_h, primitive_op, |handle_ui| {
                     handle_ui.label(draggable_text);
                 });
 
                 // label to select this primitive op
-                if ui_h.selectable_label(is_selected, button_text).clicked() {
+                let prim_op_clicked = ui_h
+                    .selectable_label(is_selected, primitive_op_text)
+                    .clicked();
+
+                // if clicked, select it
+                if prim_op_clicked {
                     gui_state.set_selected_primitive_op_id(primitive_op.id());
                 }
             });
         },
     );
+    gui_state.set_primitive_op_list(prim_op_list_drag_state);
 
     // if an item has been dropped after being dragged, re-arrange the primtive ops list
     if let DragDropResponse::Completed(drag_indices) = drag_drop_response {
         selected_object.shift_primitive_ops(drag_indices.source, drag_indices.target);
         objects_delta.update.insert(selected_object.id());
     }
-
-    gui_state.set_primitive_op_list(list_drag_state);
 }
