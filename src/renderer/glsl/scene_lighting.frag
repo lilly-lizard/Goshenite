@@ -37,9 +37,9 @@ void main()
 		// ray miss: draw background
 
 		// clip space position in frame (between -1 and 1)
-		vec2 pos_uv = in_uv * 2. - 1.;
+		vec4 pos_uv = vec4(in_uv.xy, 1., 1.);
 		// ray direction in world space
-		vec3 ray_d = normalize((cam.proj_view_inverse * vec4(pos_uv.x, -pos_uv.y, 1., 1.)).xyz);
+		vec3 ray_d = normalize((cam.proj_view_inverse * pos_uv).xyz);
 		out_color = vec4(background(ray_d), 1.);
 	} else {
 		// ray hit: just output normal as color for now

@@ -5,7 +5,7 @@ use crate::{
     helper::angle::Angle,
 };
 use anyhow::ensure;
-use glam::{DMat3, DMat4, DVec2, DVec3};
+use glam::{DMat3, DMat4, DVec2, DVec3, DVec4};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::rc::Weak;
@@ -168,15 +168,42 @@ impl Camera {
                 }
             }
         };
+
         DMat4::look_at_rh(self.position, target_pos, config::WORLD_SPACE_UP.as_dvec3())
     }
 
-    pub fn proj_matrix(&self) -> DMat4 {
+    pub fn proj_matrix_glam(&self) -> DMat4 {
+        // todo https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
+        // don't need to invert y in shaders
+        // inverse(proj_view_inverse) works fine
+        // view mat too?
         DMat4::perspective_rh(
             self.fov.radians(),
             self.aspect_ratio as f64,
             self.near_plane,
             self.far_plane,
+        )
+    }
+
+    pub fn proj_matrix(&self) -> DMat4 {
+        let near = self.near_plane;
+        let far = self.far_plane;
+
+        let fov_vertical = self.fov.radians();
+        let (sin_fov, cos_fov) = (0.5 * fov_vertical).sin_cos();
+        let focal_length = cos_fov / sin_fov;
+
+        let w = focal_length / self.aspect_ratio as f64;
+        let h = -focal_length;
+
+        let a = near / (far - near);
+        let b = far * a;
+
+        DMat4::from_cols(
+            DVec4::new(w, 0.0, 0.0, 0.0),
+            DVec4::new(0.0, h, 0.0, 0.0),
+            DVec4::new(0.0, 0.0, a, -1.),
+            DVec4::new(0.0, 0.0, b, 0.0),
         )
     }
 
@@ -213,6 +240,7 @@ impl Camera {
                 }
             }
         };
+
         // only set normal if cross product won't be zero i.e. normal doesn't change if facing up
         let up = config::WORLD_SPACE_UP.as_dvec3();
         if direction != up {

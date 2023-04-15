@@ -41,8 +41,10 @@ impl CameraUniformBuffer {
         framebuffer_dimensions: [f32; 2],
         is_srgb_framebuffer: bool,
     ) -> Self {
+        let proj_view = camera.proj_matrix() * camera.view_matrix();
+        let proj_view_inverse = glam::DMat4::inverse(&proj_view);
         Self::new(
-            glam::DMat4::inverse(&(camera.proj_matrix() * camera.view_matrix())).as_mat4(),
+            proj_view_inverse.as_mat4(),
             camera.position().as_vec3(),
             framebuffer_dimensions,
             camera.near_plane() as f32,

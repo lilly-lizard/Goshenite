@@ -474,7 +474,17 @@ pub fn primitive_op_list(
 
     // if an item has been dropped after being dragged, re-arrange the primtive ops list
     if let DragDropResponse::Completed(drag_indices) = drag_drop_response {
-        selected_object.shift_primitive_ops(drag_indices.source, drag_indices.target);
+        let shift_res =
+            selected_object.shift_primitive_ops(drag_indices.source, drag_indices.target);
+
+        if let Err(e) = shift_res {
+            error!(
+                "bug when trying to re-arrange primitive op list of object {}: {}",
+                selected_object.id().raw_id(),
+                e
+            );
+        }
+
         objects_delta.update.insert(selected_object.id());
     }
 }

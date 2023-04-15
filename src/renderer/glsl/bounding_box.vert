@@ -17,9 +17,11 @@ layout (set = 0, binding = 0) uniform Camera {
 void main()
 {
 	gl_Position = inverse(cam.proj_view_inverse) * in_position;
-	gl_Position.y = -gl_Position.y; // fuck knows why. fix this cpu side to save a couple of cycles?
+	//gl_Position.y = -gl_Position.y;
+	//gl_Position.z = 1. - gl_Position.z; // because there's something wacky about the proj matrix??
 
 	out_object_id = in_object_id;
+
+	// this could remove a few cycles from the frag shader but it results in warping along the aabb edges! i assume the interpolation is to blame somehow but idk tbh
 	//out_uv = gl_Position.xy / gl_Position.w; // clip space xy position (between -1 and 1)
-	// todo this could remove a few cycles from the frag shader but it results in warping along the aabb edges! i assume the interpolation is to blame somehow but idk tbh
 }

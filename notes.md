@@ -4,6 +4,13 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- todo https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
+- don't need to invert y in shaders
+- inverse(proj_view_inverse) works fine
+- view mat too?
+- once sure depth is working -> aabb front face culling
+- depth value is break condition instead of far (after conversion to s)
+
 - can all gui manip stuff be passed to command manager?
 	- would be great to have ui in its own thread so that input is always processed
 	- would be great to get rid of weak ptrs/ref counting/cells
@@ -113,15 +120,21 @@ comments by action or object e.g. a search for 'transition image layout' wouldn'
 
 # design decisions
 
-create objects and coloring from editor, set to vary against variables etc
-possibilities:
-- sequence of primitives, transformations and combinations in storage buffer
-	e.g. buffer: Vec<u32> = { num primitives, SPHERE, center, radius, UNION, SPHERE, center, radius... }
-- color?
+- create objects and coloring from editor, set to vary against variables etc
 - define uv functions and associate textures
 - editor generates shaders. real time feedback?
 - live feedback modes e.g. sculpting mode just has primitives and normals
-- **world space**: z up; right handed (x forward, y left), camera space: z depth
+- world space: z up; right handed (x forward, y left), camera space: z depth
+- front or back-face culling?
+	- going with front which gives us the optimised far distance cutoff
+	- far is more important because it allows us to cut lots of threads short when camera is close to the object and it requires more fragments
+	- at longer distances where the near is more important, there are less fragments anyway
+	- can have push constant or something to describe optimised near using camera pos, object pos, object aabb abs max (sphere around it)
+- bounding mesh or aabb?
+	- bounding mesh is tighter meaning less frag invocations that miss
+	- however aabbs are easy to combine, where as bounding meshes for an object would result in overlapping back face fragments, lots if the object has lots of primitives
+	- big bottle-neck is map() fn but calls to map in miss case are less because the jumps are bigger and the there's an optimised far condition
+	- if bounding meshes could be combined then it will become optimal
 
 ## ideas
 

@@ -17,14 +17,16 @@ use crate::{
     config::ENGINE_NAME,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
-    renderer::vulkan_init::{create_command_pool, create_render_command_buffers},
+    renderer::vulkan_init::{
+        choose_depth_buffer_format, create_command_pool, create_render_command_buffers,
+    },
     user_interface::{camera::Camera, gui::Gui},
 };
 use anyhow::Context;
 use ash::{vk, Entry};
 use bort::{
-    is_format_srgb, ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback,
-    DebugCallbackProperties, Device, Fence, Framebuffer, Image, ImageView, Instance,
+    guaranteed_pure_depth_format, is_format_srgb, ApiVersion, Buffer, CommandBuffer, CommandPool,
+    DebugCallback, DebugCallbackProperties, Device, Fence, Framebuffer, Image, ImageView, Instance,
     MemoryAllocator, Queue, RenderPass, Semaphore, Surface, Swapchain, SwapchainImage,
 };
 use egui::TexturesDelta;
@@ -185,11 +187,15 @@ impl RenderManager {
 
         let swapchain_image_views = create_swapchain_image_views(&swapchain)?;
 
-        let render_pass = create_render_pass(device.clone(), swapchain.properties())?;
+        let depth_buffer_format = choose_depth_buffer_format(&physical_device)?;
+
+        let render_pass =
+            create_render_pass(device.clone(), swapchain.properties(), depth_buffer_format)?;
 
         let depth_buffer = create_depth_buffer(
             memory_allocator.clone(),
             swapchain.properties().dimensions(),
+            depth_buffer_format,
         )?;
 
         let normal_buffer = create_normal_buffer(
@@ -475,6 +481,10 @@ impl RenderManager {
 
         // recreate the swapchain
         let swapchain_properties = swapchain_properties(&self.device, &self.surface, &self.window)?;
+        debug!(
+            "creating swapchain with dimensions: {:?}",
+            swapchain_properties.width_height
+        );
         self.swapchain = self
             .swapchain
             .recreate_replace(swapchain_properties)
@@ -484,7 +494,13 @@ impl RenderManager {
         self.is_swapchain_srgb = is_format_srgb(self.swapchain.properties().surface_format.format);
         self.swapchain_image_views = create_swapchain_image_views(&self.swapchain)?;
 
-        self.render_pass = create_render_pass(self.device.clone(), self.swapchain.properties())?;
+        let depth_buffer_format = self.depth_buffer.image().properties().format;
+
+        self.render_pass = create_render_pass(
+            self.device.clone(),
+            self.swapchain.properties(),
+            depth_buffer_format,
+        )?;
 
         self.normal_buffer = create_normal_buffer(
             self.memory_allocator.clone(),
@@ -499,6 +515,7 @@ impl RenderManager {
         self.depth_buffer = create_depth_buffer(
             self.memory_allocator.clone(),
             self.swapchain.properties().dimensions(),
+            depth_buffer_format,
         )?;
 
         self.framebuffers = create_framebuffers(

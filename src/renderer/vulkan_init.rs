@@ -1,7 +1,7 @@
 use super::{
     config_renderer::{
-        FORMAT_DEPTH_BUFFER, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER, FRAMES_IN_FLIGHT,
-        VULKAN_VER_MAJ, VULKAN_VER_MIN,
+        FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER, FRAMES_IN_FLIGHT, VULKAN_VER_MAJ,
+        VULKAN_VER_MIN,
     },
     shader_interfaces::{
         primitive_op_buffer::PRIMITIVE_ID_INVALID, uniform_buffers::CameraUniformBuffer,
@@ -304,6 +304,10 @@ pub fn create_swapchain(
     window: &Window,
 ) -> anyhow::Result<Arc<Swapchain>> {
     let swapchain_properties = swapchain_properties(&device, &surface, window)?;
+    debug!(
+        "creating swapchain with dimensions: {:?}",
+        swapchain_properties.width_height
+    );
 
     let swapchain =
         Swapchain::new(device, surface, swapchain_properties).context("creating swapchain")?;
@@ -329,6 +333,42 @@ pub fn create_swapchain_image_views(
     Ok(swapchain_images)
 }
 
+/// We want a SFLOAT format for our reverse z buffer (prefer VK_FORMAT_D32_SFLOAT)
+pub fn choose_depth_buffer_format(physical_device: &PhysicalDevice) -> anyhow::Result<vk::Format> {
+    let d32_props = unsafe {
+        physical_device
+            .instance()
+            .inner()
+            .get_physical_device_format_properties(physical_device.handle(), vk::Format::D32_SFLOAT)
+    };
+
+    if d32_props
+        .optimal_tiling_features
+        .contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT)
+    {
+        return Ok(vk::Format::D32_SFLOAT);
+    }
+
+    let d32_s8_props = unsafe {
+        physical_device
+            .instance()
+            .inner()
+            .get_physical_device_format_properties(
+                physical_device.handle(),
+                vk::Format::D32_SFLOAT_S8_UINT,
+            )
+    };
+
+    if d32_s8_props
+        .optimal_tiling_features
+        .contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT)
+    {
+        return Ok(vk::Format::D32_SFLOAT_S8_UINT);
+    }
+
+    anyhow::bail!("no sfloat depth buffer formats supported by this physical device")
+}
+
 pub mod render_pass_indices {
     pub const ATTACHMENT_SWAPCHAIN: usize = 0;
     pub const ATTACHMENT_NORMAL: usize = 1;
@@ -343,6 +383,7 @@ pub mod render_pass_indices {
 
 fn attachment_descriptions(
     swapchain_properties: &SwapchainProperties,
+    depth_buffer_format: vk::Format,
 ) -> [vk::AttachmentDescription; render_pass_indices::NUM_ATTACHMENTS] {
     let mut attachment_descriptions =
         [vk::AttachmentDescription::default(); render_pass_indices::NUM_ATTACHMENTS];
@@ -383,7 +424,7 @@ fn attachment_descriptions(
     // depth buffer
     attachment_descriptions[render_pass_indices::ATTACHMENT_DEPTH_BUFFER] =
         vk::AttachmentDescription::builder()
-            .format(FORMAT_DEPTH_BUFFER)
+            .format(depth_buffer_format)
             .samples(vk::SampleCountFlags::TYPE_1)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::DONT_CARE)
@@ -481,8 +522,10 @@ fn subpass_dependencies() -> [vk::SubpassDependency; 2] {
 pub fn create_render_pass(
     device: Arc<Device>,
     swapchain_properties: &SwapchainProperties,
+    depth_buffer_format: vk::Format,
 ) -> anyhow::Result<Arc<RenderPass>> {
-    let attachment_descriptions = attachment_descriptions(swapchain_properties);
+    let attachment_descriptions =
+        attachment_descriptions(swapchain_properties, depth_buffer_format);
     let subpasses = subpasses();
     let subpass_dependencies = subpass_dependencies();
 
@@ -499,11 +542,12 @@ pub fn create_render_pass(
 pub fn create_depth_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
+    depth_buffer_format: vk::Format,
 ) -> anyhow::Result<Arc<ImageView<Image>>> {
     let image = Image::new_tranient(
         memory_allocator,
         dimensions,
-        FORMAT_DEPTH_BUFFER,
+        depth_buffer_format,
         vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
     )
     .context("creating depth buffer image")?;

@@ -34,6 +34,8 @@ layout (set = 1, binding = 0, std430) readonly buffer Object {
 	uint primitive_ops[];
 } object;
 
+// todo layout(depth_less) out float gl_FragDepth; https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/depth.adoc
+
 // ~~~ Code interpreters ~~~
 
 // todo need radius?
@@ -189,13 +191,23 @@ vec3 calcNormal(vec3 pos)
 					 e.xxx * map(pos + e.xxx).d);
 }
 
+float dist_to_depth(float dist, float near, float far) {
+	return (dist - near) / (far - near);
+}
+
+float depth_to_dist(float depth, float near, float far) {
+	return near + depth * (far - near);
+}
+
 // Render the scene with sphere tracing and write the normal and object id.
 // When the ray misses, calls discard. Otherwise writes depth of a hit primitive.
 // https://michaelwalczyk.com/blog-ray-marching.html
 void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist, out vec3 o_normal, out uint o_object_id)
 {
-	// total distance traveled
-	float dist = 0.;
+	// total distance traveled. start at the frag depth
+	float dist = cam.near;// + gl_FragCoord.z * (cam.far - cam.near);
+
+	// todo MAX_STEPS as hit condition instead of miss? may get rid of some wacky artifacts...
 	for (int i = 0; i < MAX_STEPS && dist < cam.far; i++) {
 		// get the world space position from the current marching distance
 		vec3 current_pos = ray_o + ray_d * dist;
@@ -218,27 +230,27 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist, out vec3 o_
 	discard;
 }
 
-float depth(float near, float far, float z) {
-	return (z - near) / (far - near);
-}
-
 // ~~~ Main ~~~
 
 void main()
 {
+	// out_normal = vec4(0.9, 0.7, 0.5, 1.);
+	// out_object_id = 1;
+	// return;
+	
 	// ray direction in world space
 	vec2 screen_space = gl_FragCoord.xy + vec2(0.5);
 	vec2 clip_space = screen_space / cam.framebuffer_dims * 2. - 1.;
-	vec4 ray_d = cam.proj_view_inverse * vec4(clip_space.x, -clip_space.y, 1., 1.);
+	vec4 ray_d = cam.proj_view_inverse * vec4(clip_space.xy * 500., -1., 0.);
 	vec3 ray_d_norm = normalize(ray_d.xyz);
 
 	// render scene
+	float z;
 	vec3 normal;
 	uint object_id;
-	float z;
 	ray_march(cam.position.xyz, ray_d_norm, z, normal, object_id);
 
-	gl_FragDepth = depth(cam.near, cam.far, z);
+	gl_FragDepth = dist_to_depth(z, cam.near, cam.far);
 	out_normal = vec4(normal, 0.);
 	out_object_id = object_id;
 }

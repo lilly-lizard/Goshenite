@@ -12,7 +12,8 @@ use bort::{
     DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
     DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState, GraphicsPipeline,
     GraphicsPipelineProperties, MemoryAllocator, PipelineAccess, PipelineLayout,
-    PipelineLayoutProperties, RenderPass, ShaderModule, ShaderStage, ViewportState,
+    PipelineLayoutProperties, RasterizationState, RenderPass, ShaderModule, ShaderStage,
+    ViewportState,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -273,9 +274,15 @@ fn create_pipeline(
     let depth_stencil_state = DepthStencilState {
         depth_test_enable: true,
         depth_write_enable: true,
-        depth_compare_op: vk::CompareOp::LESS,
+        depth_compare_op: vk::CompareOp::LESS_OR_EQUAL,
         depth_bounds_test_enable: false,
         stencil_test_enable: false,
+        ..Default::default()
+    };
+
+    let raster_state = RasterizationState {
+        // this means that we can still draw when the camera is inside a bounding box
+        cull_mode: vk::CullModeFlags::NONE,
         ..Default::default()
     };
 
@@ -286,6 +293,7 @@ fn create_pipeline(
     pipeline_properties.vertex_input_state = BoundingBoxVertex::vertex_input_state();
     pipeline_properties.viewport_state = viewport_state;
     pipeline_properties.depth_stencil_state = depth_stencil_state;
+    pipeline_properties.rasterization_state = raster_state;
 
     let pipeline = GraphicsPipeline::new(
         pipeline_layout,
