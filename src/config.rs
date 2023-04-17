@@ -1,4 +1,4 @@
-use glam::DVec3;
+use glam::{DVec3, Vec3};
 use log::LevelFilter;
 
 pub const ENGINE_NAME: &str = "Goshenite";
@@ -40,6 +40,10 @@ impl WorldSpaceUp {
     #[inline]
     pub fn as_dvec3(self) -> DVec3 {
         self.into()
+    }
+    #[inline]
+    pub fn as_vec3(self) -> Vec3 {
+        self.as_dvec3().as_vec3()
     }
 }
 

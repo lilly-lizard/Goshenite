@@ -667,7 +667,7 @@ pub fn create_clear_values() -> Vec<vk::ClearValue> {
         render_pass_indices::ATTACHMENT_DEPTH_BUFFER,
         vk::ClearValue {
             depth_stencil: vk::ClearDepthStencilValue {
-                depth: 1.,
+                depth: 0.,
                 stencil: 0,
             },
         },

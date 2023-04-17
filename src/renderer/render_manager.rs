@@ -25,8 +25,8 @@ use crate::{
 use anyhow::Context;
 use ash::{vk, Entry};
 use bort::{
-    guaranteed_pure_depth_format, is_format_srgb, ApiVersion, Buffer, CommandBuffer, CommandPool,
-    DebugCallback, DebugCallbackProperties, Device, Fence, Framebuffer, Image, ImageView, Instance,
+    is_format_srgb, ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback,
+    DebugCallbackProperties, Device, Fence, Framebuffer, Image, ImageView, Instance,
     MemoryAllocator, Queue, RenderPass, Semaphore, Surface, Swapchain, SwapchainImage,
 };
 use egui::TexturesDelta;

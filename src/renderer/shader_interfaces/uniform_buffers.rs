@@ -1,4 +1,4 @@
-use crate::user_interface::camera::Camera;
+use crate::user_interface::camera::{Camera, ProjectionMatrixReturn};
 use glam::{Mat4, Vec3};
 
 #[repr(C)]
@@ -41,10 +41,18 @@ impl CameraUniformBuffer {
         framebuffer_dimensions: [f32; 2],
         is_srgb_framebuffer: bool,
     ) -> Self {
-        let proj_view = camera.proj_matrix() * camera.view_matrix();
-        let proj_view_inverse = glam::DMat4::inverse(&proj_view);
+        let ProjectionMatrixReturn {
+            proj,
+            proj_inverse: _,
+            proj_a: _,
+            proj_b: _,
+        } = camera.projection_matrices();
+
+        let proj_view = proj * camera.view_matrix();
+        let proj_view_inverse = Mat4::inverse(&proj_view);
+
         Self::new(
-            proj_view_inverse.as_mat4(),
+            proj_view_inverse,
             camera.position().as_vec3(),
             framebuffer_dimensions,
             camera.near_plane() as f32,

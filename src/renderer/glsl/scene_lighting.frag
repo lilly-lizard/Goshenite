@@ -15,8 +15,8 @@ layout (set = 1, binding = 0) uniform Camera {
 	mat4 proj_view_inverse;
 	vec4 _position;
 	vec2 _framebuffer_dims;
-	float _near;
-	float _far;
+	float near;
+	float far;
     uint is_srgb_framebuffer;
 } cam;
 
@@ -37,7 +37,9 @@ void main()
 		// ray miss: draw background
 
 		// clip space position in frame (between -1 and 1)
-		vec4 pos_uv = vec4(in_uv.xy, 1., 1.);
+		float clip_space_depth = -cam.near / cam.far;
+		vec4 pos_uv = vec4(in_uv.xy, clip_space_depth, 1.);
+		
 		// ray direction in world space
 		vec3 ray_d = normalize((cam.proj_view_inverse * pos_uv).xyz);
 		out_color = vec4(background(ray_d), 1.);

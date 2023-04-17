@@ -192,7 +192,9 @@ vec3 calcNormal(vec3 pos)
 }
 
 float dist_to_depth(float dist, float near, float far) {
-	return (dist - near) / (far - near);
+	float b = near / (far - near);
+	float a = far * b;
+	return a / dist - b;
 }
 
 float depth_to_dist(float depth, float near, float far) {
@@ -238,10 +240,13 @@ void main()
 	// out_object_id = 1;
 	// return;
 	
-	// ray direction in world space
+	// clip space position in frame (between -1 and 1)
 	vec2 screen_space = gl_FragCoord.xy + vec2(0.5);
-	vec2 clip_space = screen_space / cam.framebuffer_dims * 2. - 1.;
-	vec4 ray_d = cam.proj_view_inverse * vec4(clip_space.xy * 500., -1., 0.);
+	vec2 clip_space_uv = screen_space / cam.framebuffer_dims * 2. - 1.;
+	float clip_space_depth = -cam.near / cam.far;
+
+	// ray direction in world space
+	vec4 ray_d = cam.proj_view_inverse * vec4(clip_space_uv, clip_space_depth, 1.);
 	vec3 ray_d_norm = normalize(ray_d.xyz);
 
 	// render scene

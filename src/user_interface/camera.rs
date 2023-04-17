@@ -5,7 +5,7 @@ use crate::{
     helper::angle::Angle,
 };
 use anyhow::ensure;
-use glam::{DMat3, DMat4, DVec2, DVec3, DVec4};
+use glam::{DMat3, DMat4, DVec2, DVec3, Mat4, Vec4};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::rc::Weak;
@@ -37,7 +37,9 @@ pub struct Camera {
     near_plane: f64,
     far_plane: f64,
 }
+
 // Public functions
+
 impl Camera {
     pub fn new(resolution: [f32; 2]) -> anyhow::Result<Self> {
         let position = config_ui::CAMERA_DEFAULT_POSITION;
@@ -154,7 +156,7 @@ impl Camera {
 
     // Getters
 
-    pub fn view_matrix(&mut self) -> DMat4 {
+    pub fn view_matrix(&mut self) -> Mat4 {
         // either look at the lock-on target or in self.direction
         let target_pos = match &self.look_mode {
             LookMode::Direction() => self.position + self.direction,
@@ -169,11 +171,14 @@ impl Camera {
             }
         };
 
-        DMat4::look_at_rh(self.position, target_pos, config::WORLD_SPACE_UP.as_dvec3())
+        Mat4::look_at_rh(
+            self.position.as_vec3(),
+            target_pos.as_vec3(),
+            config::WORLD_SPACE_UP.as_vec3(),
+        )
     }
 
     pub fn proj_matrix_glam(&self) -> DMat4 {
-        // todo https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
         // don't need to invert y in shaders
         // inverse(proj_view_inverse) works fine
         // view mat too?
@@ -185,26 +190,41 @@ impl Camera {
         )
     }
 
-    pub fn proj_matrix(&self) -> DMat4 {
-        let near = self.near_plane;
-        let far = self.far_plane;
+    // https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
+    /// right handed, reverse z, vulkan coordinates
+    pub fn projection_matrices(&self) -> ProjectionMatrixReturn {
+        let near = self.near_plane as f32;
+        let far = self.far_plane as f32;
 
-        let fov_vertical = self.fov.radians();
-        let (sin_fov, cos_fov) = (0.5 * fov_vertical).sin_cos();
-        let focal_length = cos_fov / sin_fov;
+        let fov_vertical = self.fov.radians() as f32;
+        let focal_length = 1. / (fov_vertical * 0.5).tan();
 
-        let w = focal_length / self.aspect_ratio as f64;
+        let w = focal_length / self.aspect_ratio;
         let h = -focal_length;
 
         let a = near / (far - near);
         let b = far * a;
 
-        DMat4::from_cols(
-            DVec4::new(w, 0.0, 0.0, 0.0),
-            DVec4::new(0.0, h, 0.0, 0.0),
-            DVec4::new(0.0, 0.0, a, -1.),
-            DVec4::new(0.0, 0.0, b, 0.0),
-        )
+        let proj = Mat4::from_cols(
+            Vec4::new(w, 0., 0., 0.),
+            Vec4::new(0., h, 0., 0.),
+            Vec4::new(0., 0., a, -1.),
+            Vec4::new(0., 0., b, 0.),
+        );
+
+        let proj_inverse = Mat4::from_cols(
+            Vec4::new(1. / w, 0., 0., 0.),
+            Vec4::new(0., 1. / h, 0., 0.),
+            Vec4::new(0., 0., 0., 1. / b),
+            Vec4::new(0., 0., -1., a / b),
+        );
+
+        ProjectionMatrixReturn {
+            proj,
+            proj_inverse,
+            proj_a: a,
+            proj_b: b,
+        }
     }
 
     pub fn position(&self) -> DVec3 {
@@ -386,4 +406,11 @@ fn calc_aspect_ratio(resolution: [f32; 2]) -> f32 {
 /// Gradient is 1 at x = 0. Inspired by tanh but with lighter gradient falloff.
 fn dual_asymptote(x: f64) -> f64 {
     (2_f64.powf(x) - 1.) / (2_f64.powf(x) + 1.)
+}
+
+pub struct ProjectionMatrixReturn {
+    pub proj: Mat4,
+    pub proj_inverse: Mat4,
+    pub proj_a: f32,
+    pub proj_b: f32,
 }
