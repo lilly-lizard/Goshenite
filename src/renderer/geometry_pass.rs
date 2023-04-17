@@ -282,7 +282,7 @@ fn create_pipeline(
 
     let raster_state = RasterizationState {
         // this means that we can still draw when the camera is inside a bounding box
-        cull_mode: vk::CullModeFlags::NONE,
+        cull_mode: vk::CullModeFlags::FRONT,
         ..Default::default()
     };
 

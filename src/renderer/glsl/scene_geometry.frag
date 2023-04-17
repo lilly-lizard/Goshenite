@@ -5,8 +5,8 @@
 #include "sdf_functions.glsl"
 
 // Maximum number of ray marching steps before confirming a miss
-const uint MAX_STEPS = 50;
-// Distance required to confirm a hit
+const uint MAX_STEPS = 100;
+// Distance required to confirm a hit todo make this dynamic with depth
 const float MIN_MARCH_STEP = 0.001;
 // Offset used for calculating normals.
 const float NORMAL_EPSILON = 0.001;
@@ -198,7 +198,9 @@ float dist_to_depth(float dist, float near, float far) {
 }
 
 float depth_to_dist(float depth, float near, float far) {
-	return near + depth * (far - near);
+	float b = near / (far - near);
+	float a = far * b;
+	return a / (depth + b);
 }
 
 // Render the scene with sphere tracing and write the normal and object id.
@@ -207,10 +209,11 @@ float depth_to_dist(float depth, float near, float far) {
 void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist, out vec3 o_normal, out uint o_object_id)
 {
 	// total distance traveled. start at the frag depth
-	float dist = cam.near;// + gl_FragCoord.z * (cam.far - cam.near);
+	float dist = cam.near;
+	const float dist_max = depth_to_dist(gl_FragCoord.z, cam.near, cam.far);
 
-	// todo MAX_STEPS as hit condition instead of miss? may get rid of some wacky artifacts...
-	for (int i = 0; i < MAX_STEPS && dist < cam.far; i++) {
+	// todo MAX_STEPS as hit condition instead of miss? considering we've optimised miss condition now. may get rid of some wacky artifacts...
+	for (int i = 0; dist < dist_max && i < MAX_STEPS; i++) {
 		// get the world space position from the current marching distance
 		vec3 current_pos = ray_o + ray_d * dist;
 		// get the distance to the closest primitive
@@ -236,6 +239,7 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist, out vec3 o_
 
 void main()
 {
+	// debugging...
 	// out_normal = vec4(0.9, 0.7, 0.5, 1.);
 	// out_object_id = 1;
 	// return;
