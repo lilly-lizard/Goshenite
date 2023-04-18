@@ -12,7 +12,7 @@ use bort::{
     DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
     DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState, GraphicsPipeline,
     GraphicsPipelineProperties, MemoryAllocator, PipelineAccess, PipelineLayout,
-    PipelineLayoutProperties, RasterizationState, RenderPass, ShaderModule, ShaderStage,
+    PipelineLayoutProperties, Queue, RasterizationState, RenderPass, ShaderModule, ShaderStage,
     ViewportState,
 };
 #[allow(unused_imports)]
@@ -45,6 +45,7 @@ impl GeometryPass {
         memory_allocator: Arc<MemoryAllocator>,
         render_pass: &RenderPass,
         camera_buffer: &Buffer,
+        queue_family_index: u32,
     ) -> anyhow::Result<Self> {
         let descriptor_pool = create_descriptor_pool(device.clone())?;
 
@@ -61,8 +62,11 @@ impl GeometryPass {
 
         let pipeline = create_pipeline(pipeline_layout, render_pass)?;
 
-        let object_buffer_manager =
-            ObjectResourceManager::new(memory_allocator, primitive_ops_desc_set_layout)?;
+        let object_buffer_manager = ObjectResourceManager::new(
+            memory_allocator,
+            primitive_ops_desc_set_layout,
+            queue_family_index,
+        )?;
 
         Ok(Self {
             device,
@@ -76,7 +80,10 @@ impl GeometryPass {
         &mut self,
         object_collection: &ObjectCollection,
         objects_delta: ObjectsDelta,
+        queue: &Queue,
     ) -> anyhow::Result<()> {
+        self.object_buffer_manager.reset_staging_buffer_offsets();
+
         // freed objects
         for free_id in objects_delta.remove {
             if let Some(_removed_index) = self.object_buffer_manager.remove(free_id) {
@@ -94,7 +101,7 @@ impl GeometryPass {
             if let Some(object_ref) = object_collection.get(set_id) {
                 trace!("adding or updating object buffer id = {:?}", set_id);
                 let object = &*object_ref.as_ref().borrow();
-                self.object_buffer_manager.update_or_push(object)?;
+                self.object_buffer_manager.update_or_push(object, queue)?;
             } else {
                 warn!(
                     "requsted update for object id = {:?} but wasn't found in object collection!",
@@ -281,7 +288,8 @@ fn create_pipeline(
     };
 
     let raster_state = RasterizationState {
-        // this means that we can still draw when the camera is inside a bounding box
+        // makes sure our fragments are always the far end of the bounding meshes,
+        // which allows for a path-tracing miss condition optimization.
         cull_mode: vk::CullModeFlags::FRONT,
         ..Default::default()
     };
@@ -310,7 +318,7 @@ fn create_pipeline(
 #[cfg(feature = "include-spirv-bytes")]
 fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
     let mut vertex_spv_file = std::io::Cursor::new(
-        &include_bytes!("../../assets/shader_binaries/bounding_box.vert.spv")[..],
+        &include_bytes!("../../assets/shader_binaries/bounding_mesh.vert.spv")[..],
     );
     let vert_shader = Arc::new(
         ShaderModule::new_from_spirv(device.clone(), &mut vertex_spv_file)
@@ -340,7 +348,7 @@ fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, Sh
 
 #[cfg(not(feature = "include-spirv-bytes"))]
 fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
-    const VERT_SHADER_PATH: &str = "assets/shader_binaries/bounding_box.vert.spv";
+    const VERT_SHADER_PATH: &str = "assets/shader_binaries/bounding_mesh.vert.spv";
     const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
 
     let vert_shader = Arc::new(
