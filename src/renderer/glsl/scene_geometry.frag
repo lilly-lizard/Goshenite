@@ -18,6 +18,7 @@ layout (location = 0) in flat uint in_object_id;
 
 layout (location = 0) out vec4 out_normal;
 layout (location = 1) out uint out_object_id; // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side??
+layout (depth_greater) out float gl_FragDepth; // although drivers probably can't optimize with this anyway because we use discard... https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/depth.adoc
 
 layout (set = 0, binding = 0) uniform Camera {
 	mat4 proj_view_inverse;
@@ -34,11 +35,8 @@ layout (set = 1, binding = 0, std430) readonly buffer Object {
 	uint primitive_ops[];
 } object;
 
-// todo layout(depth_less) out float gl_FragDepth; https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/depth.adoc
-
 // ~~~ Code interpreters ~~~
 
-// todo need radius?
 float sdf_sphere(vec3 pos, float radius)
 {
 	return length(pos) - radius;

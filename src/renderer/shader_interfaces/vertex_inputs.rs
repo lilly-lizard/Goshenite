@@ -91,7 +91,7 @@ impl EguiVertex {
     }
 }
 
-/// Should match inputs in `bounding_box.vert`
+/// Should match inputs in `bounding_mesh.vert`
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy)]
 pub struct BoundingBoxVertex {

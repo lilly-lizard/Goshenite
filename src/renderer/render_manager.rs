@@ -68,7 +68,6 @@ pub struct RenderManager {
 
     render_command_buffers: Vec<Arc<CommandBuffer>>,
     previous_render_fence: Arc<Fence>, // per frame in flight
-    previous_upload_fence: Option<Arc<Fence>>, // just one
     next_frame_wait_semaphore: Arc<Semaphore>, // per frame in flight
     swapchain_image_available_semaphore: Arc<Semaphore>, // per frame in flight
 
@@ -225,6 +224,7 @@ impl RenderManager {
             memory_allocator.clone(),
             &render_pass,
             &camera_ubo,
+            render_queue.famliy_index(),
         )?;
 
         let lighting_pass = LightingPass::new(
@@ -285,7 +285,6 @@ impl RenderManager {
 
             render_command_buffers,
             previous_render_fence,
-            previous_upload_fence: None,
             next_frame_wait_semaphore,
             swapchain_image_available_semaphore,
 
@@ -323,8 +322,11 @@ impl RenderManager {
         object_collection: &ObjectCollection,
         objects_delta: ObjectsDelta,
     ) -> anyhow::Result<()> {
-        self.geometry_pass
-            .update_object_buffers(object_collection, objects_delta)
+        self.geometry_pass.update_object_buffers(
+            object_collection,
+            objects_delta,
+            &self.render_queue,
+        )
     }
 
     pub fn update_gui_textures(
@@ -333,13 +335,8 @@ impl RenderManager {
     ) -> anyhow::Result<()> {
         self.wait_for_fences()?;
 
-        let texture_update_fence_option = self
-            .gui_pass
+        self.gui_pass
             .update_textures(textures_delta_vec, &self.render_queue)?;
-
-        if let Some(previous_upload_fence) = texture_update_fence_option {
-            self.previous_upload_fence = Some(previous_upload_fence);
-        }
 
         Ok(())
     }
@@ -533,10 +530,7 @@ impl RenderManager {
     }
 
     fn wait_for_fences(&mut self) -> anyhow::Result<()> {
-        let mut wait_fence_handles = vec![self.previous_render_fence.handle()];
-        if let Some(previous_upload_fence) = &self.previous_upload_fence {
-            wait_fence_handles.push(previous_upload_fence.handle());
-        }
+        let wait_fence_handles = [self.previous_render_fence.handle()];
 
         let fence_wait_res = unsafe {
             self.device
@@ -557,8 +551,6 @@ impl RenderManager {
                 return Err(fence_wait_err).context("waiting for previous frame fence");
             }
         }
-
-        self.previous_upload_fence = None;
 
         Ok(())
     }

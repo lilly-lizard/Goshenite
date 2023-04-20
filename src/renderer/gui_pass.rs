@@ -14,7 +14,7 @@ use bort::{
     BufferProperties, ColorBlendState, CommandBuffer, CommandPool, CommandPoolProperties,
     DescriptorPool, DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout,
     DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
-    Fence, GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
+    GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
     ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool,
     MemoryPoolPropeties, PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue,
     RenderPass, Sampler, SamplerProperties, ShaderModule, ShaderStage, ViewportState,
@@ -116,28 +116,24 @@ impl GuiPass {
         &mut self,
         textures_delta_vec: Vec<TexturesDelta>,
         queue: &Queue,
-    ) -> anyhow::Result<Option<Arc<Fence>>> {
+    ) -> anyhow::Result<()> {
         // return if empty
         if textures_delta_vec.is_empty() {
-            return Ok(None);
+            return Ok(());
         }
 
-        // create command buffer
+        // create one-time command buffer
         let command_buffer = CommandBuffer::new(
             self.transient_command_pool.clone(),
             vk::CommandBufferLevel::PRIMARY,
         )
         .context("creating command buffer for gui texture upload")?;
-        let command_buffer_handle = command_buffer.handle();
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        unsafe {
-            self.device
-                .inner()
-                .begin_command_buffer(command_buffer_handle, &begin_info)
-                .context("beginning gui texture upload command buffer")?;
-        }
+        command_buffer
+            .begin(&begin_info)
+            .context("beginning gui texture upload command buffer")?;
 
         let mut commands_recorded = false;
         let mut upload_buffers = Vec::<Buffer>::new();
@@ -160,32 +156,25 @@ impl GuiPass {
             }
         }
 
-        unsafe {
-            self.device
-                .inner()
-                .end_command_buffer(command_buffer_handle)
-                .context("ending gui texture upload command buffer")?;
-        }
-
         self.texture_upload_buffers.append(&mut upload_buffers);
 
-        // execute command buffer
-        if commands_recorded {
-            let upload_finished_fence =
-                Fence::new(self.device.clone(), vk::FenceCreateInfo::builder())
-                    .context("creating gui texture upload fence")?;
+        command_buffer
+            .end()
+            .context("ending gui texture upload command buffer")?;
 
+        // submit upload commands
+        if commands_recorded {
             let command_buffer_handles = [command_buffer.handle()];
             let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffer_handles);
 
             queue
-                .submit(&[*submit_info], Some(upload_finished_fence.handle()))
+                .submit(&[*submit_info], None)
                 .context("submitting gui texture upload commands")?;
 
-            return Ok(Some(Arc::new(upload_finished_fence)));
+            return Ok(());
         }
 
-        Ok(None)
+        Ok(())
     }
 
     pub fn record_render_commands(
@@ -1035,8 +1024,8 @@ fn create_texture_staging_buffer(
     size: vk::DeviceSize,
 ) -> anyhow::Result<Buffer> {
     let buffer_props = BufferProperties::new_default(size, vk::BufferUsageFlags::TRANSFER_SRC);
-
     let alloc_info = allocation_info_cpu_accessible();
+
     Buffer::new(memory_allocator, buffer_props, alloc_info).context("creating texture data buffer")
 }
 
