@@ -22,7 +22,7 @@ use bort::{
 use bort_vma::Alloc;
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
 #[allow(unused_imports)]
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use std::{
     ffi::CString,
     fmt::{self, Display},
@@ -77,15 +77,13 @@ impl GuiPass {
         let transient_command_pool =
             create_transient_command_pool(device.clone(), queue_family_index)?;
 
+        let descriptor_pool = create_descriptor_pool(device.clone())?;
         let desc_set_layout = create_descriptor_layout(device.clone())?;
 
         let pipeline_layout = create_pipeline_layout(device.clone(), desc_set_layout)?;
         let pipeline = create_pipeline(pipeline_layout, render_pass)?;
 
         let texture_sampler = create_texture_sampler(device.clone())?;
-
-        let descriptor_pool = create_descriptor_pool(device.clone())?;
-
         let initial_buffer_pool = create_buffer_pool(memory_allocator.clone())?;
 
         Ok(Self {
@@ -237,7 +235,7 @@ impl GuiPass {
 
 impl Drop for GuiPass {
     fn drop(&mut self) {
-        debug!("dropping gui pass...");
+        trace!("dropping gui pass...");
     }
 }
 
@@ -793,6 +791,8 @@ fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorP
 }
 
 fn create_buffer_pool(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Arc<MemoryPool>> {
+    // todo use device local with staging buffers because host visible + device local is a relatively
+    // scarce resource on discrete cards https://asawicki.info/news_1740_vulkan_memory_types_on_pc_and_how_to_use_them
     let buffer_alloc_info = allocation_info_from_flags(
         vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::DEVICE_LOCAL,
         vk::MemoryPropertyFlags::empty(),

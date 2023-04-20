@@ -7,8 +7,8 @@ use super::{
     shader_interfaces::uniform_buffers::CameraUniformBuffer,
     vulkan_init::{
         choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
-        create_depth_buffer, create_device_and_queues, create_framebuffers, create_normal_buffer,
-        create_per_frame_fence, create_primitive_id_buffer, create_render_pass, create_swapchain,
+        create_depth_buffer, create_framebuffers, create_normal_buffer, create_per_frame_fence,
+        create_primitive_id_buffer, create_render_pass, create_swapchain,
         create_swapchain_image_views, swapchain_properties, ChoosePhysicalDeviceReturn,
         CreateDeviceAndQueuesReturn,
     },
@@ -18,7 +18,8 @@ use crate::{
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
     renderer::vulkan_init::{
-        choose_depth_buffer_format, create_command_pool, create_render_command_buffers,
+        choose_depth_buffer_format, create_command_pool, create_device_and_queue,
+        create_render_command_buffers,
     },
     user_interface::{camera::Camera, gui::Gui},
 };
@@ -157,12 +158,10 @@ impl RenderManager {
         let CreateDeviceAndQueuesReturn {
             device,
             render_queue,
-            transfer_queue,
-        } = create_device_and_queues(
+        } = create_device_and_queue(
             physical_device.clone(),
             debug_callback.clone(),
             render_queue_family_index,
-            transfer_queue_family_index,
         )?;
 
         let memory_allocator = Arc::new(MemoryAllocator::new(device.clone())?);
@@ -342,7 +341,7 @@ impl RenderManager {
     }
 
     /// Submits Vulkan commands for rendering a frame.
-    pub fn render_frame(&mut self, gui: &mut Gui, window_resized: bool) -> anyhow::Result<()> {
+    pub fn render_frame(&mut self, gui: &Gui, window_resized: bool) -> anyhow::Result<()> {
         // wait for previous frame render/resource upload to finish
 
         self.wait_for_fences()?;

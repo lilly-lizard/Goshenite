@@ -159,7 +159,7 @@ impl GeometryPass {
 
 impl Drop for GeometryPass {
     fn drop(&mut self) {
-        debug!("dropping geometry pass...");
+        trace!("dropping geometry pass...");
     }
 }
 

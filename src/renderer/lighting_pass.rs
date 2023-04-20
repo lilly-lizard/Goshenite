@@ -12,7 +12,7 @@ use bort::{
     RenderPass, ShaderModule, ShaderStage, ViewportState,
 };
 #[allow(unused_imports)]
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use std::{ffi::CString, mem, sync::Arc};
 
 /// Describes descriptor set indices
@@ -376,6 +376,6 @@ fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, Sh
 
 impl Drop for LightingPass {
     fn drop(&mut self) {
-        debug!("dropping lighting pass...");
+        trace!("dropping lighting pass...");
     }
 }

@@ -257,8 +257,7 @@ impl Engine {
 
         // now that frame processing is done, submit rendering commands
         anyhow_unwrap(
-            self.renderer
-                .render_frame(&mut self.gui, self.window_resize),
+            self.renderer.render_frame(&self.gui, self.window_resize),
             "render frame",
         );
 

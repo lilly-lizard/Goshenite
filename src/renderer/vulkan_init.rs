@@ -195,30 +195,29 @@ fn check_physical_device_queue_support(
 pub struct CreateDeviceAndQueuesReturn {
     pub device: Arc<Device>,
     pub render_queue: Queue,
-    pub transfer_queue: Option<Queue>,
+    //pub transfer_queue: Option<Queue>,
 }
 
-pub fn create_device_and_queues(
+pub fn create_device_and_queue(
     physical_device: Arc<PhysicalDevice>,
     debug_callback: Option<Arc<DebugCallback>>,
     render_queue_family_index: u32,
-    transfer_queue_family_index: u32,
 ) -> anyhow::Result<CreateDeviceAndQueuesReturn> {
     let queue_priorities = [1.0];
-    let single_queue = transfer_queue_family_index != render_queue_family_index;
+    //let single_queue = transfer_queue_family_index != render_queue_family_index;
 
     let render_queue_info = vk::DeviceQueueCreateInfo::builder()
         .queue_family_index(render_queue_family_index)
         .queue_priorities(&queue_priorities);
-    let mut queue_infos = vec![render_queue_info.build()];
+    let queue_infos = vec![render_queue_info.build()];
 
-    let mut transfer_queue_info = vk::DeviceQueueCreateInfo::builder();
-    if single_queue {
-        transfer_queue_info = transfer_queue_info
-            .queue_family_index(transfer_queue_family_index)
-            .queue_priorities(&queue_priorities);
-        queue_infos.push(transfer_queue_info.build());
-    }
+    //let mut transfer_queue_info = vk::DeviceQueueCreateInfo::builder();
+    //if single_queue {
+    //    transfer_queue_info = transfer_queue_info
+    //        .queue_family_index(transfer_queue_family_index)
+    //        .queue_priorities(&queue_priorities);
+    //    queue_infos.push(transfer_queue_info.build());
+    //}
 
     let features_1_0 = vk::PhysicalDeviceFeatures::default();
     let features_1_1 = vk::PhysicalDeviceVulkan11Features::default();
@@ -242,16 +241,15 @@ pub fn create_device_and_queues(
 
     let render_queue = Queue::new(device.clone(), render_queue_family_index, 0);
 
-    let transfer_queue = if single_queue {
-        None
-    } else {
-        Some(Queue::new(device.clone(), transfer_queue_family_index, 0))
-    };
+    //let transfer_queue = if single_queue {
+    //    None
+    //} else {
+    //    Some(Queue::new(device.clone(), transfer_queue_family_index, 0))
+    //};
 
     Ok(CreateDeviceAndQueuesReturn {
         device,
         render_queue,
-        transfer_queue,
     })
 }
 
