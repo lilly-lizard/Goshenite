@@ -212,7 +212,6 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist, out vec3 o_
 	float dist = cam.near;
 	const float dist_max = depth_to_dist(gl_FragCoord.z, cam.near, cam.far);
 
-	// todo MAX_STEPS as hit condition instead of miss? considering we've optimised miss condition now. may get rid of some wacky artifacts...
 	for (int i = 0; dist < dist_max && i < MAX_STEPS; i++) {
 		// get the world space position from the current marching distance
 		vec3 current_pos = ray_o + ray_d * dist;

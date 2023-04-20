@@ -310,11 +310,11 @@ impl GuiPass {
         };
 
         // create buffer to be copied to the image
-        let mut texture_data_buffer = create_texture_data_buffer(
+        let mut texture_staging_buffer = create_texture_staging_buffer(
             self.memory_allocator.clone(),
             std::mem::size_of_val(data.as_slice()) as u64,
         )?;
-        texture_data_buffer
+        texture_staging_buffer
             .write_iter(data, 0)
             .context("uploading gui texture data to staging buffer")?;
 
@@ -346,7 +346,7 @@ impl GuiPass {
                     &self.device,
                     command_buffer,
                     existing_image_view,
-                    &texture_data_buffer,
+                    &texture_staging_buffer,
                     copy_region,
                 );
             }
@@ -354,10 +354,10 @@ impl GuiPass {
             // but usually `ImageDelta.pos` is `None` meaning a new image needs to be created
             debug!("creating new gui texture. id = {:?}", texture_id);
 
-            self.create_new_texture(command_buffer, &texture_data_buffer, delta, texture_id)?;
+            self.create_new_texture(command_buffer, &texture_staging_buffer, delta, texture_id)?;
         }
 
-        Ok(Some(texture_data_buffer))
+        Ok(Some(texture_staging_buffer))
     }
 
     /// Unregister a texture that is no longer required by the gui.
@@ -381,10 +381,12 @@ impl GuiPass {
         return self.allocate_font_texture_desc_set();
     }
 
+    /// Note: staging buffer commands are always used regardless of memory type because the image
+    /// has optimal tiling.
     fn create_new_texture(
         &mut self,
         command_buffer: &CommandBuffer,
-        texture_data_buffer: &Buffer,
+        texture_staging_buffer: &Buffer,
         delta: egui::epaint::ImageDelta,
         texture_id: TextureId,
     ) -> anyhow::Result<()> {
@@ -460,7 +462,7 @@ impl GuiPass {
 
             device_ash.cmd_copy_buffer_to_image(
                 command_buffer_handle,
-                texture_data_buffer.handle(),
+                texture_staging_buffer.handle(),
                 new_image.handle(),
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 &[copy_region],
@@ -1028,7 +1030,7 @@ fn calculate_gui_element_scissor(
     }
 }
 
-fn create_texture_data_buffer(
+fn create_texture_staging_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     size: vk::DeviceSize,
 ) -> anyhow::Result<Buffer> {
