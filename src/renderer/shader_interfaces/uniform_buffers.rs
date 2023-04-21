@@ -37,7 +37,7 @@ impl CameraUniformBuffer {
     }
 
     pub fn from_camera(
-        camera: &mut Camera,
+        camera: &Camera,
         framebuffer_dimensions: [f32; 2],
         is_srgb_framebuffer: bool,
     ) -> Self {

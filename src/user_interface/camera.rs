@@ -1,28 +1,19 @@
 use super::config_ui;
 use crate::{
     config,
-    engine::{object::object::ObjectCell, primitives::primitive::Primitive},
+    engine::{object::object::Object, primitives::primitive::Primitive},
     helper::angle::Angle,
 };
-use anyhow::ensure;
 use glam::{DMat3, DMat4, DVec2, DVec3, Mat4, Vec4};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::rc::Weak;
-
-#[derive(Clone)]
-pub enum LookTargetType {
-    Position(DVec3),
-    Object(Weak<ObjectCell>),
-    Primitive(Weak<dyn Primitive>),
-}
 
 #[derive(Clone)]
 pub enum LookMode {
     /// Look in a given direction
-    Direction(),
+    Direction(DVec3),
     /// Lock on to a target position
-    Target(LookTargetType),
+    Target(DVec3),
 }
 
 /// Describes the orientation and properties of a camera that can be used for perspective rendering
@@ -30,8 +21,6 @@ pub enum LookMode {
 pub struct Camera {
     position: DVec3,
     look_mode: LookMode,
-    direction: DVec3,
-    normal: DVec3,
     fov: Angle,
     aspect_ratio: f32,
     near_plane: f64,
@@ -45,19 +34,10 @@ impl Camera {
         let position = config_ui::CAMERA_DEFAULT_POSITION;
         let target_pos = config_ui::CAMERA_DEFAULT_TARGET;
         let direction = target_pos - position;
-        let up = config::WORLD_SPACE_UP.as_dvec3();
-        // ensures initial normal value won't be 0
-        ensure!(
-            up != DVec3::X,
-            "config::WORLD_SPACE_UP can not be set to the x axis. this is a bug!"
-        );
-        let normal = up.cross(direction).normalize();
 
         Ok(Camera {
             position,
-            look_mode: LookMode::Direction(),
-            direction,
-            normal,
+            look_mode: LookMode::Direction(direction),
             fov: config_ui::CAMERA_DEFAULT_FOV,
             aspect_ratio: calc_aspect_ratio(resolution),
             near_plane: config_ui::CAMERA_NEAR_PLANE,
@@ -69,19 +49,24 @@ impl Camera {
     pub fn rotate(&mut self, delta_cursor_position: DVec2) {
         let delta_angle = self.delta_cursor_to_angle(delta_cursor_position.into());
 
-        match &self.look_mode {
+        match self.look_mode {
             // no lock-on target so maintain position adjust looking direction
-            LookMode::Direction() => {
+            LookMode::Direction(direction) => {
                 self.rotate_fixed_pos(delta_angle[0], delta_angle[1]);
             }
 
             // lock on target stays the same but camera position rotates around it
-            LookMode::Target(target_type) => {
-                if let Some(target_pos) =
-                    self.get_target_position_or_switch_look_modes(target_type.clone())
-                {
-                    self.arcball(self.normal, target_pos, delta_angle[0], delta_angle[1]);
-                }
+            LookMode::Target(target_pos) => {
+                // orientation shouldn't be vertical
+                let normal = match self.normal_with_vertical_check() {
+                    Ok(normal) => normal,
+                    Err(CameraError::VerticalCameraDirection) => {
+                        self.recover_from_vertical_direction_alignment();
+                        self.normal()
+                    }
+                };
+
+                self.arcball(normal, target_pos, delta_angle[0], delta_angle[1]);
             }
         }
 
@@ -91,9 +76,9 @@ impl Camera {
 
     /// Move camera position forwards/backwards according to cursor scroll value
     pub fn scroll_zoom(&mut self, scroll_delta: f64) {
-        match &self.look_mode {
-            LookMode::Direction() => {
-                self.set_position(self.position + scroll_delta * self.direction);
+        match self.look_mode {
+            LookMode::Direction(direction) => {
+                self.set_position(self.position + scroll_delta * direction);
             }
 
             LookMode::Target(target_type) => {
@@ -115,13 +100,9 @@ impl Camera {
     pub fn reset(&mut self) {
         self.position = config_ui::CAMERA_DEFAULT_POSITION;
         let target_pos = config_ui::CAMERA_DEFAULT_TARGET;
-        self.direction = target_pos - self.position;
-        self.normal = config::WORLD_SPACE_UP
-            .as_dvec3()
-            .cross(self.direction)
-            .normalize();
+        let direction = target_pos - self.position;
 
-        self.look_mode = LookMode::Direction();
+        self.look_mode = LookMode::Direction(direction);
         self.fov = config_ui::CAMERA_DEFAULT_FOV;
         self.near_plane = config_ui::CAMERA_NEAR_PLANE;
         self.far_plane = config_ui::CAMERA_FAR_PLANE;
@@ -133,43 +114,42 @@ impl Camera {
         self.aspect_ratio = calc_aspect_ratio(resolution);
     }
 
+    /// Changes the look mode to direction.
+    pub fn set_direction(&mut self, direction: DVec3) {
+        self.look_mode = LookMode::Direction(direction);
+
+        // avoid vertical alignment
+        self.check_for_and_recover_from_vertical_orientation_alignment();
+    }
+
     pub fn set_lock_on_target(&mut self, target_pos: DVec3) {
-        self.look_mode = LookMode::Target(LookTargetType::Position(target_pos));
+        self.look_mode = LookMode::Target(target_pos);
+
+        // avoid vertical alignment
+        self.check_for_and_recover_from_vertical_orientation_alignment();
     }
 
-    pub fn set_lock_on_object(&mut self, object: Weak<ObjectCell>) {
-        self.look_mode = LookMode::Target(LookTargetType::Object(object));
+    /// Sets the lock on target to the object origin.
+    pub fn set_lock_on_target_from_object(&mut self, object: &Object) {
+        let target_pos = object.origin().as_dvec3();
+        self.set_lock_on_target(target_pos);
     }
 
-    pub fn set_lock_on_primitive(&mut self, primitive: Weak<dyn Primitive>) {
-        self.look_mode = LookMode::Target(LookTargetType::Primitive(primitive));
+    /// Sets the lock on target to the primitive center.
+    pub fn set_lock_on_target_from_primitive(&mut self, primitive: &dyn Primitive) {
+        let target_pos = primitive.transform().center.as_dvec3();
+        self.set_lock_on_target(target_pos);
     }
 
     pub fn unset_lock_on_target(&mut self) {
-        if let LookMode::Target(target_type) = &self.look_mode {
-            if let Some(target_pos) = target_pos(target_type.clone()) {
-                self.set_direction(target_pos);
-            }
-            self.look_mode = LookMode::Direction();
+        if let LookMode::Target(target_pos) = self.look_mode {
+            let direction = self.position - target_pos;
+            self.look_mode = LookMode::Direction(direction);
         }
     }
 
-    // Getters
-
-    pub fn view_matrix(&mut self) -> Mat4 {
-        // either look at the lock-on target or in self.direction
-        let target_pos = match &self.look_mode {
-            LookMode::Direction() => self.position + self.direction,
-            LookMode::Target(target_type) => {
-                if let Some(target_pos) =
-                    self.get_target_position_or_switch_look_modes(target_type.clone())
-                {
-                    target_pos
-                } else {
-                    self.position + self.direction
-                }
-            }
-        };
+    pub fn view_matrix(&self) -> Mat4 {
+        let target_pos = self.target_pos();
 
         Mat4::look_at_rh(
             self.position.as_vec3(),
@@ -227,6 +207,8 @@ impl Camera {
         }
     }
 
+    // Getters
+
     pub fn position(&self) -> DVec3 {
         self.position
     }
@@ -247,30 +229,63 @@ impl Camera {
 // Private functions
 
 impl Camera {
-    fn update_normal(&mut self) {
-        let direction = match &self.look_mode {
-            LookMode::Direction() => self.direction,
-            LookMode::Target(target_type) => {
-                if let Some(target_pos) =
-                    self.get_target_position_or_switch_look_modes(target_type.clone())
-                {
-                    target_pos - self.position
-                } else {
-                    self.direction
-                }
-            }
-        };
+    /// Not necessarily normalized
+    fn direction(&self) -> DVec3 {
+        match self.look_mode {
+            LookMode::Direction(direction) => direction,
+            LookMode::Target(target_pos) => self.position - target_pos,
+        }
+    }
 
-        // only set normal if cross product won't be zero i.e. normal doesn't change if facing up
+    /// Not necessarily normalized
+    fn target_pos(&self) -> DVec3 {
+        match self.look_mode {
+            LookMode::Direction(direction) => self.position + direction,
+            LookMode::Target(target_pos) => target_pos,
+        }
+    }
+
+    /// Not normalized. May return 0 if the look orientation is aligned with the verical axis!
+    fn normal(&self) -> DVec3 {
+        let direction = self.direction();
         let up = config::WORLD_SPACE_UP.as_dvec3();
-        if direction != up {
-            self.normal = up.cross(direction).normalize();
+
+        up.cross(direction)
+    }
+
+    fn normal_with_vertical_check(&self) -> Result<DVec3, CameraError> {
+        let normal = self.normal();
+
+        if normal == DVec3::ZERO {
+            return Err(CameraError::VerticalCameraDirection);
+        }
+
+        Ok(normal)
+    }
+
+    /// If required, adjust the camera so that it isn't looking vertically. Allows a normal to be
+    /// calculated.
+    fn check_for_and_recover_from_vertical_orientation_alignment(&mut self) {
+        if let Err(CameraError::VerticalCameraDirection) = self.normal_with_vertical_check() {
+            self.recover_from_vertical_orientation_alignment();
+        }
+    }
+
+    /// Adjust the camera so that it isn't looking vertically. Allows a normal to be calculated.
+    fn recover_from_vertical_orientation_alignment(&mut self) {
+        match self.look_mode {
+            LookMode::Direction(direction) => {
+                todo!();
+            }
+            LookMode::Target(target_pos) => {
+                todo!();
+            }
         }
     }
 
     fn delta_cursor_to_angle(&self, delta_cursor_position: [f64; 2]) -> [Angle; 2] {
         delta_cursor_position.map(|delta| match self.look_mode {
-            LookMode::Direction() => {
+            LookMode::Direction(_) => {
                 Angle::from_radians(delta * config_ui::LOOK_SENSITIVITY.radians())
             }
             LookMode::Target(_) => {
@@ -286,10 +301,6 @@ impl Camera {
         }
     }
 
-    fn set_direction(&mut self, target_pos: DVec3) {
-        self.direction = (target_pos - self.position).normalize()
-    }
-
     fn rotate_fixed_pos(&mut self, delta_h: Angle, delta_v: Angle) {
         let delta_v_clamped = self.clamp_vertical_angle_delta(delta_v.invert());
 
@@ -302,6 +313,7 @@ impl Camera {
         let delta_v_clamped = self.clamp_vertical_angle_delta(delta_v);
 
         // lock on target stays the same but camera position rotates around it
+        let normal = normal.normalize();
         let rotation_matrix = DMat3::from_axis_angle(normal, delta_v_clamped.radians())
             * DMat3::from_rotation_z(-delta_h.radians());
 
@@ -355,47 +367,9 @@ impl Camera {
 
         self.set_position(new_position);
     }
-
-    /// Get the target position depending on the type of `target_type`. If the target position is
-    /// tied to a dropped reference, unsets lock-on mode.
-    fn get_target_position_or_switch_look_modes(
-        &mut self,
-        target_type: LookTargetType,
-    ) -> Option<DVec3> {
-        if let Some(target_pos) = target_pos(target_type) {
-            Some(target_pos)
-        } else {
-            debug!("dropped target reference -> switching to `LookMode::Direction`.");
-            self.unset_lock_on_target();
-            None
-        }
-    }
 }
 
-/// Get the target position depending on the type of `target_type`. If value pointed to by a weak
-/// reference has been dropped, returns `None`.
-fn target_pos(target_type: LookTargetType) -> Option<DVec3> {
-    match target_type {
-        LookTargetType::Position(position) => Some(position),
-        LookTargetType::Object(object_ref) => {
-            if let Some(object) = object_ref.upgrade() {
-                Some(object.borrow().origin().as_dvec3())
-            } else {
-                debug!("camera target object reference no longer present...");
-                None
-            }
-        }
-        LookTargetType::Primitive(primitive_ref) => {
-            if let Some(primitive) = primitive_ref.upgrade() {
-                Some(primitive.transform().center.as_dvec3())
-            } else {
-                debug!("camera target object reference no longer present...");
-                None
-            }
-        }
-    }
-}
-
+#[inline]
 fn calc_aspect_ratio(resolution: [f32; 2]) -> f32 {
     resolution[0] / resolution[1]
 }
@@ -408,9 +382,31 @@ fn dual_asymptote(x: f64) -> f64 {
     (2_f64.powf(x) - 1.) / (2_f64.powf(x) + 1.)
 }
 
+#[derive(Clone)]
 pub struct ProjectionMatrixReturn {
     pub proj: Mat4,
     pub proj_inverse: Mat4,
     pub proj_a: f32,
     pub proj_b: f32,
 }
+
+// Errors
+
+#[derive(Clone, Debug)]
+pub enum CameraError {
+    /// Camera direction lines up with `WORLD_SPACE_UP` meaning that a normal vector cannot be calculated
+    VerticalCameraDirection,
+}
+impl std::fmt::Display for CameraError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::VerticalCameraDirection => {
+                write!(
+                    f,
+                    "camera direction is vertical meaning a normal vector cannot be calculated"
+                )
+            }
+        }
+    }
+}
+impl std::error::Error for CameraError {}

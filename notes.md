@@ -4,12 +4,9 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
-- todo https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
-- don't need to invert y in shaders
-- inverse(proj_view_inverse) works fine
-- view mat too?
-- once sure depth is working -> aabb front face culling
-- depth value is break condition instead of far (after conversion to s)
+- camera
+- multiple frames in flight
+- mouse select primitive
 
 - can all gui manip stuff be passed to command manager?
 	- would be great to have ui in its own thread so that input is always processed

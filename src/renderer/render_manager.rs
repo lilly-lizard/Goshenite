@@ -291,7 +291,7 @@ impl RenderManager {
         })
     }
 
-    pub fn update_camera(&mut self, camera: &mut Camera) -> anyhow::Result<()> {
+    pub fn update_camera(&mut self, camera: &Camera) -> anyhow::Result<()> {
         self.wait_idle_device()?;
 
         let dimensions = self.swapchain.properties().width_height;
