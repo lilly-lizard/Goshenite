@@ -459,12 +459,10 @@ pub fn primitive_op_list(
                 });
 
                 // label to select this primitive op
-                let prim_op_clicked = ui_h
-                    .selectable_label(is_selected, primitive_op_text)
-                    .clicked();
+                let prim_op_res = ui_h.selectable_label(is_selected, primitive_op_text);
 
                 // if clicked, select it
-                if prim_op_clicked {
+                if prim_op_res.clicked() {
                     gui_state.set_selected_primitive_op_id(primitive_op.id());
                 }
             });

@@ -29,7 +29,14 @@ pub fn camera_control_layout(ui: &mut Ui, camera: &mut Camera) {
         }
     });
 
-    // camera status
+    // position
+    let position = camera.position();
+    ui.label(format!(
+        "Position: [{:.2}, {:.2}, {:.2}]",
+        position.x, position.y, position.z
+    ));
+
+    // look mode
     match camera.look_mode() {
         LookMode::Direction(look_direction) => {
             let look_direction_normalized = look_direction.normalize();

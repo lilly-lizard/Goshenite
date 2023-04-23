@@ -33,7 +33,7 @@ subpass ┆ subpass      gui
 
 1. __G__ = Geometry pass
 	- vert shader - bounding boxes
-	- frag shader - signed distance field ray marching
+	- frag shader - signed distance field sphere tracing
 2. __L__ = Lighting pass
 	- vert shader - full screen triangle
 	- frag shader - shading

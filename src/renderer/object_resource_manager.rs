@@ -402,6 +402,7 @@ impl ObjectResourceManager {
 
         // upload data
 
+        // todo what do if not enough space? goes for other staging buffers here too...
         self.primitive_ops_staging_buffer
             .write_iter(data, self.primitive_ops_staging_buffer_offset as usize)
             .context("uploading geometry pass primitive ops to staging buffer")?;

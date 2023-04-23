@@ -5,7 +5,6 @@ use super::{
     shader_interfaces::{push_constants::GuiPushConstant, vertex_inputs::EguiVertex},
     vulkan_init::render_pass_indices,
 };
-use crate::user_interface::gui::Gui;
 use ahash::AHashMap;
 use anyhow::Context;
 use ash::vk;
@@ -62,6 +61,10 @@ pub struct GuiPass {
     vertex_buffers: Vec<Buffer>,
     index_buffers: Vec<Buffer>,
     texture_upload_buffers: Vec<Buffer>,
+
+    // gui state
+    scale_factor: f32,
+    gui_primitives: Vec<ClippedPrimitive>,
 }
 
 // Public functions
@@ -73,6 +76,7 @@ impl GuiPass {
         memory_allocator: Arc<MemoryAllocator>,
         render_pass: &RenderPass,
         queue_family_index: u32,
+        scale_factor: f32,
     ) -> anyhow::Result<Self> {
         let transient_command_pool =
             create_transient_command_pool(device.clone(), queue_family_index)?;
@@ -104,6 +108,9 @@ impl GuiPass {
             vertex_buffers: Vec::new(),
             index_buffers: Vec::new(),
             texture_upload_buffers: Vec::new(),
+
+            scale_factor,
+            gui_primitives: Vec::new(),
         })
     }
 
@@ -112,11 +119,11 @@ impl GuiPass {
     /// command buffer and returns a signal semaphore for the submission.
     pub fn update_textures(
         &mut self,
-        textures_delta_vec: Vec<TexturesDelta>,
+        textures_delta: Vec<TexturesDelta>,
         queue: &Queue,
     ) -> anyhow::Result<()> {
         // return if empty
-        if textures_delta_vec.is_empty() {
+        if textures_delta.is_empty() {
             return Ok(());
         }
 
@@ -136,7 +143,7 @@ impl GuiPass {
         let mut commands_recorded = false;
         let mut upload_buffers = Vec::<Buffer>::new();
 
-        for textures_delta in textures_delta_vec {
+        for textures_delta in textures_delta {
             // release unused texture resources
             for &id in &textures_delta.free {
                 self.unregister_image(id);
@@ -175,20 +182,24 @@ impl GuiPass {
         Ok(())
     }
 
+    pub fn set_scale_factor(&mut self, scale_factor: f32) {
+        self.scale_factor = scale_factor;
+    }
+
+    pub fn set_gui_primitives(&mut self, gui_primitives: Vec<ClippedPrimitive>) {
+        self.gui_primitives = gui_primitives;
+    }
+
     pub fn record_render_commands(
         &mut self,
         command_buffer: &CommandBuffer,
-        gui: &Gui,
         is_srgb_framebuffer: bool,
         framebuffer_dimensions: [f32; 2],
     ) -> anyhow::Result<()> {
-        let scale_factor = gui.scale_factor();
-        let primitives = gui.mesh_primitives();
-
         let push_constant_data = GuiPushConstant::new(
             [
-                framebuffer_dimensions[0] / scale_factor,
-                framebuffer_dimensions[1] / scale_factor,
+                framebuffer_dimensions[0] / self.scale_factor,
+                framebuffer_dimensions[1] / self.scale_factor,
             ],
             is_srgb_framebuffer,
         );
@@ -197,7 +208,7 @@ impl GuiPass {
         for ClippedPrimitive {
             clip_rect,
             primitive,
-        } in primitives
+        } in self.gui_primitives.clone()
         {
             match primitive {
                 Primitive::Mesh(mesh) => {
@@ -210,9 +221,9 @@ impl GuiPass {
                         command_buffer,
                         push_constant_bytes,
                         mesh,
-                        scale_factor,
+                        self.scale_factor,
                         framebuffer_dimensions,
-                        *clip_rect,
+                        clip_rect.clone(),
                     )?;
                 }
                 Primitive::Callback(_) => continue, // we don't need to support Primitive::Callback
@@ -525,11 +536,14 @@ impl GuiPass {
         &mut self,
         command_buffer: &CommandBuffer,
         push_constant_bytes: &[u8],
-        mesh: &Mesh,
+        mesh: Mesh,
         scale_factor: f32,
         framebuffer_dimensions: [f32; 2],
         clip_rect: Rect,
     ) -> Result<(), anyhow::Error> {
+        let index_count = mesh.indices.len() as u32;
+        let texture_id = mesh.texture_id;
+
         let (vertex_buffer, index_buffer) = self.create_vertex_and_index_buffers(mesh)?;
 
         let scissor =
@@ -546,10 +560,8 @@ impl GuiPass {
 
         let desc_set = self
             .texture_desc_sets
-            .get(&mesh.texture_id)
-            .ok_or(GuiRendererError::TextureDescSetMissing {
-                id: mesh.texture_id,
-            })
+            .get(&texture_id)
+            .ok_or(GuiRendererError::TextureDescSetMissing { id: texture_id })
             .context("recording gui render commands")?
             .clone();
         unsafe {
@@ -591,14 +603,7 @@ impl GuiPass {
                 vk::IndexType::UINT32,
             );
 
-            device_ash.cmd_draw_indexed(
-                command_buffer_handle,
-                mesh.indices.len() as u32,
-                1,
-                0,
-                0,
-                0,
-            );
+            device_ash.cmd_draw_indexed(command_buffer_handle, index_count, 1, 0, 0, 0);
         }
 
         self.vertex_buffers.push(vertex_buffer);
@@ -607,11 +612,11 @@ impl GuiPass {
         Ok(())
     }
 
-    fn create_vertex_and_index_buffers(&mut self, mesh: &Mesh) -> anyhow::Result<(Buffer, Buffer)> {
+    fn create_vertex_and_index_buffers(&mut self, mesh: Mesh) -> anyhow::Result<(Buffer, Buffer)> {
         let vertices = mesh
             .vertices
-            .iter()
-            .map(|egui_vertex| EguiVertex::from_egui_vertex(egui_vertex))
+            .into_iter()
+            .map(|egui_vertex| EguiVertex::from_egui_vertex(&egui_vertex))
             .collect::<Vec<_>>();
 
         let vertex_buffer_props = BufferProperties::new_default(
@@ -635,11 +640,11 @@ impl GuiPass {
         // todo can avoid the vec clones here! look at `gui::mesh_primitives` and `free_previous_vertex_and_index_buffers`
 
         vertex_buffer
-            .write_iter(vertices.clone(), 0)
+            .write_iter(vertices, 0)
             .context("uploading gui pass vertices")?;
 
         index_buffer
-            .write_iter(mesh.indices.clone(), 0)
+            .write_iter(mesh.indices, 0)
             .context("uploading gui pass indices")?;
 
         Ok((vertex_buffer, index_buffer))

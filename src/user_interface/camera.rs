@@ -46,7 +46,7 @@ impl Camera {
     }
 
     /// Changes the viewing direction based on the pixel amount the cursor has moved
-    pub fn rotate(&mut self, delta_cursor_position: DVec2) {
+    pub fn rotate_from_cursor_delta(&mut self, delta_cursor_position: DVec2) {
         let delta_angle = self.delta_cursor_to_angle(delta_cursor_position.into());
 
         // orientation shouldn't be vertical
@@ -58,26 +58,7 @@ impl Camera {
             }
         };
 
-        match self.look_mode {
-            // no lock-on target so maintain position adjust looking direction
-            LookMode::Direction(direction) => {
-                let new_direction =
-                    rotate_fixed_pos(direction, normal, delta_angle[0], delta_angle[1]);
-                self.look_mode = LookMode::Direction(new_direction);
-            }
-
-            // lock on target stays the same but camera position rotates around it
-            LookMode::Target(target_pos) => {
-                let new_position = arcball(
-                    self.position,
-                    target_pos,
-                    normal,
-                    delta_angle[0],
-                    delta_angle[1],
-                );
-                self.set_position(new_position);
-            }
-        }
+        self.rotate_from_angle_delta(normal, delta_angle);
     }
 
     /// Move camera position forwards/backwards according to cursor scroll value
@@ -281,11 +262,15 @@ impl Camera {
             clamp_vertical_angle_delta(config::WORLD_SPACE_UP.as_dvec3(), Angle::ZERO);
         let normal = DVec3::X;
 
+        self.rotate_from_angle_delta(normal, [Angle::ZERO, recovery_delta_v]);
+    }
+
+    fn rotate_from_angle_delta(&mut self, normal: DVec3, delta_angle: [Angle; 2]) {
         match self.look_mode {
             // no lock-on target so maintain position adjust looking direction
             LookMode::Direction(direction) => {
                 let new_direction =
-                    rotate_fixed_pos(direction, normal, Angle::ZERO, recovery_delta_v);
+                    rotate_fixed_pos(direction, normal, delta_angle[0], delta_angle[1]);
                 self.look_mode = LookMode::Direction(new_direction);
             }
 
@@ -295,8 +280,8 @@ impl Camera {
                     self.position,
                     target_pos,
                     normal,
-                    Angle::ZERO,
-                    recovery_delta_v,
+                    delta_angle[0],
+                    delta_angle[1],
                 );
                 self.set_position(new_position);
             }

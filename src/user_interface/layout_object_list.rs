@@ -75,16 +75,15 @@ pub fn object_list_layout(
             false
         };
 
-        if ui.selectable_label(is_selected, label_text).clicked() {
-            if !is_selected {
-                // select object in the object editor
-                let selected_object_ref = Rc::downgrade(&current_object);
-                gui_state.set_selected_object(selected_object_ref.clone());
-                // set lock on target to selected object
-                camera.set_lock_on_target_from_object(&current_object.borrow());
-                // deselect primitive op (previous one would have been for different object)
-                gui_state.deselect_primitive_op();
-            }
+        let object_label_res = ui.selectable_label(is_selected, label_text);
+        if object_label_res.clicked() {
+            // select object in the object editor
+            let selected_object_ref = Rc::downgrade(&current_object);
+            gui_state.set_selected_object(selected_object_ref.clone());
+            // set lock on target to selected object
+            camera.set_lock_on_target_from_object(&current_object.borrow());
+            // deselect primitive op (previous one would have been for different object)
+            gui_state.deselect_primitive_op();
         }
     }
 }

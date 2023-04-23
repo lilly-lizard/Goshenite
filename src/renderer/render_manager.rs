@@ -21,7 +21,7 @@ use crate::{
         choose_depth_buffer_format, create_command_pool, create_device_and_queue,
         create_render_command_buffers,
     },
-    user_interface::{camera::Camera, gui::Gui},
+    user_interface::camera::Camera,
 };
 use anyhow::Context;
 use ash::{vk, Entry};
@@ -30,7 +30,7 @@ use bort::{
     DebugCallbackProperties, Device, Fence, Framebuffer, Image, ImageView, Instance,
     MemoryAllocator, Queue, RenderPass, Semaphore, Surface, Swapchain, SwapchainImage,
 };
-use egui::TexturesDelta;
+use egui::{ClippedPrimitive, TexturesDelta};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
@@ -76,13 +76,16 @@ pub struct RenderManager {
     /// without conflicting with commands currently being processed. This variable indicates
     /// which index to will be next submitted to the GPU.
     next_frame: usize,
+
+    /// Can be set to true with [`Self::set_window_just_resized_flag`] and set to false in [`Self::render_frame`]
+    window_just_resized: bool,
 }
 
 // Public functions
 
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initiver_minoralize, returns a string explanation.
-    pub fn new(window: Arc<Window>) -> anyhow::Result<Self> {
+    pub fn new(window: Arc<Window>, scale_factor: f32) -> anyhow::Result<Self> {
         let entry = unsafe { Entry::load() }
             .context("loading vulkan dynamic library. please install vulkan on your system...")?;
         let entry = Arc::new(entry);
@@ -239,6 +242,7 @@ impl RenderManager {
             memory_allocator.clone(),
             &render_pass,
             render_queue_family_index,
+            scale_factor,
         )?;
 
         let render_command_buffers = create_render_command_buffers(
@@ -288,6 +292,7 @@ impl RenderManager {
             swapchain_image_available_semaphore,
 
             next_frame: 0,
+            window_just_resized: false,
         })
     }
 
@@ -330,26 +335,39 @@ impl RenderManager {
 
     pub fn update_gui_textures(
         &mut self,
-        textures_delta_vec: Vec<TexturesDelta>,
+        textures_delta: Vec<TexturesDelta>,
     ) -> anyhow::Result<()> {
         self.wait_for_fences()?;
 
         self.gui_pass
-            .update_textures(textures_delta_vec, &self.render_queue)?;
+            .update_textures(textures_delta, &self.render_queue)?;
 
         Ok(())
     }
 
+    pub fn set_scale_factor(&mut self, scale_factor: f32) {
+        self.gui_pass.set_scale_factor(scale_factor);
+    }
+
+    pub fn set_gui_primitives(&mut self, gui_primitives: Vec<ClippedPrimitive>) {
+        self.gui_pass.set_gui_primitives(gui_primitives);
+    }
+
+    pub fn set_window_just_resized_flag(&mut self) {
+        self.window_just_resized = true;
+    }
+
     /// Submits Vulkan commands for rendering a frame.
-    pub fn render_frame(&mut self, gui: &Gui, window_resized: bool) -> anyhow::Result<()> {
+    pub fn render_frame(&mut self) -> anyhow::Result<()> {
         // wait for previous frame render/resource upload to finish
 
         self.wait_for_fences()?;
 
         self.gui_pass.free_previous_vertex_and_index_buffers();
 
-        // I found that this check is needed on hyprland because the later commnads weren't returning 'out of date'...
-        if window_resized {
+        // note: I found that this check is needed on wayland because the later commands weren't returning 'out of date'...
+        if self.window_just_resized {
+            self.window_just_resized = false;
             self.recreate_swapchain()?;
         }
 
@@ -381,7 +399,7 @@ impl RenderManager {
         // record commands
 
         let command_buffer = self.render_command_buffers[swapchain_index].clone();
-        self.record_render_commands(&command_buffer, gui, swapchain_index)?;
+        self.record_render_commands(&command_buffer, swapchain_index)?;
 
         // submit commands
 
@@ -557,7 +575,6 @@ impl RenderManager {
     fn record_render_commands(
         &mut self,
         command_buffer: &CommandBuffer,
-        gui: &Gui,
         swapchain_index: usize,
     ) -> anyhow::Result<()> {
         let command_buffer_handle = command_buffer.handle();
@@ -594,7 +611,6 @@ impl RenderManager {
 
         self.gui_pass.record_render_commands(
             &command_buffer,
-            gui,
             self.is_swapchain_srgb,
             [viewport.width, viewport.height],
         )?;

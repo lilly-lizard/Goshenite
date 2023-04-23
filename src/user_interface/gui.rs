@@ -241,30 +241,4 @@ impl Gui {
             .hscroll(true)
             .show(&self.context, add_contents);
     }
-
-    fn _bug_test_window(&mut self) {
-        let add_contents = |ui: &mut egui::Ui| {
-            // TODO TESTING tests GuiRenderer create_texture() functionality for when ImageDelta.pos != None
-            // todo add to testing window function and document
-            ui.separator();
-            if ui.add(Button::new("gui bug test")).clicked() {
-                let style = &*self.context.style();
-                let mut style = style.clone();
-                style.text_styles = [
-                    (TextStyle::Heading, FontId::new(20.0, Proportional)),
-                    (TextStyle::Body, FontId::new(18.0, Proportional)),
-                    (TextStyle::Monospace, FontId::new(14.0, Proportional)),
-                    (TextStyle::Button, FontId::new(14.0, Proportional)),
-                    (TextStyle::Small, FontId::new(10.0, Proportional)),
-                ]
-                .into();
-                self.context.set_style(style);
-            }
-        };
-        egui::Window::new("Gui Bug Test")
-            .resizable(true)
-            .vscroll(true)
-            .hscroll(true)
-            .show(&self.context, add_contents);
-    }
 }

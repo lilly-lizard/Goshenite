@@ -29,7 +29,6 @@ pub struct Engine {
     _window: Arc<Window>,
 
     // state
-    window_resize: bool,
     scale_factor: f64,
     cursor_state: Cursor,
 
@@ -70,7 +69,10 @@ impl Engine {
 
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
-        let mut renderer = anyhow_unwrap(RenderManager::new(window.clone()), "initialize renderer");
+        let mut renderer = anyhow_unwrap(
+            RenderManager::new(window.clone(), scale_factor as f32),
+            "initialize renderer",
+        );
 
         let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32);
 
@@ -129,7 +131,6 @@ impl Engine {
         Engine {
             _window: window,
 
-            window_resize: false,
             scale_factor,
             cursor_state,
 
@@ -195,8 +196,7 @@ impl Engine {
 
             // window resize
             WindowEvent::Resized(new_inner_size) => {
-                self.window_resize = true;
-                self.camera.set_aspect_ratio(new_inner_size.into())
+                self.update_window_inner_size(new_inner_size);
             }
 
             // dpi change
@@ -204,10 +204,8 @@ impl Engine {
                 scale_factor,
                 new_inner_size,
             } => {
-                self.scale_factor = scale_factor;
-                self.window_resize = true;
-                self.gui.set_scale_factor(self.scale_factor as f32);
-                self.camera.set_aspect_ratio((*new_inner_size).into())
+                self.set_scale_factor(scale_factor);
+                self.update_window_inner_size(*new_inner_size);
             }
 
             WindowEvent::ThemeChanged(winit_theme) => {
@@ -215,6 +213,17 @@ impl Engine {
             }
             _ => (),
         }
+    }
+
+    fn update_window_inner_size(&mut self, new_inner_size: winit::dpi::PhysicalSize<u32>) {
+        self.renderer.set_window_just_resized_flag();
+        self.camera.set_aspect_ratio(new_inner_size.into())
+    }
+
+    fn set_scale_factor(&mut self, scale_factor: f64) {
+        self.scale_factor = scale_factor;
+        self.gui.set_scale_factor(self.scale_factor as f32);
+        self.renderer.set_scale_factor(scale_factor as f32);
     }
 
     /// Per frame engine logic and rendering
@@ -249,19 +258,17 @@ impl Engine {
         );
 
         // update gui renderer
+        let textures_delta = self.gui.get_and_clear_textures_delta();
         anyhow_unwrap(
-            self.renderer
-                .update_gui_textures(self.gui.get_and_clear_textures_delta()),
+            self.renderer.update_gui_textures(textures_delta),
             "update gui textures",
         );
+        let gui_primitives = self.gui.mesh_primitives().clone();
+        self.renderer.set_gui_primitives(gui_primitives);
 
         // now that frame processing is done, submit rendering commands
-        anyhow_unwrap(
-            self.renderer.render_frame(&self.gui, self.window_resize),
-            "render frame",
-        );
+        anyhow_unwrap(self.renderer.render_frame(), "render frame");
 
-        self.window_resize = false;
         self.frame_number += 1;
     }
 
@@ -274,7 +281,7 @@ impl Engine {
         // left mouse button dragging changes camera orientation
         if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
             self.camera
-                .rotate(self.cursor_state.position_frame_change());
+                .rotate_from_cursor_delta(self.cursor_state.position_frame_change());
         }
 
         // zoom in/out logic
