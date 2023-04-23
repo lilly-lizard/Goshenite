@@ -484,7 +484,7 @@ impl RenderManager {
 impl RenderManager {
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
-        debug!("recreating swapchain...");
+        trace!("recreating swapchain...");
 
         // do host-device sync and reset command buffers
         self.reset_render_command_buffers()?;
@@ -495,7 +495,7 @@ impl RenderManager {
 
         // recreate the swapchain
         let swapchain_properties = swapchain_properties(&self.device, &self.surface, &self.window)?;
-        debug!(
+        trace!(
             "creating swapchain with dimensions: {:?}",
             swapchain_properties.width_height
         );

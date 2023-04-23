@@ -45,6 +45,8 @@ ahash = { version = "0.8", default-features = false, features = [
 ] }
 # for offset_of macro
 memoffset = "0.8"
+# like mpsc::channel but send overwites latest value
+single_value_channel = "1.2"
 
 # slotmap
 # specs: ECS
