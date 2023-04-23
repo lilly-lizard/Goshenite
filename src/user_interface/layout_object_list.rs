@@ -25,7 +25,7 @@ pub fn object_list_layout(
             let selected_object_ref = Rc::downgrade(&new_object_ref);
             gui_state.set_selected_object(selected_object_ref.clone());
             // set lock on target to selected object
-            camera.set_lock_on_object(selected_object_ref);
+            camera.set_lock_on_target_from_object(&new_object_ref.borrow());
             // deselect primitive op (previous one would have been for different object)
             gui_state.deselect_primitive_op();
         }
@@ -81,7 +81,7 @@ pub fn object_list_layout(
                 let selected_object_ref = Rc::downgrade(&current_object);
                 gui_state.set_selected_object(selected_object_ref.clone());
                 // set lock on target to selected object
-                camera.set_lock_on_object(selected_object_ref);
+                camera.set_lock_on_target_from_object(&current_object.borrow());
                 // deselect primitive op (previous one would have been for different object)
                 gui_state.deselect_primitive_op();
             }

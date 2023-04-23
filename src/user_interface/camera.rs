@@ -49,44 +49,47 @@ impl Camera {
     pub fn rotate(&mut self, delta_cursor_position: DVec2) {
         let delta_angle = self.delta_cursor_to_angle(delta_cursor_position.into());
 
+        // orientation shouldn't be vertical
+        let normal = match self.normal_with_vertical_check() {
+            Ok(normal) => normal,
+            Err(CameraError::VerticalCameraDirection) => {
+                self.recover_from_vertical_orientation_alignment();
+                self.normal()
+            }
+        };
+
         match self.look_mode {
             // no lock-on target so maintain position adjust looking direction
             LookMode::Direction(direction) => {
-                self.rotate_fixed_pos(delta_angle[0], delta_angle[1]);
+                let new_direction =
+                    rotate_fixed_pos(direction, normal, delta_angle[0], delta_angle[1]);
+                self.look_mode = LookMode::Direction(new_direction);
             }
 
             // lock on target stays the same but camera position rotates around it
             LookMode::Target(target_pos) => {
-                // orientation shouldn't be vertical
-                let normal = match self.normal_with_vertical_check() {
-                    Ok(normal) => normal,
-                    Err(CameraError::VerticalCameraDirection) => {
-                        self.recover_from_vertical_direction_alignment();
-                        self.normal()
-                    }
-                };
-
-                self.arcball(normal, target_pos, delta_angle[0], delta_angle[1]);
+                let new_position = arcball(
+                    self.position,
+                    target_pos,
+                    normal,
+                    delta_angle[0],
+                    delta_angle[1],
+                );
+                self.set_position(new_position);
             }
         }
-
-        // update normal now that camera orientation has changed
-        self.update_normal();
     }
 
     /// Move camera position forwards/backwards according to cursor scroll value
     pub fn scroll_zoom(&mut self, scroll_delta: f64) {
         match self.look_mode {
             LookMode::Direction(direction) => {
-                self.set_position(self.position + scroll_delta * direction);
+                let new_position = self.position + scroll_delta * direction;
+                self.set_position(new_position);
             }
 
-            LookMode::Target(target_type) => {
-                if let Some(target_pos) =
-                    self.get_target_position_or_switch_look_modes(target_type.clone())
-                {
-                    self.scroll_zoom_target(scroll_delta, target_pos);
-                }
+            LookMode::Target(target_pos) => {
+                self.scroll_zoom_target(scroll_delta, target_pos);
             }
         }
     }
@@ -143,7 +146,7 @@ impl Camera {
 
     pub fn unset_lock_on_target(&mut self) {
         if let LookMode::Target(target_pos) = self.look_mode {
-            let direction = self.position - target_pos;
+            let direction = target_pos - self.position;
             self.look_mode = LookMode::Direction(direction);
         }
     }
@@ -230,7 +233,7 @@ impl Camera {
 
 impl Camera {
     /// Not necessarily normalized
-    fn direction(&self) -> DVec3 {
+    fn look_direction(&self) -> DVec3 {
         match self.look_mode {
             LookMode::Direction(direction) => direction,
             LookMode::Target(target_pos) => self.position - target_pos,
@@ -247,19 +250,20 @@ impl Camera {
 
     /// Not normalized. May return 0 if the look orientation is aligned with the verical axis!
     fn normal(&self) -> DVec3 {
-        let direction = self.direction();
+        let direction = self.look_direction();
         let up = config::WORLD_SPACE_UP.as_dvec3();
 
         up.cross(direction)
     }
 
+    /// Same as [`Self::normal`] but will return [`CameraError::VerticalCameraDirection`] if the
+    /// look direction is aligned with the vertical axis.
     fn normal_with_vertical_check(&self) -> Result<DVec3, CameraError> {
         let normal = self.normal();
 
         if normal == DVec3::ZERO {
             return Err(CameraError::VerticalCameraDirection);
         }
-
         Ok(normal)
     }
 
@@ -273,12 +277,28 @@ impl Camera {
 
     /// Adjust the camera so that it isn't looking vertically. Allows a normal to be calculated.
     fn recover_from_vertical_orientation_alignment(&mut self) {
+        let recovery_delta_v =
+            clamp_vertical_angle_delta(config::WORLD_SPACE_UP.as_dvec3(), Angle::ZERO);
+        let normal = DVec3::X;
+
         match self.look_mode {
+            // no lock-on target so maintain position adjust looking direction
             LookMode::Direction(direction) => {
-                todo!();
+                let new_direction =
+                    rotate_fixed_pos(direction, normal, Angle::ZERO, recovery_delta_v);
+                self.look_mode = LookMode::Direction(new_direction);
             }
+
+            // lock on target stays the same but camera position rotates around it
             LookMode::Target(target_pos) => {
-                todo!();
+                let new_position = arcball(
+                    self.position,
+                    target_pos,
+                    normal,
+                    Angle::ZERO,
+                    recovery_delta_v,
+                );
+                self.set_position(new_position);
             }
         }
     }
@@ -299,47 +319,6 @@ impl Camera {
         if new_pos.is_finite() {
             self.position = new_pos;
         }
-    }
-
-    fn rotate_fixed_pos(&mut self, delta_h: Angle, delta_v: Angle) {
-        let delta_v_clamped = self.clamp_vertical_angle_delta(delta_v.invert());
-
-        let rotation_matrix = DMat3::from_axis_angle(self.normal, delta_v_clamped.radians())
-            * DMat3::from_rotation_z(delta_h.radians());
-        self.direction = rotation_matrix * self.direction;
-    }
-
-    fn arcball(&mut self, normal: DVec3, target_pos: DVec3, delta_h: Angle, delta_v: Angle) {
-        let delta_v_clamped = self.clamp_vertical_angle_delta(delta_v);
-
-        // lock on target stays the same but camera position rotates around it
-        let normal = normal.normalize();
-        let rotation_matrix = DMat3::from_axis_angle(normal, delta_v_clamped.radians())
-            * DMat3::from_rotation_z(-delta_h.radians());
-
-        self.set_position(rotation_matrix * (self.position - target_pos) + target_pos);
-        self.set_direction(target_pos);
-    }
-
-    /// Limits how close camera vertical direction can get to world space up.
-    /// Also prevents camera angle from crossing over world space up and doing a disorienting flip.
-    fn clamp_vertical_angle_delta(&self, delta_v: Angle) -> Angle {
-        let current_v_radians = config::WORLD_SPACE_UP
-            .as_dvec3()
-            .angle_between(self.direction);
-        let final_v_radians = current_v_radians + delta_v.radians();
-
-        let min_radians = config_ui::VERTICAL_ANGLE_CLAMP.radians();
-        if final_v_radians < min_radians {
-            return Angle::from_radians(min_radians - current_v_radians);
-        }
-
-        let max_radians = std::f64::consts::PI - config_ui::VERTICAL_ANGLE_CLAMP.radians();
-        if final_v_radians > max_radians {
-            return Angle::from_radians(max_radians - current_v_radians);
-        }
-
-        delta_v
     }
 
     // `scroll_delta` is number of scroll clicks
@@ -367,6 +346,67 @@ impl Camera {
 
         self.set_position(new_position);
     }
+}
+
+/// Returns the new direction after camera rotating around a fixed position.
+fn rotate_fixed_pos(
+    current_look_direction: DVec3,
+    normal: DVec3,
+    delta_h: Angle,
+    delta_v: Angle,
+) -> DVec3 {
+    let delta_v_clamped = clamp_vertical_angle_delta(current_look_direction, delta_v.invert());
+    let normalized_normal = normal.normalize();
+
+    let rotation_matrix = DMat3::from_axis_angle(normalized_normal, delta_v_clamped.radians())
+        * DMat3::from_rotation_z(delta_h.radians());
+
+    let new_direciton = rotation_matrix * current_look_direction;
+    new_direciton
+}
+
+/// Returns the new position after camera rotation around a target position.
+fn arcball(
+    camera_pos: DVec3,
+    target_pos: DVec3,
+    normal: DVec3,
+    delta_h: Angle,
+    delta_v: Angle,
+) -> DVec3 {
+    let look_direction = target_pos - camera_pos;
+    let delta_v_inverted = delta_v.invert();
+    let delta_v_clamped = clamp_vertical_angle_delta(look_direction, delta_v_inverted);
+
+    // lock on target stays the same but camera position rotates around it
+    let normal = normal.normalize();
+    let rotation_matrix = DMat3::from_axis_angle(normal, delta_v_clamped.radians())
+        * DMat3::from_rotation_z(-delta_h.radians());
+
+    let new_position = rotation_matrix * (camera_pos - target_pos) + target_pos;
+    new_position
+}
+
+/// Adjusts a requested vertical angle delta so that the camera look direction is within
+/// [`config_ui::VERTICAL_ANGLE_CLAMP`] away from the vertical axis after the returned vertical
+/// angle delta is applied.
+/// Will prevent the look direction from crossing over world space up and doing a disorienting flip.
+fn clamp_vertical_angle_delta(look_direction: DVec3, delta_v: Angle) -> Angle {
+    let current_v_radians = config::WORLD_SPACE_UP
+        .as_dvec3()
+        .angle_between(look_direction);
+    let final_v_radians = current_v_radians + delta_v.radians();
+
+    let min_radians = config_ui::VERTICAL_ANGLE_CLAMP.radians();
+    if final_v_radians < min_radians {
+        return Angle::from_radians(min_radians - current_v_radians);
+    }
+
+    let max_radians = std::f64::consts::PI - config_ui::VERTICAL_ANGLE_CLAMP.radians();
+    if final_v_radians > max_radians {
+        return Angle::from_radians(max_radians - current_v_radians);
+    }
+
+    delta_v
 }
 
 #[inline]

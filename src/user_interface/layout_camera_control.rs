@@ -1,5 +1,5 @@
-use super::camera::{Camera, LookMode, LookTargetType};
-use egui::{RichText, Ui};
+use super::camera::{Camera, LookMode};
+use egui::Ui;
 
 // toggle target on object select
 // show distance from target
@@ -13,51 +13,42 @@ pub fn camera_control_layout(ui: &mut Ui, camera: &mut Camera) {
         }
     });
 
+    // unset button
+    ui.horizontal(|ui| {
+        let target_mode_on = match camera.look_mode() {
+            LookMode::Direction(_) => false,
+            LookMode::Target(_) => true,
+        };
+
+        let unset_res = ui.add_enabled(target_mode_on, |ui_inner: &mut Ui| {
+            ui_inner.button("Unset lock-on taget")
+        });
+
+        if unset_res.clicked() {
+            camera.unset_lock_on_target();
+        }
+    });
+
     // camera status
     match camera.look_mode() {
-        LookMode::Direction() => {
+        LookMode::Direction(look_direction) => {
+            let look_direction_normalized = look_direction.normalize();
+
             ui.label("Look mode: Direction");
+            ui.label(format!(
+                "Look direction: [{:.2}, {:.2}, {:.2}]",
+                look_direction_normalized.x,
+                look_direction_normalized.y,
+                look_direction_normalized.z
+            ));
         }
 
-        LookMode::Target(target_type) => {
+        LookMode::Target(target_pos) => {
             ui.label("Look mode: Target");
-            match target_type {
-                LookTargetType::Position(position) => {
-                    ui.label(format!(
-                        "Target position: [{}, {}, {}]",
-                        position.x, position.y, position.z
-                    ));
-                }
-                LookTargetType::Object(object_ref) => {
-                    if let Some(object) = object_ref.upgrade() {
-                        let name = object.borrow().name().clone();
-                        let origin = object.borrow().origin();
-
-                        ui.label(format!(
-                            "Target object:\n- name: {}\n- position: [{}, {}, {}]",
-                            name, origin.x, origin.y, origin.z,
-                        ));
-                    } else {
-                        let no_object_text = RichText::new("Target object dropped!").italics();
-                        ui.label(no_object_text);
-                    }
-                }
-                LookTargetType::Primitive(primitive_ref) => {
-                    if let Some(primitive) = primitive_ref.upgrade() {
-                        let type_name = primitive.type_name().clone();
-                        let center = primitive.transform().center;
-
-                        ui.label(format!(
-                            "Target primtive:\n- type: {}\n- position: [{}, {}, {}]",
-                            type_name, center.x, center.y, center.z,
-                        ));
-                    } else {
-                        let no_primitive_text =
-                            RichText::new("Target primitive dropped!").italics();
-                        ui.label(no_primitive_text);
-                    }
-                }
-            }
+            ui.label(format!(
+                "Target position: [{:.2}, {:.2}, {:.2}]",
+                target_pos.x, target_pos.y, target_pos.z
+            ));
         }
     }
 }
