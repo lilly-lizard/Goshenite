@@ -8,7 +8,7 @@ use glam::{DMat3, DMat4, DVec2, DVec3, Mat4, Vec4};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum LookMode {
     /// Look in a given direction
     Direction(DVec3),
@@ -16,8 +16,17 @@ pub enum LookMode {
     Target(DVec3),
 }
 
+impl Default for LookMode {
+    fn default() -> Self {
+        let position = config_ui::CAMERA_DEFAULT_POSITION;
+        let target_pos = config_ui::CAMERA_DEFAULT_TARGET;
+        let direction = target_pos - position;
+        Self::Direction(direction)
+    }
+}
+
 /// Describes the orientation and properties of a camera that can be used for perspective rendering
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct Camera {
     position: DVec3,
     look_mode: LookMode,
@@ -32,12 +41,9 @@ pub struct Camera {
 impl Camera {
     pub fn new(resolution: [f32; 2]) -> anyhow::Result<Self> {
         let position = config_ui::CAMERA_DEFAULT_POSITION;
-        let target_pos = config_ui::CAMERA_DEFAULT_TARGET;
-        let direction = target_pos - position;
-
         Ok(Camera {
             position,
-            look_mode: LookMode::Direction(direction),
+            look_mode: LookMode::default(),
             fov: config_ui::CAMERA_DEFAULT_FOV,
             aspect_ratio: calc_aspect_ratio(resolution),
             near_plane: config_ui::CAMERA_NEAR_PLANE,
@@ -83,10 +89,7 @@ impl Camera {
     /// - near/far plane limits
     pub fn reset(&mut self) {
         self.position = config_ui::CAMERA_DEFAULT_POSITION;
-        let target_pos = config_ui::CAMERA_DEFAULT_TARGET;
-        let direction = target_pos - self.position;
-
-        self.look_mode = LookMode::Direction(direction);
+        self.look_mode = LookMode::default();
         self.fov = config_ui::CAMERA_DEFAULT_FOV;
         self.near_plane = config_ui::CAMERA_NEAR_PLANE;
         self.far_plane = config_ui::CAMERA_FAR_PLANE;
@@ -359,12 +362,12 @@ fn arcball(
     delta_v: Angle,
 ) -> DVec3 {
     let look_direction = target_pos - camera_pos;
-    let delta_v_inverted = delta_v.invert();
-    let delta_v_clamped = clamp_vertical_angle_delta(look_direction, delta_v_inverted);
+    let delta_v_clamped = clamp_vertical_angle_delta(look_direction, delta_v);
+    let delta_v_inverted = delta_v_clamped.invert();
 
     // lock on target stays the same but camera position rotates around it
     let normal = normal.normalize();
-    let rotation_matrix = DMat3::from_axis_angle(normal, delta_v_clamped.radians())
+    let rotation_matrix = DMat3::from_axis_angle(normal, delta_v_inverted.radians())
         * DMat3::from_rotation_z(-delta_h.radians());
 
     let new_position = rotation_matrix * (camera_pos - target_pos) + target_pos;

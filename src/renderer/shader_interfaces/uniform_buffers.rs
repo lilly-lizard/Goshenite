@@ -1,6 +1,7 @@
 use crate::user_interface::camera::{Camera, ProjectionMatrixReturn};
 use glam::{Mat4, Vec3};
 
+/// Camera data read by GPU shaders
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct CameraUniformBuffer {
@@ -17,6 +18,7 @@ pub struct CameraUniformBuffer {
     // 0 if false, 1 if true
     pub is_srgb_framebuffer: u32,
 }
+
 impl CameraUniformBuffer {
     pub fn new(
         proj_view_inverse: Mat4,

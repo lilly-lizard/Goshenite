@@ -3,7 +3,7 @@ use super::{
     config_ui::EGUI_TRACE,
     gui_state::{GuiState, WindowStates},
     layout_camera_control::camera_control_layout,
-    layout_object_editor::object_editor,
+    layout_object_editor::object_editor_layout,
     layout_object_list::object_list_layout,
     layout_panel::bottom_panel_layout,
 };
@@ -13,7 +13,7 @@ use crate::engine::{
     },
     primitives::primitive_references::PrimitiveReferences,
 };
-use egui::{Button, FontFamily::Proportional, FontId, TextStyle, TexturesDelta, Visuals};
+use egui::{TexturesDelta, Visuals};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -210,7 +210,7 @@ impl Gui {
             if EGUI_TRACE {
                 egui::trace!(ui);
             }
-            object_editor(
+            object_editor_layout(
                 ui,
                 &mut self.gui_state,
                 &mut self.objects_delta,

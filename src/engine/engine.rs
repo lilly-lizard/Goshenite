@@ -1,13 +1,14 @@
 use super::{
+    config_engine,
     object::{
         object_collection::ObjectCollection, objects_delta::ObjectsDelta, operation::Operation,
     },
     primitives::null_primitive::NullPrimitive,
+    render_thread::{start_render_thread, RenderThreadCommand, RenderThreadUpdaters},
 };
 use crate::{
     config,
-    engine::config_engine,
-    helper::anyhow_panic::{anyhow_panic, anyhow_unwrap},
+    helper::anyhow_panic::anyhow_unwrap,
     renderer::render_manager::RenderManager,
     user_interface::camera::Camera,
     user_interface::{
@@ -18,12 +19,7 @@ use crate::{
 use glam::{Quat, Vec3};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{
-    env,
-    sync::Arc,
-    thread::{self, JoinHandle},
-    time::Instant,
-};
+use std::{env, sync::Arc, thread::JoinHandle, time::Instant};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
@@ -46,7 +42,7 @@ pub struct Engine {
 
     // render thread
     render_thread_handle: JoinHandle<()>,
-    render_command_tx: single_value_channel::Updater<Option<RenderThreadCommands>>,
+    render_thread_updaters: RenderThreadUpdaters,
 }
 
 impl Engine {
@@ -80,7 +76,6 @@ impl Engine {
             RenderManager::new(window.clone(), scale_factor as f32),
             "initialize renderer",
         );
-        renderer.set_scale_factor(scale_factor as f32);
         anyhow_unwrap(renderer.update_camera(&camera), "init renderer camera");
 
         let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32);
@@ -138,7 +133,7 @@ impl Engine {
         // TESTING OBJECTS END
 
         // start render thread
-        let (render_thread_handle, render_command_tx) = start_render_thread(renderer);
+        let (render_thread_handle, render_thread_updaters) = start_render_thread(renderer);
 
         Engine {
             _window: window,
@@ -152,7 +147,7 @@ impl Engine {
             gui,
 
             render_thread_handle,
-            render_command_tx,
+            render_thread_updaters,
         }
     }
 
@@ -242,14 +237,15 @@ impl Engine {
     }
 
     fn update_window_inner_size(&mut self, new_inner_size: winit::dpi::PhysicalSize<u32>) {
-        self.camera.set_aspect_ratio(new_inner_size.into())
-        //self.renderer.set_window_just_resized_flag();
+        self.camera.set_aspect_ratio(new_inner_size.into());
+        self.render_thread_updaters.set_window_just_resized_flag();
     }
 
     fn set_scale_factor(&mut self, scale_factor: f64) {
         self.scale_factor = scale_factor;
         self.gui.set_scale_factor(self.scale_factor as f32);
-        //self.renderer.set_scale_factor(scale_factor as f32);
+        self.render_thread_updaters
+            .set_scale_factor(scale_factor as f32);
     }
 
     /// Per frame engine logic and rendering.
@@ -270,12 +266,10 @@ impl Engine {
 
         // update camera based on now processed user inputs
         self.update_camera();
-        //anyhow_unwrap(
-        //    self.renderer.update_camera(&mut self.camera),
-        //    "update camera buffer",
-        //);
+        self.render_thread_updaters
+            .update_camera(self.camera.clone());
 
-        // update object buffers
+        // update object buffers todo better objects delta
         // anyhow_unwrap(
         //     self.renderer.update_object_buffers(
         //         &self.object_collection,
@@ -286,22 +280,20 @@ impl Engine {
 
         // update gui renderer
         let textures_delta = self.gui.get_and_clear_textures_delta();
-        // anyhow_unwrap(
-        //     self.renderer.update_gui_textures(textures_delta),
-        //     "update gui textures",
-        // );
+        self.render_thread_updaters
+            .update_gui_textures(textures_delta);
         let gui_primitives = self.gui.mesh_primitives().clone();
-        // self.renderer.set_gui_primitives(gui_primitives);
+        self.render_thread_updaters
+            .set_gui_primitives(gui_primitives);
 
         // now that frame processing is done, tell renderer to render a frame
-        // anyhow_unwrap(self.renderer.render_frame(), "render frame");
         let render_thread_send_res = self
-            .render_command_tx
-            .update(Some(RenderThreadCommands::RenderFrame));
+            .render_thread_updaters
+            .set_render_thread_command(RenderThreadCommand::RenderFrame);
 
         // quit if the render thread is killed
         if let Err(e) = render_thread_send_res {
-            error!("process_frame: render thread already stopped ({})", e);
+            warn!("process_frame: render thread already stopped ({})", e);
             return true;
         }
 
@@ -329,8 +321,8 @@ impl Engine {
     fn stop_render_thread(&self) {
         debug!("sending quit command to render thread...");
         let _render_thread_send_res = self
-            .render_command_tx
-            .update(Some(RenderThreadCommands::Quit));
+            .render_thread_updaters
+            .set_render_thread_command(RenderThreadCommand::Quit);
 
         debug!(
             "waiting for render thread to quit (timeout = {:.2}s)",
@@ -355,39 +347,23 @@ impl Engine {
     }
 }
 
-fn start_render_thread(
-    mut renderer: RenderManager,
-) -> (
-    JoinHandle<()>,
-    single_value_channel::Updater<Option<RenderThreadCommands>>,
-) {
-    let (mut render_command_rx, render_command_tx) =
-        single_value_channel::channel::<RenderThreadCommands>();
+// ~~ Render Thread ~~
 
-    let render_thread_handle = thread::spawn(move || loop {
-        let render_command = match render_command_rx.latest() {
-            Some(c) => c,
-            None => continue,
-        };
+// ~~ Engine Error ~~
 
-        match render_command {
-            RenderThreadCommands::DoNothing => (),
-            RenderThreadCommands::RenderFrame => {
-                let render_res = renderer.render_frame();
-                if let Err(e) = render_res {
-                    anyhow_panic(&e, "render frame");
-                }
+#[derive(Clone, Copy, Debug)]
+pub enum EngineError {
+    RenderThreadClosedPrematurely,
+}
+
+impl std::fmt::Display for EngineError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Self::RenderThreadClosedPrematurely => {
+                write!(f, "render thread was closed prematurely")
             }
-            RenderThreadCommands::Quit => break,
         }
-    });
-
-    (render_thread_handle, render_command_tx)
+    }
 }
 
-#[derive(Clone, Copy)]
-enum RenderThreadCommands {
-    DoNothing,
-    RenderFrame,
-    Quit,
-}
+impl std::error::Error for EngineError {}

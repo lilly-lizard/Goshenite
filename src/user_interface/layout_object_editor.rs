@@ -23,7 +23,7 @@ use glam::{Quat, Vec3};
 use log::{debug, error, info, trace, warn};
 use std::rc::Rc;
 
-pub fn object_editor(
+pub fn object_editor_layout(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
