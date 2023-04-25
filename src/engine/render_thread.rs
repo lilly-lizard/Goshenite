@@ -42,7 +42,7 @@ impl RenderFrameTimestamp {
     }
 }
 
-pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, RenderThreadUpdaters) {
+pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, RenderThreadChannels) {
     let (mut render_command_rx, render_command_tx) = single_value_channel::channel_starting_with::<
         RenderThreadCommand,
     >(RenderThreadCommand::DoNothing);
@@ -60,8 +60,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
         single_value_channel::channel::<Vec<ClippedPrimitive>>();
 
     let initial_render_frame_timestamp = RenderFrameTimestamp::start();
-    let (frame_timestamp_rx, frame_timestamp_tx) =
-        single_value_channel::channel_starting_with(initial_render_frame_timestamp);
+    let (frame_timestamp_rx, frame_timestamp_tx) = single_value_channel::channel();
 
     // render thread loop
     let render_thread_handle = thread::spawn(move || {
@@ -119,7 +118,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
             // send new frame timestamp
 
             frame_timestamp = RenderFrameTimestamp::incriment(frame_timestamp.frame_num);
-            if let Err(NoReceiverError(_)) = frame_timestamp_tx.update(frame_timestamp) {
+            if let Err(NoReceiverError(_)) = frame_timestamp_tx.update(Some(frame_timestamp)) {
                 warn!("render thread > frame timestamp receiver disconnected! stopping render thread...");
                 break;
             }
@@ -128,7 +127,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
 
     (
         render_thread_handle,
-        RenderThreadUpdaters {
+        RenderThreadChannels {
             render_command_tx,
             window_resize_flag_tx,
             scale_factor_tx,
@@ -140,17 +139,18 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
     )
 }
 
-pub struct RenderThreadUpdaters {
+/// Render thread channel handles for the main thread to send/receive data
+pub struct RenderThreadChannels {
     pub render_command_tx: single_value_channel::Updater<RenderThreadCommand>,
     pub window_resize_flag_tx: single_value_channel::Updater<Option<bool>>,
     pub scale_factor_tx: single_value_channel::Updater<Option<f32>>,
     pub camera_tx: single_value_channel::Updater<Option<Camera>>,
     pub textures_delta_tx: mpsc::Sender<Vec<TexturesDelta>>,
     pub gui_primitives_tx: single_value_channel::Updater<Option<Vec<ClippedPrimitive>>>,
-    pub frame_timestamp_rx: single_value_channel::Receiver<RenderFrameTimestamp>,
+    pub frame_timestamp_rx: single_value_channel::Receiver<Option<RenderFrameTimestamp>>,
 }
 
-impl RenderThreadUpdaters {
+impl RenderThreadChannels {
     pub fn set_render_thread_command(
         &self,
         command: RenderThreadCommand,
@@ -182,5 +182,9 @@ impl RenderThreadUpdaters {
         gui_primitives: Vec<ClippedPrimitive>,
     ) -> Result<(), NoReceiverError<Option<Vec<ClippedPrimitive>>>> {
         self.gui_primitives_tx.update(Some(gui_primitives))
+    }
+
+    pub fn get_latest_render_frame_timestamp(&mut self) -> Option<RenderFrameTimestamp> {
+        mem::take(self.frame_timestamp_rx.latest_mut())
     }
 }

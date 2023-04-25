@@ -4,7 +4,7 @@ use super::{
         object_collection::ObjectCollection, objects_delta::ObjectsDelta, operation::Operation,
     },
     primitives::null_primitive::NullPrimitive,
-    render_thread::{start_render_thread, RenderThreadCommand, RenderThreadUpdaters},
+    render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
 };
 use crate::{
     config,
@@ -20,18 +20,17 @@ use glam::{Quat, Vec3};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use single_value_channel::NoReceiverError;
-use std::{env, sync::Arc, thread::JoinHandle, time::Instant};
+use std::{
+    env,
+    sync::{mpsc::SendError, Arc},
+    thread::JoinHandle,
+    time::Instant,
+};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
-
-#[derive(Clone, Copy, Debug)]
-pub enum EngineCommand {
-    Continue,
-    Quit,
-}
 
 /// Goshenite engine logic
 pub struct Engine {
@@ -41,7 +40,7 @@ pub struct Engine {
     scale_factor: f64,
     cursor_state: Cursor,
     object_collection: ObjectCollection,
-    frame_number: u64,
+    main_thread_frame_number: u64,
 
     // controllers
     camera: Camera,
@@ -49,7 +48,7 @@ pub struct Engine {
 
     // render thread
     render_thread_handle: JoinHandle<()>,
-    render_thread_updaters: RenderThreadUpdaters,
+    render_thread_channels: RenderThreadChannels,
 }
 
 impl Engine {
@@ -140,7 +139,7 @@ impl Engine {
         // TESTING OBJECTS END
 
         // start render thread
-        let (render_thread_handle, render_thread_updaters) = start_render_thread(renderer);
+        let (render_thread_handle, render_thread_channels) = start_render_thread(renderer);
 
         Engine {
             _window: window,
@@ -148,13 +147,13 @@ impl Engine {
             scale_factor,
             cursor_state,
             object_collection,
-            frame_number: 0,
+            main_thread_frame_number: 0,
 
             camera,
             gui,
 
             render_thread_handle,
-            render_thread_updaters,
+            render_thread_channels,
         }
     }
 
@@ -167,24 +166,36 @@ impl Engine {
                 ..
             } => {
                 info!("close requested by window");
-                *control_flow = ControlFlow::Exit;
 
+                // quit
+                *control_flow = ControlFlow::Exit;
                 self.stop_render_thread();
             }
 
             // process window events and update state
-            Event::WindowEvent { event, .. } => self.process_input(event),
+            Event::WindowEvent { event, .. } => {
+                let process_input_res = self.process_input(event);
+
+                if let Err(e) = process_input_res {
+                    error!("error while processing input: {}", e);
+
+                    // quit
+                    *control_flow = ControlFlow::Exit;
+                    self.stop_render_thread();
+                }
+            }
 
             // per frame logic
             Event::MainEventsCleared => match *control_flow {
                 ControlFlow::ExitWithCode(_) => (), // don't bother if we're quitting anyway
                 _ => {
-                    let quit = self.process_frame();
+                    let process_frame_res = self.process_frame();
 
-                    if quit {
-                        info!("close requested by frame processing");
+                    if let Err(e) = process_frame_res {
+                        error!("error during per-frame processing: {}", e);
+
+                        // quit
                         *control_flow = ControlFlow::Exit;
-
                         self.stop_render_thread();
                     }
                 }
@@ -194,7 +205,7 @@ impl Engine {
     }
 
     /// Process window events and update state
-    fn process_input(&mut self, event: WindowEvent) -> EngineCommand {
+    fn process_input(&mut self, event: WindowEvent) -> Result<(), EngineError> {
         trace!("winit event: {:?}", event);
 
         // egui event handling
@@ -224,11 +235,7 @@ impl Engine {
 
             // window resize
             WindowEvent::Resized(new_inner_size) => {
-                let command_option = self.update_window_inner_size(new_inner_size);
-
-                if let Some(command) = command_option {
-                    return command;
-                }
+                self.update_window_inner_size(new_inner_size)?;
             }
 
             // dpi change
@@ -237,11 +244,7 @@ impl Engine {
                 new_inner_size,
             } => {
                 self.set_scale_factor(scale_factor);
-                let command_option = self.update_window_inner_size(*new_inner_size);
-
-                if let Some(command) = command_option {
-                    return command;
-                }
+                self.update_window_inner_size(*new_inner_size)?;
             }
 
             WindowEvent::ThemeChanged(winit_theme) => {
@@ -250,7 +253,7 @@ impl Engine {
             _ => (),
         }
 
-        EngineCommand::Continue
+        Ok(())
     }
 
     fn update_window_inner_size(
@@ -258,23 +261,23 @@ impl Engine {
         new_inner_size: winit::dpi::PhysicalSize<u32>,
     ) -> Result<(), EngineError> {
         self.camera.set_aspect_ratio(new_inner_size.into());
-        let thread_send_res = self.render_thread_updaters.set_window_just_resized_flag();
+        let thread_send_res = self.render_thread_channels.set_window_just_resized_flag();
 
-        check_single_channel_receiver_res(thread_send_res)
+        check_channel_updater_result(thread_send_res)
     }
 
     fn set_scale_factor(&mut self, scale_factor: f64) -> Result<(), EngineError> {
         self.scale_factor = scale_factor;
         self.gui.set_scale_factor(self.scale_factor as f32);
         let thread_send_res = self
-            .render_thread_updaters
+            .render_thread_channels
             .set_scale_factor(scale_factor as f32);
 
-        check_single_channel_receiver_res(thread_send_res)
+        check_channel_updater_result(thread_send_res)
     }
 
     /// Per frame engine logic and rendering.
-    fn process_frame(&mut self) -> EngineCommand {
+    fn process_frame(&mut self) -> Result<(), EngineError> {
         // process recieved events for cursor state
         self.cursor_state.process_frame();
 
@@ -288,12 +291,12 @@ impl Engine {
             "update gui",
         );
 
-        // todo do render thread sending all at once?
-
-        // update camera based on now processed user inputs
+        // update camera
         self.update_camera();
-        self.render_thread_updaters
+        let thread_send_res = self
+            .render_thread_channels
             .update_camera(self.camera.clone());
+        check_channel_updater_result(thread_send_res)?;
 
         // update object buffers todo better objects delta
         // anyhow_unwrap(
@@ -304,27 +307,37 @@ impl Engine {
         //     "update object buffers",
         // );
 
-        // update gui renderer
+        // update gui textures
         let textures_delta = self.gui.get_and_clear_textures_delta();
-        self.render_thread_updaters
-            .update_gui_textures(textures_delta);
+        if !textures_delta.is_empty() {
+            let thread_send_res = self
+                .render_thread_channels
+                .update_gui_textures(textures_delta);
+            check_channel_sender_result(thread_send_res)?;
+        }
+
+        // update gui primitives
         let gui_primitives = self.gui.mesh_primitives().clone();
-        self.render_thread_updaters
-            .set_gui_primitives(gui_primitives);
+        if !gui_primitives.is_empty() {
+            let thread_send_res = self
+                .render_thread_channels
+                .set_gui_primitives(gui_primitives);
+            check_channel_updater_result(thread_send_res)?;
+        }
 
         // now that frame processing is done, tell renderer to render a frame
         let thread_send_res = self
-            .render_thread_updaters
+            .render_thread_channels
             .set_render_thread_command(RenderThreadCommand::RenderFrame);
+        check_channel_updater_result(thread_send_res)?;
 
-        // quit if the render thread is killed
-        if let Some(quit_command) = check_single_channel_receiver_res(thread_send_res) {
-            return quit_command;
-        }
+        self.main_thread_frame_number += 1;
 
-        self.frame_number += 1;
+        let latest_render_frame_timestamp = self
+            .render_thread_channels
+            .get_latest_render_frame_timestamp();
 
-        EngineCommand::Continue
+        Ok(())
     }
 
     fn update_camera(&mut self) {
@@ -347,7 +360,7 @@ impl Engine {
     fn stop_render_thread(&self) {
         debug!("sending quit command to render thread...");
         let _render_thread_send_res = self
-            .render_thread_updaters
+            .render_thread_channels
             .set_render_thread_command(RenderThreadCommand::Quit);
 
         debug!(
@@ -373,15 +386,28 @@ impl Engine {
     }
 }
 
-/// If `thread_send_res` is an error, returns `EngineCommand::Quit`. Otherwise returns `None`.
-fn check_single_channel_receiver_res<T>(
+/// If `thread_send_res` is an error, returns `EngineError::RenderThreadClosedPrematurely`.
+/// Otherwise returns `Ok`.
+fn check_channel_updater_result<T>(
     thread_send_res: Result<(), NoReceiverError<T>>,
-) -> Option<EngineCommand> {
+) -> Result<(), EngineError> {
     if let Err(e) = thread_send_res {
-        warn!("render thread receiver dropped ({})", e);
-        return Some(EngineCommand::Quit);
+        warn!("render thread receiver dropped prematurely ({})", e);
+        return Err(EngineError::RenderThreadClosedPrematurely);
     }
-    None
+    Ok(())
+}
+
+/// If `thread_send_res` is an error, returns `EngineError::RenderThreadClosedPrematurely`.
+/// Otherwise returns `Ok`.
+fn check_channel_sender_result<T>(
+    thread_send_res: Result<(), SendError<T>>,
+) -> Result<(), EngineError> {
+    if let Err(e) = thread_send_res {
+        warn!("render thread receiver dropped prematurely ({})", e);
+        return Err(EngineError::RenderThreadClosedPrematurely);
+    }
+    Ok(())
 }
 
 // ~~ Engine Error ~~
