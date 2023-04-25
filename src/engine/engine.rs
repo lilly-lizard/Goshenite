@@ -19,12 +19,19 @@ use crate::{
 use glam::{Quat, Vec3};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use single_value_channel::NoReceiverError;
 use std::{env, sync::Arc, thread::JoinHandle, time::Instant};
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
+
+#[derive(Clone, Copy, Debug)]
+pub enum EngineCommand {
+    Continue,
+    Quit,
+}
 
 /// Goshenite engine logic
 pub struct Engine {
@@ -187,7 +194,7 @@ impl Engine {
     }
 
     /// Process window events and update state
-    fn process_input(&mut self, event: WindowEvent) {
+    fn process_input(&mut self, event: WindowEvent) -> EngineCommand {
         trace!("winit event: {:?}", event);
 
         // egui event handling
@@ -217,7 +224,11 @@ impl Engine {
 
             // window resize
             WindowEvent::Resized(new_inner_size) => {
-                self.update_window_inner_size(new_inner_size);
+                let command_option = self.update_window_inner_size(new_inner_size);
+
+                if let Some(command) = command_option {
+                    return command;
+                }
             }
 
             // dpi change
@@ -226,7 +237,11 @@ impl Engine {
                 new_inner_size,
             } => {
                 self.set_scale_factor(scale_factor);
-                self.update_window_inner_size(*new_inner_size);
+                let command_option = self.update_window_inner_size(*new_inner_size);
+
+                if let Some(command) = command_option {
+                    return command;
+                }
             }
 
             WindowEvent::ThemeChanged(winit_theme) => {
@@ -234,23 +249,32 @@ impl Engine {
             }
             _ => (),
         }
+
+        EngineCommand::Continue
     }
 
-    fn update_window_inner_size(&mut self, new_inner_size: winit::dpi::PhysicalSize<u32>) {
+    fn update_window_inner_size(
+        &mut self,
+        new_inner_size: winit::dpi::PhysicalSize<u32>,
+    ) -> Result<(), EngineError> {
         self.camera.set_aspect_ratio(new_inner_size.into());
-        self.render_thread_updaters.set_window_just_resized_flag();
+        let thread_send_res = self.render_thread_updaters.set_window_just_resized_flag();
+
+        check_single_channel_receiver_res(thread_send_res)
     }
 
-    fn set_scale_factor(&mut self, scale_factor: f64) {
+    fn set_scale_factor(&mut self, scale_factor: f64) -> Result<(), EngineError> {
         self.scale_factor = scale_factor;
         self.gui.set_scale_factor(self.scale_factor as f32);
-        self.render_thread_updaters
+        let thread_send_res = self
+            .render_thread_updaters
             .set_scale_factor(scale_factor as f32);
+
+        check_single_channel_receiver_res(thread_send_res)
     }
 
     /// Per frame engine logic and rendering.
-    /// Returns true if we want to quit.
-    fn process_frame(&mut self) -> bool {
+    fn process_frame(&mut self) -> EngineCommand {
         // process recieved events for cursor state
         self.cursor_state.process_frame();
 
@@ -263,6 +287,8 @@ impl Engine {
                 .update_gui(&mut self.object_collection, &mut self.camera),
             "update gui",
         );
+
+        // todo do render thread sending all at once?
 
         // update camera based on now processed user inputs
         self.update_camera();
@@ -287,18 +313,18 @@ impl Engine {
             .set_gui_primitives(gui_primitives);
 
         // now that frame processing is done, tell renderer to render a frame
-        let render_thread_send_res = self
+        let thread_send_res = self
             .render_thread_updaters
             .set_render_thread_command(RenderThreadCommand::RenderFrame);
 
         // quit if the render thread is killed
-        if let Err(e) = render_thread_send_res {
-            warn!("process_frame: render thread already stopped ({})", e);
-            return true;
+        if let Some(quit_command) = check_single_channel_receiver_res(thread_send_res) {
+            return quit_command;
         }
 
         self.frame_number += 1;
-        false
+
+        EngineCommand::Continue
     }
 
     fn update_camera(&mut self) {
@@ -347,7 +373,16 @@ impl Engine {
     }
 }
 
-// ~~ Render Thread ~~
+/// If `thread_send_res` is an error, returns `EngineCommand::Quit`. Otherwise returns `None`.
+fn check_single_channel_receiver_res<T>(
+    thread_send_res: Result<(), NoReceiverError<T>>,
+) -> Option<EngineCommand> {
+    if let Err(e) = thread_send_res {
+        warn!("render thread receiver dropped ({})", e);
+        return Some(EngineCommand::Quit);
+    }
+    None
+}
 
 // ~~ Engine Error ~~
 
