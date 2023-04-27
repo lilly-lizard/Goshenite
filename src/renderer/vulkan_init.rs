@@ -21,11 +21,26 @@ use log::{debug, error, info, trace, warn};
 use std::{mem, sync::Arc};
 use winit::window::Window;
 
+#[cfg(not(target_vendor = "apple"))]
+pub fn create_entry() -> anyhow::Result<Arc<ash::Entry>> {
+    let entry = unsafe { ash::Entry::load() }
+        .context("loading vulkan dynamic library. please install vulkan on your system...")?;
+    Ok(Arc::new(entry))
+}
+
+#[cfg(target_vendor = "apple")]
+pub fn create_entry() -> anyhow::Result<Arc<ash::Entry>> {
+    let entry = ash_molten::load();
+    Ok(Arc::new(entry))
+}
+
 pub fn required_device_extensions() -> [&'static str; 2] {
+    todo!("whats actually needed?");
     ["VK_KHR_swapchain", "VK_EXT_descriptor_indexing"]
 }
 
 pub fn required_device_extensions_cstr() -> [&'static std::ffi::CStr; 2] {
+    todo!("whats actually needed?");
     [
         vk::KhrSwapchainFn::name(),
         vk::ExtDescriptorIndexingFn::name(),
@@ -36,19 +51,21 @@ pub fn required_device_extensions_cstr() -> [&'static std::ffi::CStr; 2] {
 pub fn supports_required_features_1_2(
     supported_features: vk::PhysicalDeviceVulkan12Features,
 ) -> bool {
+    todo!("whats actually needed?");
     supported_features.descriptor_indexing == vk::TRUE
         && supported_features.runtime_descriptor_array == vk::TRUE
         && supported_features.descriptor_binding_variable_descriptor_count == vk::TRUE
-        && supported_features.shader_storage_buffer_array_non_uniform_indexing == vk::TRUE
+        //&& supported_features.shader_storage_buffer_array_non_uniform_indexing == vk::TRUE
         && supported_features.descriptor_binding_partially_bound == vk::TRUE
 }
 /// Make sure to update `supports_required_features_1_2` too!
 pub fn required_features_1_2() -> vk::PhysicalDeviceVulkan12Features {
+    todo!("whats actually needed?");
     vk::PhysicalDeviceVulkan12Features {
         descriptor_indexing: vk::TRUE,
         runtime_descriptor_array: vk::TRUE,
         descriptor_binding_variable_descriptor_count: vk::TRUE,
-        shader_storage_buffer_array_non_uniform_indexing: vk::TRUE,
+        //shader_storage_buffer_array_non_uniform_indexing: vk::TRUE, // false m1!
         descriptor_binding_partially_bound: vk::TRUE,
         ..vk::PhysicalDeviceVulkan12Features::default()
     }
