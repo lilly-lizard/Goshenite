@@ -48,7 +48,7 @@ memoffset = "0.8"
 # like mpsc::channel but send overwites latest value
 single_value_channel = "1.2"
 
-[target.'cfg(target_vendor = "apple")'.dependencies]
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 # moltenvk is a vulkan wrapper over metal allowing us to use vulkan on apple platforms
 ash-molten = { version = "0.15", features = [
     "pre-built", # download pre-built release
