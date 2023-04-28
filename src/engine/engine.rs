@@ -90,51 +90,7 @@ impl Engine {
 
         // TESTING OBJECTS START
 
-        let sphere = object_collection.primitive_references_mut().create_sphere(
-            Vec3::new(0., 0., 0.),
-            Quat::IDENTITY,
-            0.5,
-        );
-        let cube = object_collection.primitive_references_mut().create_cube(
-            Vec3::new(-0.2, 0.2, 0.),
-            Quat::IDENTITY,
-            glam::Vec3::splat(0.8),
-        );
-        let another_sphere = object_collection.primitive_references_mut().create_sphere(
-            Vec3::new(0.2, -0.2, 0.),
-            Quat::IDENTITY,
-            0.83,
-        );
-
-        let object = object_collection.new_object(
-            "Bruh".to_string(),
-            Vec3::new(-0.2, 0.2, 0.),
-            cube.clone(),
-        );
-        object
-            .borrow_mut()
-            .push_op(Operation::Union, sphere.clone());
-        object
-            .borrow_mut()
-            .push_op(Operation::Intersection, another_sphere);
-
-        let another_object = object_collection.new_object(
-            "Another Bruh".to_string(),
-            Vec3::new(0.2, -0.2, 0.),
-            sphere.clone(),
-        );
-        another_object
-            .borrow_mut()
-            .push_op(Operation::Union, NullPrimitive::new_ref());
-
-        let mut objects_delta = ObjectsDelta::default();
-        objects_delta.update.insert(object.borrow().id());
-        objects_delta.update.insert(another_object.borrow().id());
-
-        anyhow_unwrap(
-            renderer.update_object_buffers(&object_collection, objects_delta),
-            "update object buffers",
-        );
+        object_testing(&mut object_collection, &mut renderer);
 
         // TESTING OBJECTS END
 
@@ -159,6 +115,11 @@ impl Engine {
 
     /// Processes winit events. Pass this function to winit...EventLoop::run_return and think of it as the main loop of the engine.
     pub fn control_flow(&mut self, event: Event<()>, control_flow: &mut ControlFlow) {
+        match *control_flow {
+            ControlFlow::ExitWithCode(_) => return, // don't do any more processing if we're quitting
+            _ => (),
+        }
+
         match event {
             // exit the event loop and close application
             Event::WindowEvent {
@@ -186,20 +147,17 @@ impl Engine {
             }
 
             // per frame logic
-            Event::MainEventsCleared => match *control_flow {
-                ControlFlow::ExitWithCode(_) => (), // don't bother if we're quitting anyway
-                _ => {
-                    let process_frame_res = self.process_frame();
+            Event::MainEventsCleared => {
+                let process_frame_res = self.process_frame();
 
-                    if let Err(e) = process_frame_res {
-                        error!("error during per-frame processing: {}", e);
+                if let Err(e) = process_frame_res {
+                    error!("error during per-frame processing: {}", e);
 
-                        // quit
-                        *control_flow = ControlFlow::Exit;
-                        self.stop_render_thread();
-                    }
+                    // quit
+                    *control_flow = ControlFlow::Exit;
+                    self.stop_render_thread();
                 }
-            },
+            }
             _ => (),
         }
     }
@@ -243,7 +201,7 @@ impl Engine {
                 scale_factor,
                 new_inner_size,
             } => {
-                self.set_scale_factor(scale_factor);
+                self.set_scale_factor(scale_factor)?;
                 self.update_window_inner_size(*new_inner_size)?;
             }
 
@@ -428,3 +386,48 @@ impl std::fmt::Display for EngineError {
 }
 
 impl std::error::Error for EngineError {}
+
+fn object_testing(object_collection: &mut ObjectCollection, renderer: &mut RenderManager) {
+    let sphere = object_collection.primitive_references_mut().create_sphere(
+        Vec3::new(0., 0., 0.),
+        Quat::IDENTITY,
+        0.5,
+    );
+    let cube = object_collection.primitive_references_mut().create_cube(
+        Vec3::new(-0.2, 0.2, 0.),
+        Quat::IDENTITY,
+        glam::Vec3::splat(0.8),
+    );
+    let another_sphere = object_collection.primitive_references_mut().create_sphere(
+        Vec3::new(0.2, -0.2, 0.),
+        Quat::IDENTITY,
+        0.83,
+    );
+
+    let object =
+        object_collection.new_object("Bruh".to_string(), Vec3::new(-0.2, 0.2, 0.), cube.clone());
+    object
+        .borrow_mut()
+        .push_op(Operation::Union, sphere.clone());
+    object
+        .borrow_mut()
+        .push_op(Operation::Intersection, another_sphere);
+
+    let another_object = object_collection.new_object(
+        "Another Bruh".to_string(),
+        Vec3::new(0.2, -0.2, 0.),
+        sphere.clone(),
+    );
+    another_object
+        .borrow_mut()
+        .push_op(Operation::Union, NullPrimitive::new_ref());
+
+    let mut objects_delta = ObjectsDelta::default();
+    objects_delta.update.insert(object.borrow().id());
+    objects_delta.update.insert(another_object.borrow().id());
+
+    anyhow_unwrap(
+        renderer.update_object_buffers(&*object_collection, objects_delta),
+        "update object buffers",
+    );
+}
