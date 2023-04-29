@@ -21,7 +21,7 @@ anyhow = { version = "1.0", features = ["backtrace"] }
 # terminal output formatting
 colored = { version = "2.0", optional = true }
 # glam is a vector and math library well suited for 3D graphics (noticeably more lightweight than cgmath)
-glam = { version = "0.23", features = ["debug-glam-assert"] }
+glam = { version = "0.24", features = ["debug-glam-assert"] }
 # winit is a cross-platform window creation and management library (version must match vulkano-win support)
 winit = "0.28"
 raw-window-handle = "0.5"
@@ -31,7 +31,7 @@ ash-window = "0.12"
 # bort has a bunch of helper structs and functions wrapped around ash
 bort = { path = "../bort" }
 # AMD vulkan memory allocator bindings
-bort-vma = { version = "0.2.3", path = "../bort-vma" }
+bort-vma = { version = "0.2.3", path = "../bort-vma", features = ["vulkan-1-2"] }
 # bit-casting crate (for cpu<->gpu buffers)
 bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
@@ -47,6 +47,12 @@ ahash = { version = "0.8", default-features = false, features = [
 memoffset = "0.8"
 # like mpsc::channel but send overwites latest value
 single_value_channel = "1.2"
+
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+# moltenvk is a vulkan wrapper over metal allowing us to use vulkan on apple platforms
+ash-molten = { version = "0.15", features = [
+    "pre-built", # download pre-built release
+] }
 
 # slotmap
 # specs: ECS

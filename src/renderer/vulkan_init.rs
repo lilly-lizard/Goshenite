@@ -21,37 +21,35 @@ use log::{debug, error, info, trace, warn};
 use std::{mem, sync::Arc};
 use winit::window::Window;
 
-pub fn required_device_extensions() -> [&'static str; 2] {
-    ["VK_KHR_swapchain", "VK_EXT_descriptor_indexing"]
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+pub fn create_entry() -> anyhow::Result<Arc<ash::Entry>> {
+    let entry = unsafe { ash::Entry::load() }
+        .context("loading vulkan dynamic library. please install vulkan on your system...")?;
+    Ok(Arc::new(entry))
 }
 
-pub fn required_device_extensions_cstr() -> [&'static std::ffi::CStr; 2] {
-    [
-        vk::KhrSwapchainFn::name(),
-        vk::ExtDescriptorIndexingFn::name(),
-    ]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub fn create_entry() -> anyhow::Result<Arc<ash::Entry>> {
+    let entry = ash_molten::load();
+    Ok(Arc::new(entry))
+}
+
+pub fn required_device_extensions() -> [&'static str; 1] {
+    ["VK_KHR_swapchain"]
+}
+pub fn required_device_extensions_cstr() -> [&'static std::ffi::CStr; 1] {
+    [vk::KhrSwapchainFn::name()]
 }
 
 /// Make sure to update `required_features_1_2` too!
 pub fn supports_required_features_1_2(
-    supported_features: vk::PhysicalDeviceVulkan12Features,
+    _supported_features: vk::PhysicalDeviceVulkan12Features,
 ) -> bool {
-    supported_features.descriptor_indexing == vk::TRUE
-        && supported_features.runtime_descriptor_array == vk::TRUE
-        && supported_features.descriptor_binding_variable_descriptor_count == vk::TRUE
-        && supported_features.shader_storage_buffer_array_non_uniform_indexing == vk::TRUE
-        && supported_features.descriptor_binding_partially_bound == vk::TRUE
+    true
 }
 /// Make sure to update `supports_required_features_1_2` too!
 pub fn required_features_1_2() -> vk::PhysicalDeviceVulkan12Features {
-    vk::PhysicalDeviceVulkan12Features {
-        descriptor_indexing: vk::TRUE,
-        runtime_descriptor_array: vk::TRUE,
-        descriptor_binding_variable_descriptor_count: vk::TRUE,
-        shader_storage_buffer_array_non_uniform_indexing: vk::TRUE,
-        descriptor_binding_partially_bound: vk::TRUE,
-        ..vk::PhysicalDeviceVulkan12Features::default()
-    }
+    vk::PhysicalDeviceVulkan12Features::default()
 }
 
 pub struct ChoosePhysicalDeviceReturn {
@@ -186,7 +184,7 @@ fn check_physical_device_queue_support(
         .map(|(i, _)| i as u32);
 
     Some(ChoosePhysicalDeviceReturn {
-        physical_device: physical_device,
+        physical_device,
         render_queue_family_index: render_family,
         transfer_queue_family_index: transfer_family.unwrap_or(render_family),
     })
@@ -195,7 +193,7 @@ fn check_physical_device_queue_support(
 pub struct CreateDeviceAndQueuesReturn {
     pub device: Arc<Device>,
     pub render_queue: Queue,
-    //pub transfer_queue: Option<Queue>,
+    //pub transfer_queue: Option<Queue>, -> might come in handy in the future for async uploads!
 }
 
 pub fn create_device_and_queue(

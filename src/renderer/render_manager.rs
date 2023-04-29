@@ -18,13 +18,13 @@ use crate::{
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
     renderer::vulkan_init::{
-        choose_depth_buffer_format, create_command_pool, create_device_and_queue,
+        choose_depth_buffer_format, create_command_pool, create_device_and_queue, create_entry,
         create_render_command_buffers,
     },
     user_interface::camera::Camera,
 };
 use anyhow::Context;
-use ash::{vk, Entry};
+use ash::vk;
 use bort::{
     is_format_srgb, ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback,
     DebugCallbackProperties, Device, Fence, Framebuffer, Image, ImageView, Instance,
@@ -86,9 +86,7 @@ pub struct RenderManager {
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initiver_minoralize, returns a string explanation.
     pub fn new(window: Arc<Window>, scale_factor: f32) -> anyhow::Result<Self> {
-        let entry = unsafe { Entry::load() }
-            .context("loading vulkan dynamic library. please install vulkan on your system...")?;
-        let entry = Arc::new(entry);
+        let entry = create_entry()?;
 
         // create vulkan instance
         let api_version = ApiVersion::new(VULKAN_VER_MAJ, VULKAN_VER_MIN);
