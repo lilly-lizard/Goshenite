@@ -27,7 +27,7 @@ use std::{
     time::Instant,
 };
 use winit::{
-    event::{Event, WindowEvent},
+    event::{Event, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
@@ -54,6 +54,7 @@ pub struct Engine {
 impl Engine {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
         let mut window_builder = WindowBuilder::new().with_title(config::ENGINE_NAME);
+
         if config::START_MAXIMIZED {
             window_builder = window_builder.with_maximized(true);
         } else {
@@ -62,6 +63,7 @@ impl Engine {
                 config::DEFAULT_WINDOW_SIZE[1],
             ));
         }
+
         let window = Arc::new(
             window_builder
                 .build(event_loop)
@@ -157,9 +159,15 @@ impl Engine {
         }
     }
 
-    /// Processes winit events. Pass this function to winit...EventLoop::run_return and think of it as the main loop of the engine.
+    /// The main loop of the engine thread. Processes winit events. Pass this function to EventLoop::run_return.
     pub fn control_flow(&mut self, event: Event<()>, control_flow: &mut ControlFlow) {
         match event {
+            // initialize the window
+            Event::NewEvents(StartCause::Init) => {
+                // note: window initialization (and thus swapchain init too) is done here because of certain platform epecific behaviour e.g. https://github.com/rust-windowing/winit/issues/2051
+                // todo init!
+            }
+
             // exit the event loop and close application
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,
@@ -186,20 +194,22 @@ impl Engine {
             }
 
             // per frame logic
-            Event::MainEventsCleared => match *control_flow {
-                ControlFlow::ExitWithCode(_) => (), // don't bother if we're quitting anyway
-                _ => {
-                    let process_frame_res = self.process_frame();
-
-                    if let Err(e) = process_frame_res {
-                        error!("error during per-frame processing: {}", e);
-
-                        // quit
-                        *control_flow = ControlFlow::Exit;
-                        self.stop_render_thread();
-                    }
+            Event::MainEventsCleared => {
+                match *control_flow {
+                    ControlFlow::ExitWithCode(_) => return, // don't bother if we're quitting anyway
+                    _ => (),
                 }
-            },
+
+                let process_frame_res = self.process_frame();
+
+                if let Err(e) = process_frame_res {
+                    error!("error during per-frame processing: {}", e);
+
+                    // quit
+                    *control_flow = ControlFlow::Exit;
+                    self.stop_render_thread();
+                }
+            }
             _ => (),
         }
     }
