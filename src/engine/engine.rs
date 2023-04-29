@@ -56,6 +56,11 @@ impl Engine {
         let mut window_builder = WindowBuilder::new().with_title(config::ENGINE_NAME);
         if config::START_MAXIMIZED {
             window_builder = window_builder.with_maximized(true);
+        } else {
+            window_builder = window_builder.with_inner_size(winit::dpi::LogicalSize::new(
+                config::DEFAULT_WINDOW_SIZE[0],
+                config::DEFAULT_WINDOW_SIZE[1],
+            ));
         }
         let window = Arc::new(
             window_builder
