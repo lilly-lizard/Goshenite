@@ -21,7 +21,7 @@ anyhow = { version = "1.0", features = ["backtrace"] }
 # terminal output formatting
 colored = { version = "2.0", optional = true }
 # glam is a vector and math library well suited for 3D graphics (noticeably more lightweight than cgmath)
-glam = { version = "0.23", features = ["debug-glam-assert"] }
+glam = { version = "0.24", features = ["debug-glam-assert"] }
 # winit is a cross-platform window creation and management library (version must match vulkano-win support)
 winit = "0.28"
 raw-window-handle = "0.5"
