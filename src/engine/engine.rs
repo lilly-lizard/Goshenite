@@ -34,7 +34,7 @@ use winit::{
 
 /// Goshenite engine logic
 pub struct Engine {
-    _window: Arc<Window>,
+    window: Arc<Window>,
 
     // state
     scale_factor: f64,
@@ -86,7 +86,7 @@ impl Engine {
         );
         anyhow_unwrap(renderer.update_camera(&camera), "init renderer camera");
 
-        let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32);
+        let gui = Gui::new(&event_loop, scale_factor as f32);
 
         let mut object_collection = ObjectCollection::new();
 
@@ -100,7 +100,7 @@ impl Engine {
         let (render_thread_handle, render_thread_channels) = start_render_thread(renderer);
 
         Engine {
-            _window: window,
+            window,
 
             scale_factor,
             cursor_state,
@@ -156,11 +156,6 @@ impl Engine {
 
             // per frame logic
             Event::MainEventsCleared => {
-                match *control_flow {
-                    ControlFlow::ExitWithCode(_) => return, // don't bother if we're quitting anyway
-                    _ => (),
-                }
-
                 let process_frame_res = self.process_frame();
 
                 if let Err(e) = process_frame_res {
@@ -258,7 +253,7 @@ impl Engine {
         }
         anyhow_unwrap(
             self.gui
-                .update_gui(&mut self.object_collection, &mut self.camera),
+                .update_gui(&self.window, &mut self.object_collection, &mut self.camera),
             "update gui",
         );
 

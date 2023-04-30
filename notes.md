@@ -4,8 +4,9 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
-- camera
-- multiple frames in flight
+- new: spawn render thread, thread waits to receive window handle before initializing renderer
+- StartCause::Init sends window to renderer
+
 - mouse select primitive
 
 - can all gui manip stuff be passed to command manager?

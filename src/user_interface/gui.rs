@@ -17,12 +17,11 @@ use egui::{TexturesDelta, Visuals};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{rc::Weak, sync::Arc};
+use std::rc::Weak;
 use winit::{event_loop::EventLoopWindowTarget, window::Window};
 
 /// Controller for an [`egui`] immediate-mode gui
 pub struct Gui {
-    window: Arc<Window>,
     context: egui::Context,
     winit_state: egui_winit::State,
     mesh_primitives: Vec<egui::ClippedPrimitive>,
@@ -39,11 +38,7 @@ impl Gui {
     /// * `window`: [`winit`] window
     /// * `max_texture_side`: maximum size of a texture. Query from graphics driver using
     /// [`crate::renderer::render_manager::RenderManager::max_image_array_layers`]
-    pub fn new<T>(
-        event_loop: &EventLoopWindowTarget<T>,
-        window: Arc<winit::window::Window>,
-        scale_factor: f32,
-    ) -> Self {
+    pub fn new<T>(event_loop: &EventLoopWindowTarget<T>, scale_factor: f32) -> Self {
         let context = egui::Context::default();
         context.set_style(egui::Style {
             // disable sentance wrap by default (horizontal scroll instead)
@@ -56,7 +51,6 @@ impl Gui {
         winit_state.set_pixels_per_point(scale_factor);
 
         Self {
-            window: window.clone(),
             context,
             winit_state,
             mesh_primitives: Default::default(),
@@ -93,11 +87,12 @@ impl Gui {
 
     pub fn update_gui(
         &mut self,
+        window: &Window,
         object_collection: &mut ObjectCollection,
         camera: &mut Camera,
     ) -> anyhow::Result<()> {
         // begin frame
-        let raw_input = self.winit_state.take_egui_input(self.window.as_ref());
+        let raw_input = self.winit_state.take_egui_input(window);
         self.context.begin_frame(raw_input);
 
         // draw
@@ -119,11 +114,8 @@ impl Gui {
             textures_delta,
             shapes,
         } = self.context.end_frame();
-        self.winit_state.handle_platform_output(
-            self.window.as_ref(),
-            &self.context,
-            platform_output,
-        );
+        self.winit_state
+            .handle_platform_output(window, &self.context, platform_output);
 
         // store clipped primitive data for use by the renderer
         self.mesh_primitives = self.context.tessellate(shapes);

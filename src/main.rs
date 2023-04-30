@@ -38,8 +38,9 @@ fn main() {
         "if debugging, set environment variable `RUST_BACKTRACE=1` to see anyhow error backtrace"
     );
 
-    // init engine
     let event_loop = EventLoop::new();
+
+    // init engine
     let mut engine_instance = Engine::new(&event_loop);
 
     // start engine

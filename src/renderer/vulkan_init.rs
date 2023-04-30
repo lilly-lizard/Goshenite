@@ -10,11 +10,12 @@ use super::{
 use anyhow::Context;
 use ash::vk;
 use bort::{
-    allocation_info_cpu_accessible, choose_composite_alpha, get_first_srgb_surface_format, Buffer,
-    BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback, Device,
-    Fence, Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageView, ImageViewAccess,
-    ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, Queue, RenderPass, Subpass,
-    Surface, Swapchain, SwapchainImage, SwapchainProperties,
+    allocation_info_cpu_accessible, choose_composite_alpha, get_first_linear_surface_format,
+    get_first_srgb_surface_format, Buffer, BufferProperties, CommandBuffer, CommandPool,
+    CommandPoolProperties, DebugCallback, Device, Fence, Framebuffer, FramebufferProperties, Image,
+    ImageDimensions, ImageView, ImageViewAccess, ImageViewProperties, Instance, MemoryAllocator,
+    PhysicalDevice, Queue, RenderPass, Subpass, Surface, Swapchain, SwapchainImage,
+    SwapchainProperties,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -278,7 +279,9 @@ pub fn swapchain_properties(
     let surface_formats = surface
         .get_physical_device_surface_formats(device.physical_device())
         .context("get_physical_device_surface_formats")?;
-    let surface_format = get_first_srgb_surface_format(&surface_formats);
+    // prefer srgb framebuffer. otherwise just go with first format.
+    let surface_format =
+        get_first_srgb_surface_format(&surface_formats).unwrap_or(surface_formats[0]);
 
     let image_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT;
 
