@@ -19,7 +19,7 @@ use crate::{
     helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
     renderer::vulkan_init::{
         choose_depth_buffer_format, create_command_pool, create_device_and_queue, create_entry,
-        create_render_command_buffers,
+        create_render_command_buffers, shaders_should_write_linear_color,
     },
     user_interface::camera::Camera,
 };
@@ -52,7 +52,7 @@ pub struct RenderManager {
     surface: Arc<Surface>,
     swapchain: Arc<Swapchain>,
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage>>>,
-    is_swapchain_srgb: bool,
+    shaders_write_linear_color: bool,
 
     render_pass: Arc<RenderPass>,
     framebuffers: Vec<Arc<Framebuffer>>,
@@ -182,7 +182,8 @@ impl RenderManager {
             "swapchain composite alpha = {:?}",
             swapchain.properties().composite_alpha
         );
-        let is_swapchain_srgb = is_format_srgb(swapchain.properties().surface_format.format);
+        let shaders_write_linear_color =
+            shaders_should_write_linear_color(swapchain.properties().surface_format);
 
         let swapchain_image_views = create_swapchain_image_views(&swapchain)?;
 
@@ -269,7 +270,7 @@ impl RenderManager {
             surface,
             swapchain,
             swapchain_image_views,
-            is_swapchain_srgb,
+            shaders_write_linear_color,
 
             render_pass,
             framebuffers,
@@ -301,7 +302,7 @@ impl RenderManager {
         let camera_data = CameraUniformBuffer::from_camera(
             camera,
             [dimensions[0] as f32, dimensions[1] as f32],
-            self.is_swapchain_srgb,
+            self.shaders_write_linear_color,
         );
 
         let camera_ubo_mut = match Arc::get_mut(&mut self.camera_ubo) {
@@ -503,7 +504,8 @@ impl RenderManager {
             .context("recreating swapchain")?;
 
         // reinitialize related resources
-        self.is_swapchain_srgb = is_format_srgb(self.swapchain.properties().surface_format.format);
+        self.shaders_write_linear_color =
+            shaders_should_write_linear_color(self.swapchain.properties().surface_format);
         self.swapchain_image_views = create_swapchain_image_views(&self.swapchain)?;
 
         let depth_buffer_format = self.depth_buffer.image().properties().format;
@@ -609,7 +611,7 @@ impl RenderManager {
 
         self.gui_pass.record_render_commands(
             &command_buffer,
-            self.is_swapchain_srgb,
+            self.shaders_write_linear_color,
             [viewport.width, viewport.height],
         )?;
 

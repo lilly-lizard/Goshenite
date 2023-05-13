@@ -10,7 +10,7 @@ use super::{
 use anyhow::Context;
 use ash::vk;
 use bort::{
-    allocation_info_cpu_accessible, choose_composite_alpha, get_first_srgb_surface_format, Buffer,
+    allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, Buffer,
     BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback, Device,
     Fence, Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageView, ImageViewAccess,
     ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, Queue, RenderPass, Subpass,
@@ -278,11 +278,7 @@ pub fn swapchain_properties(
     let surface_formats = surface
         .get_physical_device_surface_formats(device.physical_device())
         .context("get_physical_device_surface_formats")?;
-    // prefer srgb framebuffer. otherwise just go with first format.
-    // todo https://stackoverflow.com/questions/66401081/vulkan-swapchain-format-unorm-vs-srgb
-    // https://harrylovescode.gitbooks.io/vulkan-api/content/chap05/chap05_1.html
-    // let surface_format =
-    //     get_first_srgb_surface_format(&surface_formats).unwrap_or(surface_formats[0]);
+    // best practice to go with first supplied surface format
     let surface_format = surface_formats[0];
 
     let image_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT;
@@ -332,6 +328,12 @@ pub fn create_swapchain_image_views(
         .collect::<Vec<_>>();
 
     Ok(swapchain_images)
+}
+
+/// Returns true if fragment shaders should write linear color to the swapchain image attachment.
+/// Otherwise they should write srgb. Assumes color space is SRGB i.e. not HDR or something wacky like that...
+pub fn shaders_should_write_linear_color(surface_format: vk::SurfaceFormatKHR) -> bool {
+    is_format_srgb(surface_format.format)
 }
 
 /// We want a SFLOAT format for our reverse z buffer (prefer VK_FORMAT_D32_SFLOAT)
