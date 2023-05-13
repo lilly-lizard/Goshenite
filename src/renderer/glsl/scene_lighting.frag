@@ -1,6 +1,7 @@
 #version 450
 #extension GL_GOOGLE_include_directive : require
 #include "config.glsl"
+#include "color_space_conv.glsl"
 
 // g-buffer input attachments
 layout (set = 0, binding = 0, input_attachment_index = 0) uniform subpassInput in_normal;
@@ -17,7 +18,7 @@ layout (set = 1, binding = 0) uniform Camera {
 	vec2 _framebuffer_dims;
 	float near;
 	float far;
-    uint is_srgb_framebuffer;
+    uint write_linear_color;
 } cam;
 
 /// Returns a sky color for a ray miss
@@ -45,11 +46,12 @@ void main()
 		out_color = vec4(background(ray_d), 1.);
 	} else {
 		// ray hit: just output normal as color for now
-		out_color = vec4(normal, 1.);
+		out_color = vec4(linear_to_srgb(normal), 1.);
 	}
 
-    if (cam.is_srgb_framebuffer == 1) {
-        // need to convert linear colors to srgb
-        out_color.xyz = pow(out_color.xyz, vec3(2.2));
+    if (cam.write_linear_color == 1) {
+        // surface format/color space combination requires us to write out linear color
+        // see https://stackoverflow.com/questions/66401081/vulkan-swapchain-format-unorm-vs-srgb for more info
+        out_color.xyz = srgb_to_linear(out_color.xyz);
     }
 }

@@ -137,6 +137,10 @@ comments by action or object e.g. a search for 'transition image layout' wouldn'
 - defer shading to raster pass? render to g-buffer, including shadow info (e.g. bitmap of light sources for primitive?)
 - file storage (and memory arragement too?) https://github.com/quelsolaar/HxA
 
+_"Well, if I were to use an analogy for analog and digital, analog is like a calligrapher, and digital is like a craftsman. Doing something really precisely with tools versus kind of doing it based on feeling. It's that kind of difference. Digital is really focused on working on the details, so a lot of the time is spent on those details and sometimes you lose sight of other things. Analog, on the other hand, sometimes you can even use accidents to complete the drawing. It's like leaving it up to your own 'energy', I think that's interesting."_ - [Kentaro Miura on drawing](https://www.youtube.com/watch?v=GmJjLy2i3Zg)
+What are we aiming for? Where is the market opening?
+
+
 # Resources
 
 - HIP instead of vulkan compute? https://github.com/charles-r-earp/hip-sys

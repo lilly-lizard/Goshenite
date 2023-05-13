@@ -26,7 +26,7 @@ layout (set = 0, binding = 0) uniform Camera {
 	vec2 framebuffer_dims;
 	float near;
 	float far;
-    uint _is_srgb_framebuffer;
+    uint _write_linear_color;
 } cam;
 
 layout (set = 1, binding = 0, std430) readonly buffer Object {
