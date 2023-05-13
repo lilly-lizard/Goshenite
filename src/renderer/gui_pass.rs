@@ -193,7 +193,7 @@ impl GuiPass {
     pub fn record_render_commands(
         &mut self,
         command_buffer: &CommandBuffer,
-        is_srgb_framebuffer: bool,
+        write_linear_color: bool,
         framebuffer_dimensions: [f32; 2],
     ) -> anyhow::Result<()> {
         let push_constant_data = GuiPushConstant::new(
@@ -201,7 +201,7 @@ impl GuiPass {
                 framebuffer_dimensions[0] / self.scale_factor,
                 framebuffer_dimensions[1] / self.scale_factor,
             ],
-            is_srgb_framebuffer,
+            write_linear_color,
         );
         let push_constant_bytes = bytemuck::bytes_of(&push_constant_data);
 
