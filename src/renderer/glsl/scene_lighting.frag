@@ -46,7 +46,7 @@ void main()
 		out_color = vec4(background(ray_d), 1.);
 	} else {
 		// ray hit: just output normal as color for now
-		out_color = vec4(linear_to_srgb(normal), 1.);
+		out_color = vec4(normal, 1.);
 	}
 
     if (cam.write_linear_color == 1) {

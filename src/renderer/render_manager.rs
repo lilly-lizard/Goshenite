@@ -26,9 +26,9 @@ use crate::{
 use anyhow::Context;
 use ash::vk;
 use bort::{
-    is_format_srgb, ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback,
-    DebugCallbackProperties, Device, Fence, Framebuffer, Image, ImageView, Instance,
-    MemoryAllocator, Queue, RenderPass, Semaphore, Surface, Swapchain, SwapchainImage,
+    ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback, DebugCallbackProperties, Device,
+    Fence, Framebuffer, Image, ImageView, Instance, MemoryAllocator, Queue, RenderPass, Semaphore,
+    Surface, Swapchain, SwapchainImage,
 };
 use egui::{ClippedPrimitive, TexturesDelta};
 #[allow(unused_imports)]

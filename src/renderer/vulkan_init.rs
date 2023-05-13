@@ -332,6 +332,8 @@ pub fn create_swapchain_image_views(
 
 /// Returns true if fragment shaders should write linear color to the swapchain image attachment.
 /// Otherwise they should write srgb. Assumes color space is SRGB i.e. not HDR or something wacky like that...
+///
+/// See [this](https://stackoverflow.com/a/66401423/5256085) for more info on the topic.
 pub fn shaders_should_write_linear_color(surface_format: vk::SurfaceFormatKHR) -> bool {
     is_format_srgb(surface_format.format)
 }
