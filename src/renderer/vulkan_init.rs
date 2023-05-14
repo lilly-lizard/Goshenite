@@ -1,7 +1,7 @@
 use super::{
     config_renderer::{
-        FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER, FRAMES_IN_FLIGHT, VULKAN_VER_MAJ,
-        VULKAN_VER_MIN,
+        FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER, MINIMUM_FRAMEBUFFER_COUNT,
+        VULKAN_VER_MAJ, VULKAN_VER_MIN,
     },
     shader_interfaces::{
         primitive_op_buffer::PRIMITIVE_ID_INVALID, uniform_buffers::CameraUniformBuffer,
@@ -266,7 +266,7 @@ pub fn swapchain_properties(
     surface: &Surface,
     window: &Window,
 ) -> anyhow::Result<SwapchainProperties> {
-    let preferred_image_count = FRAMES_IN_FLIGHT as u32;
+    let preferred_image_count = MINIMUM_FRAMEBUFFER_COUNT as u32;
     let window_dimensions: [u32; 2] = window.inner_size().into();
 
     let surface_capabilities = surface
@@ -583,7 +583,19 @@ pub fn create_normal_buffer(
     Ok(Arc::new(image_view))
 }
 
-pub fn create_primitive_id_buffer(
+/// Creates `framebuffer_count` number of primitive id buffer image views
+pub fn create_primitive_id_buffers(
+    framebuffer_count: usize,
+    memory_allocator: Arc<MemoryAllocator>,
+    dimensions: ImageDimensions,
+) -> anyhow::Result<Vec<Arc<ImageView<Image>>>> {
+    (0..framebuffer_count)
+        .into_iter()
+        .map(|_| create_primitive_id_buffer(memory_allocator.clone(), dimensions))
+        .collect::<anyhow::Result<Vec<_>>>()
+}
+
+fn create_primitive_id_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
 ) -> anyhow::Result<Arc<ImageView<Image>>> {
@@ -602,22 +614,34 @@ pub fn create_primitive_id_buffer(
     Ok(Arc::new(image_view))
 }
 
+/// Safety:
+/// * `primitive_id_buffers` must contain `framebuffer_count` elements.
+/// * if `swapchain_image_views` contains more than one image, it must contain
+///   `framebuffer_count` elements.
 pub fn create_framebuffers(
+    framebuffer_count: usize,
     render_pass: &Arc<RenderPass>,
-    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
+    mut swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
     normal_buffer: &Arc<ImageView<Image>>,
-    primitive_id_buffer: &Arc<ImageView<Image>>,
+    primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
     depth_buffer: &Arc<ImageView<Image>>,
 ) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
-    swapchain_image_views
-        .iter()
-        .map(|swapchain_image_view| {
+    // ensure swapchain_image_views has framebuffer_count elements
+    if swapchain_image_views.len() == 1 {
+        for i in 1..framebuffer_count {
+            swapchain_image_views.push(swapchain_image_views[0].clone());
+        }
+    }
+
+    (0..framebuffer_count)
+        .into_iter()
+        .map(|i| {
             let mut attachments = Vec::<Arc<dyn ImageViewAccess>>::with_capacity(
                 render_pass_indices::NUM_ATTACHMENTS,
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_SWAPCHAIN,
-                swapchain_image_view.clone(),
+                swapchain_image_views[i].clone(),
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_NORMAL,
@@ -625,7 +649,7 @@ pub fn create_framebuffers(
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_PRIMITIVE_ID,
-                primitive_id_buffer.clone(),
+                primitive_id_buffers[i].clone(),
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_DEPTH_BUFFER,
@@ -634,7 +658,7 @@ pub fn create_framebuffers(
 
             let framebuffer_properties = FramebufferProperties::new_default(
                 attachments,
-                swapchain_image_view.image().dimensions(),
+                swapchain_image_views[i].image().dimensions(),
             );
             let framebuffer = Framebuffer::new(render_pass.clone(), framebuffer_properties)
                 .context("creating framebuffer")?;

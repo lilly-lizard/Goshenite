@@ -8,18 +8,21 @@ use super::{
     vulkan_init::{
         choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
         create_depth_buffer, create_framebuffers, create_normal_buffer, create_per_frame_fence,
-        create_primitive_id_buffer, create_render_pass, create_swapchain,
-        create_swapchain_image_views, swapchain_properties, ChoosePhysicalDeviceReturn,
-        CreateDeviceAndQueuesReturn,
+        create_render_pass, create_swapchain, create_swapchain_image_views, swapchain_properties,
+        ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
     },
 };
 use crate::{
     config::ENGINE_NAME,
     engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
     helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
-    renderer::vulkan_init::{
-        choose_depth_buffer_format, create_command_pool, create_device_and_queue, create_entry,
-        create_render_command_buffers, shaders_should_write_linear_color,
+    renderer::{
+        config_renderer::MINIMUM_FRAMEBUFFER_COUNT,
+        vulkan_init::{
+            choose_depth_buffer_format, create_command_pool, create_device_and_queue, create_entry,
+            create_primitive_id_buffers, create_render_command_buffers,
+            shaders_should_write_linear_color,
+        },
     },
     user_interface::camera::Camera,
 };
@@ -55,28 +58,32 @@ pub struct RenderManager {
     shaders_write_linear_color: bool,
 
     render_pass: Arc<RenderPass>,
+    /// One per swapchain image, or two if there's only one swapchain image so we can store some
+    /// images written to in the previous render
     framebuffers: Vec<Arc<Framebuffer>>,
+    /// One for each framebuffer attachment
     clear_values: Vec<vk::ClearValue>,
 
     depth_buffer: Arc<ImageView<Image>>,
     normal_buffer: Arc<ImageView<Image>>,
-    primitive_id_buffer: Arc<ImageView<Image>>,
+    /// One per framebuffer
+    primitive_id_buffers: Vec<Arc<ImageView<Image>>>,
     camera_ubo: Arc<Buffer>,
 
     lighting_pass: LightingPass,
     geometry_pass: GeometryPass,
     gui_pass: GuiPass,
 
+    /// One per framebuffer
     render_command_buffers: Vec<Arc<CommandBuffer>>,
-    previous_render_fence: Arc<Fence>, // per frame in flight
-    next_frame_wait_semaphore: Arc<Semaphore>, // per frame in flight
-    swapchain_image_available_semaphore: Arc<Semaphore>, // per frame in flight
+    previous_render_fence: Arc<Fence>,
+    next_frame_wait_semaphore: Arc<Semaphore>,
+    swapchain_image_available_semaphore: Arc<Semaphore>,
 
-    /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
-    /// without conflicting with commands currently being processed. This variable indicates
-    /// which index to will be next submitted to the GPU.
-    next_frame: usize,
-
+    /// Indicates which framebuffer is being processed right now.
+    framebuffer_index_currently_rendering: usize,
+    /// Indicates which framebuffer was rendered to in the previous frame.
+    framebuffer_index_last_rendered_to: usize,
     /// Can be set to true with [`Self::set_window_just_resized_flag`] and set to false in [`Self::render_frame`]
     window_just_resized: bool,
 }
@@ -187,6 +194,8 @@ impl RenderManager {
 
         let swapchain_image_views = create_swapchain_image_views(&swapchain)?;
 
+        let framebuffer_count = determine_framebuffer_count(&swapchain_image_views);
+
         let depth_buffer_format = choose_depth_buffer_format(&physical_device)?;
 
         let render_pass =
@@ -203,7 +212,8 @@ impl RenderManager {
             swapchain.properties().dimensions(),
         )?;
 
-        let primitive_id_buffer = create_primitive_id_buffer(
+        let primitive_id_buffers = create_primitive_id_buffers(
+            framebuffer_count,
             memory_allocator.clone(),
             swapchain.properties().dimensions(),
         )?;
@@ -211,10 +221,11 @@ impl RenderManager {
         let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
 
         let framebuffers = create_framebuffers(
+            framebuffer_count,
             &render_pass,
             &swapchain_image_views,
             &normal_buffer,
-            &primitive_id_buffer,
+            &primitive_id_buffers,
             &depth_buffer,
         )?;
 
@@ -233,7 +244,7 @@ impl RenderManager {
             &render_pass,
             &camera_ubo,
             normal_buffer.as_ref(),
-            primitive_id_buffer.as_ref(),
+            &primitive_id_buffers,
         )?;
 
         let gui_pass = GuiPass::new(
@@ -278,7 +289,7 @@ impl RenderManager {
 
             depth_buffer,
             normal_buffer,
-            primitive_id_buffer,
+            primitive_id_buffers,
             camera_ubo,
 
             geometry_pass,
@@ -290,7 +301,8 @@ impl RenderManager {
             next_frame_wait_semaphore,
             swapchain_image_available_semaphore,
 
-            next_frame: 0,
+            framebuffer_index_currently_rendering: 0,
+            framebuffer_index_last_rendered_to: 0,
             window_just_resized: false,
         })
     }
@@ -336,7 +348,7 @@ impl RenderManager {
         &mut self,
         textures_delta: Vec<TexturesDelta>,
     ) -> anyhow::Result<()> {
-        self.wait_for_fences()?;
+        self.wait_for_previous_frame_fence()?;
 
         self.gui_pass
             .update_textures(textures_delta, &self.render_queue)?;
@@ -360,7 +372,9 @@ impl RenderManager {
     pub fn render_frame(&mut self) -> anyhow::Result<()> {
         // wait for previous frame render/resource upload to finish
 
-        self.wait_for_fences()?;
+        self.wait_for_previous_frame_fence()?;
+        // previous frame confirmed finished rendering
+        self.framebuffer_index_last_rendered_to = self.framebuffer_index_currently_rendering;
 
         self.gui_pass.free_previous_vertex_and_index_buffers();
 
@@ -429,6 +443,8 @@ impl RenderManager {
         }
         .context("submitting render commands")?;
 
+        self.framebuffer_index_currently_rendering = swapchain_index;
+
         // submit present instruction
 
         let swapchain_present_indices = [swapchain_index as u32];
@@ -478,6 +494,14 @@ impl RenderManager {
     }
 }
 
+/// If there is only one swapchain image we create two framebuffers so we can access the previous
+/// render for some images.
+fn determine_framebuffer_count(
+    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
+) -> usize {
+    swapchain_image_views.len().max(MINIMUM_FRAMEBUFFER_COUNT)
+}
+
 // Private functions
 
 impl RenderManager {
@@ -508,6 +532,8 @@ impl RenderManager {
             shaders_should_write_linear_color(self.swapchain.properties().surface_format);
         self.swapchain_image_views = create_swapchain_image_views(&self.swapchain)?;
 
+        let framebuffer_count = determine_framebuffer_count(&self.swapchain_image_views);
+
         let depth_buffer_format = self.depth_buffer.image().properties().format;
 
         self.render_pass = create_render_pass(
@@ -521,7 +547,8 @@ impl RenderManager {
             self.swapchain.properties().dimensions(),
         )?;
 
-        self.primitive_id_buffer = create_primitive_id_buffer(
+        self.primitive_id_buffers = create_primitive_id_buffers(
+            framebuffer_count,
             self.memory_allocator.clone(),
             self.swapchain.properties().dimensions(),
         )?;
@@ -533,20 +560,21 @@ impl RenderManager {
         )?;
 
         self.framebuffers = create_framebuffers(
+            framebuffer_count,
             &self.render_pass,
             &self.swapchain_image_views,
             &self.normal_buffer,
-            &self.primitive_id_buffer,
+            &self.primitive_id_buffers,
             &self.depth_buffer,
         )?;
 
         self.lighting_pass
-            .update_g_buffers(&self.normal_buffer, &self.primitive_id_buffer)?;
+            .update_g_buffers(&self.normal_buffer, &self.primitive_id_buffers)?;
 
         Ok(())
     }
 
-    fn wait_for_fences(&mut self) -> anyhow::Result<()> {
+    fn wait_for_previous_frame_fence(&mut self) -> anyhow::Result<()> {
         let wait_fence_handles = [self.previous_render_fence.handle()];
 
         let fence_wait_res = unsafe {

@@ -30,7 +30,8 @@ pub struct LightingPass {
     device: Arc<Device>,
 
     desc_set_camera: Arc<DescriptorSet>,
-    desc_set_g_buffers: Arc<DescriptorSet>,
+    /// One per framebuffer
+    desc_sets_g_buffers: Vec<Arc<DescriptorSet>>,
 
     pipeline: Arc<GraphicsPipeline>,
 }
@@ -41,14 +42,15 @@ impl LightingPass {
         render_pass: &RenderPass,
         camera_buffer: &Buffer,
         normal_buffer: &ImageView<Image>,
-        primitive_id_buffer: &ImageView<Image>,
+        primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
     ) -> anyhow::Result<Self> {
         let descriptor_pool = create_descriptor_pool(device.clone())?;
 
         let desc_set_camera = create_desc_set_camera(descriptor_pool.clone())?;
         write_desc_set_camera(&desc_set_camera, camera_buffer)?;
 
-        let desc_set_g_buffers = create_desc_set_gbuffers(descriptor_pool.clone())?;
+        let desc_sets_g_buffers =
+            create_desc_sets_gbuffers(descriptor_pool.clone(), primitive_id_buffers.len())?;
         write_desc_set_gbuffers(&desc_set_g_buffers, normal_buffer, primitive_id_buffer)?;
 
         let pipeline_layout = create_pipeline_layout(
@@ -61,7 +63,7 @@ impl LightingPass {
 
         Ok(Self {
             device,
-            desc_set_g_buffers,
+            desc_sets_g_buffers,
             desc_set_camera,
             pipeline,
         })
@@ -70,7 +72,7 @@ impl LightingPass {
     pub fn update_g_buffers(
         &mut self,
         normal_buffer: &ImageView<Image>,
-        primitive_id_buffer: &ImageView<Image>,
+        primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
     ) -> anyhow::Result<()> {
         write_desc_set_gbuffers(&self.desc_set_g_buffers, normal_buffer, primitive_id_buffer)
     }
@@ -191,6 +193,16 @@ fn write_desc_set_camera(
     Ok(())
 }
 
+fn create_desc_sets_gbuffers(
+    descriptor_pool: Arc<DescriptorPool>,
+    framebuffer_count: usize,
+) -> anyhow::Result<Vec<Arc<DescriptorSet>>> {
+    (0..framebuffer_count)
+        .into_iter()
+        .map(|_| create_desc_set_gbuffers(descriptor_pool.clone()))
+        .collect::<anyhow::Result<Vec<_>>>()
+}
+
 fn create_desc_set_gbuffers(
     descriptor_pool: Arc<DescriptorPool>,
 ) -> anyhow::Result<Arc<DescriptorSet>> {
@@ -222,6 +234,21 @@ fn create_desc_set_gbuffers(
         .context("allocating lighting pass g-buffer descriptor set")?;
 
     Ok(Arc::new(desc_set))
+}
+
+fn write_desc_sets_gbuffers(
+    desc_sets_gbuffers: &Vec<Arc<DescriptorSet>>,
+    normal_buffer: &ImageView<Image>,
+    primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
+) -> anyhow::Result<()> {
+    (0..desc_sets_gbuffers.len()).into_iter().map(|i| {
+        write_desc_set_gbuffers(
+            desc_sets_gbuffers[i].as_ref(),
+            normal_buffer,
+            primitive_id_buffers[i].as_ref(),
+        );
+    });
+    Ok(())
 }
 
 fn write_desc_set_gbuffers(
