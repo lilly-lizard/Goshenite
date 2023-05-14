@@ -31,7 +31,7 @@ pub struct LightingPass {
 
     desc_set_camera: Arc<DescriptorSet>,
     /// One per framebuffer
-    desc_sets_g_buffers: Vec<Arc<DescriptorSet>>,
+    desc_sets_g_buffer: Vec<Arc<DescriptorSet>>,
 
     pipeline: Arc<GraphicsPipeline>,
 }
@@ -49,21 +49,21 @@ impl LightingPass {
         let desc_set_camera = create_desc_set_camera(descriptor_pool.clone())?;
         write_desc_set_camera(&desc_set_camera, camera_buffer)?;
 
-        let desc_sets_g_buffers =
-            create_desc_sets_gbuffers(descriptor_pool.clone(), primitive_id_buffers.len())?;
-        write_desc_set_gbuffers(&desc_set_g_buffers, normal_buffer, primitive_id_buffer)?;
+        let desc_sets_g_buffer =
+            create_desc_sets_gbuffer(descriptor_pool.clone(), primitive_id_buffers.len())?;
+        write_desc_sets_gbuffer(&desc_sets_g_buffer, normal_buffer, primitive_id_buffers)?;
 
         let pipeline_layout = create_pipeline_layout(
             device.clone(),
             desc_set_camera.layout().clone(),
-            desc_set_g_buffers.layout().clone(),
+            desc_sets_g_buffer[0].layout().clone(),
         )?;
 
         let pipeline = create_pipeline(device.clone(), pipeline_layout.clone(), render_pass)?;
 
         Ok(Self {
             device,
-            desc_sets_g_buffers,
+            desc_sets_g_buffer,
             desc_set_camera,
             pipeline,
         })
@@ -74,7 +74,11 @@ impl LightingPass {
         normal_buffer: &ImageView<Image>,
         primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
     ) -> anyhow::Result<()> {
-        write_desc_set_gbuffers(&self.desc_set_g_buffers, normal_buffer, primitive_id_buffer)
+        write_desc_sets_gbuffer(
+            &self.desc_sets_g_buffer,
+            normal_buffer,
+            primitive_id_buffers,
+        )
     }
 
     pub fn update_camera_descriptor_set(&self, camera_buffer: &Buffer) -> anyhow::Result<()> {
@@ -86,6 +90,7 @@ impl LightingPass {
     /// **Assumes that the command buffer is already in a render pass state.**
     pub fn record_commands(
         &self,
+        frame_index: usize,
         command_buffer: &CommandBuffer,
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
@@ -93,7 +98,7 @@ impl LightingPass {
         let device_ash = self.device.inner();
         let command_buffer_handle = command_buffer.handle();
         let descriptor_set_handles = [
-            self.desc_set_g_buffers.handle(),
+            self.desc_sets_g_buffer[frame_index].handle(),
             self.desc_set_camera.handle(),
         ];
 
@@ -193,17 +198,17 @@ fn write_desc_set_camera(
     Ok(())
 }
 
-fn create_desc_sets_gbuffers(
+fn create_desc_sets_gbuffer(
     descriptor_pool: Arc<DescriptorPool>,
     framebuffer_count: usize,
 ) -> anyhow::Result<Vec<Arc<DescriptorSet>>> {
     (0..framebuffer_count)
         .into_iter()
-        .map(|_| create_desc_set_gbuffers(descriptor_pool.clone()))
+        .map(|_| create_desc_set_gbuffer(descriptor_pool.clone()))
         .collect::<anyhow::Result<Vec<_>>>()
 }
 
-fn create_desc_set_gbuffers(
+fn create_desc_set_gbuffer(
     descriptor_pool: Arc<DescriptorPool>,
 ) -> anyhow::Result<Arc<DescriptorSet>> {
     let mut desc_set_layout_props = DescriptorSetLayoutProperties::default();
@@ -236,13 +241,13 @@ fn create_desc_set_gbuffers(
     Ok(Arc::new(desc_set))
 }
 
-fn write_desc_sets_gbuffers(
+fn write_desc_sets_gbuffer(
     desc_sets_gbuffers: &Vec<Arc<DescriptorSet>>,
     normal_buffer: &ImageView<Image>,
     primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
 ) -> anyhow::Result<()> {
     (0..desc_sets_gbuffers.len()).into_iter().map(|i| {
-        write_desc_set_gbuffers(
+        write_desc_set_gbuffer(
             desc_sets_gbuffers[i].as_ref(),
             normal_buffer,
             primitive_id_buffers[i].as_ref(),
@@ -251,8 +256,8 @@ fn write_desc_sets_gbuffers(
     Ok(())
 }
 
-fn write_desc_set_gbuffers(
-    desc_set_gbuffers: &DescriptorSet,
+fn write_desc_set_gbuffer(
+    desc_set_gbuffer: &DescriptorSet,
     normal_buffer: &impl ImageViewAccess,
     primitive_id_buffer: &impl ImageViewAccess,
 ) -> anyhow::Result<()> {
@@ -270,13 +275,13 @@ fn write_desc_set_gbuffers(
 
     let descriptor_writes = [
         vk::WriteDescriptorSet::builder()
-            .dst_set(desc_set_gbuffers.handle())
+            .dst_set(desc_set_gbuffer.handle())
             .dst_binding(descriptor::BINDING_NORMAL)
             .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
             .image_info(&[normal_buffer_info])
             .build(),
         vk::WriteDescriptorSet::builder()
-            .dst_set(desc_set_gbuffers.handle())
+            .dst_set(desc_set_gbuffer.handle())
             .dst_binding(descriptor::BINDING_PRIMITIVE_ID)
             .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
             .image_info(&[primitive_id_buffer_info])
@@ -284,7 +289,7 @@ fn write_desc_set_gbuffers(
     ];
 
     unsafe {
-        desc_set_gbuffers
+        desc_set_gbuffer
             .device()
             .inner()
             .update_descriptor_sets(&descriptor_writes, &[]);

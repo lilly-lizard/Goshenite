@@ -15,4 +15,5 @@ pub const FORMAT_PRIMITIVE_ID_BUFFER: vk::Format = vk::Format::R32_UINT;
 
 pub const TIMEOUT_NANOSECS: u64 = 1_000_000_000;
 
+// do not change this!
 pub const MINIMUM_FRAMEBUFFER_COUNT: usize = 2;

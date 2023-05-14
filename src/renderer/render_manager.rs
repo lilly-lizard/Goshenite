@@ -409,10 +409,12 @@ impl RenderManager {
             return self.recreate_swapchain();
         }
 
+        let framebuffer_index = self.current_framebuffer_index();
+
         // record commands
 
-        let command_buffer = self.render_command_buffers[swapchain_index].clone();
-        self.record_render_commands(&command_buffer, swapchain_index)?;
+        let command_buffer = self.render_command_buffers[framebuffer_index].clone();
+        self.record_render_commands(&command_buffer, framebuffer_index)?;
 
         // submit commands
 
@@ -603,13 +605,13 @@ impl RenderManager {
     fn record_render_commands(
         &mut self,
         command_buffer: &CommandBuffer,
-        swapchain_index: usize,
+        framebuffer_index: usize,
     ) -> anyhow::Result<()> {
         let command_buffer_handle = command_buffer.handle();
         let device_ash = self.device.inner();
 
-        let viewport = self.framebuffers[swapchain_index].whole_viewport();
-        let rect_2d = self.framebuffers[swapchain_index].whole_rect();
+        let viewport = self.framebuffers[framebuffer_index].whole_viewport();
+        let rect_2d = self.framebuffers[framebuffer_index].whole_rect();
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -618,7 +620,7 @@ impl RenderManager {
 
         let render_pass_begin = vk::RenderPassBeginInfo::builder()
             .render_pass(self.render_pass.handle())
-            .framebuffer(self.framebuffers[swapchain_index].handle())
+            .framebuffer(self.framebuffers[framebuffer_index].handle())
             .render_area(rect_2d)
             .clear_values(self.clear_values.as_slice());
         unsafe {
@@ -634,8 +636,12 @@ impl RenderManager {
 
         unsafe { device_ash.cmd_next_subpass(command_buffer_handle, vk::SubpassContents::INLINE) };
 
-        self.lighting_pass
-            .record_commands(&command_buffer, viewport, rect_2d)?;
+        self.lighting_pass.record_commands(
+            framebuffer_index,
+            &command_buffer,
+            viewport,
+            rect_2d,
+        )?;
 
         self.gui_pass.record_render_commands(
             &command_buffer,
@@ -649,6 +655,18 @@ impl RenderManager {
             .context("ending render command buffer recording")?;
 
         Ok(())
+    }
+
+    /// Determines the new framebuffer index
+    fn current_framebuffer_index(
+        &self,
+        previous_framebuffer_index: usize,
+        swapchain_index: usize,
+    ) -> usize {
+        if self.swapchain_image_views.len() == 1 {
+            return (previous_framebuffer_index + 1) % MINIMUM_FRAMEBUFFER_COUNT;
+        }
+        return swapchain_index;
     }
 }
 
