@@ -242,17 +242,17 @@ fn create_desc_set_gbuffer(
 }
 
 fn write_desc_sets_gbuffer(
-    desc_sets_gbuffers: &Vec<Arc<DescriptorSet>>,
+    desc_sets_gbuffer: &Vec<Arc<DescriptorSet>>,
     normal_buffer: &ImageView<Image>,
     primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
 ) -> anyhow::Result<()> {
-    (0..desc_sets_gbuffers.len()).into_iter().map(|i| {
+    for i in 0..desc_sets_gbuffer.len() {
         write_desc_set_gbuffer(
-            desc_sets_gbuffers[i].as_ref(),
+            desc_sets_gbuffer[i].as_ref(),
             normal_buffer,
             primitive_id_buffers[i].as_ref(),
-        );
-    });
+        )?;
+    }
     Ok(())
 }
 

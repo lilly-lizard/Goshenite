@@ -7,8 +7,8 @@ use super::{
     shader_interfaces::uniform_buffers::CameraUniformBuffer,
     vulkan_init::{
         choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
-        create_depth_buffer, create_framebuffers, create_normal_buffer, create_per_frame_fence,
-        create_render_pass, create_swapchain, create_swapchain_image_views, swapchain_properties,
+        create_depth_buffer, create_framebuffers, create_normal_buffer, create_render_pass,
+        create_swapchain, create_swapchain_image_views, swapchain_properties,
         ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
     },
 };
@@ -20,7 +20,7 @@ use crate::{
         config_renderer::MINIMUM_FRAMEBUFFER_COUNT,
         vulkan_init::{
             choose_depth_buffer_format, create_command_pool, create_device_and_queue, create_entry,
-            create_primitive_id_buffers, create_render_command_buffers,
+            create_primitive_id_buffers, create_render_command_buffers, create_signalled_fence,
             shaders_should_write_linear_color,
         },
     },
@@ -77,6 +77,7 @@ pub struct RenderManager {
     /// One per framebuffer
     render_command_buffers: Vec<Arc<CommandBuffer>>,
     previous_render_fence: Arc<Fence>,
+    buffer_upload_fence: Arc<Fence>,
     next_frame_wait_semaphore: Arc<Semaphore>,
     swapchain_image_available_semaphore: Arc<Semaphore>,
 
@@ -192,7 +193,7 @@ impl RenderManager {
         let shaders_write_linear_color =
             shaders_should_write_linear_color(swapchain.properties().surface_format);
 
-        let swapchain_image_views = create_swapchain_image_views(&swapchain)?;
+        let mut swapchain_image_views = create_swapchain_image_views(&swapchain)?;
 
         let framebuffer_count = determine_framebuffer_count(&swapchain_image_views);
 
@@ -223,7 +224,7 @@ impl RenderManager {
         let framebuffers = create_framebuffers(
             framebuffer_count,
             &render_pass,
-            &swapchain_image_views,
+            &mut swapchain_image_views,
             &normal_buffer,
             &primitive_id_buffers,
             &depth_buffer,
@@ -260,7 +261,8 @@ impl RenderManager {
             swapchain_image_views.len() as u32,
         )?;
 
-        let previous_render_fence = create_per_frame_fence(device.clone())?;
+        let previous_render_fence = create_signalled_fence(device.clone())?;
+        let buffer_upload_fence = create_signalled_fence(device.clone())?;
         let next_frame_wait_semaphore =
             Arc::new(Semaphore::new(device.clone()).context("creating per-frame semaphore")?);
         let swapchain_image_available_semaphore = Arc::new(
@@ -298,6 +300,7 @@ impl RenderManager {
 
             render_command_buffers,
             previous_render_fence,
+            buffer_upload_fence,
             next_frame_wait_semaphore,
             swapchain_image_available_semaphore,
 
@@ -350,8 +353,11 @@ impl RenderManager {
     ) -> anyhow::Result<()> {
         self.wait_for_previous_frame_fence()?;
 
-        self.gui_pass
-            .update_textures(textures_delta, &self.render_queue)?;
+        self.gui_pass.update_textures(
+            textures_delta,
+            &self.render_queue,
+            Some(self.buffer_upload_fence.clone()),
+        )?;
 
         Ok(())
     }
@@ -377,6 +383,7 @@ impl RenderManager {
         self.framebuffer_index_last_rendered_to = self.framebuffer_index_currently_rendering;
 
         self.gui_pass.free_previous_vertex_and_index_buffers();
+        self.gui_pass.free_texture_upload_buffers();
 
         // note: I found that this check is needed on wayland because the later commands weren't returning 'out of date'...
         if self.window_just_resized {
@@ -409,7 +416,8 @@ impl RenderManager {
             return self.recreate_swapchain();
         }
 
-        let framebuffer_index = self.current_framebuffer_index();
+        let framebuffer_index = self
+            .current_framebuffer_index(self.framebuffer_index_last_rendered_to, swapchain_index);
 
         // record commands
 
@@ -564,7 +572,7 @@ impl RenderManager {
         self.framebuffers = create_framebuffers(
             framebuffer_count,
             &self.render_pass,
-            &self.swapchain_image_views,
+            &mut self.swapchain_image_views,
             &self.normal_buffer,
             &self.primitive_id_buffers,
             &self.depth_buffer,

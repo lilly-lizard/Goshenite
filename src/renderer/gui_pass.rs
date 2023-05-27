@@ -13,7 +13,7 @@ use bort::{
     BufferProperties, ColorBlendState, CommandBuffer, CommandPool, CommandPoolProperties,
     DescriptorPool, DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout,
     DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
-    GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
+    Fence, GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
     ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool,
     MemoryPoolPropeties, PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue,
     RenderPass, Sampler, SamplerProperties, ShaderModule, ShaderStage, ViewportState,
@@ -121,6 +121,7 @@ impl GuiPass {
         &mut self,
         textures_delta: Vec<TexturesDelta>,
         queue: &Queue,
+        fence: Option<Arc<Fence>>,
     ) -> anyhow::Result<()> {
         // return if empty
         if textures_delta.is_empty() {
@@ -173,7 +174,7 @@ impl GuiPass {
             let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffer_handles);
 
             queue
-                .submit(&[*submit_info], None)
+                .submit(&[*submit_info], fence.map(|f| f.handle()))
                 .context("submitting gui texture upload commands")?;
 
             return Ok(());
@@ -235,12 +236,15 @@ impl GuiPass {
 
     /// Fress vertex and index buffers created in previous calls to `record_render_commands`.
     /// Call this when gui rendering commands from the previous frame have finished.
-    /// todo mention texture_upload_buffers. actually, make it a separate function...
     pub fn free_previous_vertex_and_index_buffers(&mut self) {
         self.vertex_buffers.clear();
         self.index_buffers.clear();
-        self.texture_upload_buffers.clear();
         self.current_buffer_pool_index = 0;
+    }
+
+    /// Should only be called after the commands last submitted by `update_textures` have completed.
+    pub fn free_texture_upload_buffers(&mut self) {
+        self.texture_upload_buffers.clear();
     }
 }
 

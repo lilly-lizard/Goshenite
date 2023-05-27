@@ -621,14 +621,14 @@ fn create_primitive_id_buffer(
 pub fn create_framebuffers(
     framebuffer_count: usize,
     render_pass: &Arc<RenderPass>,
-    mut swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
+    swapchain_image_views: &mut Vec<Arc<ImageView<SwapchainImage>>>,
     normal_buffer: &Arc<ImageView<Image>>,
     primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
     depth_buffer: &Arc<ImageView<Image>>,
 ) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
     // ensure swapchain_image_views has framebuffer_count elements
     if swapchain_image_views.len() == 1 {
-        for i in 1..framebuffer_count {
+        for _ in 1..framebuffer_count {
             swapchain_image_views.push(swapchain_image_views[0].clone());
         }
     }
@@ -728,8 +728,8 @@ pub fn create_render_command_buffers(
     Ok(command_buffer_arcs)
 }
 
-pub fn create_per_frame_fence(device: Arc<Device>) -> anyhow::Result<Arc<Fence>> {
+pub fn create_signalled_fence(device: Arc<Device>) -> anyhow::Result<Arc<Fence>> {
     let create_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
-    let fence = Fence::new(device, create_info).context("creating per-frame fence")?;
+    let fence = Fence::new(device, create_info).context("creating fence")?;
     Ok(Arc::new(fence))
 }
