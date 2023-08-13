@@ -8,7 +8,7 @@ use super::{
 use ahash::AHashMap;
 use anyhow::Context;
 use ash::vk;
-use bort::{
+use bort_vk::{
     allocation_info_cpu_accessible, allocation_info_from_flags, default_subresource_layers, Buffer,
     BufferProperties, ColorBlendState, CommandBuffer, CommandPool, CommandPoolProperties,
     DescriptorPool, DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout,
@@ -934,6 +934,7 @@ fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, Sh
         vk::ShaderStageFlags::VERTEX,
         vert_shader,
         CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
     );
 
     let mut frag_spv_file =
@@ -946,6 +947,7 @@ fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, Sh
         vk::ShaderStageFlags::FRAGMENT,
         frag_shader,
         CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
     );
 
     Ok((vert_stage, frag_stage))
@@ -964,6 +966,7 @@ fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, Sh
         vk::ShaderStageFlags::VERTEX,
         vert_shader,
         CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
     );
 
     let frag_shader = Arc::new(
@@ -974,6 +977,7 @@ fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, Sh
         vk::ShaderStageFlags::FRAGMENT,
         frag_shader,
         CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
     );
 
     Ok((vert_stage, frag_stage))

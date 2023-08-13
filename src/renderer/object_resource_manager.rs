@@ -11,7 +11,7 @@ use crate::engine::{
 };
 use anyhow::Context;
 use ash::vk;
-use bort::{
+use bort_vk::{
     allocation_info_cpu_accessible, allocation_info_from_flags, AllocAccess, Buffer,
     BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DescriptorPool,
     DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, Device, DeviceOwned,

@@ -28,7 +28,7 @@ use crate::{
 };
 use anyhow::Context;
 use ash::vk;
-use bort::{
+use bort_vk::{
     ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback, DebugCallbackProperties, Device,
     Fence, Framebuffer, Image, ImageView, Instance, MemoryAllocator, Queue, RenderPass, Semaphore,
     Surface, Swapchain, SwapchainImage,

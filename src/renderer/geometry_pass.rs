@@ -7,7 +7,7 @@ use super::{
 use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
 use anyhow::Context;
 use ash::vk;
-use bort::{
+use bort_vk::{
     Buffer, ColorBlendState, CommandBuffer, DepthStencilState, DescriptorPool,
     DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
     DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState, GraphicsPipeline,
@@ -328,6 +328,7 @@ fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, Sh
         vk::ShaderStageFlags::VERTEX,
         vert_shader,
         CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
     );
 
     let mut frag_spv_file = std::io::Cursor::new(
@@ -341,6 +342,7 @@ fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, Sh
         vk::ShaderStageFlags::FRAGMENT,
         frag_shader,
         CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
     );
 
     Ok((vert_stage, frag_stage))
@@ -359,6 +361,7 @@ fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, Sh
         vk::ShaderStageFlags::VERTEX,
         vert_shader,
         CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
     );
 
     let frag_shader = Arc::new(
@@ -369,6 +372,7 @@ fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, Sh
         vk::ShaderStageFlags::FRAGMENT,
         frag_shader,
         CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
     );
 
     Ok((vert_stage, frag_stage))
