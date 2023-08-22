@@ -1,6 +1,9 @@
-use super::object::{new_object_ref, Object, ObjectCell, ObjectId};
+use super::{
+    object::{new_object_ref, Object, ObjectCell, ObjectId},
+    primitive_op::PrimitiveOp,
+};
 use crate::{
-    engine::primitives::{primitive::PrimitiveCell, primitive_references::PrimitiveReferences},
+    engine::primitives::null_primitive::NullPrimitive,
     helper::{more_errors::CollectionError, unique_id_gen::UniqueIdGen},
 };
 use glam::Vec3;
@@ -11,7 +14,6 @@ use std::{collections::BTreeMap, rc::Rc};
 /// Should only be one per engine instance.
 pub struct ObjectCollection {
     unique_id_gen: UniqueIdGen,
-    primitive_references: PrimitiveReferences,
     objects: BTreeMap<ObjectId, Rc<ObjectCell>>,
 }
 
@@ -19,7 +21,6 @@ impl ObjectCollection {
     pub fn new() -> Self {
         Self {
             unique_id_gen: UniqueIdGen::new(),
-            primitive_references: PrimitiveReferences::new(),
             objects: Default::default(),
         }
     }
@@ -28,7 +29,7 @@ impl ObjectCollection {
         &mut self,
         name: String,
         origin: Vec3,
-        base_primitive: Rc<PrimitiveCell>,
+        base_primitive_op: PrimitiveOp,
     ) -> Rc<ObjectCell> {
         let new_raw_id = self
             .unique_id_gen
@@ -36,28 +37,28 @@ impl ObjectCollection {
             .expect("todo should probably handle this somehow...");
         let object_id = ObjectId(new_raw_id);
 
-        let object = new_object_ref(Object::new(object_id, name, origin, base_primitive));
+        let object = new_object_ref(Object::new(object_id, name, origin, base_primitive_op));
         self.objects.insert(object_id, object.clone());
         object
     }
 
-    pub fn new_empty_object(&mut self) -> Rc<ObjectCell> {
-        let new_raw_id = self
-            .unique_id_gen
-            .new_id()
-            .expect("todo should probably handle this somehow...");
-        let object_id = ObjectId(new_raw_id);
+    // pub fn new_empty_object(&mut self) -> Rc<ObjectCell> {
+    //     let new_raw_id = self
+    //         .unique_id_gen
+    //         .new_id()
+    //         .expect("todo should probably handle this somehow...");
+    //     let object_id = ObjectId(new_raw_id);
 
-        let object = new_object_ref(Object::new(
-            object_id,
-            format!("New Object {}", object_id.raw_id()),
-            Vec3::ZERO,
-            self.primitive_references.null_primitive(),
-        ));
+    //     let object = new_object_ref(Object::new(
+    //         object_id,
+    //         format!("New Object {}", object_id.raw_id()),
+    //         Vec3::ZERO,
+    //         PrimitiveOp::new_default(id),
+    //     ));
 
-        self.objects.insert(object_id, object.clone());
-        object
-    }
+    //     self.objects.insert(object_id, object.clone());
+    //     object
+    // }
 
     pub fn remove_object(&mut self, object_id: ObjectId) -> Result<(), CollectionError> {
         let removed_object = self.objects.remove(&object_id);

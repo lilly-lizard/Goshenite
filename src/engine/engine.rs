@@ -426,7 +426,7 @@ fn object_testing(object_collection: &mut ObjectCollection, renderer: &mut Rende
     );
     another_object
         .borrow_mut()
-        .push_op(Operation::Union, NullPrimitive::new_ref());
+        .push_op(Operation::Union, NullPrimitive::new());
 
     anyhow_unwrap(
         renderer.upload_overwrite_object_collection(object_collection),

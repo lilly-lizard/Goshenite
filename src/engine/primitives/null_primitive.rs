@@ -8,12 +8,18 @@ use crate::{
         primitive_type_codes, PrimitiveOpBufferUnit, PrimitivePropsSlice, PRIMITIVE_PROPS_LEN,
     },
 };
-use std::{cell::RefCell, rc::Rc};
 
 const NULL_TRANSFORM: PrimitiveTransform = PrimitiveTransform::new_default();
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NullPrimitive {}
+
+impl NullPrimitive {
+    #[inline]
+    pub fn new() -> Self {
+        Self {}
+    }
+}
 
 impl Primitive for NullPrimitive {
     fn id(&self) -> PrimitiveId {
@@ -38,12 +44,6 @@ impl Primitive for NullPrimitive {
 
     fn aabb(&self) -> Aabb {
         Aabb::new_zero()
-    }
-}
-
-impl NullPrimitive {
-    pub fn new_ref() -> Rc<RefCell<NullPrimitive>> {
-        Rc::new(RefCell::new(NullPrimitive {}))
     }
 }
 

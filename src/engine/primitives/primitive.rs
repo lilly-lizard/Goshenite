@@ -7,7 +7,6 @@ use crate::{
     },
 };
 use glam::Vec3;
-use std::{cell::RefCell, rc::Rc};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PrimitiveId(pub UniqueId);
@@ -27,16 +26,9 @@ impl std::fmt::Display for PrimitiveId {
     }
 }
 
-/// Use functions `borrow` and `borrow_mut` to access the `Primitive`.
-pub type PrimitiveCell = RefCell<dyn Primitive>;
-#[inline]
-pub fn new_primitive_ref<T: Primitive + 'static>(inner: T) -> Rc<PrimitiveCell> {
-    Rc::new(RefCell::new(inner))
-}
-
 /// A primitive is a basic geometric building block that can be manipulated and combined
 /// using [`Operation`]s in an [`Object`]
-pub trait Primitive {
+pub trait Primitive: Send + Sync {
     /// Unique id that can be passed to `PrimitiveReferences` to lookup the actual struct
     fn id(&self) -> PrimitiveId;
 

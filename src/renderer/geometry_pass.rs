@@ -98,7 +98,6 @@ impl GeometryPass {
 
     pub fn update_objects(
         &mut self,
-        object_collection: &ObjectCollection,
         objects_delta: ObjectsDelta,
         queue: &Queue,
     ) -> anyhow::Result<()> {
@@ -117,17 +116,12 @@ impl GeometryPass {
         }
 
         // added objects
-        for set_id in objects_delta.update {
-            if let Some(object_ref) = object_collection.get(set_id) {
-                trace!("adding or updating object buffer id = {:?}", set_id);
-                let object = &*object_ref.as_ref().borrow();
-                self.object_buffer_manager.update_or_push(object, queue)?;
-            } else {
-                warn!(
-                    "requsted update for object id = {:?} but wasn't found in object collection!",
-                    set_id
-                );
-            }
+        for object in objects_delta.update {
+            trace!(
+                "adding or updating object id = {:?} in gpu buffers",
+                object.id()
+            );
+            self.object_buffer_manager.update_or_push(&object, queue)?;
         }
 
         Ok(())

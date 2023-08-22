@@ -1,9 +1,10 @@
 use crate::{
     engine::{
         object::{
-            object::{ObjectCell, ObjectId, PrimitiveOp, PrimitiveOpId},
+            object::{ObjectCell, ObjectId},
             object_collection::ObjectCollection,
             operation::Operation,
+            primitive_op::{PrimitiveOp, PrimitiveOpId},
         },
         primitives::{primitive, primitive_ref_types::PrimitiveRefType},
     },

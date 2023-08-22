@@ -343,13 +343,9 @@ impl RenderManager {
             .upload_overwrite_object_collection(object_collection, &self.render_queue)
     }
 
-    pub fn update_objects(
-        &mut self,
-        object_collection: &ObjectCollection,
-        objects_delta: ObjectsDelta,
-    ) -> anyhow::Result<()> {
+    pub fn update_objects(&mut self, objects_delta: ObjectsDelta) -> anyhow::Result<()> {
         self.geometry_pass
-            .update_objects(object_collection, objects_delta, &self.render_queue)
+            .update_objects(objects_delta, &self.render_queue)
     }
 
     pub fn update_gui_textures(

@@ -6,9 +6,10 @@ use crate::{
     config,
     engine::{
         object::{
-            object::{Object, ObjectId, PrimitiveOp, PrimitiveOpId},
+            object::{Object, ObjectId},
             objects_delta::ObjectsDelta,
             operation::Operation,
+            primitive_op::PrimitiveOpId,
         },
         primitives::{
             cube::Cube, primitive::PrimitiveCell, primitive_ref_types::PrimitiveRefType,
@@ -88,7 +89,7 @@ pub fn object_properties_editor(
 
     if original_origin != origin_mut {
         object.set_origin(origin_mut);
-        objects_delta.update.insert(object.id());
+        objects_delta.update.insert(object.clone());
     }
 }
 

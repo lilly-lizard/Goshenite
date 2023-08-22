@@ -1,9 +1,9 @@
-use super::operation::Operation;
+use super::{
+    operation::Operation,
+    primitive_op::{PrimitiveOp, PrimitiveOpId},
+};
 use crate::{
-    engine::{
-        aabb::Aabb,
-        primitives::{null_primitive::NullPrimitive, primitive::PrimitiveCell},
-    },
+    engine::{aabb::Aabb, primitives::primitive::Primitive},
     helper::{
         more_errors::CollectionError,
         unique_id_gen::{UniqueId, UniqueIdGen},
@@ -15,7 +15,11 @@ use crate::{
 };
 use egui_dnd::utils::{shift_slice, ShiftSliceError};
 use glam::Vec3;
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::RefCell,
+    hash::{Hash, Hasher},
+    rc::Rc,
+};
 
 /// Use functions `borrow` and `borrow_mut` to access the `Object`.
 pub type ObjectCell = RefCell<Object>;
@@ -26,6 +30,8 @@ pub fn new_object_ref(object: Object) -> Rc<ObjectCell> {
 
 // this is because the shaders store the primitive op index in the lower 16 bits of a u32
 const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
+
+// OBJECT ID
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ObjectId(pub UniqueId);
@@ -45,42 +51,7 @@ impl std::fmt::Display for ObjectId {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PrimitiveOpId(pub UniqueId);
-impl PrimitiveOpId {
-    pub const fn raw_id(&self) -> UniqueId {
-        self.0
-    }
-}
-impl From<UniqueId> for PrimitiveOpId {
-    fn from(id: UniqueId) -> Self {
-        Self(id)
-    }
-}
-impl std::fmt::Display for PrimitiveOpId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.raw_id())
-    }
-}
-
-pub struct PrimitiveOp {
-    id: PrimitiveOpId,
-    pub op: Operation,
-    pub primitive: Rc<PrimitiveCell>,
-}
-impl PrimitiveOp {
-    pub fn new(id: PrimitiveOpId, op: Operation, primitive: Rc<PrimitiveCell>) -> Self {
-        Self { id, op, primitive }
-    }
-
-    pub fn new_default(id: PrimitiveOpId) -> Self {
-        Self::new(id, Operation::NOP, NullPrimitive::new_ref())
-    }
-
-    pub fn id(&self) -> PrimitiveOpId {
-        self.id
-    }
-}
+// OBJECT
 
 pub struct Object {
     id: ObjectId,
@@ -92,12 +63,7 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn new(
-        id: ObjectId,
-        name: String,
-        origin: Vec3,
-        base_primitive: Rc<PrimitiveCell>,
-    ) -> Self {
+    pub fn new(id: ObjectId, name: String, origin: Vec3, base_primitive_op: PrimitiveOp) -> Self {
         let mut primitive_op_id_gen = UniqueIdGen::new();
         let new_raw_id = primitive_op_id_gen
             .new_id()
@@ -107,11 +73,7 @@ impl Object {
             id,
             name,
             origin,
-            primitive_ops: vec![PrimitiveOp::new(
-                PrimitiveOpId(new_raw_id),
-                Operation::Union,
-                base_primitive,
-            )],
+            primitive_ops: vec![base_primitive_op],
             primitive_op_id_gen,
         }
     }
@@ -143,7 +105,11 @@ impl Object {
     }
 
     /// Returns the id of the newly created primitive op
-    pub fn push_op(&mut self, operation: Operation, primitive: Rc<PrimitiveCell>) -> PrimitiveOpId {
+    pub fn push_op(
+        &mut self,
+        operation: Operation,
+        primitive: Box<dyn Primitive>,
+    ) -> PrimitiveOpId {
         let new_raw_id = self
             .primitive_op_id_gen
             .new_id()
@@ -170,14 +136,10 @@ impl Object {
         let mut encoded_primitives = Vec::<PrimitiveOpPacket>::new();
         for primitive_op in &self.primitive_ops {
             let op_code = primitive_op.op.op_code();
-            let primitive_type_code = primitive_op.primitive.borrow().type_code();
+            let primitive_type_code = primitive_op.primitive.type_code();
 
-            let transform = primitive_op
-                .primitive
-                .borrow()
-                .transform()
-                .encoded(self.origin);
-            let props = primitive_op.primitive.borrow().encoded_props();
+            let transform = primitive_op.primitive.transform().encoded(self.origin);
+            let props = primitive_op.primitive.encoded_props();
 
             let packet = create_primitive_op_packet(op_code, primitive_type_code, transform, props);
             encoded_primitives.push(packet);
@@ -201,7 +163,7 @@ impl Object {
     pub fn aabb(&self) -> Aabb {
         let mut aabb = Aabb::new_zero();
         for primitive_op in &self.primitive_ops {
-            aabb.union(primitive_op.primitive.borrow().aabb());
+            aabb.union(primitive_op.primitive.aabb());
         }
         aabb.offset(self.origin);
         aabb
@@ -210,11 +172,9 @@ impl Object {
     pub fn set_origin(&mut self, origin: Vec3) {
         self.origin = origin;
     }
-}
 
-// Getters
+    // Getters
 
-impl Object {
     pub fn id(&self) -> ObjectId {
         self.id
     }
@@ -261,5 +221,28 @@ impl Object {
                     None
                 }
             })
+    }
+}
+
+impl Hash for Object {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // ids should be unique so we can just hash this.
+        self.id.hash(state);
+    }
+}
+
+// CLONED OBJECT
+
+pub struct ObjectClone {
+    pub id: ObjectId,
+    pub name: String,
+    pub origin: Vec3,
+    pub primitive_ops: Vec<PrimitiveOp>,
+}
+
+impl Hash for ObjectClone {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // ids should be unique so we can just hash this.
+        self.id.hash(state);
     }
 }
