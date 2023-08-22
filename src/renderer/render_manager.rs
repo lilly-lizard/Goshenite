@@ -335,16 +335,21 @@ impl RenderManager {
         Ok(())
     }
 
-    pub fn update_object_buffers(
+    pub fn upload_overwrite_object_collection(
+        &mut self,
+        object_collection: &ObjectCollection,
+    ) -> anyhow::Result<()> {
+        self.geometry_pass
+            .upload_overwrite_object_collection(object_collection, &self.render_queue)
+    }
+
+    pub fn update_objects(
         &mut self,
         object_collection: &ObjectCollection,
         objects_delta: ObjectsDelta,
     ) -> anyhow::Result<()> {
-        self.geometry_pass.update_object_buffers(
-            object_collection,
-            objects_delta,
-            &self.render_queue,
-        )
+        self.geometry_pass
+            .update_objects(object_collection, objects_delta, &self.render_queue)
     }
 
     pub fn update_gui_textures(

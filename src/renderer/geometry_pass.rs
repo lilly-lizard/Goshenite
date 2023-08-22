@@ -76,7 +76,27 @@ impl GeometryPass {
         })
     }
 
-    pub fn update_object_buffers(
+    /// Good for initializing
+    pub fn upload_overwrite_object_collection(
+        &mut self,
+        object_collection: &ObjectCollection,
+        queue: &Queue,
+    ) -> anyhow::Result<()> {
+        self.object_buffer_manager.reset_staging_buffer_offsets();
+
+        let objects = object_collection.objects();
+
+        // added objects
+        for (object_id, object_ref) in objects {
+            trace!("uploading object id = {:?} to gpu buffer", *object_id);
+            let object = &*object_ref.as_ref().borrow();
+            self.object_buffer_manager.update_or_push(object, queue)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn update_objects(
         &mut self,
         object_collection: &ObjectCollection,
         objects_delta: ObjectsDelta,

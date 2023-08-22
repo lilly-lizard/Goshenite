@@ -1,8 +1,6 @@
 use super::{
     config_engine,
-    object::{
-        object_collection::ObjectCollection, objects_delta::ObjectsDelta, operation::Operation,
-    },
+    object::{object_collection::ObjectCollection, operation::Operation},
     primitives::null_primitive::NullPrimitive,
     render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
 };
@@ -430,12 +428,8 @@ fn object_testing(object_collection: &mut ObjectCollection, renderer: &mut Rende
         .borrow_mut()
         .push_op(Operation::Union, NullPrimitive::new_ref());
 
-    let mut objects_delta = ObjectsDelta::default();
-    objects_delta.update.insert(object.borrow().id());
-    objects_delta.update.insert(another_object.borrow().id());
-
     anyhow_unwrap(
-        renderer.update_object_buffers(&*object_collection, objects_delta),
+        renderer.upload_overwrite_object_collection(object_collection),
         "update object buffers",
     );
 }
