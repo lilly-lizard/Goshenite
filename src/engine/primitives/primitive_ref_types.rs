@@ -1,5 +1,11 @@
-use super::{cube::Cube, sphere::Sphere};
-use std::{cell::RefCell, rc::Rc};
+use glam::{Quat, Vec3};
+
+use super::{
+    cube::Cube,
+    null_primitive::NullPrimitive,
+    primitive::{default_dimensions, default_radius, Primitive},
+    sphere::Sphere,
+};
 
 /// Implimentations of [`Primtive`] supported by [`PrimitiveReferences`] return one of these values
 /// when calling [`Primtive::type_name`]
@@ -61,16 +67,14 @@ impl Default for PrimitiveRefType {
     }
 }
 
-/// Use functions `borrow` and `borrow_mut` to access the `Sphere`.
-pub type SphereCell = RefCell<Sphere>;
-#[inline]
-pub fn new_sphere_ref(inner: Sphere) -> Rc<SphereCell> {
-    Rc::new(RefCell::new(inner))
-}
-
-/// Use functions `borrow` and `borrow_mut` to access the `Cube`.
-pub type CubeCell = RefCell<Cube>;
-#[inline]
-pub fn new_cube_ref(inner: Cube) -> Rc<CubeCell> {
-    Rc::new(RefCell::new(inner))
+pub fn create_default_primitive(primitive_type: PrimitiveRefType) -> Box<dyn Primitive> {
+    match primitive_type {
+        PrimitiveRefType::Null | PrimitiveRefType::Unknown => Box::new(NullPrimitive::new()),
+        PrimitiveRefType::Sphere => {
+            Box::new(Sphere::new(Vec3::ZERO, Quat::IDENTITY, default_radius()))
+        }
+        PrimitiveRefType::Cube => {
+            Box::new(Cube::new(Vec3::ZERO, Quat::IDENTITY, default_dimensions()))
+        }
+    }
 }

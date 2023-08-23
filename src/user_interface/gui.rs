@@ -7,12 +7,7 @@ use super::{
     layout_object_list::object_list_layout,
     layout_panel::bottom_panel_layout,
 };
-use crate::engine::{
-    object::{
-        object::ObjectCell, object_collection::ObjectCollection, objects_delta::ObjectsDelta,
-    },
-    primitives::primitive_references::PrimitiveReferences,
-};
+use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
 use egui::{TexturesDelta, Visuals};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]

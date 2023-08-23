@@ -1,5 +1,5 @@
 use super::{
-    primitive::{default_radius, Primitive, PrimitiveId},
+    primitive::{default_radius, Primitive},
     primitive_ref_types::primitive_names,
     primitive_transform::PrimitiveTransform,
 };
@@ -13,35 +13,25 @@ use glam::{Quat, Vec3};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Sphere {
-    id: PrimitiveId,
     pub transform: PrimitiveTransform,
     pub radius: f32,
 }
 
 impl Sphere {
-    pub const fn new_default(id: PrimitiveId) -> Self {
+    pub const fn new_default() -> Self {
         Self {
-            id,
             transform: PrimitiveTransform::new_default(),
             radius: default_radius(),
         }
     }
 
-    pub const fn new(id: PrimitiveId, center: Vec3, rotation: Quat, radius: f32) -> Self {
+    pub const fn new(center: Vec3, rotation: Quat, radius: f32) -> Self {
         let transform = PrimitiveTransform { center, rotation };
-        Self {
-            id,
-            transform,
-            radius,
-        }
+        Self { transform, radius }
     }
 }
 
 impl Primitive for Sphere {
-    fn id(&self) -> PrimitiveId {
-        self.id
-    }
-
     fn type_code(&self) -> PrimitiveOpBufferUnit {
         primitive_type_codes::SPHERE
     }

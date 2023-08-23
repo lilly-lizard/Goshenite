@@ -1,37 +1,17 @@
 use super::primitive_transform::PrimitiveTransform;
 use crate::{
     engine::aabb::Aabb,
-    helper::unique_id_gen::UniqueId,
     renderer::shader_interfaces::primitive_op_buffer::{
         PrimitiveOpBufferUnit, PrimitivePropsSlice,
     },
 };
 use glam::Vec3;
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PrimitiveId(pub UniqueId);
-impl PrimitiveId {
-    pub const fn raw_id(&self) -> UniqueId {
-        self.0
-    }
-}
-impl From<UniqueId> for PrimitiveId {
-    fn from(id: UniqueId) -> Self {
-        Self(id)
-    }
-}
-impl std::fmt::Display for PrimitiveId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.raw_id())
-    }
-}
+todo make this trait an enum so we don't need PrimitiveReferences to upcast!
 
 /// A primitive is a basic geometric building block that can be manipulated and combined
 /// using [`Operation`]s in an [`Object`]
 pub trait Primitive: Send + Sync {
-    /// Unique id that can be passed to `PrimitiveReferences` to lookup the actual struct
-    fn id(&self) -> PrimitiveId;
-
     /// Returns the primitive type code. See [`primitive_type_codes`].
     fn type_code(&self) -> PrimitiveOpBufferUnit;
 

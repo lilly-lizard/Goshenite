@@ -7,13 +7,15 @@ use crate::{
     engine::{
         object::{
             object::{Object, ObjectId},
+            object_collection::ObjectCollection,
             objects_delta::ObjectsDelta,
             operation::Operation,
             primitive_op::PrimitiveOpId,
         },
         primitives::{
-            cube::Cube, primitive::PrimitiveCell, primitive_ref_types::PrimitiveRefType,
-            primitive_references::PrimitiveReferences, sphere::Sphere,
+            cube::Cube,
+            primitive_ref_types::{create_default_primitive, PrimitiveRefType},
+            sphere::Sphere,
         },
     },
 };
@@ -22,24 +24,23 @@ use egui_dnd::{DragDropResponse, DragableItem};
 use glam::{Quat, Vec3};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::rc::Rc;
 
 pub fn object_editor_layout(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
-    primitive_references: &mut PrimitiveReferences,
+    object_collection: &mut ObjectCollection,
 ) {
     // selected object name
     let no_object_text = RichText::new("No object selected...").italics();
-    let selected_object_weak = match gui_state.selected_object() {
+    let selected_object_id = match gui_state.selected_object_id() {
         Some(o) => o.clone(),
         None => {
             ui.label(no_object_text);
             return;
         }
     };
-    let selected_object_ref = match selected_object_weak.upgrade() {
+    let selected_object = match object_collection.get_object_mut(selected_object_id) {
         Some(o) => o,
         None => {
             debug!("selected object dropped. deselecting object...");
@@ -50,25 +51,14 @@ pub fn object_editor_layout(
     };
     ui.horizontal(|ui| {
         ui.label("Name:");
-        ui.text_edit_singleline(selected_object_ref.borrow_mut().name_mut());
+        ui.text_edit_singleline(selected_object.name_mut());
     });
 
-    object_properties_editor(ui, objects_delta, &mut selected_object_ref.borrow_mut());
+    object_properties_editor(ui, objects_delta, selected_object);
 
-    primitive_op_editor(
-        ui,
-        gui_state,
-        objects_delta,
-        &mut selected_object_ref.borrow_mut(),
-        primitive_references,
-    );
+    primitive_op_editor(ui, gui_state, objects_delta, selected_object);
 
-    primitive_op_list(
-        ui,
-        gui_state,
-        objects_delta,
-        &mut selected_object_ref.borrow_mut(),
-    );
+    primitive_op_list(ui, gui_state, objects_delta, selected_object);
 }
 
 pub fn object_properties_editor(
@@ -89,7 +79,7 @@ pub fn object_properties_editor(
 
     if original_origin != origin_mut {
         object.set_origin(origin_mut);
-        objects_delta.update.insert(object.clone());
+        objects_delta.update.insert(object.duplicate());
     }
 }
 
@@ -98,7 +88,6 @@ pub fn primitive_op_editor(
     gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
     selected_object: &mut Object,
-    primitive_references: &mut PrimitiveReferences,
 ) {
     if let Some(selected_prim_op_id) = gui_state.selected_primitive_op_id() {
         existing_primitive_op_editor(
@@ -106,17 +95,10 @@ pub fn primitive_op_editor(
             gui_state,
             objects_delta,
             selected_object,
-            primitive_references,
             selected_prim_op_id,
         );
     } else {
-        new_primitive_op_editor(
-            ui,
-            gui_state,
-            objects_delta,
-            selected_object,
-            primitive_references,
-        );
+        new_primitive_op_editor(ui, gui_state, objects_delta, selected_object);
     };
 }
 
@@ -125,7 +107,6 @@ fn existing_primitive_op_editor(
     gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
     selected_object: &mut Object,
-    primitive_references: &mut PrimitiveReferences,
     selected_prim_op_id: PrimitiveOpId,
 ) {
     let object_id = selected_object.id();
@@ -136,13 +117,7 @@ fn existing_primitive_op_editor(
                 // selected_prim_op_id not in selected_obejct -> invalid id
                 gui_state.deselect_primitive_op();
 
-                new_primitive_op_editor(
-                    ui,
-                    gui_state,
-                    objects_delta,
-                    selected_object,
-                    primitive_references,
-                );
+                new_primitive_op_editor(ui, gui_state, objects_delta, selected_object);
                 return;
             }
         };
@@ -151,8 +126,8 @@ fn existing_primitive_op_editor(
 
     ui.label(format!("Primitive op {}:", selected_prim_op_index));
 
-    let mut primitive_id = selected_prim_op.primitive.borrow().id();
-    let old_primitive_type_name = selected_prim_op.primitive.borrow().type_name();
+    let mut primitive_op_id = selected_prim_op.id();
+    let old_primitive_type_name = selected_prim_op.primitive.type_name();
     let mut primitive_type: PrimitiveRefType = old_primitive_type_name.into();
 
     ui.horizontal(|ui_h| {
@@ -171,13 +146,12 @@ fn existing_primitive_op_editor(
 
         if primitive_type != new_primitive_type {
             // replace old primitive according to new type
-            selected_prim_op.primitive =
-                primitive_references.create_primitive_default(new_primitive_type);
-            objects_delta.update.insert(object_id);
+            selected_prim_op.primitive = create_default_primitive(new_primitive_type);
+            objects_delta.update.insert(selected_object.duplicate());
 
             // update local vars for primitive editor
             primitive_type = new_primitive_type;
-            primitive_id = selected_prim_op.primitive.borrow().id();
+            primitive_op_id = selected_prim_op.id();
         }
     });
 
@@ -243,7 +217,6 @@ fn new_primitive_op_editor(
     gui_state: &mut GuiState,
     objects_delta: &mut ObjectsDelta,
     selected_object: &mut Object,
-    primitive_references: &mut PrimitiveReferences,
 ) {
     ui.separator();
     let object_id = selected_object.id();

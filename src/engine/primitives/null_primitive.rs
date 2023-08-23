@@ -1,7 +1,4 @@
-use super::{
-    primitive::{Primitive, PrimitiveId},
-    primitive_transform::PrimitiveTransform,
-};
+use super::{primitive::Primitive, primitive_transform::PrimitiveTransform};
 use crate::{
     engine::aabb::Aabb,
     renderer::shader_interfaces::primitive_op_buffer::{
@@ -22,10 +19,6 @@ impl NullPrimitive {
 }
 
 impl Primitive for NullPrimitive {
-    fn id(&self) -> PrimitiveId {
-        usize::MAX.into()
-    }
-
     fn type_code(&self) -> PrimitiveOpBufferUnit {
         primitive_type_codes::NULL
     }

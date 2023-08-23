@@ -1,7 +1,7 @@
 use crate::{
     engine::{
         object::{
-            object::{ObjectCell, ObjectId},
+            object::ObjectId,
             object_collection::ObjectCollection,
             operation::Operation,
             primitive_op::{PrimitiveOp, PrimitiveOpId},
@@ -12,7 +12,6 @@ use crate::{
 };
 use egui_dnd::DragDropUi;
 use glam::Vec3;
-use std::rc::{Rc, Weak};
 
 /// Wherver or not different windows are open
 #[derive(Clone)]
@@ -36,7 +35,7 @@ pub const DRAG_INC: f64 = 0.02;
 
 /// State persisting between frames
 pub struct GuiState {
-    selected_object: Option<Weak<ObjectCell>>,
+    selected_object_id: Option<ObjectId>,
     selected_primitive_op_id: Option<PrimitiveOpId>,
     /// Stotes state of the op field in the 'New Primitive Op' editor
     op_field: Operation,
@@ -48,8 +47,8 @@ pub struct GuiState {
 
 // Setters
 impl GuiState {
-    pub fn set_selected_object(&mut self, selected_object: Weak<ObjectCell>) {
-        self.selected_object = Some(selected_object);
+    pub fn set_selected_object_id(&mut self, selected_object_id: ObjectId) {
+        self.selected_object_id = Some(selected_object_id);
     }
 
     pub fn set_selected_primitive_op_id(&mut self, selected_primitive_op_id: PrimitiveOpId) {
@@ -61,7 +60,7 @@ impl GuiState {
     }
 
     pub fn deselect_object(&mut self) {
-        self.selected_object = None;
+        self.selected_object_id = None;
         self.primtive_op_list = Default::default();
         self.deselect_primitive_op();
     }
@@ -98,10 +97,10 @@ impl GuiState {
         object_collection: &ObjectCollection,
         target_object_id: ObjectId,
     ) {
-        if let Some(select_object) =
+        if let Some(selected_object_id) =
             choose_object_closest_index(object_collection, target_object_id)
         {
-            self.set_selected_object(Rc::downgrade(&select_object));
+            self.set_selected_object_id(selected_object_id);
         } else {
             self.deselect_object();
         }
@@ -110,8 +109,8 @@ impl GuiState {
 
 // Getters
 impl GuiState {
-    pub fn selected_object(&self) -> Option<Weak<ObjectCell>> {
-        self.selected_object.clone()
+    pub fn selected_object_id(&self) -> Option<ObjectId> {
+        self.selected_object_id
     }
 
     pub fn selected_primitive_op_id(&self) -> Option<PrimitiveOpId> {
@@ -146,7 +145,7 @@ impl GuiState {
 impl Default for GuiState {
     fn default() -> Self {
         Self {
-            selected_object: None,
+            selected_object_id: None,
             selected_primitive_op_id: None,
             op_field: Operation::NOP,
             primitive_fields: Default::default(),
@@ -173,16 +172,16 @@ impl Default for PrimitiveEditorState {
     }
 }
 
-/// Returns an `Rc` to an object from `object_collection` which has the closest id to
-/// the object `target_object_id`.
+/// Returns the id of an object from `object_collection` which has the closest id to
+/// `target_object_id`.
 pub fn choose_object_closest_index(
     object_collection: &ObjectCollection,
     target_object_id: ObjectId,
-) -> Option<Rc<ObjectCell>> {
-    let mut select_object: Option<Rc<ObjectCell>> = None;
-    for (&current_id, current_object) in object_collection.objects().iter() {
-        select_object = Some(current_object.clone());
-        if current_id >= target_object_id {
+) -> Option<ObjectId> {
+    let mut select_object: Option<ObjectId> = None;
+    for (&current_id, _) in object_collection.objects().iter() {
+        select_object = Some(current_id);
+        if target_object_id <= current_id {
             break;
         }
     }

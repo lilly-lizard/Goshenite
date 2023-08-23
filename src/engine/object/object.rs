@@ -1,6 +1,6 @@
 use super::{
     operation::Operation,
-    primitive_op::{PrimitiveOp, PrimitiveOpId},
+    primitive_op::{PrimitiveOp, PrimitiveOpDuplicate, PrimitiveOpId},
 };
 use crate::{
     engine::{aabb::Aabb, primitives::primitive::Primitive},
@@ -15,18 +15,7 @@ use crate::{
 };
 use egui_dnd::utils::{shift_slice, ShiftSliceError};
 use glam::Vec3;
-use std::{
-    cell::RefCell,
-    hash::{Hash, Hasher},
-    rc::Rc,
-};
-
-/// Use functions `borrow` and `borrow_mut` to access the `Object`.
-pub type ObjectCell = RefCell<Object>;
-#[inline]
-pub fn new_object_ref(object: Object) -> Rc<ObjectCell> {
-    Rc::new(RefCell::new(object))
-}
+use std::hash::{Hash, Hasher};
 
 // this is because the shaders store the primitive op index in the lower 16 bits of a u32
 const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
@@ -63,7 +52,7 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn new(id: ObjectId, name: String, origin: Vec3, base_primitive_op: PrimitiveOp) -> Self {
+    pub fn new(id: ObjectId, name: String, origin: Vec3) -> Self {
         let mut primitive_op_id_gen = UniqueIdGen::new();
         let new_raw_id = primitive_op_id_gen
             .new_id()
@@ -73,7 +62,7 @@ impl Object {
             id,
             name,
             origin,
-            primitive_ops: vec![base_primitive_op],
+            primitive_ops: vec![],
             primitive_op_id_gen,
         }
     }
@@ -145,7 +134,7 @@ impl Object {
             encoded_primitives.push(packet);
         }
         if self.primitive_ops.len() == 0 {
-            // having no primitive ops would probably break something so lets put a NOP here...
+            // having no primitive ops would probably break something on the gpu side so lets put a NOP here...
             let packet = nop_primitive_op_packet();
             encoded_primitives.push(packet);
         }
@@ -171,6 +160,21 @@ impl Object {
 
     pub fn set_origin(&mut self, origin: Vec3) {
         self.origin = origin;
+    }
+
+    pub fn duplicate(&self) -> ObjectDuplicate {
+        let primitive_op_duplicates = self
+            .primitive_ops
+            .iter()
+            .map(|p_op| p_op.duplicate())
+            .collect();
+
+        ObjectDuplicate {
+            id: self.id,
+            name: self.name,
+            origin: self.origin,
+            primitive_ops: primitive_op_duplicates,
+        }
     }
 
     // Getters
@@ -224,25 +228,28 @@ impl Object {
     }
 }
 
-impl Hash for Object {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        // ids should be unique so we can just hash this.
-        self.id.hash(state);
-    }
-}
-
 // CLONED OBJECT
 
-pub struct ObjectClone {
+// todo clone box trait rabbit-hole...
+// - https://users.rust-lang.org/t/solved-is-it-possible-to-clone-a-boxed-trait-object/1714/7
+// - https://stackoverflow.com/questions/53987976/what-does-a-trait-requiring-sized-have-to-do-with-being-unable-to-have-trait-obj
+// - https://web.mit.edu/rust-lang_v1.25/arch/amd64_ubuntu1404/share/doc/rust/html/book/first-edition/trait-objects.html
+pub struct ObjectDuplicate {
     pub id: ObjectId,
     pub name: String,
     pub origin: Vec3,
-    pub primitive_ops: Vec<PrimitiveOp>,
+    pub primitive_ops: Vec<PrimitiveOpDuplicate>,
 }
 
-impl Hash for ObjectClone {
+impl Hash for ObjectDuplicate {
     fn hash<H: Hasher>(&self, state: &mut H) {
         // ids should be unique so we can just hash this.
         self.id.hash(state);
     }
 }
+impl PartialEq for ObjectDuplicate {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for ObjectDuplicate {}

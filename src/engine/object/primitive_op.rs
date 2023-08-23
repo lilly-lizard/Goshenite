@@ -1,8 +1,5 @@
 use super::operation::Operation;
-use crate::{
-    engine::primitives::{null_primitive::NullPrimitive, primitive::Primitive},
-    helper::unique_id_gen::UniqueId,
-};
+use crate::{engine::primitives::primitive::Primitive, helper::unique_id_gen::UniqueId};
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PrimitiveOpId(pub UniqueId);
@@ -33,15 +30,21 @@ impl PrimitiveOp {
         Self { id, op, primitive }
     }
 
-    pub fn new_null() -> Self {
-        Self::new(
-            usize::MAX.into(),
-            Operation::NOP,
-            Box::new(NullPrimitive::new()),
-        )
-    }
-
     pub fn id(&self) -> PrimitiveOpId {
         self.id
     }
+
+    pub fn duplicate(&self) -> PrimitiveOpDuplicate {
+        PrimitiveOpDuplicate {
+            id: self.id,
+            op: self.op,
+            primitive: self.primitive,
+        }
+    }
+}
+
+pub struct PrimitiveOpDuplicate {
+    pub id: PrimitiveOpId,
+    pub op: Operation,
+    pub primitive: Box<dyn Primitive>,
 }

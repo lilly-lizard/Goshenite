@@ -87,9 +87,8 @@ impl GeometryPass {
         let objects = object_collection.objects();
 
         // added objects
-        for (object_id, object_ref) in objects {
+        for (object_id, object) in objects {
             trace!("uploading object id = {:?} to gpu buffer", *object_id);
-            let object = &*object_ref.as_ref().borrow();
             self.object_buffer_manager.update_or_push(object, queue)?;
         }
 

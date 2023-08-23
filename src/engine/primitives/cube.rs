@@ -1,5 +1,5 @@
 use super::{
-    primitive::{default_dimensions, Primitive, PrimitiveId},
+    primitive::{default_dimensions, Primitive},
     primitive_ref_types::primitive_names,
     primitive_transform::PrimitiveTransform,
 };
@@ -13,24 +13,21 @@ use glam::{Quat, Vec3};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cube {
-    id: PrimitiveId,
     pub transform: PrimitiveTransform,
     pub dimensions: Vec3,
 }
 
 impl Cube {
-    pub const fn new_default(id: PrimitiveId) -> Self {
+    pub const fn new_default() -> Self {
         Self {
-            id,
             transform: PrimitiveTransform::new_default(),
             dimensions: default_dimensions(),
         }
     }
 
-    pub const fn new(id: PrimitiveId, center: Vec3, rotation: Quat, dimensions: Vec3) -> Self {
+    pub const fn new(center: Vec3, rotation: Quat, dimensions: Vec3) -> Self {
         let transform = PrimitiveTransform { center, rotation };
         Self {
-            id,
             transform,
             dimensions,
         }
@@ -38,10 +35,6 @@ impl Cube {
 }
 
 impl Primitive for Cube {
-    fn id(&self) -> PrimitiveId {
-        self.id
-    }
-
     fn type_code(&self) -> PrimitiveOpBufferUnit {
         primitive_type_codes::CUBE
     }
