@@ -12,11 +12,7 @@ use crate::{
             operation::Operation,
             primitive_op::PrimitiveOpId,
         },
-        primitives::{
-            cube::Cube,
-            primitive_ref_types::{create_default_primitive, PrimitiveRefType},
-            sphere::Sphere,
-        },
+        primitives::{cube::Cube, sphere::Sphere},
     },
 };
 use egui::{ComboBox, DragValue, RichText, TextStyle};

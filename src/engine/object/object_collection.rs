@@ -19,7 +19,7 @@ impl ObjectCollection {
         }
     }
 
-    pub fn new_object(&mut self, name: String, origin: Vec3) -> ObjectId {
+    pub fn new_object(&mut self, name: String, origin: Vec3) -> (ObjectId, &mut Object) {
         let new_raw_id = self
             .unique_id_gen
             .new_id()
@@ -28,7 +28,12 @@ impl ObjectCollection {
 
         let object = Object::new(object_id, name, origin);
         self.objects.insert(object_id, object);
-        object_id
+
+        let object_ref = self
+            .objects
+            .get_mut(&object_id)
+            .expect("literally just inserted this");
+        (object_id, object_ref)
     }
 
     pub fn new_object_default(&mut self) -> ObjectId {

@@ -1,7 +1,9 @@
 use super::{
     config_engine,
-    object::{object_collection::ObjectCollection, operation::Operation},
-    primitives::null_primitive::NullPrimitive,
+    object::{
+        object_collection::ObjectCollection, operation::Operation, primitive_op::PrimitiveOp,
+    },
+    primitives::{cube::Cube, null_primitive::NullPrimitive, primitive::Primitive, sphere::Sphere},
     render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
 };
 use crate::{
@@ -394,39 +396,24 @@ impl std::fmt::Display for EngineError {
 impl std::error::Error for EngineError {}
 
 fn object_testing(object_collection: &mut ObjectCollection, renderer: &mut RenderManager) {
-    let sphere = object_collection.primitive_references_mut().create_sphere(
-        Vec3::new(0., 0., 0.),
-        Quat::IDENTITY,
-        0.5,
-    );
-    let cube = object_collection.primitive_references_mut().create_cube(
+    let sphere = Sphere::new(Vec3::new(0., 0., 0.), Quat::IDENTITY, 0.5);
+    let cube = Cube::new(
         Vec3::new(-0.2, 0.2, 0.),
         Quat::IDENTITY,
         glam::Vec3::splat(0.8),
     );
-    let another_sphere = object_collection.primitive_references_mut().create_sphere(
-        Vec3::new(0.2, -0.2, 0.),
-        Quat::IDENTITY,
-        0.83,
-    );
+    let another_sphere = Sphere::new(Vec3::new(0.2, -0.2, 0.), Quat::IDENTITY, 0.83);
 
-    let object =
-        object_collection.new_object("Bruh".to_string(), Vec3::new(-0.2, 0.2, 0.), cube.clone());
-    object
-        .borrow_mut()
-        .push_op(Operation::Union, sphere.clone());
-    object
-        .borrow_mut()
-        .push_op(Operation::Intersection, another_sphere);
+    let (object_id, object) =
+        object_collection.new_object("Bruh".to_string(), Vec3::new(-0.2, 0.2, 0.));
+    object.push_op(Operation::Union, Primitive::Cube(cube));
+    object.push_op(Operation::Union, Primitive::Sphere(sphere.clone()));
+    object.push_op(Operation::Intersection, Primitive::Sphere(another_sphere));
 
-    let another_object = object_collection.new_object(
-        "Another Bruh".to_string(),
-        Vec3::new(0.2, -0.2, 0.),
-        sphere.clone(),
-    );
-    another_object
-        .borrow_mut()
-        .push_op(Operation::Union, NullPrimitive::new());
+    let (_, another_object) =
+        object_collection.new_object("Another Bruh".to_string(), Vec3::new(0.2, -0.2, 0.));
+    another_object.push_op(Operation::Union, Primitive::Sphere(sphere));
+    another_object.push_op(Operation::Union, Primitive::Null(NullPrimitive::new()));
 
     anyhow_unwrap(
         renderer.upload_overwrite_object_collection(object_collection),

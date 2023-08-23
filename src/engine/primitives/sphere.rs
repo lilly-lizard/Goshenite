@@ -1,6 +1,5 @@
 use super::{
-    primitive::{default_radius, Primitive},
-    primitive_ref_types::primitive_names,
+    primitive::{default_radius, primitive_names, EncodablePrimitive},
     primitive_transform::PrimitiveTransform,
 };
 use crate::{
@@ -18,20 +17,22 @@ pub struct Sphere {
 }
 
 impl Sphere {
-    pub const fn new_default() -> Self {
-        Self {
-            transform: PrimitiveTransform::new_default(),
-            radius: default_radius(),
-        }
-    }
-
     pub const fn new(center: Vec3, rotation: Quat, radius: f32) -> Self {
         let transform = PrimitiveTransform { center, rotation };
         Self { transform, radius }
     }
 }
 
-impl Primitive for Sphere {
+impl Default for Sphere {
+    fn default() -> Self {
+        Self {
+            transform: PrimitiveTransform::new_default(),
+            radius: default_radius(),
+        }
+    }
+}
+
+impl EncodablePrimitive for Sphere {
     fn type_code(&self) -> PrimitiveOpBufferUnit {
         primitive_type_codes::SPHERE
     }

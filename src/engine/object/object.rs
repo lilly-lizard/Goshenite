@@ -3,7 +3,10 @@ use super::{
     primitive_op::{PrimitiveOp, PrimitiveOpDuplicate, PrimitiveOpId},
 };
 use crate::{
-    engine::{aabb::Aabb, primitives::primitive::Primitive},
+    engine::{
+        aabb::Aabb,
+        primitives::primitive::{EncodablePrimitive, Primitive},
+    },
     helper::{
         more_errors::CollectionError,
         unique_id_gen::{UniqueId, UniqueIdGen},
@@ -94,11 +97,7 @@ impl Object {
     }
 
     /// Returns the id of the newly created primitive op
-    pub fn push_op(
-        &mut self,
-        operation: Operation,
-        primitive: Box<dyn Primitive>,
-    ) -> PrimitiveOpId {
+    pub fn push_op(&mut self, operation: Operation, primitive: Primitive) -> PrimitiveOpId {
         let new_raw_id = self
             .primitive_op_id_gen
             .new_id()

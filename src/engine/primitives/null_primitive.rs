@@ -1,4 +1,7 @@
-use super::{primitive::Primitive, primitive_transform::PrimitiveTransform};
+use super::{
+    primitive::{primitive_names, EncodablePrimitive},
+    primitive_transform::PrimitiveTransform,
+};
 use crate::{
     engine::aabb::Aabb,
     renderer::shader_interfaces::primitive_op_buffer::{
@@ -8,7 +11,7 @@ use crate::{
 
 const NULL_TRANSFORM: PrimitiveTransform = PrimitiveTransform::new_default();
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub struct NullPrimitive {}
 
 impl NullPrimitive {
@@ -18,13 +21,13 @@ impl NullPrimitive {
     }
 }
 
-impl Primitive for NullPrimitive {
+impl EncodablePrimitive for NullPrimitive {
     fn type_code(&self) -> PrimitiveOpBufferUnit {
         primitive_type_codes::NULL
     }
 
     fn type_name(&self) -> &'static str {
-        "Null-Primitive"
+        primitive_names::NULL
     }
 
     fn encoded_props(&self) -> PrimitivePropsSlice {
@@ -37,11 +40,5 @@ impl Primitive for NullPrimitive {
 
     fn aabb(&self) -> Aabb {
         Aabb::new_zero()
-    }
-}
-
-impl Default for NullPrimitive {
-    fn default() -> Self {
-        Self {}
     }
 }

@@ -1,32 +1,16 @@
 use super::operation::Operation;
 use crate::{engine::primitives::primitive::Primitive, helper::unique_id_gen::UniqueId};
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PrimitiveOpId(pub UniqueId);
-impl PrimitiveOpId {
-    pub const fn raw_id(&self) -> UniqueId {
-        self.0
-    }
-}
-impl From<UniqueId> for PrimitiveOpId {
-    fn from(id: UniqueId) -> Self {
-        Self(id)
-    }
-}
-impl std::fmt::Display for PrimitiveOpId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.raw_id())
-    }
-}
+// PRIMITIVE OP
 
 pub struct PrimitiveOp {
     id: PrimitiveOpId,
     pub op: Operation,
-    pub primitive: Box<dyn Primitive>,
+    pub primitive: Primitive,
 }
 
 impl PrimitiveOp {
-    pub fn new(id: PrimitiveOpId, op: Operation, primitive: Box<dyn Primitive>) -> Self {
+    pub fn new(id: PrimitiveOpId, op: Operation, primitive: Primitive) -> Self {
         Self { id, op, primitive }
     }
 
@@ -43,8 +27,29 @@ impl PrimitiveOp {
     }
 }
 
+#[derive(Clone)]
 pub struct PrimitiveOpDuplicate {
     pub id: PrimitiveOpId,
     pub op: Operation,
-    pub primitive: Box<dyn Primitive>,
+    pub primitive: Primitive,
+}
+
+// PRIMITIVE OP ID
+
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PrimitiveOpId(pub UniqueId);
+impl PrimitiveOpId {
+    pub const fn raw_id(&self) -> UniqueId {
+        self.0
+    }
+}
+impl From<UniqueId> for PrimitiveOpId {
+    fn from(id: UniqueId) -> Self {
+        Self(id)
+    }
+}
+impl std::fmt::Display for PrimitiveOpId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.raw_id())
+    }
 }

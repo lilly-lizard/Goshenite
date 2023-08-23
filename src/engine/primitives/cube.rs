@@ -1,6 +1,5 @@
 use super::{
-    primitive::{default_dimensions, Primitive},
-    primitive_ref_types::primitive_names,
+    primitive::{default_dimensions, primitive_names, EncodablePrimitive},
     primitive_transform::PrimitiveTransform,
 };
 use crate::{
@@ -18,13 +17,6 @@ pub struct Cube {
 }
 
 impl Cube {
-    pub const fn new_default() -> Self {
-        Self {
-            transform: PrimitiveTransform::new_default(),
-            dimensions: default_dimensions(),
-        }
-    }
-
     pub const fn new(center: Vec3, rotation: Quat, dimensions: Vec3) -> Self {
         let transform = PrimitiveTransform { center, rotation };
         Self {
@@ -34,7 +26,16 @@ impl Cube {
     }
 }
 
-impl Primitive for Cube {
+impl Default for Cube {
+    fn default() -> Self {
+        Self {
+            transform: PrimitiveTransform::new_default(),
+            dimensions: default_dimensions(),
+        }
+    }
+}
+
+impl EncodablePrimitive for Cube {
     fn type_code(&self) -> PrimitiveOpBufferUnit {
         primitive_type_codes::CUBE
     }

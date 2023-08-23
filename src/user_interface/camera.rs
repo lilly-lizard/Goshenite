@@ -1,7 +1,7 @@
 use super::config_ui;
 use crate::{
     config,
-    engine::{object::object::Object, primitives::primitive::Primitive},
+    engine::{object::object::Object, primitives::primitive::EncodablePrimitive},
     helper::angle::Angle,
 };
 use glam::{DMat3, DMat4, DVec2, DVec3, Mat4, Vec4};
@@ -123,7 +123,7 @@ impl Camera {
     }
 
     /// Sets the lock on target to the primitive center.
-    pub fn set_lock_on_target_from_primitive(&mut self, primitive: &dyn Primitive) {
+    pub fn set_lock_on_target_from_primitive(&mut self, primitive: &dyn EncodablePrimitive) {
         let target_pos = primitive.transform().center.as_dvec3();
         self.set_lock_on_target(target_pos);
     }

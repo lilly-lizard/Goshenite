@@ -6,12 +6,11 @@ use crate::{
             operation::Operation,
             primitive_op::{PrimitiveOp, PrimitiveOpId},
         },
-        primitives::{primitive, primitive_ref_types::PrimitiveRefType},
+        primitives::primitive::Primitive,
     },
     helper::list::choose_closest_valid_index,
 };
 use egui_dnd::DragDropUi;
-use glam::Vec3;
 
 /// Wherver or not different windows are open
 #[derive(Clone)]
@@ -40,7 +39,7 @@ pub struct GuiState {
     /// Stotes state of the op field in the 'New Primitive Op' editor
     op_field: Operation,
     /// Stotes state of the primitive fields in the 'New Primitive Op' editor
-    primitive_fields: PrimitiveEditorState,
+    primitive_fields: Primitive,
     /// Stores the drag and drop state of the primitive op list of the selected object
     primtive_op_list: DragDropUi,
 }
@@ -125,11 +124,11 @@ impl GuiState {
         &mut self.op_field
     }
 
-    pub fn primitive_fields(&self) -> &PrimitiveEditorState {
+    pub fn primitive_fields(&self) -> &Primitive {
         &self.primitive_fields
     }
 
-    pub fn primitive_fields_mut(&mut self) -> &mut PrimitiveEditorState {
+    pub fn primitive_fields_mut(&mut self) -> &mut Primitive {
         &mut self.primitive_fields
     }
 
@@ -150,24 +149,6 @@ impl Default for GuiState {
             op_field: Operation::NOP,
             primitive_fields: Default::default(),
             primtive_op_list: Default::default(),
-        }
-    }
-}
-
-pub struct PrimitiveEditorState {
-    pub p_type: PrimitiveRefType,
-    pub center: Vec3,
-    pub radius: f32,
-    pub dimensions: Vec3,
-}
-
-impl Default for PrimitiveEditorState {
-    fn default() -> Self {
-        Self {
-            p_type: Default::default(),
-            center: Vec3::ZERO,
-            radius: primitive::default_radius(),
-            dimensions: primitive::default_dimensions(),
         }
     }
 }
