@@ -7,7 +7,7 @@ use super::{
 };
 use crate::engine::{
     aabb::AABB_VERTEX_COUNT,
-    object::object::{Object, ObjectId},
+    object::object::{Object, ObjectDuplicate, ObjectId},
 };
 use anyhow::Context;
 use ash::vk;
@@ -95,8 +95,8 @@ impl ObjectResourceManager {
         })
     }
 
-    pub fn update_or_push(&mut self, object: &Object, queue: &Queue) -> anyhow::Result<()> {
-        let id = object.id();
+    pub fn update_or_push(&mut self, object: ObjectDuplicate, queue: &Queue) -> anyhow::Result<()> {
+        let id = object.id;
 
         // create one-time command buffer
         let command_buffer = CommandBuffer::new(
@@ -112,11 +112,11 @@ impl ObjectResourceManager {
             .context("beginning geometry upload command buffer")?;
 
         let primitive_ops_buffer = self
-            .upload_primitive_ops(object, &command_buffer)
+            .upload_primitive_ops(&object, &command_buffer)
             .context("initial upload object to buffer")?;
 
         if let Some(index) = self.get_index(id) {
-            let bounding_mesh_buffer = self.upload_bounding_mesh(object, &command_buffer)?;
+            let bounding_mesh_buffer = self.upload_bounding_mesh(&object, &command_buffer)?;
 
             write_desc_set_primitive_ops(
                 &self.objects_buffers[index].primitive_ops_descriptor_set,
@@ -127,7 +127,7 @@ impl ObjectResourceManager {
             self.objects_buffers[index].bounding_mesh_vertex_count = AABB_VERTEX_COUNT as u32;
             self.objects_buffers[index].primitive_ops_buffer = primitive_ops_buffer;
         } else {
-            let bounding_mesh_buffer = self.upload_bounding_mesh(object, &command_buffer)?;
+            let bounding_mesh_buffer = self.upload_bounding_mesh(&object, &command_buffer)?;
 
             let primitive_ops_descriptor_set = self.allocate_primitive_ops_descriptor_set()?;
             write_desc_set_primitive_ops(&primitive_ops_descriptor_set, &primitive_ops_buffer)?;
@@ -268,10 +268,10 @@ impl ObjectResourceManager {
 
     fn upload_bounding_mesh(
         &mut self,
-        object: &Object,
+        object: &ObjectDuplicate,
         command_buffer: &CommandBuffer,
     ) -> anyhow::Result<Arc<Buffer>> {
-        let object_id = object.id();
+        let object_id = object.id;
         trace!(
             "uploading bounding box vertices for object id = {:?} to gpu buffer",
             object_id
@@ -376,12 +376,12 @@ impl ObjectResourceManager {
 
     fn upload_primitive_ops(
         &mut self,
-        object: &Object,
+        object: &ObjectDuplicate,
         command_buffer: &CommandBuffer,
     ) -> anyhow::Result<Arc<Buffer>> {
         trace!(
             "uploading primitive ops for object id = {:?} to gpu buffer",
-            object.id()
+            object.id
         );
 
         let data = object.encoded_primitive_ops();

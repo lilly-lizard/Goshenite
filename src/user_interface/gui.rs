@@ -7,12 +7,13 @@ use super::{
     layout_object_list::object_list_layout,
     layout_panel::bottom_panel_layout,
 };
-use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
+use crate::engine::object::{
+    object::ObjectId, object_collection::ObjectCollection, objects_delta::ObjectsDelta,
+};
 use egui::{TexturesDelta, Visuals};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::rc::Weak;
 use winit::{event_loop::EventLoopWindowTarget, window::Window};
 
 /// Controller for an [`egui`] immediate-mode gui
@@ -96,7 +97,7 @@ impl Gui {
             self.object_list_window(object_collection, camera);
         }
         if self.window_states.object_editor {
-            self.object_editor_window(object_collection.primitive_references_mut());
+            self.object_editor_window(object_collection);
         }
         if self.window_states.camera_control {
             self.camera_control_window(camera);
@@ -137,8 +138,8 @@ impl Gui {
         std::mem::take(&mut self.objects_delta)
     }
 
-    pub fn selected_object(&self) -> Option<Weak<ObjectCell>> {
-        self.gui_state.selected_object().clone()
+    pub fn selected_object_id(&self) -> Option<ObjectId> {
+        self.gui_state.selected_object_id()
     }
 
     pub fn set_theme_winit(&self, theme: winit::window::Theme) {
@@ -192,7 +193,7 @@ impl Gui {
             .show(&self.context, add_contents);
     }
 
-    fn object_editor_window(&mut self, primitive_references: &mut PrimitiveReferences) {
+    fn object_editor_window(&mut self, object_collection: &mut ObjectCollection) {
         let add_contents = |ui: &mut egui::Ui| {
             if EGUI_TRACE {
                 egui::trace!(ui);
@@ -201,7 +202,7 @@ impl Gui {
                 ui,
                 &mut self.gui_state,
                 &mut self.objects_delta,
-                primitive_references,
+                object_collection,
             );
         };
 

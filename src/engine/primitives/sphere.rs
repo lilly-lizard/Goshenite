@@ -26,7 +26,7 @@ impl Sphere {
 impl Default for Sphere {
     fn default() -> Self {
         Self {
-            transform: PrimitiveTransform::new_default(),
+            transform: PrimitiveTransform::default(),
             radius: default_radius(),
         }
     }

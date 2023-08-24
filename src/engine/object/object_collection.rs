@@ -78,7 +78,7 @@ impl ObjectCollection {
         self.objects.get(&object_id)
     }
 
-    pub fn get_object_mut(&self, object_id: ObjectId) -> Option<&mut Object> {
+    pub fn get_object_mut(&mut self, object_id: ObjectId) -> Option<&mut Object> {
         self.objects.get_mut(&object_id)
     }
 }

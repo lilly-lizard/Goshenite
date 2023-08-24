@@ -96,9 +96,22 @@ pub trait EncodablePrimitive: Send + Sync {
 // CONSTANTS
 
 pub mod primitive_names {
+    use super::Primitive;
+    use crate::engine::primitives::{cube::Cube, null_primitive::NullPrimitive, sphere::Sphere};
+
     pub const NULL: &'static str = "Null-Primitive";
     pub const SPHERE: &'static str = "Sphere";
     pub const CUBE: &'static str = "Cube";
+
+    pub const NAME_LIST: [&'static str; 3] = [NULL, SPHERE, CUBE];
+
+    pub fn default_primitive_from_type_name(type_name: &'static str) -> Primitive {
+        match type_name {
+            SPHERE => Primitive::Sphere(Sphere::default()),
+            CUBE => Primitive::Cube(Cube::default()),
+            _ => Primitive::Null(NullPrimitive::default()),
+        }
+    }
 }
 
 #[inline]

@@ -89,7 +89,8 @@ impl GeometryPass {
         // added objects
         for (object_id, object) in objects {
             trace!("uploading object id = {:?} to gpu buffer", *object_id);
-            self.object_buffer_manager.update_or_push(object, queue)?;
+            self.object_buffer_manager
+                .update_or_push(object.duplicate(), queue)?;
         }
 
         Ok(())
@@ -114,13 +115,14 @@ impl GeometryPass {
             }
         }
 
-        // added objects
-        for object in objects_delta.update {
+        // added/updated objects
+        for (object_id, object_duplicate) in objects_delta.update {
             trace!(
                 "adding or updating object id = {:?} in gpu buffers",
-                object.id()
+                object_id
             );
-            self.object_buffer_manager.update_or_push(&object, queue)?;
+            self.object_buffer_manager
+                .update_or_push(object_duplicate, queue)?;
         }
 
         Ok(())

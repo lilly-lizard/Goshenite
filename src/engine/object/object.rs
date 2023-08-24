@@ -18,7 +18,6 @@ use crate::{
 };
 use egui_dnd::utils::{shift_slice, ShiftSliceError};
 use glam::Vec3;
-use std::hash::{Hash, Hasher};
 
 // this is because the shaders store the primitive op index in the lower 16 bits of a u32
 const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
@@ -47,9 +46,9 @@ impl std::fmt::Display for ObjectId {
 
 pub struct Object {
     id: ObjectId,
-    name: String,
-    origin: Vec3,
-    primitive_ops: Vec<PrimitiveOp>,
+    pub name: String,
+    pub origin: Vec3,
+    pub primitive_ops: Vec<PrimitiveOp>,
 
     primitive_op_id_gen: UniqueIdGen,
 }
@@ -117,12 +116,79 @@ impl Object {
         shift_slice(source_index, target_index, &mut self.primitive_ops)
     }
 
+    /// Create `ObjectDuplicate` containing the same primitive data as `self`. This is needed because
+    /// `Object`s can't be cloned as their `id`s must be unique.
+    pub fn duplicate(&self) -> ObjectDuplicate {
+        let primitive_op_duplicates = self.primitive_op_duplicates();
+        ObjectDuplicate {
+            id: self.id,
+            name: self.name.clone(),
+            origin: self.origin,
+            primitive_op_duplicates,
+        }
+    }
+
+    pub fn primitive_op_duplicates(&self) -> Vec<PrimitiveOpDuplicate> {
+        self.primitive_ops
+            .iter()
+            .map(|p_op| p_op.duplicate())
+            .collect()
+    }
+
+    // Getters
+
+    pub fn id(&self) -> ObjectId {
+        self.id
+    }
+
+    /// If found, returns a ref to the primitive op and the vec index
+    pub fn get_primitive_op(&self, id: PrimitiveOpId) -> Option<(&PrimitiveOp, usize)> {
+        self.primitive_ops
+            .iter()
+            .enumerate()
+            .find_map(|(index, prim_op)| {
+                if prim_op.id() == id {
+                    Some((prim_op, index))
+                } else {
+                    None
+                }
+            })
+    }
+
+    /// If found, returns a mutable ref to the primitive op and the vec index
+    pub fn get_primitive_op_mut(&mut self, id: PrimitiveOpId) -> Option<(&mut PrimitiveOp, usize)> {
+        self.primitive_ops
+            .iter_mut()
+            .enumerate()
+            .find_map(|(index, prim_op)| {
+                if prim_op.id() == id {
+                    Some((prim_op, index))
+                } else {
+                    None
+                }
+            })
+    }
+}
+
+// OBJECT DUPLICATE
+
+/// Contains the same primitive data as an `Object`. This is needed because `Object`s can't be
+/// cloned as their `id`s must be unique.
+#[derive(Clone)]
+pub struct ObjectDuplicate {
+    pub id: ObjectId,
+    pub name: String,
+    pub origin: Vec3,
+    pub primitive_op_duplicates: Vec<PrimitiveOpDuplicate>,
+}
+
+impl ObjectDuplicate {
     pub fn encoded_primitive_ops(&self) -> Vec<PrimitiveOpBufferUnit> {
         // avoiding this case should be the responsibility of the functions adding to `primtive_ops`
-        debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);
+        debug_assert!(self.primitive_op_duplicates.len() <= MAX_PRIMITIVE_OP_COUNT);
 
         let mut encoded_primitives = Vec::<PrimitiveOpPacket>::new();
-        for primitive_op in &self.primitive_ops {
+        for primitive_op in &self.primitive_op_duplicates {
             let op_code = primitive_op.op.op_code();
             let primitive_type_code = primitive_op.primitive.type_code();
 
@@ -132,7 +198,7 @@ impl Object {
             let packet = create_primitive_op_packet(op_code, primitive_type_code, transform, props);
             encoded_primitives.push(packet);
         }
-        if self.primitive_ops.len() == 0 {
+        if self.primitive_op_duplicates.len() == 0 {
             // having no primitive ops would probably break something on the gpu side so lets put a NOP here...
             let packet = nop_primitive_op_packet();
             encoded_primitives.push(packet);
@@ -140,7 +206,7 @@ impl Object {
 
         let mut encoded_object = vec![
             self.id.raw_id() as PrimitiveOpBufferUnit,
-            self.primitive_ops.len() as PrimitiveOpBufferUnit,
+            self.primitive_op_duplicates.len() as PrimitiveOpBufferUnit,
         ];
         let encoded_primitives_flattened =
             encoded_primitives.into_iter().flatten().collect::<Vec<_>>();
@@ -150,105 +216,10 @@ impl Object {
 
     pub fn aabb(&self) -> Aabb {
         let mut aabb = Aabb::new_zero();
-        for primitive_op in &self.primitive_ops {
+        for primitive_op in &self.primitive_op_duplicates {
             aabb.union(primitive_op.primitive.aabb());
         }
         aabb.offset(self.origin);
         aabb
     }
-
-    pub fn set_origin(&mut self, origin: Vec3) {
-        self.origin = origin;
-    }
-
-    pub fn duplicate(&self) -> ObjectDuplicate {
-        let primitive_op_duplicates = self
-            .primitive_ops
-            .iter()
-            .map(|p_op| p_op.duplicate())
-            .collect();
-
-        ObjectDuplicate {
-            id: self.id,
-            name: self.name,
-            origin: self.origin,
-            primitive_ops: primitive_op_duplicates,
-        }
-    }
-
-    // Getters
-
-    pub fn id(&self) -> ObjectId {
-        self.id
-    }
-
-    pub fn name(&self) -> &String {
-        &self.name
-    }
-
-    pub fn name_mut(&mut self) -> &mut String {
-        &mut self.name
-    }
-
-    pub fn origin(&self) -> Vec3 {
-        self.origin
-    }
-
-    pub fn primitive_ops(&self) -> &Vec<PrimitiveOp> {
-        &self.primitive_ops
-    }
-
-    /// If found, returns a tuple with the vec index and a ref to the primitive op
-    pub fn get_primitive_op(&self, id: PrimitiveOpId) -> Option<(usize, &PrimitiveOp)> {
-        self.primitive_ops
-            .iter()
-            .enumerate()
-            .find_map(|(index, prim_op)| {
-                if prim_op.id() == id {
-                    Some((index, prim_op))
-                } else {
-                    None
-                }
-            })
-    }
-
-    /// If found, returns a tuple with the vec index and a ref to the primitive op
-    pub fn get_primitive_op_mut(&mut self, id: PrimitiveOpId) -> Option<(usize, &mut PrimitiveOp)> {
-        self.primitive_ops
-            .iter_mut()
-            .enumerate()
-            .find_map(|(index, prim_op)| {
-                if prim_op.id() == id {
-                    Some((index, prim_op))
-                } else {
-                    None
-                }
-            })
-    }
 }
-
-// CLONED OBJECT
-
-// todo clone box trait rabbit-hole...
-// - https://users.rust-lang.org/t/solved-is-it-possible-to-clone-a-boxed-trait-object/1714/7
-// - https://stackoverflow.com/questions/53987976/what-does-a-trait-requiring-sized-have-to-do-with-being-unable-to-have-trait-obj
-// - https://web.mit.edu/rust-lang_v1.25/arch/amd64_ubuntu1404/share/doc/rust/html/book/first-edition/trait-objects.html
-pub struct ObjectDuplicate {
-    pub id: ObjectId,
-    pub name: String,
-    pub origin: Vec3,
-    pub primitive_ops: Vec<PrimitiveOpDuplicate>,
-}
-
-impl Hash for ObjectDuplicate {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        // ids should be unique so we can just hash this.
-        self.id.hash(state);
-    }
-}
-impl PartialEq for ObjectDuplicate {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-impl Eq for ObjectDuplicate {}

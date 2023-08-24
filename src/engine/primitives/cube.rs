@@ -29,7 +29,7 @@ impl Cube {
 impl Default for Cube {
     fn default() -> Self {
         Self {
-            transform: PrimitiveTransform::new_default(),
+            transform: PrimitiveTransform::default(),
             dimensions: default_dimensions(),
         }
     }

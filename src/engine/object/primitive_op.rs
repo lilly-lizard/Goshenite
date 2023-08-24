@@ -22,7 +22,7 @@ impl PrimitiveOp {
         PrimitiveOpDuplicate {
             id: self.id,
             op: self.op,
-            primitive: self.primitive,
+            primitive: self.primitive.clone(),
         }
     }
 }

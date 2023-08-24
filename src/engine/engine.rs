@@ -308,7 +308,7 @@ impl Engine {
 
     fn update_camera(&mut self) {
         // if no primitive selected use arcball mode
-        if self.gui.selected_object().is_none() {
+        if self.gui.selected_object_id().is_none() {
             self.camera.unset_lock_on_target();
         }
 

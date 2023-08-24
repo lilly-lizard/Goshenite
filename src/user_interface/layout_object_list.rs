@@ -21,7 +21,9 @@ pub fn object_list_layout(
                 .get_object(new_object_id)
                 .expect("literally just created this");
             // tell the rest of the engine there's been a change to the object collection
-            objects_delta.update.insert(new_object.duplicate());
+            objects_delta
+                .update
+                .insert(new_object_id, new_object.duplicate());
 
             // select new object in the object editor
             gui_state.set_selected_object_id(new_object_id);
@@ -35,7 +37,7 @@ pub fn object_list_layout(
         if let Some(selected_object_id) = gui_state.selected_object_id() {
             if let Some(selected_object) = object_collection.get_object(selected_object_id) {
                 let delete_clicked = ui_h
-                    .button(format!("Delete: \"{}\"", selected_object.name()))
+                    .button(format!("Delete: \"{}\"", selected_object.name))
                     .clicked();
 
                 if delete_clicked {
@@ -56,12 +58,9 @@ pub fn object_list_layout(
 
     // object list
     for (current_id, current_object) in object_collection.objects().iter() {
-        let label_text = RichText::new(format!(
-            "{} - {}",
-            current_id.raw_id(),
-            current_object.name()
-        ))
-        .text_style(TextStyle::Monospace);
+        let label_text =
+            RichText::new(format!("{} - {}", current_id.raw_id(), current_object.name))
+                .text_style(TextStyle::Monospace);
 
         let is_selected = if let Some(selected_obeject_id) = gui_state.selected_object_id() {
             if let Some(selected_object) = object_collection.get_object(selected_obeject_id) {

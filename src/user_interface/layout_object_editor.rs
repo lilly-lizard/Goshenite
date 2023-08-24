@@ -10,14 +10,21 @@ use crate::{
             object_collection::ObjectCollection,
             objects_delta::ObjectsDelta,
             operation::Operation,
-            primitive_op::PrimitiveOpId,
+            primitive_op::{PrimitiveOp, PrimitiveOpId},
         },
-        primitives::{cube::Cube, sphere::Sphere},
+        primitives::{
+            cube::Cube,
+            primitive::{
+                primitive_names::{self, default_primitive_from_type_name},
+                EncodablePrimitive, Primitive,
+            },
+            sphere::Sphere,
+        },
     },
 };
 use egui::{ComboBox, DragValue, RichText, TextStyle};
 use egui_dnd::{DragDropResponse, DragableItem};
-use glam::{Quat, Vec3};
+use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 
@@ -47,7 +54,7 @@ pub fn object_editor_layout(
     };
     ui.horizontal(|ui| {
         ui.label("Name:");
-        ui.text_edit_singleline(selected_object.name_mut());
+        ui.text_edit_singleline(&mut selected_object.name);
     });
 
     object_properties_editor(ui, objects_delta, selected_object);
@@ -64,8 +71,9 @@ pub fn object_properties_editor(
 ) {
     ui.separator();
 
-    let original_origin = object.origin();
+    let original_origin = object.origin;
     let mut origin_mut = original_origin;
+
     ui.horizontal(|ui| {
         ui.label("Origin:");
         ui.add(DragValue::new(&mut origin_mut.x).speed(DRAG_INC));
@@ -74,8 +82,8 @@ pub fn object_properties_editor(
     });
 
     if original_origin != origin_mut {
-        object.set_origin(origin_mut);
-        objects_delta.update.insert(object.duplicate());
+        object.origin = origin_mut;
+        objects_delta.update.insert(object.id(), object.duplicate());
     }
 }
 
@@ -105,10 +113,10 @@ fn existing_primitive_op_editor(
     selected_object: &mut Object,
     selected_prim_op_id: PrimitiveOpId,
 ) {
-    let object_id = selected_object.id();
-    let (selected_prim_op_index, selected_prim_op) =
-        match selected_object.get_primitive_op_mut(selected_prim_op_id) {
-            Some((index, prim_op)) => (index, prim_op),
+    let selected_object_id = selected_object.id();
+    let (mut selected_op, selected_prim_op_index) =
+        match selected_object.get_primitive_op(selected_prim_op_id) {
+            Some((prim_op, index)) => (prim_op.op, index),
             None => {
                 // selected_prim_op_id not in selected_obejct -> invalid id
                 gui_state.deselect_primitive_op();
@@ -122,69 +130,46 @@ fn existing_primitive_op_editor(
 
     ui.label(format!("Primitive op {}:", selected_prim_op_index));
 
-    let mut primitive_op_id = selected_prim_op.id();
-    let old_primitive_type_name = selected_prim_op.primitive.type_name();
-    let mut primitive_type: PrimitiveRefType = old_primitive_type_name.into();
+    let mut possible_new_op: Option<Operation> = None;
+    let mut possible_new_primitive: Option<Primitive> = None;
 
+    // primitive type/op selection
     ui.horizontal(|ui_h| {
         // op drop down menu
-        op_drop_down(ui_h, objects_delta, object_id, &mut selected_prim_op.op);
+        possible_new_op = op_drop_down(ui_h, objects_delta, selected_object_id, selected_op);
 
         // primitive type drop down menu
-        let mut new_primitive_type = primitive_type;
-        ComboBox::from_id_source(format!("primitive type drop down {:?}", object_id))
-            .selected_text(old_primitive_type_name)
-            .show_ui(ui_h, |ui_p| {
-                for (p_type, p_name) in PrimitiveRefType::variant_names() {
-                    ui_p.selectable_value(&mut new_primitive_type, p_type, p_name);
-                }
-            });
+        let primitive_type_changed = primitive_type_drop_down(ui_h, gui_state, selected_object_id);
 
-        if primitive_type != new_primitive_type {
+        if primitive_type_changed {
             // replace old primitive according to new type
-            selected_prim_op.primitive = create_default_primitive(new_primitive_type);
-            objects_delta.update.insert(selected_object.duplicate());
-
-            // update local vars for primitive editor
-            primitive_type = new_primitive_type;
-            primitive_op_id = selected_prim_op.id();
+            possible_new_primitive = Some(gui_state.primitive_fields().clone());
         }
     });
 
+    todo!("possible_new_op and possible_new_primitive")
+    objects_delta
+        .update
+        .insert(selected_object_id, selected_object.duplicate());
+
     // primitive editor
-    match primitive_type {
-        PrimitiveRefType::Sphere => {
-            let sphere_ref = primitive_references.get_sphere(primitive_id).expect(
-                "primitive collection doesn't contain primitive id from object op. this is a bug!",
-            );
-            let mut sphere = sphere_ref.borrow_mut();
-            let sphere_original = sphere.clone();
-
-            sphere_struct_ui(ui, &mut sphere);
-
-            if *sphere != sphere_original {
-                // object buffer needs updating
-                objects_delta.update.insert(object_id);
-            }
-        }
-        PrimitiveRefType::Cube => {
-            let cube_ref = primitive_references.get_cube(primitive_id).expect(
-                "primitive collection doesn't contain primitive id from object op. this is a bug!",
-            );
-            let mut cube = cube_ref.borrow_mut();
-            let cube_original = cube.clone();
-
-            cube_struct_ui(ui, &mut cube);
-
-            if *cube != cube_original {
-                // object buffer needs updating
-                objects_delta.update.insert(object_id);
-            }
-        }
-        _ => (),
+    let primitive_edited = match gui_state.primitive_fields_mut() {
+        Primitive::Sphere(p) => sphere_editor_ui(ui, p),
+        Primitive::Cube(p) => cube_editor_ui(ui, p),
+        _ => false,
+    };
+    if primitive_edited {
+        // replace primitive with edited one
+        let (selected_prim_op, _) = selected_object
+            .get_primitive_op_mut(selected_prim_op_id)
+            .expect("todo");
+        selected_prim_op.primitive = gui_state.primitive_fields().clone();
+        objects_delta
+            .update
+            .insert(selected_object_id, selected_object.duplicate());
     }
 
-    // Delete button
+    // delete button
     let delete_clicked = ui.button("Delete").clicked();
     if delete_clicked {
         // remove primitive op
@@ -193,16 +178,18 @@ fn existing_primitive_op_editor(
             // invalid index! what's going on??
             warn!(
                 "invalid index {} when attempting to remove primitive op from object {:?}",
-                selected_prim_op_index, object_id
+                selected_prim_op_index, selected_object_id
             );
         } else {
             // successful removal -> mark object for update
-            objects_delta.update.insert(object_id);
+            objects_delta
+                .update
+                .insert(selected_object_id, selected_object.duplicate());
         }
 
         // now select a different primitive op
         gui_state.select_primitive_op_closest_index(
-            selected_object.primitive_ops(),
+            &selected_object.primitive_ops,
             selected_prim_op_index,
         );
     }
@@ -215,46 +202,28 @@ fn new_primitive_op_editor(
     selected_object: &mut Object,
 ) {
     ui.separator();
-    let object_id = selected_object.id();
-
     ui.label("New primitive");
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        op_drop_down(ui_h, objects_delta, object_id, gui_state.op_field_mut());
+        let possible_new_op = op_drop_down(
+            ui_h,
+            objects_delta,
+            selected_object.id(),
+            gui_state.op_field(),
+        );
 
         // primitive type drop down menu
-        let primitive_type_name: &str = gui_state.primitive_fields().p_type.into();
-        ComboBox::from_id_source(format!("primitive type drop down {:?}", object_id))
-            .selected_text(primitive_type_name)
-            .show_ui(ui_h, |ui_p| {
-                for (p_type, p_name) in PrimitiveRefType::variant_names() {
-                    ui_p.selectable_value(
-                        &mut gui_state.primitive_fields_mut().p_type,
-                        p_type,
-                        p_name,
-                    );
-                }
-            });
+        primitive_type_drop_down(ui_h, gui_state, selected_object.id());
     });
 
     // primitive editor
-    match gui_state.primitive_fields().p_type {
-        PrimitiveRefType::Sphere => {
-            let primitive_fields = gui_state.primitive_fields_mut();
-            sphere_editor_ui(
-                ui,
-                &mut primitive_fields.center,
-                &mut primitive_fields.radius,
-            );
+    match gui_state.primitive_fields_mut() {
+        Primitive::Sphere(p) => {
+            sphere_editor_ui(ui, p);
         }
-        PrimitiveRefType::Cube => {
-            let primitive_fields = gui_state.primitive_fields_mut();
-            cube_editor_ui(
-                ui,
-                &mut primitive_fields.center,
-                &mut primitive_fields.dimensions,
-            );
+        Primitive::Cube(p) => {
+            cube_editor_ui(ui, p);
         }
         _ => (),
     }
@@ -267,24 +236,12 @@ fn new_primitive_op_editor(
         clicked_reset = ui_h.button("Reset").clicked();
     });
     if clicked_add {
-        // create primitive
-        let new_primitive: Rc<PrimitiveCell> = match gui_state.primitive_fields().p_type {
-            PrimitiveRefType::Sphere => primitive_references.create_sphere(
-                gui_state.primitive_fields().center,
-                Quat::IDENTITY,
-                gui_state.primitive_fields().radius,
-            ),
-            PrimitiveRefType::Cube => primitive_references.create_cube(
-                gui_state.primitive_fields().center,
-                Quat::IDENTITY,
-                gui_state.primitive_fields().dimensions,
-            ),
-            _ => primitive_references.create_primitive_default(gui_state.primitive_fields().p_type),
-        };
-
         // append primitive op to selected object and mark for updating
+        let new_primitive = gui_state.primitive_fields().clone();
         let p_op_id = selected_object.push_op(gui_state.op_field(), new_primitive);
-        objects_delta.update.insert(object_id);
+        objects_delta
+            .update
+            .insert(selected_object.id(), selected_object.duplicate());
 
         if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
             gui_state.set_selected_primitive_op_id(p_op_id);
@@ -295,13 +252,15 @@ fn new_primitive_op_editor(
     }
 }
 
+/// Returns a new operation if a different one is selected
 fn op_drop_down(
     ui: &mut egui::Ui,
     objects_delta: &mut ObjectsDelta,
     object_id: ObjectId,
-    selected_op: &mut Operation,
-) {
+    selected_op: Operation,
+) -> Option<Operation> {
     let mut new_op = selected_op.clone();
+
     ComboBox::from_id_source(format!("op drop down {:?}", object_id))
         .selected_text(selected_op.name())
         .show_ui(ui, |ui_op| {
@@ -309,53 +268,121 @@ fn op_drop_down(
                 ui_op.selectable_value(&mut new_op, op, op_name);
             }
         });
-    if *selected_op != new_op {
-        // update op
-        *selected_op = new_op;
-        objects_delta.update.insert(object_id);
+
+    if selected_op != new_op {
+        return Some(new_op);
     }
+    None
 }
 
-/// Same as `sphere_editor_ui` but takes a `Sphere` as arg
-pub fn sphere_struct_ui(ui: &mut egui::Ui, sphere: &mut Sphere) {
-    sphere_editor_ui(ui, &mut sphere.transform.center, &mut sphere.radius);
+/// Returns true if the primitive type was changed. If this happens, gui_state.primitive_fields
+/// gets set to the default of the chosen type.
+fn primitive_type_drop_down(
+    ui: &mut egui::Ui,
+    gui_state: &mut GuiState,
+    selected_object_id: ObjectId,
+) -> bool {
+    let selected_primitive_type_name: &str = gui_state.primitive_fields().type_name();
+    let mut type_has_changed = false;
+
+    ComboBox::from_id_source(format!("primitive type drop down {:?}", selected_object_id))
+        .selected_text(selected_primitive_type_name)
+        .show_ui(ui, |ui_p| {
+            for primitive_type_name in primitive_names::NAME_LIST {
+                // drop-down option for each primitive type
+                let this_is_selected = selected_primitive_type_name == primitive_type_name;
+                let label_clicked = ui_p
+                    .selectable_label(this_is_selected, primitive_type_name)
+                    .clicked();
+
+                if label_clicked & !this_is_selected {
+                    // new primitive type was selected
+                    type_has_changed = true;
+                    let new_primitive = default_primitive_from_type_name(primitive_type_name);
+                    gui_state.set_primitive_fields(new_primitive);
+                }
+            }
+        });
+
+    type_has_changed
 }
 
-pub fn sphere_editor_ui(ui: &mut egui::Ui, center: &mut Vec3, radius: &mut f32) {
+/// Same as `sphere_editor_ui` but takes a `Sphere` as arg.
+/// Returns true if a value was changed.
+#[inline]
+pub fn sphere_editor_ui(ui: &mut egui::Ui, sphere: &mut Sphere) -> bool {
+    sphere_editor_ui_fields(ui, &mut sphere.transform.center, &mut sphere.radius)
+}
+
+/// Returns true if a value was changed.
+pub fn sphere_editor_ui_fields(ui: &mut egui::Ui, center: &mut Vec3, radius: &mut f32) -> bool {
+    let mut something_changed: bool = false;
+
     ui.horizontal(|ui| {
         ui.label("Center:");
-        ui.add(DragValue::new(&mut center.x).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut center.y).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut center.z).speed(DRAG_INC));
+        something_changed |= ui
+            .add(DragValue::new(&mut center.x).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut center.y).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut center.z).speed(DRAG_INC))
+            .changed();
     });
+
     ui.horizontal(|ui| {
         ui.label("Radius:");
-        ui.add(
-            DragValue::new(radius)
-                .speed(DRAG_INC)
-                .clamp_range(0..=config::MAX_SPHERE_RADIUS),
-        );
+        something_changed |= ui
+            .add(
+                DragValue::new(radius)
+                    .speed(DRAG_INC)
+                    .clamp_range(0..=config::MAX_SPHERE_RADIUS),
+            )
+            .changed();
     });
+
+    something_changed
 }
 
-/// Same as `cube_editor_ui` but takes a `Cube` as arg
-pub fn cube_struct_ui(ui: &mut egui::Ui, cube: &mut Cube) {
-    cube_editor_ui(ui, &mut cube.transform.center, &mut cube.dimensions);
+/// Same as `cube_editor_ui` but takes a `Cube` as arg.
+/// Returns true if a value was changed.
+#[inline]
+pub fn cube_editor_ui(ui: &mut egui::Ui, cube: &mut Cube) -> bool {
+    cube_editor_ui_fields(ui, &mut cube.transform.center, &mut cube.dimensions)
 }
 
-pub fn cube_editor_ui(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &mut Vec3) {
+/// Returns true if a value was changed.
+pub fn cube_editor_ui_fields(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &mut Vec3) -> bool {
+    let mut something_changed: bool = false;
+
     ui.horizontal(|ui| {
         ui.label("Center:");
-        ui.add(DragValue::new(&mut center.x).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut center.y).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut center.z).speed(DRAG_INC));
+        something_changed |= ui
+            .add(DragValue::new(&mut center.x).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut center.y).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut center.z).speed(DRAG_INC))
+            .changed();
     });
+
     ui.horizontal(|ui| {
         ui.label("Dimensions:");
-        ui.add(DragValue::new(&mut dimensions.x).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut dimensions.y).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut dimensions.z).speed(DRAG_INC));
+        something_changed |= ui
+            .add(DragValue::new(&mut dimensions.x).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut dimensions.y).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut dimensions.z).speed(DRAG_INC))
+            .changed();
     });
+
+    something_changed
 }
 
 impl DragableItem for PrimitiveOp {
@@ -386,7 +413,7 @@ pub fn primitive_op_list(
     let selected_prim_op = match gui_state.selected_primitive_op_id() {
         Some(selected_prim_op_id) => {
             match selected_object.get_primitive_op(selected_prim_op_id) {
-                Some(selected_prim_op) => Some(selected_prim_op),
+                Some((selected_prim_op, _index)) => Some(selected_prim_op),
                 None => {
                     // selected_prim_op_id not in selected_obejct! invalid id so we set to none
                     gui_state.deselect_primitive_op();
@@ -401,7 +428,7 @@ pub fn primitive_op_list(
     let mut prim_op_list_drag_state = gui_state.primtive_op_list().clone();
     let drag_drop_response = prim_op_list_drag_state.list_ui::<PrimitiveOp>(
         ui,
-        selected_object.primitive_ops().iter(),
+        selected_object.primitive_ops.iter(),
         // function to draw a single primitive op entry in the list
         |ui, drag_handle, index, primitive_op| {
             let draggable_text =
@@ -411,13 +438,13 @@ pub fn primitive_op_list(
             let primitive_op_text = RichText::new(format!(
                 "{} {}",
                 primitive_op.op.name(),
-                primitive_op.primitive.borrow().type_name()
+                primitive_op.primitive.type_name()
             ))
             .text_style(TextStyle::Monospace);
 
             // check if this primitive op is selected
             let is_selected = match selected_prim_op {
-                Some((_i, selected_prim_op)) => selected_prim_op.id() == primitive_op.id(),
+                Some(some_selected_prim_op) => some_selected_prim_op.id() == primitive_op.id(),
                 None => false,
             };
 
@@ -453,6 +480,8 @@ pub fn primitive_op_list(
             );
         }
 
-        objects_delta.update.insert(selected_object.id());
+        objects_delta
+            .update
+            .insert(selected_object.id(), selected_object.duplicate());
     }
 }

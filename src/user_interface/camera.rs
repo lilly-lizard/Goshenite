@@ -118,7 +118,7 @@ impl Camera {
 
     /// Sets the lock on target to the object origin.
     pub fn set_lock_on_target_from_object(&mut self, object: &Object) {
-        let target_pos = object.origin().as_dvec3();
+        let target_pos = object.origin.as_dvec3();
         self.set_lock_on_target(target_pos);
     }
 

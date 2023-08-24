@@ -38,7 +38,7 @@ pub struct GuiState {
     selected_primitive_op_id: Option<PrimitiveOpId>,
     /// Stotes state of the op field in the 'New Primitive Op' editor
     op_field: Operation,
-    /// Stotes state of the primitive fields in the 'New Primitive Op' editor
+    /// Stotes state of the fields in the 'New Primitive Op' editor
     primitive_fields: Primitive,
     /// Stores the drag and drop state of the primitive op list of the selected object
     primtive_op_list: DragDropUi,
@@ -52,6 +52,10 @@ impl GuiState {
 
     pub fn set_selected_primitive_op_id(&mut self, selected_primitive_op_id: PrimitiveOpId) {
         self.selected_primitive_op_id = Some(selected_primitive_op_id);
+    }
+
+    pub fn set_primitive_fields(&mut self, primitive: Primitive) {
+        self.primitive_fields = primitive;
     }
 
     pub fn set_primitive_op_list(&mut self, primitive_op_list: DragDropUi) {
@@ -124,10 +128,12 @@ impl GuiState {
         &mut self.op_field
     }
 
+    /// Returns state of the fields in the 'New Primitive Op' editor
     pub fn primitive_fields(&self) -> &Primitive {
         &self.primitive_fields
     }
 
+    /// Returns state of the fields in the 'New Primitive Op' editor
     pub fn primitive_fields_mut(&mut self) -> &mut Primitive {
         &mut self.primitive_fields
     }

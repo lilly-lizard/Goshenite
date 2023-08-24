@@ -1,7 +1,7 @@
 use crate::renderer::shader_interfaces::primitive_op_buffer::PrimitiveTransformSlice;
 use glam::{Mat3, Quat, Vec3};
 
-#[derive(Clone, Copy, Default, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PrimitiveTransform {
     /// Primitive translation relative to object origin
     pub center: Vec3,
@@ -40,5 +40,14 @@ impl PrimitiveTransform {
             rotation_cols_array[7].to_bits(),
             rotation_cols_array[8].to_bits(),
         ]
+    }
+}
+
+impl Default for PrimitiveTransform {
+    fn default() -> Self {
+        Self {
+            center: Vec3::ZERO,
+            rotation: Quat::IDENTITY,
+        }
     }
 }
