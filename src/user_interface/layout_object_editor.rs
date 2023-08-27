@@ -8,7 +8,6 @@ use crate::{
         object::{
             object::{Object, ObjectId},
             object_collection::ObjectCollection,
-            objects_delta::ObjectsDelta,
             operation::Operation,
             primitive_op::{PrimitiveOp, PrimitiveOpId},
         },
@@ -31,7 +30,6 @@ use log::{debug, error, info, trace, warn};
 pub fn object_editor_layout(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
-    objects_delta: &mut ObjectsDelta,
     object_collection: &mut ObjectCollection,
 ) {
     // selected object name
@@ -57,18 +55,23 @@ pub fn object_editor_layout(
         ui.text_edit_singleline(&mut selected_object.name);
     });
 
-    object_properties_editor(ui, objects_delta, selected_object);
+    let mut object_updated = false;
 
-    primitive_op_editor(ui, gui_state, objects_delta, selected_object);
+    object_updated |= object_properties_editor(ui, selected_object);
 
-    primitive_op_list(ui, gui_state, objects_delta, selected_object);
+    object_updated |= primitive_op_editor(ui, gui_state, selected_object);
+
+    object_updated |= primitive_op_list(ui, gui_state, selected_object);
+
+    if object_updated {
+        object_collection.mark_object_for_data_update(selected_object_id);
+    }
 }
 
-pub fn object_properties_editor(
-    ui: &mut egui::Ui,
-    objects_delta: &mut ObjectsDelta,
-    object: &mut Object,
-) {
+/// Returns true if the object was updated.
+pub fn object_properties_editor(ui: &mut egui::Ui, object: &mut Object) -> bool {
+    let mut object_updated = false;
+
     ui.separator();
 
     let original_origin = object.origin;
@@ -83,36 +86,129 @@ pub fn object_properties_editor(
 
     if original_origin != origin_mut {
         object.origin = origin_mut;
-        objects_delta.update.insert(object.id(), object.duplicate());
+        object_updated = true;
     }
+
+    object_updated
 }
 
+/// Returns true if the object was updated.
 pub fn primitive_op_editor(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
-    objects_delta: &mut ObjectsDelta,
     selected_object: &mut Object,
-) {
+) -> bool {
     if let Some(selected_prim_op_id) = gui_state.selected_primitive_op_id() {
-        existing_primitive_op_editor(
-            ui,
-            gui_state,
-            objects_delta,
-            selected_object,
-            selected_prim_op_id,
-        );
+        return existing_primitive_op_editor(ui, gui_state, selected_object, selected_prim_op_id);
     } else {
-        new_primitive_op_editor(ui, gui_state, objects_delta, selected_object);
-    };
+        return new_primitive_op_editor(ui, gui_state, selected_object);
+    }
 }
 
+/// Draw the primitive op list. each list element can be dragged/dropped elsewhere in the list,
+/// or selected with a button for editing. Returns true if the object was updated.
+pub fn primitive_op_list(
+    ui: &mut egui::Ui,
+    gui_state: &mut GuiState,
+    selected_object: &mut Object,
+) -> bool {
+    let mut object_updated = false;
+
+    ui.separator();
+
+    // new primitive op button
+    let new_op_response = ui.selectable_label(
+        gui_state.selected_primitive_op_id().is_none(),
+        "New primitive op",
+    );
+    if new_op_response.clicked() {
+        gui_state.deselect_primitive_op();
+    }
+
+    let selected_prim_op = match gui_state.selected_primitive_op_id() {
+        Some(selected_prim_op_id) => {
+            match selected_object.get_primitive_op(selected_prim_op_id) {
+                Some((selected_prim_op, _index)) => Some(selected_prim_op),
+                None => {
+                    // selected_prim_op_id not in selected_obejct! invalid id so we set to none
+                    gui_state.deselect_primitive_op();
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+
+    // draw each item in the primitive op list
+    let mut prim_op_list_drag_state = gui_state.primtive_op_list().clone();
+    let drag_drop_response = prim_op_list_drag_state.list_ui::<PrimitiveOp>(
+        ui,
+        selected_object.primitive_ops.iter(),
+        // function to draw a single primitive op entry in the list
+        |ui, drag_handle, index, primitive_op| {
+            let draggable_text =
+                RichText::new(format!("{}", index)).text_style(TextStyle::Monospace);
+
+            // label text
+            let primitive_op_text = RichText::new(format!(
+                "{} {}",
+                primitive_op.op.name(),
+                primitive_op.primitive.type_name()
+            ))
+            .text_style(TextStyle::Monospace);
+
+            // check if this primitive op is selected
+            let is_selected = match selected_prim_op {
+                Some(some_selected_prim_op) => some_selected_prim_op.id() == primitive_op.id(),
+                None => false,
+            };
+
+            // draw ui for this primitive op
+            ui.horizontal(|ui_h| {
+                // anything inside the handle can be used to drag the item
+                drag_handle.ui(ui_h, primitive_op, |handle_ui| {
+                    handle_ui.label(draggable_text);
+                });
+
+                // label to select this primitive op
+                let prim_op_res = ui_h.selectable_label(is_selected, primitive_op_text);
+
+                // if clicked, select it
+                if prim_op_res.clicked() {
+                    gui_state.set_selected_primitive_op_id(primitive_op.id());
+                }
+            });
+        },
+    );
+    gui_state.set_primitive_op_list(prim_op_list_drag_state);
+
+    // if an item has been dropped after being dragged, re-arrange the primtive ops list
+    if let DragDropResponse::Completed(drag_indices) = drag_drop_response {
+        let shift_res =
+            selected_object.shift_primitive_ops(drag_indices.source, drag_indices.target);
+        if let Err(e) = shift_res {
+            error!(
+                "bug when trying to re-arrange primitive op list of object {}: {}",
+                selected_object.id().raw_id(),
+                e
+            );
+        }
+
+        object_updated = true;
+    }
+
+    object_updated
+}
+
+/// Returns true if the object was updated.
 fn existing_primitive_op_editor(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
-    objects_delta: &mut ObjectsDelta,
     selected_object: &mut Object,
     selected_prim_op_id: PrimitiveOpId,
-) {
+) -> bool {
+    let mut object_updated = false;
+
     let selected_object_id = selected_object.id();
     let (mut selected_op, selected_prim_op_index) =
         match selected_object.get_primitive_op(selected_prim_op_id) {
@@ -121,8 +217,7 @@ fn existing_primitive_op_editor(
                 // selected_prim_op_id not in selected_obejct -> invalid id
                 gui_state.deselect_primitive_op();
 
-                new_primitive_op_editor(ui, gui_state, objects_delta, selected_object);
-                return;
+                return new_primitive_op_editor(ui, gui_state, selected_object);
             }
         };
 
@@ -130,29 +225,36 @@ fn existing_primitive_op_editor(
 
     ui.label(format!("Primitive op {}:", selected_prim_op_index));
 
-    let mut possible_new_op: Option<Operation> = None;
-    let mut possible_new_primitive: Option<Primitive> = None;
-
     // primitive type/op selection
+
+    let mut possible_updated_op: Option<Operation> = None;
+    let mut possible_updated_primitive: Option<Primitive> = None;
     ui.horizontal(|ui_h| {
         // op drop down menu
-        possible_new_op = op_drop_down(ui_h, objects_delta, selected_object_id, selected_op);
+        possible_updated_op = op_drop_down(ui_h, selected_object_id, selected_op);
 
         // primitive type drop down menu
         let primitive_type_changed = primitive_type_drop_down(ui_h, gui_state, selected_object_id);
 
         if primitive_type_changed {
             // replace old primitive according to new type
-            possible_new_primitive = Some(gui_state.primitive_fields().clone());
+            possible_updated_primitive = Some(gui_state.primitive_fields().clone());
         }
     });
-
-    todo!("possible_new_op and possible_new_primitive")
-    objects_delta
-        .update
-        .insert(selected_object_id, selected_object.duplicate());
+    if let Some((selected_prim_op, _)) = selected_object.get_primitive_op_mut(selected_prim_op_id) {
+        // user edited op and/or primitive via drop-down menus...
+        if let Some(updated_op) = possible_updated_op {
+            selected_prim_op.op = updated_op;
+            object_updated = true;
+        }
+        if let Some(updated_primitive) = possible_updated_primitive {
+            selected_prim_op.primitive = updated_primitive;
+            object_updated = true;
+        }
+    }
 
     // primitive editor
+
     let primitive_edited = match gui_state.primitive_fields_mut() {
         Primitive::Sphere(p) => sphere_editor_ui(ui, p),
         Primitive::Cube(p) => cube_editor_ui(ui, p),
@@ -160,16 +262,16 @@ fn existing_primitive_op_editor(
     };
     if primitive_edited {
         // replace primitive with edited one
-        let (selected_prim_op, _) = selected_object
-            .get_primitive_op_mut(selected_prim_op_id)
-            .expect("todo");
-        selected_prim_op.primitive = gui_state.primitive_fields().clone();
-        objects_delta
-            .update
-            .insert(selected_object_id, selected_object.duplicate());
+        if let Some((selected_prim_op, _)) =
+            selected_object.get_primitive_op_mut(selected_prim_op_id)
+        {
+            selected_prim_op.primitive = gui_state.primitive_fields().clone();
+            object_updated = true;
+        }
     }
 
     // delete button
+
     let delete_clicked = ui.button("Delete").clicked();
     if delete_clicked {
         // remove primitive op
@@ -182,9 +284,7 @@ fn existing_primitive_op_editor(
             );
         } else {
             // successful removal -> mark object for update
-            objects_delta
-                .update
-                .insert(selected_object_id, selected_object.duplicate());
+            object_updated = true;
         }
 
         // now select a different primitive op
@@ -193,31 +293,31 @@ fn existing_primitive_op_editor(
             selected_prim_op_index,
         );
     }
+
+    object_updated
 }
 
+/// Returns true if the object was updated.
 fn new_primitive_op_editor(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
-    objects_delta: &mut ObjectsDelta,
     selected_object: &mut Object,
-) {
+) -> bool {
+    let mut object_updated = false;
+
     ui.separator();
     ui.label("New primitive");
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        let possible_new_op = op_drop_down(
-            ui_h,
-            objects_delta,
-            selected_object.id(),
-            gui_state.op_field(),
-        );
+        let _ = op_drop_down(ui_h, selected_object.id(), gui_state.op_field());
 
         // primitive type drop down menu
         primitive_type_drop_down(ui_h, gui_state, selected_object.id());
     });
 
     // primitive editor
+
     match gui_state.primitive_fields_mut() {
         Primitive::Sphere(p) => {
             sphere_editor_ui(ui, p);
@@ -229,6 +329,7 @@ fn new_primitive_op_editor(
     }
 
     // Add and Reset buttons
+
     let mut clicked_add = false;
     let mut clicked_reset = false;
     ui.horizontal(|ui_h| {
@@ -239,9 +340,7 @@ fn new_primitive_op_editor(
         // append primitive op to selected object and mark for updating
         let new_primitive = gui_state.primitive_fields().clone();
         let p_op_id = selected_object.push_op(gui_state.op_field(), new_primitive);
-        objects_delta
-            .update
-            .insert(selected_object.id(), selected_object.duplicate());
+        object_updated = true;
 
         if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
             gui_state.set_selected_primitive_op_id(p_op_id);
@@ -250,12 +349,13 @@ fn new_primitive_op_editor(
     if clicked_reset {
         gui_state.reset_primitive_op_fields();
     }
+
+    object_updated
 }
 
 /// Returns a new operation if a different one is selected
 fn op_drop_down(
     ui: &mut egui::Ui,
-    objects_delta: &mut ObjectsDelta,
     object_id: ObjectId,
     selected_op: Operation,
 ) -> Option<Operation> {
@@ -388,100 +488,5 @@ pub fn cube_editor_ui_fields(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &
 impl DragableItem for PrimitiveOp {
     fn drag_id(&self) -> egui::Id {
         egui::Id::new(format!("p-op-drag{}", self.id()))
-    }
-}
-
-/// Draw the primitive op list. each list element can be dragged/dropped elsewhere in the list,
-/// or selected with a button for editing.
-pub fn primitive_op_list(
-    ui: &mut egui::Ui,
-    gui_state: &mut GuiState,
-    objects_delta: &mut ObjectsDelta,
-    selected_object: &mut Object,
-) {
-    ui.separator();
-
-    // new primitive op button
-    let new_op_response = ui.selectable_label(
-        gui_state.selected_primitive_op_id().is_none(),
-        "New primitive op",
-    );
-    if new_op_response.clicked() {
-        gui_state.deselect_primitive_op();
-    }
-
-    let selected_prim_op = match gui_state.selected_primitive_op_id() {
-        Some(selected_prim_op_id) => {
-            match selected_object.get_primitive_op(selected_prim_op_id) {
-                Some((selected_prim_op, _index)) => Some(selected_prim_op),
-                None => {
-                    // selected_prim_op_id not in selected_obejct! invalid id so we set to none
-                    gui_state.deselect_primitive_op();
-                    None
-                }
-            }
-        }
-        None => None,
-    };
-
-    // draw each item in the primitive op list
-    let mut prim_op_list_drag_state = gui_state.primtive_op_list().clone();
-    let drag_drop_response = prim_op_list_drag_state.list_ui::<PrimitiveOp>(
-        ui,
-        selected_object.primitive_ops.iter(),
-        // function to draw a single primitive op entry in the list
-        |ui, drag_handle, index, primitive_op| {
-            let draggable_text =
-                RichText::new(format!("{}", index)).text_style(TextStyle::Monospace);
-
-            // label text
-            let primitive_op_text = RichText::new(format!(
-                "{} {}",
-                primitive_op.op.name(),
-                primitive_op.primitive.type_name()
-            ))
-            .text_style(TextStyle::Monospace);
-
-            // check if this primitive op is selected
-            let is_selected = match selected_prim_op {
-                Some(some_selected_prim_op) => some_selected_prim_op.id() == primitive_op.id(),
-                None => false,
-            };
-
-            // draw ui for this primitive op
-            ui.horizontal(|ui_h| {
-                // anything inside the handle can be used to drag the item
-                drag_handle.ui(ui_h, primitive_op, |handle_ui| {
-                    handle_ui.label(draggable_text);
-                });
-
-                // label to select this primitive op
-                let prim_op_res = ui_h.selectable_label(is_selected, primitive_op_text);
-
-                // if clicked, select it
-                if prim_op_res.clicked() {
-                    gui_state.set_selected_primitive_op_id(primitive_op.id());
-                }
-            });
-        },
-    );
-    gui_state.set_primitive_op_list(prim_op_list_drag_state);
-
-    // if an item has been dropped after being dragged, re-arrange the primtive ops list
-    if let DragDropResponse::Completed(drag_indices) = drag_drop_response {
-        let shift_res =
-            selected_object.shift_primitive_ops(drag_indices.source, drag_indices.target);
-
-        if let Err(e) = shift_res {
-            error!(
-                "bug when trying to re-arrange primitive op list of object {}: {}",
-                selected_object.id().raw_id(),
-                e
-            );
-        }
-
-        objects_delta
-            .update
-            .insert(selected_object.id(), selected_object.duplicate());
     }
 }

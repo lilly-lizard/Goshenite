@@ -10,6 +10,9 @@ use crate::{
 };
 use glam::Vec3;
 
+pub const DEFAULT_RADIUS: f32 = 0.5;
+pub const DEFAULT_DIMENSIONS: Vec3 = Vec3::ONE;
+
 // PRIMITIVE
 
 #[derive(Clone)]
@@ -112,14 +115,4 @@ pub mod primitive_names {
             _ => Primitive::Null(NullPrimitive::default()),
         }
     }
-}
-
-#[inline]
-pub const fn default_radius() -> f32 {
-    0.5
-}
-
-#[inline]
-pub const fn default_dimensions() -> Vec3 {
-    Vec3::ONE
 }

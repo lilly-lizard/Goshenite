@@ -1,5 +1,5 @@
 use super::{camera::Camera, gui_state::GuiState};
-use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
+use crate::engine::object::object_collection::ObjectCollection;
 use egui::{RichText, TextStyle};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -7,7 +7,6 @@ use log::{debug, error, info, trace, warn};
 pub fn object_list_layout(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
-    objects_delta: &mut ObjectsDelta,
     object_collection: &mut ObjectCollection,
     camera: &mut Camera,
 ) {
@@ -16,14 +15,12 @@ pub fn object_list_layout(
         let add_response = ui_h.button("Add object");
         if add_response.clicked() {
             // create new object
-            let new_object_id = object_collection.new_object_default();
+            let (new_object_id, _) = object_collection.new_object_default();
             let new_object = object_collection
                 .get_object(new_object_id)
                 .expect("literally just created this");
             // tell the rest of the engine there's been a change to the object collection
-            objects_delta
-                .update
-                .insert(new_object_id, new_object.duplicate());
+            object_collection.mark_object_for_data_update(new_object_id);
 
             // select new object in the object editor
             gui_state.set_selected_object_id(new_object_id);
@@ -42,9 +39,6 @@ pub fn object_list_layout(
 
                 if delete_clicked {
                     object_collection.remove_object(selected_object_id);
-
-                    // tell the rest of the engine there's been a change to the object collection
-                    objects_delta.remove.insert(selected_object_id);
 
                     // select closest object in list
                     gui_state.select_object_closest_index(&object_collection, selected_object_id);

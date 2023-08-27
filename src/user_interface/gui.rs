@@ -7,9 +7,7 @@ use super::{
     layout_object_list::object_list_layout,
     layout_panel::bottom_panel_layout,
 };
-use crate::engine::object::{
-    object::ObjectId, object_collection::ObjectCollection, objects_delta::ObjectsDelta,
-};
+use crate::engine::object::{object::ObjectId, object_collection::ObjectCollection};
 use egui::{TexturesDelta, Visuals};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
@@ -23,8 +21,7 @@ pub struct Gui {
     mesh_primitives: Vec<egui::ClippedPrimitive>,
     window_states: WindowStates,
     gui_state: GuiState,
-    textures_delta: Vec<TexturesDelta>,
-    objects_delta: ObjectsDelta,
+    textures_delta_accumulation: Vec<TexturesDelta>,
 }
 
 // Public functions
@@ -52,8 +49,7 @@ impl Gui {
             mesh_primitives: Default::default(),
             window_states: Default::default(),
             gui_state: Default::default(),
-            textures_delta: Default::default(),
-            objects_delta: Default::default(),
+            textures_delta_accumulation: Default::default(),
         }
     }
 
@@ -118,7 +114,7 @@ impl Gui {
 
         // store required texture changes for the renderer to apply updates
         if !textures_delta.is_empty() {
-            self.textures_delta.push(textures_delta);
+            self.textures_delta_accumulation.push(textures_delta);
         }
 
         Ok(())
@@ -130,12 +126,7 @@ impl Gui {
 
     /// Returns texture update info accumulated since the last call to this function.
     pub fn get_and_clear_textures_delta(&mut self) -> Vec<TexturesDelta> {
-        std::mem::take(&mut self.textures_delta)
-    }
-
-    /// Returns a description of the changes to objects since last call to this function.
-    pub fn get_and_clear_objects_delta(&mut self) -> ObjectsDelta {
-        std::mem::take(&mut self.objects_delta)
+        std::mem::take(&mut self.textures_delta_accumulation)
     }
 
     pub fn selected_object_id(&self) -> Option<ObjectId> {
@@ -176,13 +167,7 @@ impl Gui {
             if EGUI_TRACE {
                 egui::trace!(ui);
             }
-            object_list_layout(
-                ui,
-                &mut self.gui_state,
-                &mut self.objects_delta,
-                object_collection,
-                camera,
-            );
+            object_list_layout(ui, &mut self.gui_state, object_collection, camera);
         };
 
         egui::Window::new("Objects")
@@ -198,12 +183,7 @@ impl Gui {
             if EGUI_TRACE {
                 egui::trace!(ui);
             }
-            object_editor_layout(
-                ui,
-                &mut self.gui_state,
-                &mut self.objects_delta,
-                object_collection,
-            );
+            object_editor_layout(ui, &mut self.gui_state, object_collection);
         };
 
         egui::Window::new("Object Editor")

@@ -7,7 +7,7 @@ use super::{
 };
 use crate::engine::{
     aabb::AABB_VERTEX_COUNT,
-    object::object::{Object, ObjectDuplicate, ObjectId},
+    object::object::{ObjectDuplicate, ObjectId},
 };
 use anyhow::Context;
 use ash::vk;

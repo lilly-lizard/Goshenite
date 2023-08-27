@@ -1,5 +1,5 @@
 use super::{
-    primitive::{default_radius, primitive_names, EncodablePrimitive},
+    primitive::{primitive_names, EncodablePrimitive, DEFAULT_RADIUS},
     primitive_transform::PrimitiveTransform,
 };
 use crate::{
@@ -27,7 +27,7 @@ impl Default for Sphere {
     fn default() -> Self {
         Self {
             transform: PrimitiveTransform::default(),
-            radius: default_radius(),
+            radius: DEFAULT_RADIUS,
         }
     }
 }

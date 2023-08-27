@@ -1,5 +1,5 @@
 use super::{
-    primitive::{default_dimensions, primitive_names, EncodablePrimitive},
+    primitive::{primitive_names, EncodablePrimitive, DEFAULT_DIMENSIONS},
     primitive_transform::PrimitiveTransform,
 };
 use crate::{
@@ -30,7 +30,7 @@ impl Default for Cube {
     fn default() -> Self {
         Self {
             transform: PrimitiveTransform::default(),
-            dimensions: default_dimensions(),
+            dimensions: DEFAULT_DIMENSIONS,
         }
     }
 }
