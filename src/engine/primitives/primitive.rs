@@ -28,47 +28,31 @@ impl Default for Primitive {
     }
 }
 
-// TODO write macro for these functions to make maintanence easier
+macro_rules! primitive_fn_match {
+    ($self:ident, $primitive_fn:ident) => {
+        match $self {
+            Self::Null(p) => p.$primitive_fn(),
+            Self::Sphere(p) => p.$primitive_fn(),
+            Self::Cube(p) => p.$primitive_fn(),
+        }
+    };
+}
+
 impl EncodablePrimitive for Primitive {
     fn type_code(&self) -> PrimitiveOpBufferUnit {
-        todo!("write macro for these functions to make maintanence easier");
-        match self {
-            Self::Null(p) => p.type_code(),
-            Self::Sphere(p) => p.type_code(),
-            Self::Cube(p) => p.type_code(),
-        }
+        primitive_fn_match!(self, type_code)
     }
-
     fn type_name(&self) -> &'static str {
-        match self {
-            Self::Null(p) => p.type_name(),
-            Self::Sphere(p) => p.type_name(),
-            Self::Cube(p) => p.type_name(),
-        }
+        primitive_fn_match!(self, type_name)
     }
-
     fn encoded_props(&self) -> PrimitivePropsSlice {
-        match self {
-            Self::Null(p) => p.encoded_props(),
-            Self::Sphere(p) => p.encoded_props(),
-            Self::Cube(p) => p.encoded_props(),
-        }
+        primitive_fn_match!(self, encoded_props)
     }
-
     fn transform(&self) -> &PrimitiveTransform {
-        match self {
-            Self::Null(p) => p.transform(),
-            Self::Sphere(p) => p.transform(),
-            Self::Cube(p) => p.transform(),
-        }
+        primitive_fn_match!(self, transform)
     }
-
     fn aabb(&self) -> Aabb {
-        match self {
-            Self::Null(p) => p.aabb(),
-            Self::Sphere(p) => p.aabb(),
-            Self::Cube(p) => p.aabb(),
-        }
+        primitive_fn_match!(self, aabb)
     }
 }
 
