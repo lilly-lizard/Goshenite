@@ -55,17 +55,12 @@ pub struct Object {
 
 impl Object {
     pub fn new(id: ObjectId, name: String, origin: Vec3) -> Self {
-        let mut primitive_op_id_gen = UniqueIdGen::new();
-        let new_raw_id = primitive_op_id_gen
-            .new_id()
-            .expect("todo should probably handle this somehow...");
-
         Self {
             id,
             name,
             origin,
             primitive_ops: vec![],
-            primitive_op_id_gen,
+            primitive_op_id_gen: UniqueIdGen::new(),
         }
     }
 
@@ -176,10 +171,16 @@ impl Object {
 /// cloned as their `id`s must be unique.
 #[derive(Clone)]
 pub struct ObjectDuplicate {
-    pub id: ObjectId,
+    id: ObjectId,
     pub name: String,
     pub origin: Vec3,
     pub primitive_op_duplicates: Vec<PrimitiveOpDuplicate>,
+}
+
+impl ObjectDuplicate {
+    pub fn id(&self) -> ObjectId {
+        self.id
+    }
 }
 
 impl ObjectDuplicate {

@@ -16,16 +16,19 @@ pub fn object_list_layout(
         if add_response.clicked() {
             // create new object
             let (new_object_id, _) = object_collection.new_object_default();
-            let new_object = object_collection
-                .get_object(new_object_id)
-                .expect("literally just created this");
+
             // tell the rest of the engine there's been a change to the object collection
-            object_collection.mark_object_for_data_update(new_object_id);
+            let _ = object_collection.mark_object_for_data_update(new_object_id);
 
             // select new object in the object editor
             gui_state.set_selected_object_id(new_object_id);
+
             // set lock on target to selected object
+            let new_object = object_collection
+                .get_object(new_object_id)
+                .expect("literally just created this");
             camera.set_lock_on_target_from_object(new_object);
+
             // deselect primitive op (previous one would have been for different object)
             gui_state.deselect_primitive_op();
         }
@@ -38,7 +41,7 @@ pub fn object_list_layout(
                     .clicked();
 
                 if delete_clicked {
-                    object_collection.remove_object(selected_object_id);
+                    let _ = object_collection.remove_object(selected_object_id);
 
                     // select closest object in list
                     gui_state.select_object_closest_index(&object_collection, selected_object_id);

@@ -10,7 +10,7 @@ use crate::{
 };
 use glam::{Quat, Vec3};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Cube {
     pub transform: PrimitiveTransform,
     pub dimensions: Vec3,

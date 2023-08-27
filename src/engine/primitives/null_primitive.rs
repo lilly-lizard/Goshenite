@@ -11,7 +11,7 @@ use crate::{
 
 const NULL_TRANSFORM: PrimitiveTransform = PrimitiveTransform::new_default();
 
-#[derive(Default, Debug, Clone, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct NullPrimitive {}
 
 impl NullPrimitive {

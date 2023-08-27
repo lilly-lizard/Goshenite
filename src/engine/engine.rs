@@ -1,8 +1,6 @@
 use super::{
     config_engine,
-    object::{
-        object_collection::ObjectCollection, operation::Operation, primitive_op::PrimitiveOp,
-    },
+    object::{object_collection::ObjectCollection, operation::Operation},
     primitives::{cube::Cube, null_primitive::NullPrimitive, primitive::Primitive, sphere::Sphere},
     render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
 };
@@ -404,8 +402,7 @@ fn object_testing(object_collection: &mut ObjectCollection, renderer: &mut Rende
     );
     let another_sphere = Sphere::new(Vec3::new(0.2, -0.2, 0.), Quat::IDENTITY, 0.83);
 
-    let (object_id, object) =
-        object_collection.new_object("Bruh".to_string(), Vec3::new(-0.2, 0.2, 0.));
+    let (_, object) = object_collection.new_object("Bruh".to_string(), Vec3::new(-0.2, 0.2, 0.));
     object.push_op(Operation::Union, Primitive::Cube(cube));
     object.push_op(Operation::Union, Primitive::Sphere(sphere.clone()));
     object.push_op(Operation::Intersection, Primitive::Sphere(another_sphere));

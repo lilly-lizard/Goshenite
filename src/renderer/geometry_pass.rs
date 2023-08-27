@@ -4,7 +4,10 @@ use super::{
     shader_interfaces::{uniform_buffers::CameraUniformBuffer, vertex_inputs::BoundingBoxVertex},
     vulkan_init::render_pass_indices,
 };
-use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
+use crate::engine::object::{
+    object_collection::ObjectCollection,
+    objects_delta::{ObjectDeltaOperation, ObjectsDelta},
+};
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{
@@ -49,7 +52,7 @@ impl GeometryPass {
     ) -> anyhow::Result<Self> {
         let descriptor_pool = create_descriptor_pool(device.clone())?;
 
-        let desc_set_camera = create_desc_set_camera(descriptor_pool.clone())?;
+        let desc_set_camera: Arc<DescriptorSet> = create_desc_set_camera(descriptor_pool.clone())?;
         write_desc_set_camera(&desc_set_camera, camera_buffer)?;
 
         let primitive_ops_desc_set_layout = create_primitive_ops_desc_set_layout(device.clone())?;
@@ -87,10 +90,10 @@ impl GeometryPass {
         let objects = object_collection.objects();
 
         // added objects
-        for (object_id, object) in objects {
-            trace!("uploading object id = {:?} to gpu buffer", *object_id);
+        for (&object_id, object) in objects {
+            trace!("uploading object id = {:?} to gpu buffer", object_id);
             self.object_buffer_manager
-                .update_or_push(object.duplicate(), queue)?;
+                .update_or_push(object_id, object.duplicate(), queue)?;
         }
 
         Ok(())
@@ -103,26 +106,35 @@ impl GeometryPass {
     ) -> anyhow::Result<()> {
         self.object_buffer_manager.reset_staging_buffer_offsets();
 
-        // freed objects
-        for free_id in objects_delta.remove {
-            if let Some(_removed_index) = self.object_buffer_manager.remove(free_id) {
-                trace!("removing object buffer id = {:?}", free_id);
-            } else {
-                debug!(
-                    "object buffer id = {:?} was requested to be removed but not found!",
-                    free_id
-                );
+        for (object_id, object_delta) in objects_delta {
+            match object_delta {
+                ObjectDeltaOperation::Add(object_duplicate) => {
+                    trace!("adding object id = {:?} to gpu buffer", object_id);
+                    self.object_buffer_manager.update_or_push(
+                        object_id,
+                        object_duplicate,
+                        queue,
+                    )?;
+                }
+                ObjectDeltaOperation::Update(object_duplicate) => {
+                    trace!("updating object id = {:?} in gpu buffer", object_id);
+                    self.object_buffer_manager.update_or_push(
+                        object_id,
+                        object_duplicate,
+                        queue,
+                    )?;
+                }
+                ObjectDeltaOperation::Remove => {
+                    if let Some(_removed_index) = self.object_buffer_manager.remove(object_id) {
+                        trace!("removing object buffer id = {:?}", object_id);
+                    } else {
+                        debug!(
+                            "attempted to remove object id = {:?} from gpu buffer but not found!",
+                            object_id
+                        );
+                    }
+                }
             }
-        }
-
-        // added/updated objects
-        for (object_id, object_duplicate) in objects_delta.update {
-            trace!(
-                "adding or updating object id = {:?} in gpu buffers",
-                object_id
-            );
-            self.object_buffer_manager
-                .update_or_push(object_duplicate, queue)?;
         }
 
         Ok(())

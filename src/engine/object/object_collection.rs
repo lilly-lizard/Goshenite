@@ -111,12 +111,12 @@ impl ObjectCollection {
 impl ObjectCollection {
     /// Use this instead of directly inserting to perform some operation specific checks
     fn insert_object_delta(
-        &self,
+        &mut self,
         object_id: ObjectId,
         object_delta_operation: ObjectDeltaOperation,
     ) {
-        if let ObjectDeltaOperation::Update(new_object_duplicate) = object_delta_operation {
-            if let Some(ObjectDeltaOperation::Add(old_object_duplicate)) =
+        if let ObjectDeltaOperation::Update(new_object_duplicate) = object_delta_operation.clone() {
+            if let Some(ObjectDeltaOperation::Add(_old_object_duplicate)) =
                 self.objects_delta_accumulation.get(&object_id)
             {
                 // object was previously queued for add, so we still need to treat this as an add, not an update

@@ -1,6 +1,6 @@
 use crate::renderer::shader_interfaces::primitive_op_buffer::{op_codes, PrimitiveOpBufferUnit};
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Operation {
     /// No-op
     NOP,

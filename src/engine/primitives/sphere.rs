@@ -10,7 +10,7 @@ use crate::{
 };
 use glam::{Quat, Vec3};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sphere {
     pub transform: PrimitiveTransform,
     pub radius: f32,

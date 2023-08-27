@@ -64,7 +64,7 @@ pub fn object_editor_layout(
     object_updated |= primitive_op_list(ui, gui_state, selected_object);
 
     if object_updated {
-        object_collection.mark_object_for_data_update(selected_object_id);
+        let _ = object_collection.mark_object_for_data_update(selected_object_id);
     }
 }
 
@@ -210,7 +210,7 @@ fn existing_primitive_op_editor(
     let mut object_updated = false;
 
     let selected_object_id = selected_object.id();
-    let (mut selected_op, selected_prim_op_index) =
+    let (selected_op, selected_prim_op_index) =
         match selected_object.get_primitive_op(selected_prim_op_id) {
             Some((prim_op, index)) => (prim_op.op, index),
             None => {

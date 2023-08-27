@@ -15,7 +15,7 @@ pub const DEFAULT_DIMENSIONS: Vec3 = Vec3::ONE;
 
 // PRIMITIVE
 
-#[derive(Clone)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Primitive {
     Null(NullPrimitive),
     Sphere(Sphere),
