@@ -14,7 +14,7 @@ use super::{
 };
 use crate::{
     config::ENGINE_NAME,
-    engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
+    engine::object::objects_delta::ObjectsDelta,
     helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
     renderer::{
         config_renderer::MINIMUM_FRAMEBUFFER_COUNT,
@@ -333,14 +333,6 @@ impl RenderManager {
             .context("uploading camera ubo data")?;
 
         Ok(())
-    }
-
-    pub fn upload_overwrite_object_collection(
-        &mut self,
-        object_collection: &ObjectCollection,
-    ) -> anyhow::Result<()> {
-        self.geometry_pass
-            .upload_overwrite_object_collection(object_collection, &self.render_queue)
     }
 
     pub fn update_objects(&mut self, objects_delta: ObjectsDelta) -> anyhow::Result<()> {

@@ -13,6 +13,8 @@ use std::{
     time::Instant,
 };
 
+use super::object::objects_delta::ObjectsDelta;
+
 #[derive(Clone, Copy)]
 pub enum RenderThreadCommand {
     DoNothing,
@@ -54,6 +56,8 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
 
     let (mut camera_rx, camera_tx) = single_value_channel::channel::<Camera>();
 
+    let (objects_delta_tx, objects_delta_rx) = mpsc::channel::<ObjectsDelta>();
+
     let (textures_delta_tx, textures_delta_rx) = mpsc::channel::<Vec<TexturesDelta>>();
 
     let (mut gui_primitives_rx, gui_primitives_tx) =
@@ -92,8 +96,23 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
                 anyhow_unwrap(renderer.update_camera(&camera), "update camera buffer");
             }
 
+            // the main thread may have sent multiple objects delta packages since we last checked...
             loop {
-                // the main thread may have sent multiple texture delta packages since we last checked...
+                match objects_delta_rx.try_recv() {
+                    Ok(objects_delta) => anyhow_unwrap(
+                        renderer.update_objects(objects_delta),
+                        "update object buffers",
+                    ),
+                    Err(mpsc::TryRecvError::Empty) => break,
+                    Err(mpsc::TryRecvError::Disconnected) => {
+                        warn!("render thread > textures delta sender disconnected! stopping render thread...");
+                        break;
+                    }
+                }
+            }
+
+            // the main thread may have sent multiple texture delta packages since we last checked...
+            loop {
                 match textures_delta_rx.try_recv() {
                     Ok(textures_delta) => anyhow_unwrap(
                         renderer.update_gui_textures(textures_delta),
@@ -132,6 +151,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
             window_resize_flag_tx,
             scale_factor_tx,
             camera_tx,
+            objects_delta_tx,
             textures_delta_tx,
             gui_primitives_tx,
             frame_timestamp_rx,
@@ -145,6 +165,7 @@ pub struct RenderThreadChannels {
     pub window_resize_flag_tx: single_value_channel::Updater<Option<bool>>,
     pub scale_factor_tx: single_value_channel::Updater<Option<f32>>,
     pub camera_tx: single_value_channel::Updater<Option<Camera>>,
+    pub objects_delta_tx: mpsc::Sender<ObjectsDelta>,
     pub textures_delta_tx: mpsc::Sender<Vec<TexturesDelta>>,
     pub gui_primitives_tx: single_value_channel::Updater<Option<Vec<ClippedPrimitive>>>,
     pub frame_timestamp_rx: single_value_channel::Receiver<Option<RenderFrameTimestamp>>,
@@ -168,6 +189,13 @@ impl RenderThreadChannels {
 
     pub fn update_camera(&self, camera: Camera) -> Result<(), NoReceiverError<Option<Camera>>> {
         self.camera_tx.update(Some(camera))
+    }
+
+    pub fn update_objects(
+        &self,
+        objects_delta: ObjectsDelta,
+    ) -> Result<(), SendError<ObjectsDelta>> {
+        self.objects_delta_tx.send(objects_delta)
     }
 
     pub fn update_gui_textures(

@@ -263,13 +263,11 @@ impl Engine {
         check_channel_updater_result(thread_send_res)?;
 
         // update object buffers todo better objects delta
-        // anyhow_unwrap(
-        //     self.renderer.update_object_buffers(
-        //         &self.object_collection,
-        //         self.gui.get_and_clear_objects_delta(),
-        //     ),
-        //     "update object buffers",
-        // );
+        let objects_delta = self.object_collection.get_and_clear_objects_delta();
+        if !objects_delta.is_empty() {
+            let thread_send_res = self.render_thread_channels.update_objects(objects_delta);
+            check_channel_sender_result(thread_send_res)?;
+        }
 
         // update gui textures
         let textures_delta = self.gui.get_and_clear_textures_delta();
@@ -402,18 +400,22 @@ fn object_testing(object_collection: &mut ObjectCollection, renderer: &mut Rende
     );
     let another_sphere = Sphere::new(Vec3::new(0.2, -0.2, 0.), Quat::IDENTITY, 0.83);
 
-    let (_, object) = object_collection.new_object("Bruh".to_string(), Vec3::new(-0.2, 0.2, 0.));
+    let (object_id, object) =
+        object_collection.new_object("Bruh".to_string(), Vec3::new(-0.2, 0.2, 0.));
     object.push_op(Operation::Union, Primitive::Cube(cube));
     object.push_op(Operation::Union, Primitive::Sphere(sphere.clone()));
     object.push_op(Operation::Intersection, Primitive::Sphere(another_sphere));
+    let _ = object_collection.mark_object_for_data_update(object_id);
 
-    let (_, another_object) =
+    let (another_object_id, another_object) =
         object_collection.new_object("Another Bruh".to_string(), Vec3::new(0.2, -0.2, 0.));
     another_object.push_op(Operation::Union, Primitive::Sphere(sphere));
     another_object.push_op(Operation::Union, Primitive::Null(NullPrimitive::new()));
+    let _ = object_collection.mark_object_for_data_update(another_object_id);
 
+    let objects_delta = object_collection.get_and_clear_objects_delta();
     anyhow_unwrap(
-        renderer.upload_overwrite_object_collection(object_collection),
+        renderer.update_objects(objects_delta),
         "update object buffers",
     );
 }
