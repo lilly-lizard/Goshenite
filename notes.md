@@ -4,13 +4,18 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
-- switch from vulkano to ash. reasons:
-	- keep running into restrictions that slow down dev work
-	- wrestling with vulkano on top of wrestling with borrow checker
-	- lack of flexibility slows dev time
-	- don't know what's going on under the hood (buffers, descriptor etc)
-	- shit load of compile time
-	- writing raw vulkan isn't even that hard anyway
+- new: spawn render thread, thread waits to receive window handle before initializing renderer
+- StartCause::Init sends window to renderer
+
+- mouse select primitive
+
+- can all gui manip stuff be passed to command manager?
+	- would be great to have ui in its own thread so that input is always processed
+	- would be great to get rid of weak ptrs/ref counting/cells
+	- gonna have command pallete anyway so ideal to unify interface
+- debug outline for aabbs
+- gui code that edits engine stuff e.g. camera, objects, primitives -> funcitons that could be called via command interface!
+- json save theme setting
 - surface patterns (natural looking noise stuff)
 - path tracing heat map
 - geometry pass depth buffer
@@ -37,12 +42,10 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - see egui_demo_app for ideas
 - Bang Wong color palette
 
-## bugz
+## bugz!
 
-- vulkano complains about having no descriptor writes when there are no objects!
-- subtraction op broken. record bug before fixing tho lol
+- update target pos when selected object moves (requires moving stuff out of gui and into engine...)
 - CursorState not initialized properly! e.g. cursor position 0,0 at start so start dragging before moving it and a big jump occurs. also check latest winit in case querying was made better?
-- Gui::_bug_test_window
 
 ## optimize
 
@@ -113,20 +116,30 @@ comments by action or object e.g. a search for 'transition image layout' wouldn'
 
 # design decisions
 
-create objects and coloring from editor, set to vary against variables etc
-possibilities:
-- sequence of primitives, transformations and combinations in storage buffer
-	e.g. buffer: Vec<u32> = { num primitives, SPHERE, center, radius, UNION, SPHERE, center, radius... }
-- color?
+- create objects and coloring from editor, set to vary against variables etc
 - define uv functions and associate textures
 - editor generates shaders. real time feedback?
 - live feedback modes e.g. sculpting mode just has primitives and normals
-- **world space**: z up; right handed (x forward, y left), camera space: z depth
+- world space: z up; right handed (x forward, y left), camera space: z depth
+- front or back-face culling?
+	- going with front which gives us the optimised far distance cutoff
+	- far is more important because it allows us to cut lots of threads short when camera is close to the object and it requires more fragments
+	- at longer distances where the near is more important, there are less fragments anyway
+	- can have push constant or something to describe optimised near using camera pos, object pos, object aabb abs max (sphere around it)
+- bounding mesh or aabb?
+	- bounding mesh is tighter meaning less frag invocations that miss
+	- however aabbs are easy to combine, where as bounding meshes for an object would result in overlapping back face fragments, lots if the object has lots of primitives
+	- big bottle-neck is map() fn but calls to map in miss case are less because the jumps are bigger and the there's an optimised far condition
+	- if bounding meshes could be combined then it will become optimal
 
 ## ideas
 
 - defer shading to raster pass? render to g-buffer, including shadow info (e.g. bitmap of light sources for primitive?)
 - file storage (and memory arragement too?) https://github.com/quelsolaar/HxA
+
+_"Well, if I were to use an analogy for analog and digital, analog is like a calligrapher, and digital is like a craftsman. Doing something really precisely with tools versus kind of doing it based on feeling. It's that kind of difference. Digital is really focused on working on the details, so a lot of the time is spent on those details and sometimes you lose sight of other things. Analog, on the other hand, sometimes you can even use accidents to complete the drawing. It's like leaving it up to your own 'energy', I think that's interesting."_ - [Kentaro Miura on drawing](https://www.youtube.com/watch?v=GmJjLy2i3Zg)
+What are we aiming for? Where is the market opening?
+
 
 # Resources
 

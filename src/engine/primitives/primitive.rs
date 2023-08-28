@@ -1,46 +1,102 @@
+use super::{
+    cube::Cube, null_primitive::NullPrimitive, primitive_transform::PrimitiveTransform,
+    sphere::Sphere,
+};
 use crate::{
-    engine::aabb::Aabb, helper::unique_id_gen::UniqueId,
-    renderer::shader_interfaces::primitive_op_buffer::PrimitiveDataSlice,
+    engine::aabb::Aabb,
+    renderer::shader_interfaces::primitive_op_buffer::{
+        PrimitiveOpBufferUnit, PrimitivePropsSlice,
+    },
 };
 use glam::Vec3;
-use std::{cell::RefCell, rc::Rc};
 
-pub type PrimitiveId = UniqueId;
+pub const DEFAULT_RADIUS: f32 = 0.5;
+pub const DEFAULT_DIMENSIONS: Vec3 = Vec3::ONE;
 
-/// Use functions `borrow` and `borrow_mut` to access the `Primitive`.
-pub type PrimitiveRef = RefCell<dyn Primitive>;
-#[inline]
-pub fn new_primitive_ref<T: Primitive + 'static>(inner: T) -> Rc<PrimitiveRef> {
-    Rc::new(RefCell::new(inner))
+// PRIMITIVE
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Primitive {
+    Null(NullPrimitive),
+    Sphere(Sphere),
+    Cube(Cube),
 }
 
-/// A primitive is a basic geometric building block that can be manipulated and combined
-/// using [`Operation`]s in an [`Object`]
-pub trait Primitive {
-    /// Unique id that can be passed to `PrimitiveReferences` to lookup the actual struct
-    fn id(&self) -> PrimitiveId;
-    /// Returns buffer compatible primitive data as a [`PrimitiveDataSlice`].
+impl Default for Primitive {
+    fn default() -> Self {
+        Self::Null(NullPrimitive::new())
+    }
+}
+
+macro_rules! primitive_fn_match {
+    ($self:ident, $primitive_fn:ident) => {
+        match $self {
+            Self::Null(p) => p.$primitive_fn(),
+            Self::Sphere(p) => p.$primitive_fn(),
+            Self::Cube(p) => p.$primitive_fn(),
+        }
+    };
+}
+
+impl EncodablePrimitive for Primitive {
+    fn type_code(&self) -> PrimitiveOpBufferUnit {
+        primitive_fn_match!(self, type_code)
+    }
+    fn type_name(&self) -> &'static str {
+        primitive_fn_match!(self, type_name)
+    }
+    fn encoded_props(&self) -> PrimitivePropsSlice {
+        primitive_fn_match!(self, encoded_props)
+    }
+    fn transform(&self) -> &PrimitiveTransform {
+        primitive_fn_match!(self, transform)
+    }
+    fn aabb(&self) -> Aabb {
+        primitive_fn_match!(self, aabb)
+    }
+}
+
+// ENCODABLE PRIMITIVE
+
+/// Methods required to encode and process primitive data. Mostly for GPU rendering.
+pub trait EncodablePrimitive: Send + Sync {
+    /// Returns the primitive type code. See [`primitive_type_codes`].
+    fn type_code(&self) -> PrimitiveOpBufferUnit;
+
+    /// Returns the primitive type as a str
+    fn type_name(&self) -> &'static str;
+
+    /// Returns buffer compatible primitive data as a [`PrimitivePropsSlice`].
     /// `parent_origin` is the world space origin of the parent object, which should be added to
     /// the primitive center before encoding.
     ///
     /// _Note: must match the decode process in `scene_geometry.frag`_
-    fn encode(&self, parent_origin: Vec3) -> PrimitiveDataSlice;
-    /// Returns the center of mass of the primitive, relative to the center of the parent object.
-    fn center(&self) -> Vec3;
-    /// Returns the primitive type as a str
-    fn type_name(&self) -> &'static str;
+    fn encoded_props(&self) -> PrimitivePropsSlice;
+
+    /// Returns a reference to the primitive tranform of this instance
+    fn transform(&self) -> &PrimitiveTransform;
+
     /// Axis aligned bounding box
     fn aabb(&self) -> Aabb;
 }
 
-pub fn default_center() -> Vec3 {
-    Vec3::ZERO
-}
+// CONSTANTS
 
-pub fn default_radius() -> f32 {
-    1.
-}
+pub mod primitive_names {
+    use super::Primitive;
+    use crate::engine::primitives::{cube::Cube, null_primitive::NullPrimitive, sphere::Sphere};
 
-pub fn default_dimensions() -> Vec3 {
-    Vec3::ONE
+    pub const NULL: &'static str = "Null-Primitive";
+    pub const SPHERE: &'static str = "Sphere";
+    pub const CUBE: &'static str = "Cube";
+
+    pub const NAME_LIST: [&'static str; 3] = [NULL, SPHERE, CUBE];
+
+    pub fn default_primitive_from_type_name(type_name: &'static str) -> Primitive {
+        match type_name {
+            SPHERE => Primitive::Sphere(Sphere::default()),
+            CUBE => Primitive::Cube(Cube::default()),
+            _ => Primitive::Null(NullPrimitive::default()),
+        }
+    }
 }

@@ -6,6 +6,7 @@ layout (location = 0) out vec2 out_uv;
 
 void main() 
 {
-	out_uv = vec2((gl_VertexIndex << 1u) & 2u, gl_VertexIndex & 2u);
-	gl_Position = vec4(out_uv * 2. + -1., 0., 1.);
+	vec2 uv = vec2((gl_VertexIndex << 1u) & 2u, gl_VertexIndex & 2u);
+	out_uv = uv * 2. - 1.;
+	gl_Position = vec4(out_uv, 0., 1.);
 }

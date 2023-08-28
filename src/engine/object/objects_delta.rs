@@ -1,18 +1,15 @@
-use super::object::ObjectId;
-use ahash::HashSet;
+use super::object::{ObjectDuplicate, ObjectId};
+use ahash::HashMap;
 
 /// Describes modifications to the [`ObjectCollection`].
-pub struct ObjectsDelta {
-    /// IDs of new or updated objects
-    pub update: HashSet<ObjectId>,
-    /// IDs of deleted objects
-    pub remove: HashSet<ObjectId>,
-}
-impl Default for ObjectsDelta {
-    fn default() -> Self {
-        Self {
-            update: Default::default(),
-            remove: Default::default(),
-        }
-    }
+pub type ObjectsDelta = HashMap<ObjectId, ObjectDeltaOperation>;
+
+#[derive(Clone)]
+pub enum ObjectDeltaOperation {
+    /// New object is being added
+    Add(ObjectDuplicate),
+    /// Object has had data changed
+    Update(ObjectDuplicate),
+    /// Object is being deleted
+    Remove,
 }

@@ -4,22 +4,23 @@ use super::{
     shader_interfaces::{uniform_buffers::CameraUniformBuffer, vertex_inputs::BoundingBoxVertex},
     vulkan_init::render_pass_indices,
 };
-use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
+use crate::engine::object::{
+    object_collection::ObjectCollection,
+    objects_delta::{ObjectDeltaOperation, ObjectsDelta},
+};
 use anyhow::Context;
 use ash::vk;
-use bort::{
+use bort_vk::{
     Buffer, ColorBlendState, CommandBuffer, DepthStencilState, DescriptorPool,
     DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
     DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState, GraphicsPipeline,
     GraphicsPipelineProperties, MemoryAllocator, PipelineAccess, PipelineLayout,
-    PipelineLayoutProperties, RenderPass, ShaderModule, ShaderStage, ViewportState,
+    PipelineLayoutProperties, Queue, RasterizationState, RenderPass, ShaderModule, ShaderStage,
+    ViewportState,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{ffi::CString, mem, sync::Arc};
-
-const VERT_SHADER_PATH: &str = "assets/shader_binaries/bounding_box.vert.spv";
-const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
 
 // descriptor set and binding indices
 pub(super) mod descriptor {
@@ -47,10 +48,11 @@ impl GeometryPass {
         memory_allocator: Arc<MemoryAllocator>,
         render_pass: &RenderPass,
         camera_buffer: &Buffer,
+        queue_family_index: u32,
     ) -> anyhow::Result<Self> {
         let descriptor_pool = create_descriptor_pool(device.clone())?;
 
-        let desc_set_camera = create_desc_set_camera(descriptor_pool.clone())?;
+        let desc_set_camera: Arc<DescriptorSet> = create_desc_set_camera(descriptor_pool.clone())?;
         write_desc_set_camera(&desc_set_camera, camera_buffer)?;
 
         let primitive_ops_desc_set_layout = create_primitive_ops_desc_set_layout(device.clone())?;
@@ -63,8 +65,11 @@ impl GeometryPass {
 
         let pipeline = create_pipeline(pipeline_layout, render_pass)?;
 
-        let object_buffer_manager =
-            ObjectResourceManager::new(memory_allocator, primitive_ops_desc_set_layout)?;
+        let object_buffer_manager = ObjectResourceManager::new(
+            memory_allocator,
+            primitive_ops_desc_set_layout,
+            queue_family_index,
+        )?;
 
         Ok(Self {
             device,
@@ -74,34 +79,61 @@ impl GeometryPass {
         })
     }
 
-    pub fn update_object_buffers(
+    /// Good for initializing
+    pub fn upload_overwrite_object_collection(
         &mut self,
         object_collection: &ObjectCollection,
-        object_delta: ObjectsDelta,
+        queue: &Queue,
     ) -> anyhow::Result<()> {
-        // freed objects
-        for free_id in object_delta.remove {
-            if let Some(_removed_index) = self.object_buffer_manager.remove(free_id) {
-                trace!("removing object buffer id = {}", free_id);
-            } else {
-                debug!(
-                    "object buffer id = {} was requested to be removed but not found!",
-                    free_id
-                );
-            }
-        }
+        self.object_buffer_manager.reset_staging_buffer_offsets();
+
+        let objects = object_collection.objects();
 
         // added objects
-        for set_id in object_delta.update {
-            if let Some(object_ref) = object_collection.get(set_id) {
-                trace!("adding or updating object buffer id = {}", set_id);
-                let object = &*object_ref.as_ref().borrow();
-                self.object_buffer_manager.update_or_push(object)?;
-            } else {
-                warn!(
-                    "requsted update for object id = {} but wasn't found in object collection!",
-                    set_id
-                );
+        for (&object_id, object) in objects {
+            trace!("uploading object id = {:?} to gpu buffer", object_id);
+            self.object_buffer_manager
+                .update_or_push(object_id, object.duplicate(), queue)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn update_objects(
+        &mut self,
+        objects_delta: ObjectsDelta,
+        queue: &Queue,
+    ) -> anyhow::Result<()> {
+        self.object_buffer_manager.reset_staging_buffer_offsets();
+
+        for (object_id, object_delta) in objects_delta {
+            match object_delta {
+                ObjectDeltaOperation::Add(object_duplicate) => {
+                    trace!("adding object id = {:?} to gpu buffer", object_id);
+                    self.object_buffer_manager.update_or_push(
+                        object_id,
+                        object_duplicate,
+                        queue,
+                    )?;
+                }
+                ObjectDeltaOperation::Update(object_duplicate) => {
+                    trace!("updating object id = {:?} in gpu buffer", object_id);
+                    self.object_buffer_manager.update_or_push(
+                        object_id,
+                        object_duplicate,
+                        queue,
+                    )?;
+                }
+                ObjectDeltaOperation::Remove => {
+                    if let Some(_removed_index) = self.object_buffer_manager.remove(object_id) {
+                        trace!("removing object buffer id = {:?}", object_id);
+                    } else {
+                        debug!(
+                            "attempted to remove object id = {:?} from gpu buffer but not found!",
+                            object_id
+                        );
+                    }
+                }
             }
         }
 
@@ -154,7 +186,7 @@ impl GeometryPass {
 
 impl Drop for GeometryPass {
     fn drop(&mut self) {
-        debug!("dropping geometry pass...");
+        trace!("dropping geometry pass...");
     }
 }
 
@@ -178,7 +210,7 @@ fn create_desc_set_camera(
     descriptor_pool: Arc<DescriptorPool>,
 ) -> anyhow::Result<Arc<DescriptorSet>> {
     let desc_set_layout_props =
-        DescriptorSetLayoutProperties::new(vec![DescriptorSetLayoutBinding {
+        DescriptorSetLayoutProperties::new_default(vec![DescriptorSetLayoutBinding {
             binding: descriptor::BINDING_CAMERA,
             descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
             descriptor_count: 1,
@@ -263,25 +295,7 @@ fn create_pipeline(
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
 ) -> anyhow::Result<Arc<GraphicsPipeline>> {
-    let vert_shader = Arc::new(
-        ShaderModule::new_from_file(pipeline_layout.device().clone(), VERT_SHADER_PATH)
-            .context("creating geometry pass vertex shader")?,
-    );
-    let vert_stage = ShaderStage::new(
-        vk::ShaderStageFlags::VERTEX,
-        vert_shader,
-        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
-    );
-
-    let frag_shader = Arc::new(
-        ShaderModule::new_from_file(pipeline_layout.device().clone(), FRAG_SHADER_PATH)
-            .context("creating geometry pass fragment shader")?,
-    );
-    let frag_stage = ShaderStage::new(
-        vk::ShaderStageFlags::FRAGMENT,
-        frag_shader,
-        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
-    );
+    let (vert_stage, frag_stage) = create_shader_stages(pipeline_layout.device())?;
 
     let dynamic_state =
         DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
@@ -294,9 +308,16 @@ fn create_pipeline(
     let depth_stencil_state = DepthStencilState {
         depth_test_enable: true,
         depth_write_enable: true,
-        depth_compare_op: vk::CompareOp::LESS,
+        depth_compare_op: vk::CompareOp::GREATER_OR_EQUAL,
         depth_bounds_test_enable: false,
         stencil_test_enable: false,
+        ..Default::default()
+    };
+
+    let raster_state = RasterizationState {
+        // makes sure our fragments are always the far end of the bounding meshes,
+        // which allows for a path-tracing miss condition optimization.
+        cull_mode: vk::CullModeFlags::FRONT,
         ..Default::default()
     };
 
@@ -307,6 +328,7 @@ fn create_pipeline(
     pipeline_properties.vertex_input_state = BoundingBoxVertex::vertex_input_state();
     pipeline_properties.viewport_state = viewport_state;
     pipeline_properties.depth_stencil_state = depth_stencil_state;
+    pipeline_properties.rasterization_state = raster_state;
 
     let pipeline = GraphicsPipeline::new(
         pipeline_layout,
@@ -318,4 +340,67 @@ fn create_pipeline(
     .context("creating geometry pass pipeline")?;
 
     Ok(Arc::new(pipeline))
+}
+
+#[cfg(feature = "include-spirv-bytes")]
+fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
+    let mut vertex_spv_file = std::io::Cursor::new(
+        &include_bytes!("../../assets/shader_binaries/bounding_mesh.vert.spv")[..],
+    );
+    let vert_shader = Arc::new(
+        ShaderModule::new_from_spirv(device.clone(), &mut vertex_spv_file)
+            .context("creating lighting pass vertex shader")?,
+    );
+    let vert_stage = ShaderStage::new(
+        vk::ShaderStageFlags::VERTEX,
+        vert_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
+    );
+
+    let mut frag_spv_file = std::io::Cursor::new(
+        &include_bytes!("../../assets/shader_binaries/scene_geometry.frag.spv")[..],
+    );
+    let frag_shader = Arc::new(
+        ShaderModule::new_from_spirv(device.clone(), &mut frag_spv_file)
+            .context("creating lighting pass fragment shader")?,
+    );
+    let frag_stage = ShaderStage::new(
+        vk::ShaderStageFlags::FRAGMENT,
+        frag_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
+    );
+
+    Ok((vert_stage, frag_stage))
+}
+
+#[cfg(not(feature = "include-spirv-bytes"))]
+fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
+    const VERT_SHADER_PATH: &str = "assets/shader_binaries/bounding_mesh.vert.spv";
+    const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
+
+    let vert_shader = Arc::new(
+        ShaderModule::new_from_file(device.clone(), VERT_SHADER_PATH)
+            .context("creating lighting pass vertex shader")?,
+    );
+    let vert_stage = ShaderStage::new(
+        vk::ShaderStageFlags::VERTEX,
+        vert_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
+    );
+
+    let frag_shader = Arc::new(
+        ShaderModule::new_from_file(device.clone(), FRAG_SHADER_PATH)
+            .context("creating lighting pass fragment shader")?,
+    );
+    let frag_stage = ShaderStage::new(
+        vk::ShaderStageFlags::FRAGMENT,
+        frag_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
+    );
+
+    Ok((vert_stage, frag_stage))
 }

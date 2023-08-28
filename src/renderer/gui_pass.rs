@@ -5,11 +5,10 @@ use super::{
     shader_interfaces::{push_constants::GuiPushConstant, vertex_inputs::EguiVertex},
     vulkan_init::render_pass_indices,
 };
-use crate::user_interface::gui::Gui;
 use ahash::AHashMap;
 use anyhow::Context;
 use ash::vk;
-use bort::{
+use bort_vk::{
     allocation_info_cpu_accessible, allocation_info_from_flags, default_subresource_layers, Buffer,
     BufferProperties, ColorBlendState, CommandBuffer, CommandPool, CommandPoolProperties,
     DescriptorPool, DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout,
@@ -22,16 +21,13 @@ use bort::{
 use bort_vma::Alloc;
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
 #[allow(unused_imports)]
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use std::{
     ffi::CString,
     fmt::{self, Display},
     mem,
     sync::Arc,
 };
-
-const VERT_SHADER_PATH: &str = "assets/shader_binaries/gui.vert.spv";
-const FRAG_SHADER_PATH: &str = "assets/shader_binaries/gui.frag.spv";
 
 /// 2048 vertices and 1024 indices todo breakpoint to get estimate of how much actually required...
 const BUFFER_POOL_SIZE: vk::DeviceSize =
@@ -65,6 +61,10 @@ pub struct GuiPass {
     vertex_buffers: Vec<Buffer>,
     index_buffers: Vec<Buffer>,
     texture_upload_buffers: Vec<Buffer>,
+
+    // gui state
+    scale_factor: f32,
+    gui_primitives: Vec<ClippedPrimitive>,
 }
 
 // Public functions
@@ -76,19 +76,18 @@ impl GuiPass {
         memory_allocator: Arc<MemoryAllocator>,
         render_pass: &RenderPass,
         queue_family_index: u32,
+        scale_factor: f32,
     ) -> anyhow::Result<Self> {
         let transient_command_pool =
             create_transient_command_pool(device.clone(), queue_family_index)?;
 
+        let descriptor_pool = create_descriptor_pool(device.clone())?;
         let desc_set_layout = create_descriptor_layout(device.clone())?;
 
         let pipeline_layout = create_pipeline_layout(device.clone(), desc_set_layout)?;
         let pipeline = create_pipeline(pipeline_layout, render_pass)?;
 
         let texture_sampler = create_texture_sampler(device.clone())?;
-
-        let descriptor_pool = create_descriptor_pool(device.clone())?;
-
         let initial_buffer_pool = create_buffer_pool(memory_allocator.clone())?;
 
         Ok(Self {
@@ -109,6 +108,9 @@ impl GuiPass {
             vertex_buffers: Vec::new(),
             index_buffers: Vec::new(),
             texture_upload_buffers: Vec::new(),
+
+            scale_factor,
+            gui_primitives: Vec::new(),
         })
     }
 
@@ -117,35 +119,32 @@ impl GuiPass {
     /// command buffer and returns a signal semaphore for the submission.
     pub fn update_textures(
         &mut self,
-        textures_delta_vec: Vec<TexturesDelta>,
+        textures_delta: Vec<TexturesDelta>,
         queue: &Queue,
-    ) -> anyhow::Result<Option<Arc<Fence>>> {
+        fence: Option<Arc<Fence>>,
+    ) -> anyhow::Result<()> {
         // return if empty
-        if textures_delta_vec.is_empty() {
-            return Ok(None);
+        if textures_delta.is_empty() {
+            return Ok(());
         }
 
-        // create command buffer
+        // create one-time command buffer
         let command_buffer = CommandBuffer::new(
             self.transient_command_pool.clone(),
             vk::CommandBufferLevel::PRIMARY,
         )
         .context("creating command buffer for gui texture upload")?;
-        let command_buffer_handle = command_buffer.handle();
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        unsafe {
-            self.device
-                .inner()
-                .begin_command_buffer(command_buffer_handle, &begin_info)
-                .context("beginning gui texture upload command buffer")?;
-        }
+        command_buffer
+            .begin(&begin_info)
+            .context("beginning gui texture upload command buffer")?;
 
         let mut commands_recorded = false;
         let mut upload_buffers = Vec::<Buffer>::new();
 
-        for textures_delta in textures_delta_vec {
+        for textures_delta in textures_delta {
             // release unused texture resources
             for &id in &textures_delta.free {
                 self.unregister_image(id);
@@ -163,57 +162,54 @@ impl GuiPass {
             }
         }
 
-        unsafe {
-            self.device
-                .inner()
-                .end_command_buffer(command_buffer_handle)
-                .context("ending gui texture upload command buffer")?;
-        }
-
         self.texture_upload_buffers.append(&mut upload_buffers);
 
-        // execute command buffer
-        if commands_recorded {
-            let upload_finished_fence =
-                Fence::new(self.device.clone(), vk::FenceCreateInfo::builder())
-                    .context("creating gui texture upload fence")?;
+        command_buffer
+            .end()
+            .context("ending gui texture upload command buffer")?;
 
+        // submit upload commands
+        if commands_recorded {
             let command_buffer_handles = [command_buffer.handle()];
             let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffer_handles);
 
             queue
-                .submit(&[*submit_info], Some(upload_finished_fence.handle()))
+                .submit(&[*submit_info], fence.map(|f| f.handle()))
                 .context("submitting gui texture upload commands")?;
 
-            return Ok(Some(Arc::new(upload_finished_fence)));
+            return Ok(());
         }
 
-        Ok(None)
+        Ok(())
+    }
+
+    pub fn set_scale_factor(&mut self, scale_factor: f32) {
+        self.scale_factor = scale_factor;
+    }
+
+    pub fn set_gui_primitives(&mut self, gui_primitives: Vec<ClippedPrimitive>) {
+        self.gui_primitives = gui_primitives;
     }
 
     pub fn record_render_commands(
         &mut self,
         command_buffer: &CommandBuffer,
-        gui: &Gui,
-        is_srgb_framebuffer: bool,
+        write_linear_color: bool,
         framebuffer_dimensions: [f32; 2],
     ) -> anyhow::Result<()> {
-        let scale_factor = gui.scale_factor();
-        let primitives = gui.mesh_primitives();
-
         let push_constant_data = GuiPushConstant::new(
             [
-                framebuffer_dimensions[0] / scale_factor,
-                framebuffer_dimensions[1] / scale_factor,
+                framebuffer_dimensions[0] / self.scale_factor,
+                framebuffer_dimensions[1] / self.scale_factor,
             ],
-            is_srgb_framebuffer,
+            write_linear_color,
         );
         let push_constant_bytes = bytemuck::bytes_of(&push_constant_data);
 
         for ClippedPrimitive {
             clip_rect,
             primitive,
-        } in primitives
+        } in self.gui_primitives.clone()
         {
             match primitive {
                 Primitive::Mesh(mesh) => {
@@ -226,9 +222,9 @@ impl GuiPass {
                         command_buffer,
                         push_constant_bytes,
                         mesh,
-                        scale_factor,
+                        self.scale_factor,
                         framebuffer_dimensions,
-                        *clip_rect,
+                        clip_rect.clone(),
                     )?;
                 }
                 Primitive::Callback(_) => continue, // we don't need to support Primitive::Callback
@@ -240,18 +236,21 @@ impl GuiPass {
 
     /// Fress vertex and index buffers created in previous calls to `record_render_commands`.
     /// Call this when gui rendering commands from the previous frame have finished.
-    /// todo mention texture_upload_buffers. actually, make it a separate function...
     pub fn free_previous_vertex_and_index_buffers(&mut self) {
         self.vertex_buffers.clear();
         self.index_buffers.clear();
-        self.texture_upload_buffers.clear();
         self.current_buffer_pool_index = 0;
+    }
+
+    /// Should only be called after the commands last submitted by `update_textures` have completed.
+    pub fn free_texture_upload_buffers(&mut self) {
+        self.texture_upload_buffers.clear();
     }
 }
 
 impl Drop for GuiPass {
     fn drop(&mut self) {
-        debug!("dropping gui pass...");
+        trace!("dropping gui pass...");
     }
 }
 
@@ -313,11 +312,11 @@ impl GuiPass {
         };
 
         // create buffer to be copied to the image
-        let mut texture_data_buffer = create_texture_data_buffer(
+        let mut texture_staging_buffer = create_texture_staging_buffer(
             self.memory_allocator.clone(),
             std::mem::size_of_val(data.as_slice()) as u64,
         )?;
-        texture_data_buffer
+        texture_staging_buffer
             .write_iter(data, 0)
             .context("uploading gui texture data to staging buffer")?;
 
@@ -349,7 +348,7 @@ impl GuiPass {
                     &self.device,
                     command_buffer,
                     existing_image_view,
-                    &texture_data_buffer,
+                    &texture_staging_buffer,
                     copy_region,
                 );
             }
@@ -357,10 +356,10 @@ impl GuiPass {
             // but usually `ImageDelta.pos` is `None` meaning a new image needs to be created
             debug!("creating new gui texture. id = {:?}", texture_id);
 
-            self.create_new_texture(command_buffer, &texture_data_buffer, delta, texture_id)?;
+            self.create_new_texture(command_buffer, &texture_staging_buffer, delta, texture_id)?;
         }
 
-        Ok(Some(texture_data_buffer))
+        Ok(Some(texture_staging_buffer))
     }
 
     /// Unregister a texture that is no longer required by the gui.
@@ -384,10 +383,12 @@ impl GuiPass {
         return self.allocate_font_texture_desc_set();
     }
 
+    /// Note: staging buffer commands are always used regardless of memory type because the image
+    /// has optimal tiling.
     fn create_new_texture(
         &mut self,
         command_buffer: &CommandBuffer,
-        texture_data_buffer: &Buffer,
+        texture_staging_buffer: &Buffer,
         delta: egui::epaint::ImageDelta,
         texture_id: TextureId,
     ) -> anyhow::Result<()> {
@@ -463,7 +464,7 @@ impl GuiPass {
 
             device_ash.cmd_copy_buffer_to_image(
                 command_buffer_handle,
-                texture_data_buffer.handle(),
+                texture_staging_buffer.handle(),
                 new_image.handle(),
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 &[copy_region],
@@ -539,11 +540,14 @@ impl GuiPass {
         &mut self,
         command_buffer: &CommandBuffer,
         push_constant_bytes: &[u8],
-        mesh: &Mesh,
+        mesh: Mesh,
         scale_factor: f32,
         framebuffer_dimensions: [f32; 2],
         clip_rect: Rect,
     ) -> Result<(), anyhow::Error> {
+        let index_count = mesh.indices.len() as u32;
+        let texture_id = mesh.texture_id;
+
         let (vertex_buffer, index_buffer) = self.create_vertex_and_index_buffers(mesh)?;
 
         let scissor =
@@ -560,10 +564,8 @@ impl GuiPass {
 
         let desc_set = self
             .texture_desc_sets
-            .get(&mesh.texture_id)
-            .ok_or(GuiRendererError::TextureDescSetMissing {
-                id: mesh.texture_id,
-            })
+            .get(&texture_id)
+            .ok_or(GuiRendererError::TextureDescSetMissing { id: texture_id })
             .context("recording gui render commands")?
             .clone();
         unsafe {
@@ -605,14 +607,7 @@ impl GuiPass {
                 vk::IndexType::UINT32,
             );
 
-            device_ash.cmd_draw_indexed(
-                command_buffer_handle,
-                mesh.indices.len() as u32,
-                1,
-                0,
-                0,
-                0,
-            );
+            device_ash.cmd_draw_indexed(command_buffer_handle, index_count, 1, 0, 0, 0);
         }
 
         self.vertex_buffers.push(vertex_buffer);
@@ -621,11 +616,11 @@ impl GuiPass {
         Ok(())
     }
 
-    fn create_vertex_and_index_buffers(&mut self, mesh: &Mesh) -> anyhow::Result<(Buffer, Buffer)> {
+    fn create_vertex_and_index_buffers(&mut self, mesh: Mesh) -> anyhow::Result<(Buffer, Buffer)> {
         let vertices = mesh
             .vertices
-            .iter()
-            .map(|egui_vertex| EguiVertex::from_egui_vertex(egui_vertex))
+            .into_iter()
+            .map(|egui_vertex| EguiVertex::from_egui_vertex(&egui_vertex))
             .collect::<Vec<_>>();
 
         let vertex_buffer_props = BufferProperties::new_default(
@@ -649,11 +644,11 @@ impl GuiPass {
         // todo can avoid the vec clones here! look at `gui::mesh_primitives` and `free_previous_vertex_and_index_buffers`
 
         vertex_buffer
-            .write_iter(vertices.clone(), 0)
+            .write_iter(vertices, 0)
             .context("uploading gui pass vertices")?;
 
         index_buffer
-            .write_iter(mesh.indices.clone(), 0)
+            .write_iter(mesh.indices, 0)
             .context("uploading gui pass indices")?;
 
         Ok((vertex_buffer, index_buffer))
@@ -807,6 +802,8 @@ fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorP
 }
 
 fn create_buffer_pool(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Arc<MemoryPool>> {
+    // todo use device local with staging buffers because host visible + device local is a relatively
+    // scarce resource on discrete cards https://asawicki.info/news_1740_vulkan_memory_types_on_pc_and_how_to_use_them
     let buffer_alloc_info = allocation_info_from_flags(
         vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::DEVICE_LOCAL,
         vk::MemoryPropertyFlags::empty(),
@@ -850,13 +847,14 @@ fn create_texture_sampler(device: Arc<Device>) -> anyhow::Result<Arc<Sampler>> {
 }
 
 fn create_descriptor_layout(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorSetLayout>> {
-    let layout_props = DescriptorSetLayoutProperties::new(vec![DescriptorSetLayoutBinding {
-        binding: descriptor::BINDING_FONT_TEXTURE,
-        descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
-        descriptor_count: 1,
-        stage_flags: vk::ShaderStageFlags::FRAGMENT,
-        ..Default::default()
-    }]);
+    let layout_props =
+        DescriptorSetLayoutProperties::new_default(vec![DescriptorSetLayoutBinding {
+            binding: descriptor::BINDING_FONT_TEXTURE,
+            descriptor_type: vk::DescriptorType::COMBINED_IMAGE_SAMPLER,
+            descriptor_count: 1,
+            stage_flags: vk::ShaderStageFlags::FRAGMENT,
+            ..Default::default()
+        }]);
 
     let desc_layout = DescriptorSetLayout::new(device, layout_props)
         .context("creating gui pass descriptor set layout")?;
@@ -885,25 +883,7 @@ fn create_pipeline(
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
 ) -> anyhow::Result<Arc<GraphicsPipeline>> {
-    let vert_shader = Arc::new(
-        ShaderModule::new_from_file(pipeline_layout.device().clone(), VERT_SHADER_PATH)
-            .context("creating gui pass vertex shader")?,
-    );
-    let vert_stage = ShaderStage::new(
-        vk::ShaderStageFlags::VERTEX,
-        vert_shader,
-        CString::new(SHADER_ENTRY_POINT).context("shader entry point to c-string")?,
-    );
-
-    let frag_shader = Arc::new(
-        ShaderModule::new_from_file(pipeline_layout.device().clone(), FRAG_SHADER_PATH)
-            .context("creating gui pass fragment shader")?,
-    );
-    let frag_stage = ShaderStage::new(
-        vk::ShaderStageFlags::FRAGMENT,
-        frag_shader,
-        CString::new(SHADER_ENTRY_POINT).context("shader entry point to c-string")?,
-    );
+    let (vert_stage, frag_stage) = create_shader_stages(pipeline_layout.device())?;
 
     let dynamic_state =
         DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
@@ -940,6 +920,67 @@ fn create_pipeline(
     .context("creating gui pass pipeline")?;
 
     Ok(Arc::new(pipeline))
+}
+
+#[cfg(feature = "include-spirv-bytes")]
+fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
+    let mut vertex_spv_file =
+        std::io::Cursor::new(&include_bytes!("../../assets/shader_binaries/gui.vert.spv")[..]);
+    let vert_shader = Arc::new(
+        ShaderModule::new_from_spirv(device.clone(), &mut vertex_spv_file)
+            .context("creating lighting pass vertex shader")?,
+    );
+    let vert_stage = ShaderStage::new(
+        vk::ShaderStageFlags::VERTEX,
+        vert_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
+    );
+
+    let mut frag_spv_file =
+        std::io::Cursor::new(&include_bytes!("../../assets/shader_binaries/gui.frag.spv")[..]);
+    let frag_shader = Arc::new(
+        ShaderModule::new_from_spirv(device.clone(), &mut frag_spv_file)
+            .context("creating lighting pass fragment shader")?,
+    );
+    let frag_stage = ShaderStage::new(
+        vk::ShaderStageFlags::FRAGMENT,
+        frag_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
+    );
+
+    Ok((vert_stage, frag_stage))
+}
+
+#[cfg(not(feature = "include-spirv-bytes"))]
+fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
+    const VERT_SHADER_PATH: &str = "assets/shader_binaries/gui.vert.spv";
+    const FRAG_SHADER_PATH: &str = "assets/shader_binaries/gui.frag.spv";
+
+    let vert_shader = Arc::new(
+        ShaderModule::new_from_file(device.clone(), VERT_SHADER_PATH)
+            .context("creating lighting pass vertex shader")?,
+    );
+    let vert_stage = ShaderStage::new(
+        vk::ShaderStageFlags::VERTEX,
+        vert_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
+    );
+
+    let frag_shader = Arc::new(
+        ShaderModule::new_from_file(device.clone(), FRAG_SHADER_PATH)
+            .context("creating lighting pass fragment shader")?,
+    );
+    let frag_stage = ShaderStage::new(
+        vk::ShaderStageFlags::FRAGMENT,
+        frag_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
+    );
+
+    Ok((vert_stage, frag_stage))
 }
 
 fn create_transient_command_pool(
@@ -991,13 +1032,13 @@ fn calculate_gui_element_scissor(
     }
 }
 
-fn create_texture_data_buffer(
+fn create_texture_staging_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     size: vk::DeviceSize,
 ) -> anyhow::Result<Buffer> {
     let buffer_props = BufferProperties::new_default(size, vk::BufferUsageFlags::TRANSFER_SRC);
-
     let alloc_info = allocation_info_cpu_accessible();
+
     Buffer::new(memory_allocator, buffer_props, alloc_info).context("creating texture data buffer")
 }
 

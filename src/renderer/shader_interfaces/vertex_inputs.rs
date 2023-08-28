@@ -1,6 +1,6 @@
 use crate::engine::object::object::ObjectId;
 use ash::vk;
-use bort::VertexInputState;
+use bort_vk::VertexInputState;
 use glam::Vec3;
 use memoffset::offset_of;
 
@@ -91,7 +91,7 @@ impl EguiVertex {
     }
 }
 
-/// Should match inputs in `bounding_box.vert`
+/// Should match inputs in `bounding_mesh.vert`
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy)]
 pub struct BoundingBoxVertex {
@@ -103,7 +103,7 @@ impl BoundingBoxVertex {
     pub const fn new(position: Vec3, object_id: ObjectId) -> Self {
         Self {
             in_position: [position.x, position.y, position.z, 1.],
-            in_object_id: object_id as u32,
+            in_object_id: object_id.raw_id() as u32,
         }
     }
 

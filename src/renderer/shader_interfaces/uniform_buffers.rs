@@ -1,6 +1,7 @@
-use crate::user_interface::camera::Camera;
+use crate::user_interface::camera::{Camera, ProjectionMatrixReturn};
 use glam::{Mat4, Vec3};
 
+/// Camera data read by GPU shaders
 #[repr(C)]
 #[derive(Clone, Copy, Default, Debug)]
 pub struct CameraUniformBuffer {
@@ -15,8 +16,9 @@ pub struct CameraUniformBuffer {
     /// Far plane
     pub far: f32,
     // 0 if false, 1 if true
-    pub is_srgb_framebuffer: u32,
+    pub write_linear_color: u32,
 }
+
 impl CameraUniformBuffer {
     pub fn new(
         proj_view_inverse: Mat4,
@@ -24,7 +26,7 @@ impl CameraUniformBuffer {
         framebuffer_dimensions: [f32; 2],
         near: f32,
         far: f32,
-        is_srgb_framebuffer: bool,
+        write_linear_color: bool,
     ) -> Self {
         Self {
             proj_view_inverse: proj_view_inverse.to_cols_array(),
@@ -32,22 +34,32 @@ impl CameraUniformBuffer {
             framebuffer_dims: framebuffer_dimensions,
             near,
             far,
-            is_srgb_framebuffer: is_srgb_framebuffer as u32,
+            write_linear_color: write_linear_color as u32,
         }
     }
 
     pub fn from_camera(
-        camera: &mut Camera,
+        camera: &Camera,
         framebuffer_dimensions: [f32; 2],
-        is_srgb_framebuffer: bool,
+        write_linear_color: bool,
     ) -> Self {
+        let ProjectionMatrixReturn {
+            proj,
+            proj_inverse: _,
+            proj_a: _,
+            proj_b: _,
+        } = camera.projection_matrices();
+
+        let proj_view = proj * camera.view_matrix();
+        let proj_view_inverse = Mat4::inverse(&proj_view);
+
         Self::new(
-            glam::DMat4::inverse(&(camera.proj_matrix() * camera.view_matrix())).as_mat4(),
+            proj_view_inverse,
             camera.position().as_vec3(),
             framebuffer_dimensions,
             camera.near_plane() as f32,
             camera.far_plane() as f32,
-            is_srgb_framebuffer,
+            write_linear_color,
         )
     }
 }

@@ -13,5 +13,10 @@ pub fn bottom_panel_layout(ui: &mut Ui, window_states: &mut WindowStates) {
         // window toggles
         ui.toggle_value(&mut window_states.object_list, "Object List");
         ui.toggle_value(&mut window_states.object_editor, "Object Editor");
+        ui.toggle_value(&mut window_states.camera_control, "Camera Control");
+
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            egui::warn_if_debug_build(ui);
+        });
     });
 }

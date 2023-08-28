@@ -1,10 +1,10 @@
 use super::unique_id_gen::UniqueId;
 use std::{error, fmt};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum CollectionError {
     OutOfBounds { index: usize, size: usize },
-    InvalidId { id: UniqueId },
+    InvalidId { raw_id: UniqueId },
 }
 impl fmt::Display for CollectionError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -12,7 +12,7 @@ impl fmt::Display for CollectionError {
             Self::OutOfBounds { index, size } => {
                 write!(f, "index {} out of bounds. size = {}", index, size)
             }
-            Self::InvalidId { id } => write!(f, "invalid id {}", id),
+            Self::InvalidId { raw_id } => write!(f, "invalid id {}", raw_id),
         }
     }
 }

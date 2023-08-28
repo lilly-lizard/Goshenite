@@ -1,18 +1,18 @@
 use super::{
     config_renderer::{
-        FORMAT_DEPTH_BUFFER, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER, FRAMES_IN_FLIGHT,
+        FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER, MINIMUM_FRAMEBUFFER_COUNT,
         VULKAN_VER_MAJ, VULKAN_VER_MIN,
     },
     shader_interfaces::{
-        primitive_op_buffer::primitive_codes, uniform_buffers::CameraUniformBuffer,
+        primitive_op_buffer::PRIMITIVE_ID_INVALID, uniform_buffers::CameraUniformBuffer,
     },
 };
 use anyhow::Context;
 use ash::vk;
-use bort::{
-    allocation_info_cpu_accessible, choose_composite_alpha, get_first_srgb_surface_format, Buffer,
-    BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, Device, Fence,
-    Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageView, ImageViewAccess,
+use bort_vk::{
+    allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, Buffer,
+    BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback, Device,
+    Fence, Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageView, ImageViewAccess,
     ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, Queue, RenderPass, Subpass,
     Surface, Swapchain, SwapchainImage, SwapchainProperties,
 };
@@ -21,37 +21,35 @@ use log::{debug, error, info, trace, warn};
 use std::{mem, sync::Arc};
 use winit::window::Window;
 
-pub fn required_device_extensions() -> [&'static str; 2] {
-    ["VK_KHR_swapchain", "VK_EXT_descriptor_indexing"]
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+pub fn create_entry() -> anyhow::Result<Arc<ash::Entry>> {
+    let entry = unsafe { ash::Entry::load() }
+        .context("loading vulkan dynamic library. please install vulkan on your system...")?;
+    Ok(Arc::new(entry))
 }
 
-pub fn required_device_extensions_cstr() -> [&'static std::ffi::CStr; 2] {
-    [
-        vk::KhrSwapchainFn::name(),
-        vk::ExtDescriptorIndexingFn::name(),
-    ]
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub fn create_entry() -> anyhow::Result<Arc<ash::Entry>> {
+    let entry = ash_molten::load();
+    Ok(Arc::new(entry))
+}
+
+pub fn required_device_extensions() -> [&'static str; 1] {
+    ["VK_KHR_swapchain"]
+}
+pub fn required_device_extensions_cstr() -> [&'static std::ffi::CStr; 1] {
+    [vk::KhrSwapchainFn::name()]
 }
 
 /// Make sure to update `required_features_1_2` too!
 pub fn supports_required_features_1_2(
-    supported_features: vk::PhysicalDeviceVulkan12Features,
+    _supported_features: vk::PhysicalDeviceVulkan12Features,
 ) -> bool {
-    supported_features.descriptor_indexing == vk::TRUE
-        && supported_features.runtime_descriptor_array == vk::TRUE
-        && supported_features.descriptor_binding_variable_descriptor_count == vk::TRUE
-        && supported_features.shader_storage_buffer_array_non_uniform_indexing == vk::TRUE
-        && supported_features.descriptor_binding_partially_bound == vk::TRUE
+    true
 }
 /// Make sure to update `supports_required_features_1_2` too!
 pub fn required_features_1_2() -> vk::PhysicalDeviceVulkan12Features {
-    vk::PhysicalDeviceVulkan12Features {
-        descriptor_indexing: vk::TRUE,
-        runtime_descriptor_array: vk::TRUE,
-        descriptor_binding_variable_descriptor_count: vk::TRUE,
-        shader_storage_buffer_array_non_uniform_indexing: vk::TRUE,
-        descriptor_binding_partially_bound: vk::TRUE,
-        ..vk::PhysicalDeviceVulkan12Features::default()
-    }
+    vk::PhysicalDeviceVulkan12Features::default()
 }
 
 pub struct ChoosePhysicalDeviceReturn {
@@ -186,7 +184,7 @@ fn check_physical_device_queue_support(
         .map(|(i, _)| i as u32);
 
     Some(ChoosePhysicalDeviceReturn {
-        physical_device: physical_device,
+        physical_device,
         render_queue_family_index: render_family,
         transfer_queue_family_index: transfer_family.unwrap_or(render_family),
     })
@@ -195,29 +193,29 @@ fn check_physical_device_queue_support(
 pub struct CreateDeviceAndQueuesReturn {
     pub device: Arc<Device>,
     pub render_queue: Queue,
-    pub transfer_queue: Option<Queue>,
+    //pub transfer_queue: Option<Queue>, -> might come in handy in the future for async uploads!
 }
 
-pub fn create_device_and_queues(
+pub fn create_device_and_queue(
     physical_device: Arc<PhysicalDevice>,
+    debug_callback: Option<Arc<DebugCallback>>,
     render_queue_family_index: u32,
-    transfer_queue_family_index: u32,
 ) -> anyhow::Result<CreateDeviceAndQueuesReturn> {
     let queue_priorities = [1.0];
-    let single_queue = transfer_queue_family_index != render_queue_family_index;
+    //let single_queue = transfer_queue_family_index != render_queue_family_index;
 
     let render_queue_info = vk::DeviceQueueCreateInfo::builder()
         .queue_family_index(render_queue_family_index)
         .queue_priorities(&queue_priorities);
-    let mut queue_infos = vec![render_queue_info.build()];
+    let queue_infos = vec![render_queue_info.build()];
 
-    let mut transfer_queue_info = vk::DeviceQueueCreateInfo::builder();
-    if single_queue {
-        transfer_queue_info = transfer_queue_info
-            .queue_family_index(transfer_queue_family_index)
-            .queue_priorities(&queue_priorities);
-        queue_infos.push(transfer_queue_info.build());
-    }
+    //let mut transfer_queue_info = vk::DeviceQueueCreateInfo::builder();
+    //if single_queue {
+    //    transfer_queue_info = transfer_queue_info
+    //        .queue_family_index(transfer_queue_family_index)
+    //        .queue_priorities(&queue_priorities);
+    //    queue_infos.push(transfer_queue_info.build());
+    //}
 
     let features_1_0 = vk::PhysicalDeviceFeatures::default();
     let features_1_1 = vk::PhysicalDeviceVulkan11Features::default();
@@ -236,20 +234,20 @@ pub fn create_device_and_queues(
         features_1_2,
         extension_names,
         [],
+        debug_callback,
     )?);
 
     let render_queue = Queue::new(device.clone(), render_queue_family_index, 0);
 
-    let transfer_queue = if single_queue {
-        None
-    } else {
-        Some(Queue::new(device.clone(), transfer_queue_family_index, 0))
-    };
+    //let transfer_queue = if single_queue {
+    //    None
+    //} else {
+    //    Some(Queue::new(device.clone(), transfer_queue_family_index, 0))
+    //};
 
     Ok(CreateDeviceAndQueuesReturn {
         device,
         render_queue,
-        transfer_queue,
     })
 }
 
@@ -268,7 +266,7 @@ pub fn swapchain_properties(
     surface: &Surface,
     window: &Window,
 ) -> anyhow::Result<SwapchainProperties> {
-    let preferred_image_count = FRAMES_IN_FLIGHT as u32;
+    let preferred_image_count = MINIMUM_FRAMEBUFFER_COUNT as u32;
     let window_dimensions: [u32; 2] = window.inner_size().into();
 
     let surface_capabilities = surface
@@ -280,7 +278,8 @@ pub fn swapchain_properties(
     let surface_formats = surface
         .get_physical_device_surface_formats(device.physical_device())
         .context("get_physical_device_surface_formats")?;
-    let surface_format = get_first_srgb_surface_format(&surface_formats);
+    // best practice to go with first supplied surface format
+    let surface_format = surface_formats[0];
 
     let image_usage = vk::ImageUsageFlags::COLOR_ATTACHMENT;
 
@@ -300,12 +299,16 @@ pub fn create_swapchain(
     device: Arc<Device>,
     surface: Arc<Surface>,
     window: &Window,
-) -> anyhow::Result<Swapchain> {
+) -> anyhow::Result<Arc<Swapchain>> {
     let swapchain_properties = swapchain_properties(&device, &surface, window)?;
+    debug!(
+        "creating swapchain with dimensions: {:?}",
+        swapchain_properties.width_height
+    );
 
     let swapchain =
         Swapchain::new(device, surface, swapchain_properties).context("creating swapchain")?;
-    Ok(swapchain)
+    Ok(Arc::new(swapchain))
 }
 
 pub fn create_swapchain_image_views(
@@ -327,6 +330,50 @@ pub fn create_swapchain_image_views(
     Ok(swapchain_images)
 }
 
+/// Returns true if fragment shaders should write linear color to the swapchain image attachment.
+/// Otherwise they should write srgb. Assumes color space is SRGB i.e. not HDR or something wacky like that...
+///
+/// See [this](https://stackoverflow.com/a/66401423/5256085) for more info on the topic.
+pub fn shaders_should_write_linear_color(surface_format: vk::SurfaceFormatKHR) -> bool {
+    is_format_srgb(surface_format.format)
+}
+
+/// We want a SFLOAT format for our reverse z buffer (prefer VK_FORMAT_D32_SFLOAT)
+pub fn choose_depth_buffer_format(physical_device: &PhysicalDevice) -> anyhow::Result<vk::Format> {
+    let d32_props = unsafe {
+        physical_device
+            .instance()
+            .inner()
+            .get_physical_device_format_properties(physical_device.handle(), vk::Format::D32_SFLOAT)
+    };
+
+    if d32_props
+        .optimal_tiling_features
+        .contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT)
+    {
+        return Ok(vk::Format::D32_SFLOAT);
+    }
+
+    let d32_s8_props = unsafe {
+        physical_device
+            .instance()
+            .inner()
+            .get_physical_device_format_properties(
+                physical_device.handle(),
+                vk::Format::D32_SFLOAT_S8_UINT,
+            )
+    };
+
+    if d32_s8_props
+        .optimal_tiling_features
+        .contains(vk::FormatFeatureFlags::DEPTH_STENCIL_ATTACHMENT)
+    {
+        return Ok(vk::Format::D32_SFLOAT_S8_UINT);
+    }
+
+    anyhow::bail!("no sfloat depth buffer formats supported by this physical device")
+}
+
 pub mod render_pass_indices {
     pub const ATTACHMENT_SWAPCHAIN: usize = 0;
     pub const ATTACHMENT_NORMAL: usize = 1;
@@ -341,6 +388,7 @@ pub mod render_pass_indices {
 
 fn attachment_descriptions(
     swapchain_properties: &SwapchainProperties,
+    depth_buffer_format: vk::Format,
 ) -> [vk::AttachmentDescription; render_pass_indices::NUM_ATTACHMENTS] {
     let mut attachment_descriptions =
         [vk::AttachmentDescription::default(); render_pass_indices::NUM_ATTACHMENTS];
@@ -381,7 +429,7 @@ fn attachment_descriptions(
     // depth buffer
     attachment_descriptions[render_pass_indices::ATTACHMENT_DEPTH_BUFFER] =
         vk::AttachmentDescription::builder()
-            .format(FORMAT_DEPTH_BUFFER)
+            .format(depth_buffer_format)
             .samples(vk::SampleCountFlags::TYPE_1)
             .load_op(vk::AttachmentLoadOp::CLEAR)
             .store_op(vk::AttachmentStoreOp::DONT_CARE)
@@ -479,8 +527,10 @@ fn subpass_dependencies() -> [vk::SubpassDependency; 2] {
 pub fn create_render_pass(
     device: Arc<Device>,
     swapchain_properties: &SwapchainProperties,
+    depth_buffer_format: vk::Format,
 ) -> anyhow::Result<Arc<RenderPass>> {
-    let attachment_descriptions = attachment_descriptions(swapchain_properties);
+    let attachment_descriptions =
+        attachment_descriptions(swapchain_properties, depth_buffer_format);
     let subpasses = subpasses();
     let subpass_dependencies = subpass_dependencies();
 
@@ -497,11 +547,12 @@ pub fn create_render_pass(
 pub fn create_depth_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
+    depth_buffer_format: vk::Format,
 ) -> anyhow::Result<Arc<ImageView<Image>>> {
     let image = Image::new_tranient(
         memory_allocator,
         dimensions,
-        FORMAT_DEPTH_BUFFER,
+        depth_buffer_format,
         vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT,
     )
     .context("creating depth buffer image")?;
@@ -532,7 +583,19 @@ pub fn create_normal_buffer(
     Ok(Arc::new(image_view))
 }
 
-pub fn create_primitive_id_buffer(
+/// Creates `framebuffer_count` number of primitive id buffer image views
+pub fn create_primitive_id_buffers(
+    framebuffer_count: usize,
+    memory_allocator: Arc<MemoryAllocator>,
+    dimensions: ImageDimensions,
+) -> anyhow::Result<Vec<Arc<ImageView<Image>>>> {
+    (0..framebuffer_count)
+        .into_iter()
+        .map(|_| create_primitive_id_buffer(memory_allocator.clone(), dimensions))
+        .collect::<anyhow::Result<Vec<_>>>()
+}
+
+fn create_primitive_id_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
 ) -> anyhow::Result<Arc<ImageView<Image>>> {
@@ -551,22 +614,34 @@ pub fn create_primitive_id_buffer(
     Ok(Arc::new(image_view))
 }
 
+/// Safety:
+/// * `primitive_id_buffers` must contain `framebuffer_count` elements.
+/// * if `swapchain_image_views` contains more than one image, it must contain
+///   `framebuffer_count` elements.
 pub fn create_framebuffers(
+    framebuffer_count: usize,
     render_pass: &Arc<RenderPass>,
-    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
+    swapchain_image_views: &mut Vec<Arc<ImageView<SwapchainImage>>>,
     normal_buffer: &Arc<ImageView<Image>>,
-    primitive_id_buffer: &Arc<ImageView<Image>>,
+    primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
     depth_buffer: &Arc<ImageView<Image>>,
 ) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
-    swapchain_image_views
-        .iter()
-        .map(|swapchain_image_view| {
+    // ensure swapchain_image_views has framebuffer_count elements
+    if swapchain_image_views.len() == 1 {
+        for _ in 1..framebuffer_count {
+            swapchain_image_views.push(swapchain_image_views[0].clone());
+        }
+    }
+
+    (0..framebuffer_count)
+        .into_iter()
+        .map(|i| {
             let mut attachments = Vec::<Arc<dyn ImageViewAccess>>::with_capacity(
                 render_pass_indices::NUM_ATTACHMENTS,
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_SWAPCHAIN,
-                swapchain_image_view.clone(),
+                swapchain_image_views[i].clone(),
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_NORMAL,
@@ -574,15 +649,17 @@ pub fn create_framebuffers(
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_PRIMITIVE_ID,
-                primitive_id_buffer.clone(),
+                primitive_id_buffers[i].clone(),
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_DEPTH_BUFFER,
                 depth_buffer.clone(),
             );
 
-            let framebuffer_properties =
-                FramebufferProperties::new(attachments, swapchain_image_view.image().dimensions());
+            let framebuffer_properties = FramebufferProperties::new_default(
+                attachments,
+                swapchain_image_views[i].image().dimensions(),
+            );
             let framebuffer = Framebuffer::new(render_pass.clone(), framebuffer_properties)
                 .context("creating framebuffer")?;
             Ok(Arc::new(framebuffer))
@@ -611,7 +688,7 @@ pub fn create_clear_values() -> Vec<vk::ClearValue> {
         render_pass_indices::ATTACHMENT_PRIMITIVE_ID,
         vk::ClearValue {
             color: vk::ClearColorValue {
-                uint32: [primitive_codes::INVALID; 4],
+                uint32: [PRIMITIVE_ID_INVALID; 4],
             },
         },
     );
@@ -619,7 +696,7 @@ pub fn create_clear_values() -> Vec<vk::ClearValue> {
         render_pass_indices::ATTACHMENT_DEPTH_BUFFER,
         vk::ClearValue {
             depth_stencil: vk::ClearDepthStencilValue {
-                depth: 1.,
+                depth: 0.,
                 stencil: 0,
             },
         },
@@ -651,8 +728,8 @@ pub fn create_render_command_buffers(
     Ok(command_buffer_arcs)
 }
 
-pub fn create_per_frame_fence(device: Arc<Device>) -> anyhow::Result<Arc<Fence>> {
+pub fn create_signalled_fence(device: Arc<Device>) -> anyhow::Result<Arc<Fence>> {
     let create_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
-    let fence = Fence::new(device, create_info).context("creating per-frame fence")?;
+    let fence = Fence::new(device, create_info).context("creating fence")?;
     Ok(Arc::new(fence))
 }

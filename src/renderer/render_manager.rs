@@ -7,27 +7,33 @@ use super::{
     shader_interfaces::uniform_buffers::CameraUniformBuffer,
     vulkan_init::{
         choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
-        create_depth_buffer, create_device_and_queues, create_framebuffers, create_normal_buffer,
-        create_per_frame_fence, create_primitive_id_buffer, create_render_pass, create_swapchain,
-        create_swapchain_image_views, swapchain_properties, ChoosePhysicalDeviceReturn,
-        CreateDeviceAndQueuesReturn,
+        create_depth_buffer, create_framebuffers, create_normal_buffer, create_render_pass,
+        create_swapchain, create_swapchain_image_views, swapchain_properties,
+        ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
     },
 };
 use crate::{
     config::ENGINE_NAME,
-    engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta},
+    engine::object::objects_delta::ObjectsDelta,
     helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
-    renderer::vulkan_init::{create_command_pool, create_render_command_buffers},
-    user_interface::{camera::Camera, gui::Gui},
+    renderer::{
+        config_renderer::MINIMUM_FRAMEBUFFER_COUNT,
+        vulkan_init::{
+            choose_depth_buffer_format, create_command_pool, create_device_and_queue, create_entry,
+            create_primitive_id_buffers, create_render_command_buffers, create_signalled_fence,
+            shaders_should_write_linear_color,
+        },
+    },
+    user_interface::camera::Camera,
 };
 use anyhow::Context;
-use ash::{vk, Entry};
-use bort::{
-    is_format_srgb, ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback, Device, Fence,
-    Framebuffer, Image, ImageView, Instance, MemoryAllocator, Queue, RenderPass, Semaphore,
+use ash::vk;
+use bort_vk::{
+    ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback, DebugCallbackProperties, Device,
+    Fence, Framebuffer, Image, ImageView, Instance, MemoryAllocator, Queue, RenderPass, Semaphore,
     Surface, Swapchain, SwapchainImage,
 };
-use egui::TexturesDelta;
+use egui::{ClippedPrimitive, TexturesDelta};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
@@ -37,7 +43,7 @@ use winit::window::Window;
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
     instance: Arc<Instance>,
-    debug_callback: Option<DebugCallback>,
+    debug_callback: Option<Arc<DebugCallback>>,
 
     device: Arc<Device>,
     render_queue: Queue,
@@ -47,43 +53,48 @@ pub struct RenderManager {
 
     window: Arc<Window>,
     surface: Arc<Surface>,
-    swapchain: Swapchain,
+    swapchain: Arc<Swapchain>,
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage>>>,
-    is_swapchain_srgb: bool,
+    shaders_write_linear_color: bool,
 
     render_pass: Arc<RenderPass>,
+    /// One per swapchain image, or two if there's only one swapchain image so we can store some
+    /// images written to in the previous render
     framebuffers: Vec<Arc<Framebuffer>>,
+    /// One for each framebuffer attachment
     clear_values: Vec<vk::ClearValue>,
 
     depth_buffer: Arc<ImageView<Image>>,
     normal_buffer: Arc<ImageView<Image>>,
-    primitive_id_buffer: Arc<ImageView<Image>>,
+    /// One per framebuffer
+    primitive_id_buffers: Vec<Arc<ImageView<Image>>>,
     camera_ubo: Arc<Buffer>,
 
     lighting_pass: LightingPass,
     geometry_pass: GeometryPass,
     gui_pass: GuiPass,
 
+    /// One per framebuffer
     render_command_buffers: Vec<Arc<CommandBuffer>>,
-    previous_render_fence: Arc<Fence>, // per frame in flight
-    previous_upload_fence: Option<Arc<Fence>>, // just one
-    next_frame_wait_semaphore: Arc<Semaphore>, // per frame in flight
-    swapchain_image_available_semaphore: Arc<Semaphore>, // per frame in flight
+    previous_render_fence: Arc<Fence>,
+    buffer_upload_fence: Arc<Fence>,
+    next_frame_wait_semaphore: Arc<Semaphore>,
+    swapchain_image_available_semaphore: Arc<Semaphore>,
 
-    /// Some resources are duplicated `FRAMES_IN_FLIGHT` times in order to manipulate resources
-    /// without conflicting with commands currently being processed. This variable indicates
-    /// which index to will be next submitted to the GPU.
-    next_frame: usize,
+    /// Indicates which framebuffer is being processed right now.
+    framebuffer_index_currently_rendering: usize,
+    /// Indicates which framebuffer was rendered to in the previous frame.
+    framebuffer_index_last_rendered_to: usize,
+    /// Can be set to true with [`Self::set_window_just_resized_flag`] and set to false in [`Self::render_frame`]
+    window_just_resized: bool,
 }
 
 // Public functions
 
 impl RenderManager {
     /// Initializes Vulkan resources. If renderer fails to initiver_minoralize, returns a string explanation.
-    pub fn new(window: Arc<Window>) -> anyhow::Result<Self> {
-        let entry = unsafe { Entry::load() }
-            .context("loading vulkan dynamic library. please install vulkan on your system...")?;
-        let entry = Arc::new(entry);
+    pub fn new(window: Arc<Window>, scale_factor: f32) -> anyhow::Result<Self> {
+        let entry = create_entry()?;
 
         // create vulkan instance
         let api_version = ApiVersion::new(VULKAN_VER_MAJ, VULKAN_VER_MIN);
@@ -105,11 +116,16 @@ impl RenderManager {
         );
 
         // setup validation layer debug callback
+        let debug_callback_properties = DebugCallbackProperties::default();
         let debug_callback = if ENABLE_VULKAN_VALIDATION {
-            match DebugCallback::new(&entry, instance.clone(), Some(log_vulkan_debug_callback)) {
+            match DebugCallback::new(
+                instance.clone(),
+                Some(log_vulkan_debug_callback),
+                debug_callback_properties,
+            ) {
                 Ok(x) => {
                     info!("enabling vulkan validation layers and debug callback");
-                    Some(x)
+                    Some(Arc::new(x))
                 }
                 Err(e) => {
                     warn!("validation layer debug callback requested but cannot be setup due to: {:?}", e);
@@ -151,11 +167,10 @@ impl RenderManager {
         let CreateDeviceAndQueuesReturn {
             device,
             render_queue,
-            transfer_queue,
-        } = create_device_and_queues(
+        } = create_device_and_queue(
             physical_device.clone(),
+            debug_callback.clone(),
             render_queue_family_index,
-            transfer_queue_family_index,
         )?;
 
         let memory_allocator = Arc::new(MemoryAllocator::new(device.clone())?);
@@ -175,15 +190,22 @@ impl RenderManager {
             "swapchain composite alpha = {:?}",
             swapchain.properties().composite_alpha
         );
-        let is_swapchain_srgb = is_format_srgb(swapchain.properties().surface_format.format);
+        let shaders_write_linear_color =
+            shaders_should_write_linear_color(swapchain.properties().surface_format);
 
-        let swapchain_image_views = create_swapchain_image_views(&swapchain)?;
+        let mut swapchain_image_views = create_swapchain_image_views(&swapchain)?;
 
-        let render_pass = create_render_pass(device.clone(), swapchain.properties())?;
+        let framebuffer_count = determine_framebuffer_count(&swapchain_image_views);
+
+        let depth_buffer_format = choose_depth_buffer_format(&physical_device)?;
+
+        let render_pass =
+            create_render_pass(device.clone(), swapchain.properties(), depth_buffer_format)?;
 
         let depth_buffer = create_depth_buffer(
             memory_allocator.clone(),
             swapchain.properties().dimensions(),
+            depth_buffer_format,
         )?;
 
         let normal_buffer = create_normal_buffer(
@@ -191,7 +213,8 @@ impl RenderManager {
             swapchain.properties().dimensions(),
         )?;
 
-        let primitive_id_buffer = create_primitive_id_buffer(
+        let primitive_id_buffers = create_primitive_id_buffers(
+            framebuffer_count,
             memory_allocator.clone(),
             swapchain.properties().dimensions(),
         )?;
@@ -199,10 +222,11 @@ impl RenderManager {
         let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
 
         let framebuffers = create_framebuffers(
+            framebuffer_count,
             &render_pass,
-            &swapchain_image_views,
+            &mut swapchain_image_views,
             &normal_buffer,
-            &primitive_id_buffer,
+            &primitive_id_buffers,
             &depth_buffer,
         )?;
 
@@ -213,6 +237,7 @@ impl RenderManager {
             memory_allocator.clone(),
             &render_pass,
             &camera_ubo,
+            render_queue.famliy_index(),
         )?;
 
         let lighting_pass = LightingPass::new(
@@ -220,7 +245,7 @@ impl RenderManager {
             &render_pass,
             &camera_ubo,
             normal_buffer.as_ref(),
-            primitive_id_buffer.as_ref(),
+            &primitive_id_buffers,
         )?;
 
         let gui_pass = GuiPass::new(
@@ -228,6 +253,7 @@ impl RenderManager {
             memory_allocator.clone(),
             &render_pass,
             render_queue_family_index,
+            scale_factor,
         )?;
 
         let render_command_buffers = create_render_command_buffers(
@@ -235,7 +261,8 @@ impl RenderManager {
             swapchain_image_views.len() as u32,
         )?;
 
-        let previous_render_fence = create_per_frame_fence(device.clone())?;
+        let previous_render_fence = create_signalled_fence(device.clone())?;
+        let buffer_upload_fence = create_signalled_fence(device.clone())?;
         let next_frame_wait_semaphore =
             Arc::new(Semaphore::new(device.clone()).context("creating per-frame semaphore")?);
         let swapchain_image_available_semaphore = Arc::new(
@@ -256,7 +283,7 @@ impl RenderManager {
             surface,
             swapchain,
             swapchain_image_views,
-            is_swapchain_srgb,
+            shaders_write_linear_color,
 
             render_pass,
             framebuffers,
@@ -264,7 +291,7 @@ impl RenderManager {
 
             depth_buffer,
             normal_buffer,
-            primitive_id_buffer,
+            primitive_id_buffers,
             camera_ubo,
 
             geometry_pass,
@@ -273,22 +300,24 @@ impl RenderManager {
 
             render_command_buffers,
             previous_render_fence,
-            previous_upload_fence: None,
+            buffer_upload_fence,
             next_frame_wait_semaphore,
             swapchain_image_available_semaphore,
 
-            next_frame: 0,
+            framebuffer_index_currently_rendering: 0,
+            framebuffer_index_last_rendered_to: 0,
+            window_just_resized: false,
         })
     }
 
-    pub fn update_camera(&mut self, camera: &mut Camera) -> anyhow::Result<()> {
+    pub fn update_camera(&mut self, camera: &Camera) -> anyhow::Result<()> {
         self.wait_idle_device()?;
 
         let dimensions = self.swapchain.properties().width_height;
         let camera_data = CameraUniformBuffer::from_camera(
             camera,
             [dimensions[0] as f32, dimensions[1] as f32],
-            self.is_swapchain_srgb,
+            self.shaders_write_linear_color,
         );
 
         let camera_ubo_mut = match Arc::get_mut(&mut self.camera_ubo) {
@@ -306,42 +335,52 @@ impl RenderManager {
         Ok(())
     }
 
-    pub fn update_object_buffers(
-        &mut self,
-        object_collection: &ObjectCollection,
-        object_delta: ObjectsDelta,
-    ) -> anyhow::Result<()> {
+    pub fn update_objects(&mut self, objects_delta: ObjectsDelta) -> anyhow::Result<()> {
         self.geometry_pass
-            .update_object_buffers(object_collection, object_delta)
+            .update_objects(objects_delta, &self.render_queue)
     }
 
     pub fn update_gui_textures(
         &mut self,
-        textures_delta_vec: Vec<TexturesDelta>,
+        textures_delta: Vec<TexturesDelta>,
     ) -> anyhow::Result<()> {
-        self.wait_for_fences()?;
+        self.wait_for_previous_frame_fence()?;
 
-        let texture_update_fence_option = self
-            .gui_pass
-            .update_textures(textures_delta_vec, &self.render_queue)?;
-
-        if let Some(previous_upload_fence) = texture_update_fence_option {
-            self.previous_upload_fence = Some(previous_upload_fence);
-        }
+        self.gui_pass.update_textures(
+            textures_delta,
+            &self.render_queue,
+            Some(self.buffer_upload_fence.clone()),
+        )?;
 
         Ok(())
     }
 
+    pub fn set_scale_factor(&mut self, scale_factor: f32) {
+        self.gui_pass.set_scale_factor(scale_factor);
+    }
+
+    pub fn set_gui_primitives(&mut self, gui_primitives: Vec<ClippedPrimitive>) {
+        self.gui_pass.set_gui_primitives(gui_primitives);
+    }
+
+    pub fn set_window_just_resized_flag(&mut self) {
+        self.window_just_resized = true;
+    }
+
     /// Submits Vulkan commands for rendering a frame.
-    pub fn render_frame(&mut self, gui: &mut Gui, window_resized: bool) -> anyhow::Result<()> {
+    pub fn render_frame(&mut self) -> anyhow::Result<()> {
         // wait for previous frame render/resource upload to finish
 
-        self.wait_for_fences()?;
+        self.wait_for_previous_frame_fence()?;
+        // previous frame confirmed finished rendering
+        self.framebuffer_index_last_rendered_to = self.framebuffer_index_currently_rendering;
 
         self.gui_pass.free_previous_vertex_and_index_buffers();
+        self.gui_pass.free_texture_upload_buffers();
 
-        // I found that this check is needed on hyprland because the later commnads weren't returning 'out of date'...
-        if window_resized {
+        // note: I found that this check is needed on wayland because the later commands weren't returning 'out of date'...
+        if self.window_just_resized {
+            self.window_just_resized = false;
             self.recreate_swapchain()?;
         }
 
@@ -370,10 +409,13 @@ impl RenderManager {
             return self.recreate_swapchain();
         }
 
+        let framebuffer_index = self
+            .current_framebuffer_index(self.framebuffer_index_last_rendered_to, swapchain_index);
+
         // record commands
 
-        let command_buffer = self.render_command_buffers[swapchain_index].clone();
-        self.record_render_commands(&command_buffer, gui, swapchain_index)?;
+        let command_buffer = self.render_command_buffers[framebuffer_index].clone();
+        self.record_render_commands(&command_buffer, framebuffer_index)?;
 
         // submit commands
 
@@ -403,6 +445,8 @@ impl RenderManager {
             )
         }
         .context("submitting render commands")?;
+
+        self.framebuffer_index_currently_rendering = swapchain_index;
 
         // submit present instruction
 
@@ -453,12 +497,20 @@ impl RenderManager {
     }
 }
 
+/// If there is only one swapchain image we create two framebuffers so we can access the previous
+/// render for some images.
+fn determine_framebuffer_count(
+    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
+) -> usize {
+    swapchain_image_views.len().max(MINIMUM_FRAMEBUFFER_COUNT)
+}
+
 // Private functions
 
 impl RenderManager {
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
-        debug!("recreating swapchain...");
+        trace!("recreating swapchain...");
 
         // do host-device sync and reset command buffers
         self.reset_render_command_buffers()?;
@@ -469,22 +521,37 @@ impl RenderManager {
 
         // recreate the swapchain
         let swapchain_properties = swapchain_properties(&self.device, &self.surface, &self.window)?;
-        self.swapchain
-            .recreate(swapchain_properties)
+        trace!(
+            "creating swapchain with dimensions: {:?}",
+            swapchain_properties.width_height
+        );
+        self.swapchain = self
+            .swapchain
+            .recreate_replace(swapchain_properties)
             .context("recreating swapchain")?;
 
         // reinitialize related resources
-        self.is_swapchain_srgb = is_format_srgb(self.swapchain.properties().surface_format.format);
+        self.shaders_write_linear_color =
+            shaders_should_write_linear_color(self.swapchain.properties().surface_format);
         self.swapchain_image_views = create_swapchain_image_views(&self.swapchain)?;
 
-        self.render_pass = create_render_pass(self.device.clone(), self.swapchain.properties())?;
+        let framebuffer_count = determine_framebuffer_count(&self.swapchain_image_views);
+
+        let depth_buffer_format = self.depth_buffer.image().properties().format;
+
+        self.render_pass = create_render_pass(
+            self.device.clone(),
+            self.swapchain.properties(),
+            depth_buffer_format,
+        )?;
 
         self.normal_buffer = create_normal_buffer(
             self.memory_allocator.clone(),
             self.swapchain.properties().dimensions(),
         )?;
 
-        self.primitive_id_buffer = create_primitive_id_buffer(
+        self.primitive_id_buffers = create_primitive_id_buffers(
+            framebuffer_count,
             self.memory_allocator.clone(),
             self.swapchain.properties().dimensions(),
         )?;
@@ -492,27 +559,26 @@ impl RenderManager {
         self.depth_buffer = create_depth_buffer(
             self.memory_allocator.clone(),
             self.swapchain.properties().dimensions(),
+            depth_buffer_format,
         )?;
 
         self.framebuffers = create_framebuffers(
+            framebuffer_count,
             &self.render_pass,
-            &self.swapchain_image_views,
+            &mut self.swapchain_image_views,
             &self.normal_buffer,
-            &self.primitive_id_buffer,
+            &self.primitive_id_buffers,
             &self.depth_buffer,
         )?;
 
         self.lighting_pass
-            .update_g_buffers(&self.normal_buffer, &self.primitive_id_buffer)?;
+            .update_g_buffers(&self.normal_buffer, &self.primitive_id_buffers)?;
 
         Ok(())
     }
 
-    fn wait_for_fences(&mut self) -> anyhow::Result<()> {
-        let mut wait_fence_handles = vec![self.previous_render_fence.handle()];
-        if let Some(previous_upload_fence) = &self.previous_upload_fence {
-            wait_fence_handles.push(previous_upload_fence.handle());
-        }
+    fn wait_for_previous_frame_fence(&mut self) -> anyhow::Result<()> {
+        let wait_fence_handles = [self.previous_render_fence.handle()];
 
         let fence_wait_res = unsafe {
             self.device
@@ -534,22 +600,19 @@ impl RenderManager {
             }
         }
 
-        self.previous_upload_fence = None;
-
         Ok(())
     }
 
     fn record_render_commands(
         &mut self,
         command_buffer: &CommandBuffer,
-        gui: &Gui,
-        swapchain_index: usize,
+        framebuffer_index: usize,
     ) -> anyhow::Result<()> {
         let command_buffer_handle = command_buffer.handle();
         let device_ash = self.device.inner();
 
-        let viewport = self.framebuffers[swapchain_index].whole_viewport();
-        let rect_2d = self.framebuffers[swapchain_index].whole_rect();
+        let viewport = self.framebuffers[framebuffer_index].whole_viewport();
+        let rect_2d = self.framebuffers[framebuffer_index].whole_rect();
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -558,7 +621,7 @@ impl RenderManager {
 
         let render_pass_begin = vk::RenderPassBeginInfo::builder()
             .render_pass(self.render_pass.handle())
-            .framebuffer(self.framebuffers[swapchain_index].handle())
+            .framebuffer(self.framebuffers[framebuffer_index].handle())
             .render_area(rect_2d)
             .clear_values(self.clear_values.as_slice());
         unsafe {
@@ -574,13 +637,16 @@ impl RenderManager {
 
         unsafe { device_ash.cmd_next_subpass(command_buffer_handle, vk::SubpassContents::INLINE) };
 
-        self.lighting_pass
-            .record_commands(&command_buffer, viewport, rect_2d)?;
+        self.lighting_pass.record_commands(
+            framebuffer_index,
+            &command_buffer,
+            viewport,
+            rect_2d,
+        )?;
 
         self.gui_pass.record_render_commands(
             &command_buffer,
-            gui,
-            self.is_swapchain_srgb,
+            self.shaders_write_linear_color,
             [viewport.width, viewport.height],
         )?;
 
@@ -590,6 +656,18 @@ impl RenderManager {
             .context("ending render command buffer recording")?;
 
         Ok(())
+    }
+
+    /// Determines the new framebuffer index
+    fn current_framebuffer_index(
+        &self,
+        previous_framebuffer_index: usize,
+        swapchain_index: usize,
+    ) -> usize {
+        if self.swapchain_image_views.len() == 1 {
+            return (previous_framebuffer_index + 1) % MINIMUM_FRAMEBUFFER_COUNT;
+        }
+        return swapchain_index;
     }
 }
 

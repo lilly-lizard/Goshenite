@@ -1,46 +1,44 @@
-use super::primitive::Primitive;
+use super::{
+    primitive::{primitive_names, EncodablePrimitive},
+    primitive_transform::PrimitiveTransform,
+};
 use crate::{
     engine::aabb::Aabb,
     renderer::shader_interfaces::primitive_op_buffer::{
-        primitive_codes, PrimitiveDataSlice, PRIMITIVE_UNIT_LEN,
+        primitive_type_codes, PrimitiveOpBufferUnit, PrimitivePropsSlice, PRIMITIVE_PROPS_LEN,
     },
 };
-use glam::Vec3;
-use std::{cell::RefCell, rc::Rc};
 
-#[derive(Debug, Clone, PartialEq)]
+const NULL_TRANSFORM: PrimitiveTransform = PrimitiveTransform::new_default();
+
+#[derive(Default, Debug, Clone, Copy, PartialEq)]
 pub struct NullPrimitive {}
 
-impl Primitive for NullPrimitive {
-    fn id(&self) -> usize {
-        usize::MAX
+impl NullPrimitive {
+    #[inline]
+    pub fn new() -> Self {
+        Self {}
     }
+}
 
-    fn encode(&self, _parent_origin: Vec3) -> PrimitiveDataSlice {
-        [primitive_codes::NULL; PRIMITIVE_UNIT_LEN]
-    }
-
-    fn center(&self) -> Vec3 {
-        Vec3::ZERO
+impl EncodablePrimitive for NullPrimitive {
+    fn type_code(&self) -> PrimitiveOpBufferUnit {
+        primitive_type_codes::NULL
     }
 
     fn type_name(&self) -> &'static str {
-        "Null-Primitive"
+        primitive_names::NULL
+    }
+
+    fn encoded_props(&self) -> PrimitivePropsSlice {
+        [0; PRIMITIVE_PROPS_LEN]
+    }
+
+    fn transform(&self) -> &PrimitiveTransform {
+        &NULL_TRANSFORM
     }
 
     fn aabb(&self) -> Aabb {
         Aabb::new_zero()
-    }
-}
-
-impl NullPrimitive {
-    pub fn new_ref() -> Rc<RefCell<NullPrimitive>> {
-        Rc::new(RefCell::new(NullPrimitive {}))
-    }
-}
-
-impl Default for NullPrimitive {
-    fn default() -> Self {
-        Self {}
     }
 }

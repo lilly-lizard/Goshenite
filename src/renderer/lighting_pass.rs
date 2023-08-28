@@ -4,7 +4,7 @@ use super::{
 };
 use anyhow::Context;
 use ash::vk;
-use bort::{
+use bort_vk::{
     Buffer, ColorBlendState, CommandBuffer, DescriptorPool, DescriptorPoolProperties,
     DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
     Device, DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties, Image,
@@ -12,11 +12,8 @@ use bort::{
     RenderPass, ShaderModule, ShaderStage, ViewportState,
 };
 #[allow(unused_imports)]
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use std::{ffi::CString, mem, sync::Arc};
-
-const VERT_SHADER_PATH: &str = "assets/shader_binaries/full_screen.vert.spv";
-const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_lighting.frag.spv";
 
 /// Describes descriptor set indices
 mod descriptor {
@@ -33,7 +30,8 @@ pub struct LightingPass {
     device: Arc<Device>,
 
     desc_set_camera: Arc<DescriptorSet>,
-    desc_set_g_buffers: Arc<DescriptorSet>,
+    /// One per framebuffer
+    desc_sets_g_buffer: Vec<Arc<DescriptorSet>>,
 
     pipeline: Arc<GraphicsPipeline>,
 }
@@ -44,27 +42,28 @@ impl LightingPass {
         render_pass: &RenderPass,
         camera_buffer: &Buffer,
         normal_buffer: &ImageView<Image>,
-        primitive_id_buffer: &ImageView<Image>,
+        primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
     ) -> anyhow::Result<Self> {
         let descriptor_pool = create_descriptor_pool(device.clone())?;
 
         let desc_set_camera = create_desc_set_camera(descriptor_pool.clone())?;
         write_desc_set_camera(&desc_set_camera, camera_buffer)?;
 
-        let desc_set_g_buffers = create_desc_set_gbuffers(descriptor_pool.clone())?;
-        write_desc_set_gbuffers(&desc_set_g_buffers, normal_buffer, primitive_id_buffer)?;
+        let desc_sets_g_buffer =
+            create_desc_sets_gbuffer(descriptor_pool.clone(), primitive_id_buffers.len())?;
+        write_desc_sets_gbuffer(&desc_sets_g_buffer, normal_buffer, primitive_id_buffers)?;
 
         let pipeline_layout = create_pipeline_layout(
             device.clone(),
             desc_set_camera.layout().clone(),
-            desc_set_g_buffers.layout().clone(),
+            desc_sets_g_buffer[0].layout().clone(),
         )?;
 
         let pipeline = create_pipeline(device.clone(), pipeline_layout.clone(), render_pass)?;
 
         Ok(Self {
             device,
-            desc_set_g_buffers,
+            desc_sets_g_buffer,
             desc_set_camera,
             pipeline,
         })
@@ -73,9 +72,13 @@ impl LightingPass {
     pub fn update_g_buffers(
         &mut self,
         normal_buffer: &ImageView<Image>,
-        primitive_id_buffer: &ImageView<Image>,
+        primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
     ) -> anyhow::Result<()> {
-        write_desc_set_gbuffers(&self.desc_set_g_buffers, normal_buffer, primitive_id_buffer)
+        write_desc_sets_gbuffer(
+            &self.desc_sets_g_buffer,
+            normal_buffer,
+            primitive_id_buffers,
+        )
     }
 
     pub fn update_camera_descriptor_set(&self, camera_buffer: &Buffer) -> anyhow::Result<()> {
@@ -87,6 +90,7 @@ impl LightingPass {
     /// **Assumes that the command buffer is already in a render pass state.**
     pub fn record_commands(
         &self,
+        frame_index: usize,
         command_buffer: &CommandBuffer,
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
@@ -94,7 +98,7 @@ impl LightingPass {
         let device_ash = self.device.inner();
         let command_buffer_handle = command_buffer.handle();
         let descriptor_set_handles = [
-            self.desc_set_g_buffers.handle(),
+            self.desc_sets_g_buffer[frame_index].handle(),
             self.desc_set_camera.handle(),
         ];
 
@@ -147,7 +151,7 @@ fn create_desc_set_camera(
     descriptor_pool: Arc<DescriptorPool>,
 ) -> anyhow::Result<Arc<DescriptorSet>> {
     let desc_set_layout_props =
-        DescriptorSetLayoutProperties::new(vec![DescriptorSetLayoutBinding {
+        DescriptorSetLayoutProperties::new_default(vec![DescriptorSetLayoutBinding {
             binding: descriptor::BINDING_CAMERA,
             descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
             descriptor_count: 1,
@@ -194,7 +198,17 @@ fn write_desc_set_camera(
     Ok(())
 }
 
-fn create_desc_set_gbuffers(
+fn create_desc_sets_gbuffer(
+    descriptor_pool: Arc<DescriptorPool>,
+    framebuffer_count: usize,
+) -> anyhow::Result<Vec<Arc<DescriptorSet>>> {
+    (0..framebuffer_count)
+        .into_iter()
+        .map(|_| create_desc_set_gbuffer(descriptor_pool.clone()))
+        .collect::<anyhow::Result<Vec<_>>>()
+}
+
+fn create_desc_set_gbuffer(
     descriptor_pool: Arc<DescriptorPool>,
 ) -> anyhow::Result<Arc<DescriptorSet>> {
     let mut desc_set_layout_props = DescriptorSetLayoutProperties::default();
@@ -227,8 +241,23 @@ fn create_desc_set_gbuffers(
     Ok(Arc::new(desc_set))
 }
 
-fn write_desc_set_gbuffers(
-    desc_set_gbuffers: &DescriptorSet,
+fn write_desc_sets_gbuffer(
+    desc_sets_gbuffer: &Vec<Arc<DescriptorSet>>,
+    normal_buffer: &ImageView<Image>,
+    primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
+) -> anyhow::Result<()> {
+    for i in 0..desc_sets_gbuffer.len() {
+        write_desc_set_gbuffer(
+            desc_sets_gbuffer[i].as_ref(),
+            normal_buffer,
+            primitive_id_buffers[i].as_ref(),
+        )?;
+    }
+    Ok(())
+}
+
+fn write_desc_set_gbuffer(
+    desc_set_gbuffer: &DescriptorSet,
     normal_buffer: &impl ImageViewAccess,
     primitive_id_buffer: &impl ImageViewAccess,
 ) -> anyhow::Result<()> {
@@ -246,13 +275,13 @@ fn write_desc_set_gbuffers(
 
     let descriptor_writes = [
         vk::WriteDescriptorSet::builder()
-            .dst_set(desc_set_gbuffers.handle())
+            .dst_set(desc_set_gbuffer.handle())
             .dst_binding(descriptor::BINDING_NORMAL)
             .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
             .image_info(&[normal_buffer_info])
             .build(),
         vk::WriteDescriptorSet::builder()
-            .dst_set(desc_set_gbuffers.handle())
+            .dst_set(desc_set_gbuffer.handle())
             .dst_binding(descriptor::BINDING_PRIMITIVE_ID)
             .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
             .image_info(&[primitive_id_buffer_info])
@@ -260,7 +289,7 @@ fn write_desc_set_gbuffers(
     ];
 
     unsafe {
-        desc_set_gbuffers
+        desc_set_gbuffer
             .device()
             .inner()
             .update_descriptor_sets(&descriptor_writes, &[]);
@@ -290,25 +319,7 @@ fn create_pipeline(
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
 ) -> anyhow::Result<Arc<GraphicsPipeline>> {
-    let vert_shader = Arc::new(
-        ShaderModule::new_from_file(device.clone(), VERT_SHADER_PATH)
-            .context("creating lighting pass vertex shader")?,
-    );
-    let vert_stage = ShaderStage::new(
-        vk::ShaderStageFlags::VERTEX,
-        vert_shader,
-        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
-    );
-
-    let frag_shader = Arc::new(
-        ShaderModule::new_from_file(device.clone(), FRAG_SHADER_PATH)
-            .context("creating lighting pass fragment shader")?,
-    );
-    let frag_stage = ShaderStage::new(
-        vk::ShaderStageFlags::FRAGMENT,
-        frag_shader,
-        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
-    );
+    let (vert_stage, frag_stage) = create_shader_stages(&device)?;
 
     let dynamic_state =
         DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
@@ -336,8 +347,71 @@ fn create_pipeline(
     Ok(Arc::new(pipeline))
 }
 
+#[cfg(feature = "include-spirv-bytes")]
+fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
+    let mut vertex_spv_file = std::io::Cursor::new(
+        &include_bytes!("../../assets/shader_binaries/full_screen.vert.spv")[..],
+    );
+    let vert_shader = Arc::new(
+        ShaderModule::new_from_spirv(device.clone(), &mut vertex_spv_file)
+            .context("creating lighting pass vertex shader")?,
+    );
+    let vert_stage = ShaderStage::new(
+        vk::ShaderStageFlags::VERTEX,
+        vert_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
+    );
+
+    let mut frag_spv_file = std::io::Cursor::new(
+        &include_bytes!("../../assets/shader_binaries/scene_lighting.frag.spv")[..],
+    );
+    let frag_shader = Arc::new(
+        ShaderModule::new_from_spirv(device.clone(), &mut frag_spv_file)
+            .context("creating lighting pass fragment shader")?,
+    );
+    let frag_stage = ShaderStage::new(
+        vk::ShaderStageFlags::FRAGMENT,
+        frag_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
+    );
+
+    Ok((vert_stage, frag_stage))
+}
+
+#[cfg(not(feature = "include-spirv-bytes"))]
+fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
+    const VERT_SHADER_PATH: &str = "assets/shader_binaries/full_screen.vert.spv";
+    const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_lighting.frag.spv";
+
+    let vert_shader = Arc::new(
+        ShaderModule::new_from_file(device.clone(), VERT_SHADER_PATH)
+            .context("creating lighting pass vertex shader")?,
+    );
+    let vert_stage = ShaderStage::new(
+        vk::ShaderStageFlags::VERTEX,
+        vert_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
+    );
+
+    let frag_shader = Arc::new(
+        ShaderModule::new_from_file(device.clone(), FRAG_SHADER_PATH)
+            .context("creating lighting pass fragment shader")?,
+    );
+    let frag_stage = ShaderStage::new(
+        vk::ShaderStageFlags::FRAGMENT,
+        frag_shader,
+        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+        None,
+    );
+
+    Ok((vert_stage, frag_stage))
+}
+
 impl Drop for LightingPass {
     fn drop(&mut self) {
-        debug!("dropping lighting pass...");
+        trace!("dropping lighting pass...");
     }
 }
