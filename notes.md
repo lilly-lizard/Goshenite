@@ -24,7 +24,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - smooth union op (curved combination)
 - surface noise modifiers
 - render outline on selected object
-- can we do without Rc<RefCell<>>?
 - curl noise field
 - scroll zoom proportional to distance (try scrolling on trackpad) and don't want to scroll out other side
 - replace UniqueId type aliases with structs or enums to have explicit conversions and rules
