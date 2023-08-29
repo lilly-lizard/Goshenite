@@ -4,7 +4,7 @@ use crate::{
             object::ObjectId,
             object_collection::ObjectCollection,
             operation::Operation,
-            primitive_op::{PrimitiveOp, PrimitiveOpId},
+            primitive_op::{PrimitiveOpId, PrimitiveOpWithId},
         },
         primitives::primitive::Primitive,
     },
@@ -81,12 +81,12 @@ impl GuiState {
     /// `target_prim_op_index`. If `primitive_ops` is empty, deselects primitive op in `self`.
     pub fn select_primitive_op_closest_index(
         &mut self,
-        primitive_ops: &Vec<PrimitiveOp>,
+        primitive_ops: &Vec<PrimitiveOpWithId>,
         target_prim_op_index: usize,
     ) {
         if let Some(select_index) = choose_closest_valid_index(primitive_ops, target_prim_op_index)
         {
-            let select_primitive_op_id = primitive_ops[select_index].id();
+            let select_primitive_op_id = primitive_ops[select_index].0;
             self.set_selected_primitive_op_id(select_primitive_op_id)
         } else {
             self.deselect_primitive_op();

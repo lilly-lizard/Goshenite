@@ -9,7 +9,7 @@ use crate::{
             object::{Object, ObjectId},
             object_collection::ObjectCollection,
             operation::Operation,
-            primitive_op::{PrimitiveOp, PrimitiveOpId},
+            primitive_op::{PrimitiveOp, PrimitiveOpId, PrimitiveOpWithId},
         },
         primitives::{
             cube::Cube,
@@ -128,7 +128,7 @@ pub fn primitive_op_list(
     let selected_prim_op = match gui_state.selected_primitive_op_id() {
         Some(selected_prim_op_id) => {
             match selected_object.get_primitive_op(selected_prim_op_id) {
-                Some((selected_prim_op, _index)) => Some(selected_prim_op),
+                Some((selected_prim_op, _index)) => Some((selected_prim_op_id, selected_prim_op)),
                 None => {
                     // selected_prim_op_id not in selected_obejct! invalid id so we set to none
                     gui_state.deselect_primitive_op();
@@ -141,32 +141,32 @@ pub fn primitive_op_list(
 
     // draw each item in the primitive op list
     let mut prim_op_list_drag_state = gui_state.primtive_op_list().clone();
-    let drag_drop_response = prim_op_list_drag_state.list_ui::<PrimitiveOp>(
+    let drag_drop_response = prim_op_list_drag_state.list_ui::<PrimitiveOpWithId>(
         ui,
         selected_object.primitive_ops.iter(),
         // function to draw a single primitive op entry in the list
-        |ui, drag_handle, index, primitive_op| {
+        |ui, drag_handle, index, primitive_op_with_id| {
             let draggable_text =
                 RichText::new(format!("{}", index)).text_style(TextStyle::Monospace);
 
             // label text
             let primitive_op_text = RichText::new(format!(
                 "{} {}",
-                primitive_op.op.name(),
-                primitive_op.primitive.type_name()
+                primitive_op_with_id.1.op.name(),
+                primitive_op_with_id.1.primitive.type_name()
             ))
             .text_style(TextStyle::Monospace);
 
             // check if this primitive op is selected
             let is_selected = match selected_prim_op {
-                Some(some_selected_prim_op) => some_selected_prim_op.id() == primitive_op.id(),
+                Some(some_selected_prim_op) => some_selected_prim_op.0 == primitive_op_with_id.0,
                 None => false,
             };
 
             // draw ui for this primitive op
             ui.horizontal(|ui_h| {
                 // anything inside the handle can be used to drag the item
-                drag_handle.ui(ui_h, primitive_op, |handle_ui| {
+                drag_handle.ui(ui_h, primitive_op_with_id, |handle_ui| {
                     handle_ui.label(draggable_text);
                 });
 
@@ -175,7 +175,7 @@ pub fn primitive_op_list(
 
                 // if clicked, select it
                 if prim_op_res.clicked() {
-                    gui_state.set_selected_primitive_op_id(primitive_op.id());
+                    gui_state.set_selected_primitive_op_id(primitive_op_with_id.0);
                 }
             });
         },
@@ -485,8 +485,8 @@ pub fn cube_editor_ui_fields(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &
     something_changed
 }
 
-impl DragableItem for PrimitiveOp {
+impl DragableItem for PrimitiveOpWithId {
     fn drag_id(&self) -> egui::Id {
-        egui::Id::new(format!("p-op-drag{}", self.id()))
+        egui::Id::new(format!("p-op-drag{}", self.0))
     }
 }

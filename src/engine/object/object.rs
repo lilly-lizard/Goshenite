@@ -1,6 +1,6 @@
 use super::{
     operation::Operation,
-    primitive_op::{PrimitiveOp, PrimitiveOpDuplicate, PrimitiveOpId},
+    primitive_op::{PrimitiveOp, PrimitiveOpId, PrimitiveOpWithId},
 };
 use crate::{
     engine::{
@@ -48,7 +48,7 @@ pub struct Object {
     id: ObjectId,
     pub name: String,
     pub origin: Vec3,
-    pub primitive_ops: Vec<PrimitiveOp>,
+    pub primitive_ops: Vec<PrimitiveOpWithId>,
 
     primitive_op_id_gen: UniqueIdGen,
 }
@@ -64,15 +64,22 @@ impl Object {
         }
     }
 
-    pub fn remove_primitive_op(&mut self, id: PrimitiveOpId) -> Result<(), CollectionError> {
-        let index = self.primitive_ops.iter().position(|p_op| p_op.id() == id);
+    pub fn remove_primitive_op(
+        &mut self,
+        prim_op_id: PrimitiveOpId,
+    ) -> Result<(), CollectionError> {
+        let index = self
+            .primitive_ops
+            .iter()
+            .position(|PrimitiveOpWithId(prim_op_id_iter, _p_op)| *prim_op_id_iter == prim_op_id);
+
         if let Some(index) = index {
             self.primitive_ops.remove(index);
-            Ok(())
+            return Ok(());
         } else {
-            Err(CollectionError::InvalidId {
-                raw_id: id.raw_id(),
-            })
+            return Err(CollectionError::InvalidId {
+                raw_id: prim_op_id.raw_id(),
+            });
         }
         // todo recycle_id (for primitive too? on drop?)
     }
@@ -96,11 +103,13 @@ impl Object {
             .primitive_op_id_gen
             .new_id()
             .expect("todo should probably handle this somehow...");
-        let id = PrimitiveOpId(new_raw_id);
+        let pop_id = PrimitiveOpId(new_raw_id);
 
-        self.primitive_ops
-            .push(PrimitiveOp::new(id, operation, primitive));
-        id
+        self.primitive_ops.push(PrimitiveOpWithId(
+            pop_id,
+            PrimitiveOp::new(operation, primitive),
+        ));
+        pop_id
     }
 
     pub fn shift_primitive_ops(
@@ -114,20 +123,12 @@ impl Object {
     /// Create `ObjectDuplicate` containing the same primitive data as `self`. This is needed because
     /// `Object`s can't be cloned as their `id`s must be unique.
     pub fn duplicate(&self) -> ObjectDuplicate {
-        let primitive_op_duplicates = self.primitive_op_duplicates();
         ObjectDuplicate {
             id: self.id,
             name: self.name.clone(),
             origin: self.origin,
-            primitive_op_duplicates,
+            primitive_ops: self.primitive_ops.clone(),
         }
-    }
-
-    pub fn primitive_op_duplicates(&self) -> Vec<PrimitiveOpDuplicate> {
-        self.primitive_ops
-            .iter()
-            .map(|p_op| p_op.duplicate())
-            .collect()
     }
 
     // Getters
@@ -137,31 +138,41 @@ impl Object {
     }
 
     /// If found, returns a ref to the primitive op and the vec index
-    pub fn get_primitive_op(&self, id: PrimitiveOpId) -> Option<(&PrimitiveOp, usize)> {
-        self.primitive_ops
-            .iter()
-            .enumerate()
-            .find_map(|(index, prim_op)| {
-                if prim_op.id() == id {
+    pub fn get_primitive_op(&self, prim_op_id: PrimitiveOpId) -> Option<(&PrimitiveOp, usize)> {
+        self.primitive_ops.iter().enumerate().find_map(
+            |(index, PrimitiveOpWithId(prim_op_id_iter, prim_op))| {
+                if *prim_op_id_iter == prim_op_id {
                     Some((prim_op, index))
                 } else {
                     None
                 }
-            })
+            },
+        )
     }
 
-    /// If found, returns a mutable ref to the primitive op and the vec index
-    pub fn get_primitive_op_mut(&mut self, id: PrimitiveOpId) -> Option<(&mut PrimitiveOp, usize)> {
-        self.primitive_ops
-            .iter_mut()
-            .enumerate()
-            .find_map(|(index, prim_op)| {
-                if prim_op.id() == id {
-                    Some((prim_op, index))
+    pub fn set_primitive_op(
+        &mut self,
+        prim_op_id: PrimitiveOpId,
+        primitive_op_data: PrimitiveOp,
+    ) -> Result<(), CollectionError> {
+        let primitive_op_search_res = self.primitive_ops.iter_mut().enumerate().find_map(
+            |(index, PrimitiveOpWithId(prim_op_id_iter, prim_op))| {
+                if *prim_op_id_iter == prim_op_id {
+                    Some(prim_op)
                 } else {
                     None
                 }
-            })
+            },
+        );
+
+        if let Some(primitive_op) = primitive_op_search_res {
+            *primitive_op = primitive_op_data;
+            return Ok(());
+        } else {
+            return Err(CollectionError::InvalidId {
+                raw_id: prim_op_id.raw_id(),
+            });
+        }
     }
 }
 
@@ -174,7 +185,7 @@ pub struct ObjectDuplicate {
     id: ObjectId,
     pub name: String,
     pub origin: Vec3,
-    pub primitive_op_duplicates: Vec<PrimitiveOpDuplicate>,
+    pub primitive_ops: Vec<PrimitiveOpWithId>,
 }
 
 impl ObjectDuplicate {
@@ -186,10 +197,10 @@ impl ObjectDuplicate {
 impl ObjectDuplicate {
     pub fn encoded_primitive_ops(&self) -> Vec<PrimitiveOpBufferUnit> {
         // avoiding this case should be the responsibility of the functions adding to `primtive_ops`
-        debug_assert!(self.primitive_op_duplicates.len() <= MAX_PRIMITIVE_OP_COUNT);
+        debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);
 
         let mut encoded_primitives = Vec::<PrimitiveOpPacket>::new();
-        for primitive_op in &self.primitive_op_duplicates {
+        for PrimitiveOpWithId(_primitive_op_id, primitive_op) in &self.primitive_ops {
             let op_code = primitive_op.op.op_code();
             let primitive_type_code = primitive_op.primitive.type_code();
 
@@ -199,7 +210,7 @@ impl ObjectDuplicate {
             let packet = create_primitive_op_packet(op_code, primitive_type_code, transform, props);
             encoded_primitives.push(packet);
         }
-        if self.primitive_op_duplicates.len() == 0 {
+        if self.primitive_ops.len() == 0 {
             // having no primitive ops would probably break something on the gpu side so lets put a NOP here...
             let packet = nop_primitive_op_packet();
             encoded_primitives.push(packet);
@@ -207,7 +218,7 @@ impl ObjectDuplicate {
 
         let mut encoded_object = vec![
             self.id.raw_id() as PrimitiveOpBufferUnit,
-            self.primitive_op_duplicates.len() as PrimitiveOpBufferUnit,
+            self.primitive_ops.len() as PrimitiveOpBufferUnit,
         ];
         let encoded_primitives_flattened =
             encoded_primitives.into_iter().flatten().collect::<Vec<_>>();
@@ -217,7 +228,7 @@ impl ObjectDuplicate {
 
     pub fn aabb(&self) -> Aabb {
         let mut aabb = Aabb::new_zero();
-        for primitive_op in &self.primitive_op_duplicates {
+        for PrimitiveOpWithId(_primitive_op_id, primitive_op) in &self.primitive_ops {
             aabb.union(primitive_op.primitive.aabb());
         }
         aabb.offset(self.origin);
