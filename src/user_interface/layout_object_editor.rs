@@ -1,4 +1,5 @@
 use super::{
+    camera::Camera,
     config_ui,
     gui::EditState,
     gui_state::{GuiState, DRAG_INC},
@@ -30,6 +31,7 @@ use log::{debug, error, info, trace, warn};
 
 pub fn object_editor_layout(
     ui: &mut egui::Ui,
+    camera: &mut Camera,
     gui_state: &mut GuiState,
     object_collection: &mut ObjectCollection,
 ) {
@@ -58,7 +60,8 @@ pub fn object_editor_layout(
 
     let mut object_edit_state = EditState::NoChange;
 
-    object_edit_state = object_properties_editor(ui, selected_object).combine(object_edit_state);
+    object_edit_state =
+        object_properties_editor(ui, camera, selected_object).combine(object_edit_state);
 
     object_edit_state =
         primitive_op_editor(ui, gui_state, selected_object).combine(object_edit_state);
@@ -71,7 +74,11 @@ pub fn object_editor_layout(
     }
 }
 
-pub fn object_properties_editor(ui: &mut egui::Ui, object: &mut Object) -> EditState {
+pub fn object_properties_editor(
+    ui: &mut egui::Ui,
+    camera: &mut Camera,
+    object: &mut Object,
+) -> EditState {
     let mut object_edit_state = EditState::NoChange;
 
     ui.separator();
@@ -81,13 +88,15 @@ pub fn object_properties_editor(ui: &mut egui::Ui, object: &mut Object) -> EditS
 
     ui.horizontal(|ui| {
         ui.label("Origin:");
-        ui.add(DragValue::new(&mut origin_mut.x).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut origin_mut.x).speed(DRAG_INC))
+            .changed();
         ui.add(DragValue::new(&mut origin_mut.y).speed(DRAG_INC));
         ui.add(DragValue::new(&mut origin_mut.z).speed(DRAG_INC));
     });
 
     if original_origin != origin_mut {
         object.origin = origin_mut;
+        camera.set_lock_on_target_from_object(object);
         object_edit_state = EditState::Modified;
     }
 

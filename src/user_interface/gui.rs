@@ -107,7 +107,7 @@ impl Gui {
             self.object_list_window(object_collection, camera);
         }
         if self.window_states.object_editor {
-            self.object_editor_window(object_collection);
+            self.object_editor_window(object_collection, camera);
         }
         if self.window_states.camera_control {
             self.camera_control_window(camera);
@@ -192,12 +192,16 @@ impl Gui {
             .show(&self.context, add_contents);
     }
 
-    fn object_editor_window(&mut self, object_collection: &mut ObjectCollection) {
+    fn object_editor_window(
+        &mut self,
+        object_collection: &mut ObjectCollection,
+        camera: &mut Camera,
+    ) {
         let add_contents = |ui: &mut egui::Ui| {
             if EGUI_TRACE {
                 egui::trace!(ui);
             }
-            object_editor_layout(ui, &mut self.gui_state, object_collection);
+            object_editor_layout(ui, camera, &mut self.gui_state, object_collection);
         };
 
         egui::Window::new("Object Editor")

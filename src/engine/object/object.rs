@@ -124,7 +124,6 @@ impl Object {
     /// `Object`s can't be cloned as their `id`s must be unique.
     pub fn duplicate(&self) -> ObjectDuplicate {
         ObjectDuplicate {
-            id: self.id,
             name: self.name.clone(),
             origin: self.origin,
             primitive_ops: self.primitive_ops.clone(),
@@ -182,20 +181,13 @@ impl Object {
 /// cloned as their `id`s must be unique.
 #[derive(Clone)]
 pub struct ObjectDuplicate {
-    id: ObjectId,
     pub name: String,
     pub origin: Vec3,
     pub primitive_ops: Vec<PrimitiveOpWithId>,
 }
 
 impl ObjectDuplicate {
-    pub fn id(&self) -> ObjectId {
-        self.id
-    }
-}
-
-impl ObjectDuplicate {
-    pub fn encoded_primitive_ops(&self) -> Vec<PrimitiveOpBufferUnit> {
+    pub fn encoded_primitive_ops(&self, object_id: ObjectId) -> Vec<PrimitiveOpBufferUnit> {
         // avoiding this case should be the responsibility of the functions adding to `primtive_ops`
         debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);
 
@@ -217,7 +209,7 @@ impl ObjectDuplicate {
         }
 
         let mut encoded_object = vec![
-            self.id.raw_id() as PrimitiveOpBufferUnit,
+            object_id.raw_id() as PrimitiveOpBufferUnit,
             self.primitive_ops.len() as PrimitiveOpBufferUnit,
         ];
         let encoded_primitives_flattened =

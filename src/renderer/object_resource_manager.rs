@@ -392,7 +392,7 @@ impl ObjectResourceManager {
             object_id
         );
 
-        let data = object.encoded_primitive_ops();
+        let data = object.encoded_primitive_ops(object_id);
         let data_size = std::mem::size_of_val(data.as_slice()) as vk::DeviceSize;
 
         let buffer_props = BufferProperties::new_default(
