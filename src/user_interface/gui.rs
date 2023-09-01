@@ -14,6 +14,20 @@ use egui_winit::EventResponse;
 use log::{debug, error, info, trace, warn};
 use winit::{event_loop::EventLoopWindowTarget, window::Window};
 
+/// Describes how something has been edited/added/removed by a function
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum EditState {
+    NoChange,
+    Modified,
+    Removed,
+}
+
+impl EditState {
+    pub fn combine(self, other: Self) -> Self {
+        self.max(other)
+    }
+}
+
 /// Controller for an [`egui`] immediate-mode gui
 pub struct Gui {
     context: egui::Context,

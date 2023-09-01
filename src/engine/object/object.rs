@@ -156,7 +156,7 @@ impl Object {
         primitive_op_data: PrimitiveOp,
     ) -> Result<(), CollectionError> {
         let primitive_op_search_res = self.primitive_ops.iter_mut().enumerate().find_map(
-            |(index, PrimitiveOpWithId(prim_op_id_iter, prim_op))| {
+            |(_index, PrimitiveOpWithId(prim_op_id_iter, prim_op))| {
                 if *prim_op_id_iter == prim_op_id {
                     Some(prim_op)
                 } else {

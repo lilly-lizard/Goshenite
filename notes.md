@@ -43,6 +43,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## bugz!
 
+- not handling primitive op index rearrange properly
 - update target pos when selected object moves (requires moving stuff out of gui and into engine...)
 - CursorState not initialized properly! e.g. cursor position 0,0 at start so start dragging before moving it and a big jump occurs. also check latest winit in case querying was made better?
 
