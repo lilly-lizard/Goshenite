@@ -1,6 +1,7 @@
 use super::config_ui;
 use glam::DVec2;
-use log::debug;
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 use winit::event::{ElementState, MouseScrollDelta};
 
 /// Records and processes the state of the mouse cursor
@@ -15,9 +16,9 @@ pub struct Cursor {
     /// The change in cursor position since the previous frame
     position_frame_change: DVec2,
     /// Describes wherever each mouse button is pressed
-    is_pressed: ButtonStates,
+    button_states: ButtonStates,
     /// Describes the state of the mouse buttons in the previous frame. Used to determine [`Cursor::which_dragging`]
-    is_pressed_previous: ButtonStates,
+    button_states_previous: ButtonStates,
     /// Which button (if any) is currently dragging (if multiple, set to the first)
     which_dragging: Option<MouseButton>,
     /// Horizontal/vertical scrolling since last call to [`get_and_clear_scroll_delta`](Self::get_and_clear_scroll_delta).
@@ -33,8 +34,8 @@ impl Cursor {
             position: None, // because there's (currenlty) no way to know the initial cursor position until the first `WindowEvent::CursorMoved` event
             position_previous: None,
             position_frame_change: DVec2::ZERO,
-            is_pressed: Default::default(),
-            is_pressed_previous: Default::default(),
+            button_states: Default::default(),
+            button_states_previous: Default::default(),
             which_dragging: None,
             scroll_delta: DVec2::ZERO,
             cursor_icon: None,
@@ -62,11 +63,16 @@ impl Cursor {
         state: ElementState,
         captured_by_gui: bool,
     ) {
+        if captured_by_gui {
+            return;
+        }
+
         match MouseButton::from_winit(winit_button) {
-            Ok(button) => self
-                .is_pressed
-                // button is only set to pressed when cursor hasn't been captured by e.g. gui
-                .set(button, !captured_by_gui && state == ElementState::Pressed),
+            Ok(button) => {
+                self.button_states
+                    // button is only set to pressed when cursor hasn't been captured by e.g. gui
+                    .set(button, state)
+            }
             Err(e) => debug!("set_click_state: {}", e),
         };
     }
@@ -106,7 +112,7 @@ impl Cursor {
         // dragging logic
         if let Some(dragging_button) = self.which_dragging {
             // if which_dragging set but button released, unset which_dragging
-            if !self.is_pressed.get(dragging_button) {
+            if self.button_states.is_released(dragging_button) {
                 self.which_dragging = None;
                 self.cursor_icon = None;
             }
@@ -114,7 +120,9 @@ impl Cursor {
             // check each button
             for button in MOUSE_BUTTONS {
                 // if button held and cursor has moved, set which_dragging
-                if self.is_pressed.get(button) && self.is_pressed_previous.get(button) {
+                if self.button_states.is_pressed(button)
+                    && self.button_states_previous.is_pressed(button)
+                {
                     if has_moved {
                         self.which_dragging = Some(button);
                         self.cursor_icon = Some(egui::CursorIcon::Grabbing);
@@ -124,7 +132,7 @@ impl Cursor {
             }
         }
         // update previous pressed state
-        self.is_pressed_previous = self.is_pressed;
+        self.button_states_previous = self.button_states;
     }
 
     pub fn get_cursor_icon(&self) -> Option<egui::CursorIcon> {
@@ -180,28 +188,63 @@ impl MouseButton {
     }
 }
 
-/// Boolean value for each supported mouse button
-#[derive(Default, Clone, Copy)]
-struct ButtonStates {
-    pub left: bool,
-    pub right: bool,
-    pub middle: bool,
-    //button_4: ElementState,
-    //button_5: ElementState,
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ButtonState {
+    Released,
+    Pressed,
+    Held,
 }
+
+impl Default for ButtonState {
+    fn default() -> Self {
+        Self::Released
+    }
+}
+
+#[derive(Default, Clone, Copy)]
+struct MouseButtonStates {
+    left: ButtonState,
+    right: ButtonState,
+    middle: ButtonState,
+
+    previous_left: ButtonState,
+    previous_right: ButtonState,
+    previous_middle: ButtonState,
+}
+
 impl ButtonStates {
-    fn set(&mut self, button: MouseButton, state: bool) {
+    fn set(&mut self, button: MouseButton, state: ElementState) {
         match button {
             MouseButton::Left => self.left = state,
             MouseButton::Right => self.right = state,
             MouseButton::Middle => self.middle = state,
         }
     }
-    fn get(&self, button: MouseButton) -> bool {
+
+    fn incriment_drag(&mut self) {
+        todo!("drag logic");
+    }
+
+    fn get(&self, button: MouseButton) -> ElementState {
         match button {
             MouseButton::Left => self.left,
             MouseButton::Right => self.right,
             MouseButton::Middle => self.middle,
         }
+    }
+
+    fn is_pressed(&self, button: MouseButton) -> bool {
+        let state = self.get(button);
+        state == ElementState::Pressed
+    }
+
+    fn is_released(&self, button: MouseButton) -> bool {
+        let state = self.get(button);
+        state == ElementState::Released
+    }
+
+    fn is_held(&self, button: MouseButton) -> bool {
+        let state = self.get(button);
+        state == ButtonState::Held
     }
 }
