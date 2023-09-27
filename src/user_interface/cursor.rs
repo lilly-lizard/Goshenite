@@ -16,9 +16,7 @@ pub struct Cursor {
     /// The change in cursor position since the previous frame
     position_frame_change: DVec2,
     /// Describes wherever each mouse button is pressed
-    button_states: ButtonStates,
-    /// Describes the state of the mouse buttons in the previous frame. Used to determine [`Cursor::which_dragging`]
-    button_states_previous: ButtonStates,
+    button_states: MouseButtonStates,
     /// Which button (if any) is currently dragging (if multiple, set to the first)
     which_dragging: Option<MouseButton>,
     /// Horizontal/vertical scrolling since last call to [`get_and_clear_scroll_delta`](Self::get_and_clear_scroll_delta).
@@ -35,7 +33,6 @@ impl Cursor {
             position_previous: None,
             position_frame_change: DVec2::ZERO,
             button_states: Default::default(),
-            button_states_previous: Default::default(),
             which_dragging: None,
             scroll_delta: DVec2::ZERO,
             cursor_icon: None,
@@ -69,9 +66,8 @@ impl Cursor {
 
         match MouseButton::from_winit(winit_button) {
             Ok(button) => {
-                self.button_states
-                    // button is only set to pressed when cursor hasn't been captured by e.g. gui
-                    .set(button, state)
+                // button is only set to pressed when cursor hasn't been captured by e.g. gui
+                self.button_states.set(button, state)
             }
             Err(e) => debug!("set_click_state: {}", e),
         };
@@ -110,6 +106,7 @@ impl Cursor {
         self.position_previous = self.position;
 
         // dragging logic
+        self.button_states.increment_frame();
         if let Some(dragging_button) = self.which_dragging {
             // if which_dragging set but button released, unset which_dragging
             if self.button_states.is_released(dragging_button) {
@@ -120,19 +117,16 @@ impl Cursor {
             // check each button
             for button in MOUSE_BUTTONS {
                 // if button held and cursor has moved, set which_dragging
-                if self.button_states.is_pressed(button)
-                    && self.button_states_previous.is_pressed(button)
-                {
+                if self.button_states.is_held(button) {
                     if has_moved {
                         self.which_dragging = Some(button);
                         self.cursor_icon = Some(egui::CursorIcon::Grabbing);
-                        break; // priority given to the order of `MOUSE_BUTTONS`
+                        // priority given to the order of `MOUSE_BUTTONS`
+                        break;
                     }
                 }
             }
         }
-        // update previous pressed state
-        self.button_states_previous = self.button_states;
     }
 
     pub fn get_cursor_icon(&self) -> Option<egui::CursorIcon> {
@@ -162,8 +156,8 @@ pub enum MouseButton {
     Left,
     Right,
     Middle,
-    //Button4,
-    //Button5,
+    Button4,
+    Button5,
 }
 
 /// List of available [`MouseButton`] enum variations. Note that the order affects the priority for things like dragging logic.
@@ -176,9 +170,10 @@ impl MouseButton {
             winit::event::MouseButton::Right => Ok(Self::Right),
             winit::event::MouseButton::Middle => Ok(Self::Middle),
             winit::event::MouseButton::Other(code) => match code {
-                // todo check what actual button4/5 numbers turn up here
-                //4 => Ok(&self.button_4),
-                //5 => Ok(&self.button_5),
+                #[cfg(target_os = "linux")]
+                8 => Ok(Self::Button4),
+                #[cfg(target_os = "linux")]
+                9 => Ok(Self::Button5),
                 _ => Err(format!(
                     "attempted to index unsupported mouse button code: {}",
                     code
@@ -195,9 +190,37 @@ pub enum ButtonState {
     Held,
 }
 
+impl ButtonState {
+    pub fn is_released(&self) -> bool {
+        *self == Self::Released
+    }
+
+    pub fn is_pressed(&self) -> bool {
+        *self == Self::Pressed
+    }
+
+    pub fn is_held(&self) -> bool {
+        *self == Self::Held
+    }
+
+    /// Button is pressed or held
+    pub fn is_down(&self) -> bool {
+        self.is_pressed() || self.is_held()
+    }
+}
+
 impl Default for ButtonState {
     fn default() -> Self {
         Self::Released
+    }
+}
+
+impl From<ElementState> for ButtonState {
+    fn from(value: ElementState) -> Self {
+        match value {
+            ElementState::Pressed => Self::Pressed,
+            ElementState::Released => Self::Released,
+        }
     }
 }
 
@@ -206,45 +229,87 @@ struct MouseButtonStates {
     left: ButtonState,
     right: ButtonState,
     middle: ButtonState,
+    button_4: ButtonState,
+    button_5: ButtonState,
 
     previous_left: ButtonState,
     previous_right: ButtonState,
     previous_middle: ButtonState,
+    previous_button_4: ButtonState,
+    previous_button_5: ButtonState,
 }
 
-impl ButtonStates {
-    fn set(&mut self, button: MouseButton, state: ElementState) {
+impl MouseButtonStates {
+    /// Call this every frame. This is needed to determine if buttons are being held down by
+    /// checking the button state from the last time this function was called.
+    fn increment_frame(&mut self) {
+        Self::increment_frame_via_button_pointer(&mut self.left, &mut self.previous_left);
+        Self::increment_frame_via_button_pointer(&mut self.right, &mut self.previous_right);
+        Self::increment_frame_via_button_pointer(&mut self.middle, &mut self.previous_middle);
+        Self::increment_frame_via_button_pointer(&mut self.button_4, &mut self.previous_button_4);
+        Self::increment_frame_via_button_pointer(&mut self.button_5, &mut self.previous_button_5);
+    }
+
+    #[inline]
+    fn increment_frame_via_button_pointer(
+        button: &mut ButtonState,
+        previous_button: &mut ButtonState,
+    ) {
+        if button.is_down() && previous_button.is_down() {
+            *button = ButtonState::Held;
+        }
+        *previous_button = *button;
+    }
+
+    pub fn set(&mut self, button: MouseButton, winit_state: ElementState) {
+        let state: ButtonState = winit_state.into();
         match button {
-            MouseButton::Left => self.left = state,
-            MouseButton::Right => self.right = state,
-            MouseButton::Middle => self.middle = state,
+            MouseButton::Left => {
+                Self::set_via_button_pointer(&mut self.left, self.previous_left, state)
+            }
+            MouseButton::Right => {
+                Self::set_via_button_pointer(&mut self.right, self.previous_right, state)
+            }
+            MouseButton::Middle => {
+                Self::set_via_button_pointer(&mut self.middle, self.previous_middle, state)
+            }
+            MouseButton::Button4 => {
+                Self::set_via_button_pointer(&mut self.button_4, self.previous_button_4, state)
+            }
+            MouseButton::Button5 => {
+                Self::set_via_button_pointer(&mut self.button_5, self.previous_button_5, state)
+            }
         }
     }
 
-    fn incriment_drag(&mut self) {
-        todo!("drag logic");
+    #[inline]
+    fn set_via_button_pointer(button: &mut ButtonState, previous: ButtonState, new: ButtonState) {
+        if new.is_pressed() && previous.is_held() {
+            // stay held
+            return;
+        }
+        *button = new;
     }
 
-    fn get(&self, button: MouseButton) -> ElementState {
+    pub fn get(&self, button: MouseButton) -> ButtonState {
         match button {
             MouseButton::Left => self.left,
             MouseButton::Right => self.right,
             MouseButton::Middle => self.middle,
+            MouseButton::Button4 => self.button_4,
+            MouseButton::Button5 => self.button_5,
         }
     }
 
-    fn is_pressed(&self, button: MouseButton) -> bool {
-        let state = self.get(button);
-        state == ElementState::Pressed
+    pub fn is_pressed(&self, button: MouseButton) -> bool {
+        self.get(button).is_pressed()
     }
 
-    fn is_released(&self, button: MouseButton) -> bool {
-        let state = self.get(button);
-        state == ElementState::Released
+    pub fn is_released(&self, button: MouseButton) -> bool {
+        self.get(button).is_released()
     }
 
-    fn is_held(&self, button: MouseButton) -> bool {
-        let state = self.get(button);
-        state == ButtonState::Held
+    pub fn is_held(&self, button: MouseButton) -> bool {
+        self.get(button).is_held()
     }
 }
