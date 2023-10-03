@@ -19,8 +19,9 @@ use crate::{
     renderer::{
         config_renderer::MINIMUM_FRAMEBUFFER_COUNT,
         vulkan_init::{
-            choose_depth_buffer_format, create_command_pool, create_device_and_queue, create_entry,
-            create_primitive_id_buffers, create_render_command_buffers, create_signalled_fence,
+            choose_depth_buffer_format, create_command_pool, create_cpu_read_staging_buffer,
+            create_device_and_queue, create_entry, create_primitive_id_buffers,
+            create_render_command_buffers, create_signalled_fence,
             shaders_should_write_linear_color,
         },
     },
@@ -87,6 +88,8 @@ pub struct RenderManager {
     framebuffer_index_last_rendered_to: usize,
     /// Can be set to true with [`Self::set_window_just_resized_flag`] and set to false in [`Self::render_frame`]
     window_just_resized: bool,
+
+    cpu_read_staging_buffer: Arc<Buffer>,
 }
 
 // Public functions
@@ -219,6 +222,8 @@ impl RenderManager {
             swapchain.properties().dimensions(),
         )?;
 
+        let cpu_read_staging_buffer = create_cpu_read_staging_buffer(memory_allocator.clone())?;
+
         let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
 
         let framebuffers = create_framebuffers(
@@ -307,6 +312,8 @@ impl RenderManager {
             framebuffer_index_currently_rendering: 0,
             framebuffer_index_last_rendered_to: 0,
             window_just_resized: false,
+
+            cpu_read_staging_buffer,
         })
     }
 

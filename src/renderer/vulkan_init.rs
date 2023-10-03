@@ -1,7 +1,7 @@
 use super::{
     config_renderer::{
-        FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER, MINIMUM_FRAMEBUFFER_COUNT,
-        VULKAN_VER_MAJ, VULKAN_VER_MIN,
+        CPU_ACCESS_BUFFER_SIZE, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER,
+        MINIMUM_FRAMEBUFFER_COUNT, VULKAN_VER_MAJ, VULKAN_VER_MIN,
     },
     shader_interfaces::{
         primitive_op_buffer::PRIMITIVE_ID_INVALID, uniform_buffers::CameraUniformBuffer,
@@ -12,10 +12,11 @@ use ash::vk;
 use bort_vk::{
     allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, Buffer,
     BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback, Device,
-    Fence, Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageView, ImageViewAccess,
-    ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, Queue, RenderPass, Subpass,
-    Surface, Swapchain, SwapchainImage, SwapchainProperties,
+    Fence, Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageProperties, ImageView,
+    ImageViewAccess, ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, Queue,
+    RenderPass, Subpass, Surface, Swapchain, SwapchainImage, SwapchainProperties,
 };
+use bort_vma::AllocationCreateInfo;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{mem, sync::Arc};
@@ -599,19 +600,45 @@ fn create_primitive_id_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
 ) -> anyhow::Result<Arc<ImageView<Image>>> {
-    let image = Image::new_tranient(
-        memory_allocator,
-        dimensions,
+    let image_properties = ImageProperties::new_default(
         FORMAT_PRIMITIVE_ID_BUFFER,
-        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
-    )
-    .context("creating primitive id buffer image")?;
+        dimensions,
+        vk::ImageUsageFlags::COLOR_ATTACHMENT
+            | vk::ImageUsageFlags::INPUT_ATTACHMENT
+            | vk::ImageUsageFlags::TRANSFER_SRC,
+    );
+
+    let allocation_info = AllocationCreateInfo {
+        required_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        ..AllocationCreateInfo::default()
+    };
+
+    let image = Image::new(memory_allocator, image_properties, allocation_info)
+        .context("creating primitive id buffer image")?;
 
     let image_view_properties =
         ImageViewProperties::from_image_properties_default(image.properties());
     let image_view = ImageView::new(Arc::new(image), image_view_properties)
         .context("creating primitive id buffer image view")?;
     Ok(Arc::new(image_view))
+}
+
+pub fn create_cpu_read_staging_buffer(
+    memory_allocator: Arc<MemoryAllocator>,
+) -> anyhow::Result<Arc<Buffer>> {
+    let buffer_properties =
+        BufferProperties::new_default(CPU_ACCESS_BUFFER_SIZE, vk::BufferUsageFlags::TRANSFER_DST);
+
+    // prefer host cached over device local because we'll be writing via gpu and reading from cpu [see here for more info](https://asawicki.info/news_1740_vulkan_memory_types_on_pc_and_how_to_use_them)
+    let allocation_info = AllocationCreateInfo {
+        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE,
+        preferred_flags: vk::MemoryPropertyFlags::HOST_COHERENT
+            | vk::MemoryPropertyFlags::HOST_CACHED,
+        ..AllocationCreateInfo::default()
+    };
+
+    let buffer = Buffer::new(memory_allocator, buffer_properties, allocation_info)?;
+    Ok(Arc::new(buffer))
 }
 
 /// Safety:

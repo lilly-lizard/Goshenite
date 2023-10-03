@@ -1,7 +1,7 @@
 use ash::vk;
 
 pub const VULKAN_VER_MAJ: u32 = 1;
-pub const VULKAN_VER_MIN: u32 = 2; // currently supported by moltenvk
+pub const VULKAN_VER_MIN: u32 = 2; // max currently supported by moltenvk
 /// If true, the renderer will attempt to enable khronos valication layer. If VK_LAYER_KHRONOS_validation
 /// is installed on the system, a debug callback will be created to log layer messages.
 pub const ENABLE_VULKAN_VALIDATION: bool = false; // todo apple... cfg!(debug_assertions); // pending https://github.com/KhronosGroup/Vulkan-ValidationLayers/issues/4891
@@ -17,3 +17,5 @@ pub const TIMEOUT_NANOSECS: u64 = 1_000_000_000;
 
 // do not change this!
 pub const MINIMUM_FRAMEBUFFER_COUNT: usize = 2;
+
+pub const CPU_ACCESS_BUFFER_SIZE: vk::DeviceSize = 1024;
