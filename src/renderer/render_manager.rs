@@ -14,7 +14,7 @@ use super::{
 };
 use crate::{
     config::ENGINE_NAME,
-    engine::object::objects_delta::ObjectsDelta,
+    engine::object::{object::ObjectId, objects_delta::ObjectsDelta, primitive_op::PrimitiveOpId},
     helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
     renderer::{
         config_renderer::MINIMUM_FRAMEBUFFER_COUNT,
@@ -477,6 +477,16 @@ impl RenderManager {
         Ok(())
     }
 
+    pub fn get_element_at_screen_coordinate(
+        &self,
+        screen_coordinate: [f32; 2],
+    ) -> anyhow::Result<ElementAtPoint> {
+        let last_primitive_id_buffer =
+            self.primitive_id_buffers[self.framebuffer_index_last_rendered_to].clone();
+
+        todo!()
+    }
+
     pub fn wait_idle_device(&self) -> anyhow::Result<()> {
         self.device.wait_idle().context("calling vkDeviceWaitIdle")
     }
@@ -495,6 +505,15 @@ impl RenderManager {
         }
         Ok(())
     }
+}
+
+pub enum ElementAtPoint {
+    Object {
+        object_id: ObjectId,
+        primitive_op_id: PrimitiveOpId,
+    },
+    Background,
+    // X, Y, Z manilulation ui elements
 }
 
 /// If there is only one swapchain image we create two framebuffers so we can access the previous
