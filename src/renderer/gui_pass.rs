@@ -121,7 +121,6 @@ impl GuiPass {
         &mut self,
         textures_delta: Vec<TexturesDelta>,
         queue: &Queue,
-        fence: Option<Arc<Fence>>,
     ) -> anyhow::Result<()> {
         // return if empty
         if textures_delta.is_empty() {
@@ -140,6 +139,8 @@ impl GuiPass {
         command_buffer
             .begin(&begin_info)
             .context("beginning gui texture upload command buffer")?;
+
+        todo!("pipeline barriers");
 
         let mut commands_recorded = false;
         let mut upload_buffers = Vec::<Buffer>::new();
@@ -174,7 +175,7 @@ impl GuiPass {
             let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffer_handles);
 
             queue
-                .submit(&[*submit_info], fence.map(|f| f.handle()))
+                .submit(&[submit_info.build()], None)
                 .context("submitting gui texture upload commands")?;
 
             return Ok(());

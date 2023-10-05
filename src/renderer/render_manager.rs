@@ -47,7 +47,8 @@ pub struct RenderManager {
     debug_callback: Option<Arc<DebugCallback>>,
 
     device: Arc<Device>,
-    render_queue: Queue,
+    render_queue: Arc<Queue>,
+    transfer_queue: Arc<Queue>,
 
     memory_allocator: Arc<MemoryAllocator>,
     command_pool: Arc<CommandPool>,
@@ -171,10 +172,12 @@ impl RenderManager {
         let CreateDeviceAndQueuesReturn {
             device,
             render_queue,
+            transfer_queue,
         } = create_device_and_queue(
             physical_device.clone(),
             debug_callback.clone(),
             render_queue_family_index,
+            transfer_queue_family_index,
         )?;
 
         let memory_allocator = Arc::new(MemoryAllocator::new(device.clone())?);
@@ -288,6 +291,7 @@ impl RenderManager {
 
             device,
             render_queue,
+            transfer_queue,
 
             memory_allocator,
             command_pool,
@@ -362,11 +366,8 @@ impl RenderManager {
     ) -> anyhow::Result<()> {
         self.wait_for_previous_frame_fence()?;
 
-        self.gui_pass.update_textures(
-            textures_delta,
-            &self.render_queue,
-            Some(self.buffer_upload_fence.clone()),
-        )?;
+        self.gui_pass
+            .update_textures(textures_delta, &self.render_queue)?;
 
         Ok(())
     }
@@ -710,22 +711,26 @@ impl RenderManager {
     ) -> Result<(), anyhow::Error> {
         let last_primitive_id_buffer =
             self.primitive_id_buffers[self.framebuffer_index_last_rendered_to].clone();
+
         let image_offset = vk::Offset3D {
             x: screen_coordinate[0].round() as i32, // todo
             y: screen_coordinate[1].round() as i32,
             z: 0,
         };
+
         let image_extent = vk::Extent3D {
             width: 1,
             height: 1,
             depth: 1,
         };
+
         let image_subresource_range = vk::ImageSubresourceRange {
             aspect_mask: vk::ImageAspectFlags::COLOR,
             level_count: 1,
             layer_count: 1,
             ..Default::default()
         };
+
         let image_memory_barrier_before_transfer = vk::ImageMemoryBarrier::builder()
             .src_access_mask(vk::AccessFlags::SHADER_READ)
             .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
@@ -733,7 +738,9 @@ impl RenderManager {
             .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
             .image(last_primitive_id_buffer.image().handle())
             .subresource_range(image_subresource_range)
-            .build();
+            .src_queue_family_index(self.render_queue.famliy_index())
+            .dst_queue_family_index(self.transfer_queue.famliy_index());
+
         let image_memory_barrier_after_transfer = vk::ImageMemoryBarrier::builder()
             .src_access_mask(vk::AccessFlags::TRANSFER_READ)
             .dst_access_mask(vk::AccessFlags::SHADER_WRITE)
@@ -741,12 +748,15 @@ impl RenderManager {
             .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .image(last_primitive_id_buffer.image().handle())
             .subresource_range(image_subresource_range)
-            .build();
+            .src_queue_family_index(self.transfer_queue.famliy_index())
+            .dst_queue_family_index(self.render_queue.famliy_index());
+
         let image_subresource_layers = vk::ImageSubresourceLayers {
             aspect_mask: vk::ImageAspectFlags::COLOR,
             layer_count: 1,
             ..Default::default()
         };
+
         let buffer_image_copy_region = vk::BufferImageCopy {
             buffer_offset: 0,
             image_subresource: image_subresource_layers,
@@ -754,12 +764,15 @@ impl RenderManager {
             image_extent,
             ..Default::default()
         };
+
         let command_buffer = self.command_buffer_copy_coordinate_data.clone();
+
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         command_buffer
             .begin(&begin_info)
             .context("beginning command buffer get_element_at_screen_coordinate")?;
+
         unsafe {
             self.device.inner().cmd_pipeline_barrier(
                 command_buffer.handle(),
@@ -789,9 +802,19 @@ impl RenderManager {
                 &[image_memory_barrier_after_transfer],
             );
         }
+
         command_buffer
             .end()
             .context("ending command buffer get_element_at_screen_coordinate")?;
+
+        let submit_info = vk::SubmitInfo::builder().command_buffers(&[command_buffer.handle()]);
+
+        unsafe {
+            self.device
+                .inner()
+                .queue_submit(self.transfer_queue.handle(), submits, fence)
+        }
+
         Ok(())
     }
 }
