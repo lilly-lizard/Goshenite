@@ -31,8 +31,8 @@ use anyhow::Context;
 use ash::vk;
 use bort_vk::{
     ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback, DebugCallbackProperties, Device,
-    Fence, Framebuffer, Image, ImageView, Instance, MemoryAllocator, Queue, RenderPass, Semaphore,
-    Surface, Swapchain, SwapchainImage,
+    Fence, Framebuffer, Image, ImageAccess, ImageView, Instance, MemoryAllocator, Queue,
+    RenderPass, Semaphore, Surface, Swapchain, SwapchainImage,
 };
 use egui::{ClippedPrimitive, TexturesDelta};
 #[allow(unused_imports)]
@@ -90,6 +90,7 @@ pub struct RenderManager {
     window_just_resized: bool,
 
     cpu_read_staging_buffer: Arc<Buffer>,
+    command_buffer_copy_coordinate_data: Arc<CommandBuffer>,
 }
 
 // Public functions
@@ -224,6 +225,13 @@ impl RenderManager {
 
         let cpu_read_staging_buffer = create_cpu_read_staging_buffer(memory_allocator.clone())?;
 
+        let command_buffer_copy_coordinate_data = Arc::new(
+            command_pool
+                .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, 1)
+                .context("allocating command buffer")?
+                .remove(0),
+        );
+
         let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
 
         let framebuffers = create_framebuffers(
@@ -314,6 +322,7 @@ impl RenderManager {
             window_just_resized: false,
 
             cpu_read_staging_buffer,
+            command_buffer_copy_coordinate_data,
         })
     }
 
@@ -488,8 +497,7 @@ impl RenderManager {
         &self,
         screen_coordinate: [f32; 2],
     ) -> anyhow::Result<ElementAtPoint> {
-        let last_primitive_id_buffer =
-            self.primitive_id_buffers[self.framebuffer_index_last_rendered_to].clone();
+        self.copy_primitive_id_at_screen_coordinate_to_buffer(screen_coordinate)?;
 
         todo!()
     }
@@ -694,6 +702,97 @@ impl RenderManager {
             return (previous_framebuffer_index + 1) % MINIMUM_FRAMEBUFFER_COUNT;
         }
         return swapchain_index;
+    }
+
+    fn copy_primitive_id_at_screen_coordinate_to_buffer(
+        &self,
+        screen_coordinate: [f32; 2],
+    ) -> Result<(), anyhow::Error> {
+        let last_primitive_id_buffer =
+            self.primitive_id_buffers[self.framebuffer_index_last_rendered_to].clone();
+        let image_offset = vk::Offset3D {
+            x: screen_coordinate[0].round() as i32, // todo
+            y: screen_coordinate[1].round() as i32,
+            z: 0,
+        };
+        let image_extent = vk::Extent3D {
+            width: 1,
+            height: 1,
+            depth: 1,
+        };
+        let image_subresource_range = vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            level_count: 1,
+            layer_count: 1,
+            ..Default::default()
+        };
+        let image_memory_barrier_before_transfer = vk::ImageMemoryBarrier::builder()
+            .src_access_mask(vk::AccessFlags::SHADER_READ)
+            .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
+            .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .image(last_primitive_id_buffer.image().handle())
+            .subresource_range(image_subresource_range)
+            .build();
+        let image_memory_barrier_after_transfer = vk::ImageMemoryBarrier::builder()
+            .src_access_mask(vk::AccessFlags::TRANSFER_READ)
+            .dst_access_mask(vk::AccessFlags::SHADER_WRITE)
+            .old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .image(last_primitive_id_buffer.image().handle())
+            .subresource_range(image_subresource_range)
+            .build();
+        let image_subresource_layers = vk::ImageSubresourceLayers {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            layer_count: 1,
+            ..Default::default()
+        };
+        let buffer_image_copy_region = vk::BufferImageCopy {
+            buffer_offset: 0,
+            image_subresource: image_subresource_layers,
+            image_offset,
+            image_extent,
+            ..Default::default()
+        };
+        let command_buffer = self.command_buffer_copy_coordinate_data.clone();
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        command_buffer
+            .begin(&begin_info)
+            .context("beginning command buffer get_element_at_screen_coordinate")?;
+        unsafe {
+            self.device.inner().cmd_pipeline_barrier(
+                command_buffer.handle(),
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::PipelineStageFlags::TRANSFER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[], // don't worry about buffer memory barriers because this funciton should be the only code that touches it and there's a fence wait after this
+                &[image_memory_barrier_before_transfer],
+            );
+
+            self.device.inner().cmd_copy_image_to_buffer(
+                command_buffer.handle(),
+                last_primitive_id_buffer.image().handle(),
+                vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+                self.cpu_read_staging_buffer.handle(),
+                &[buffer_image_copy_region],
+            );
+
+            self.device.inner().cmd_pipeline_barrier(
+                command_buffer.handle(),
+                vk::PipelineStageFlags::TRANSFER,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[],
+                &[image_memory_barrier_after_transfer],
+            );
+        }
+        command_buffer
+            .end()
+            .context("ending command buffer get_element_at_screen_coordinate")?;
+        Ok(())
     }
 }
 

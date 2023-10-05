@@ -69,6 +69,7 @@ impl LightingPass {
         })
     }
 
+    /// Call whenever the g-buffers change
     pub fn update_g_buffers(
         &mut self,
         normal_buffer: &ImageView<Image>,
