@@ -13,7 +13,7 @@ use bort_vk::{
     BufferProperties, ColorBlendState, CommandBuffer, CommandPool, CommandPoolProperties,
     DescriptorPool, DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout,
     DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
-    Fence, GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
+    GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
     ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool,
     MemoryPoolPropeties, PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue,
     RenderPass, Sampler, SamplerProperties, ShaderModule, ShaderStage, ViewportState,
@@ -120,7 +120,8 @@ impl GuiPass {
     pub fn update_textures(
         &mut self,
         textures_delta: Vec<TexturesDelta>,
-        queue: &Queue,
+        transfer_queue: &Queue,
+        render_queue_family_index: u32,
     ) -> anyhow::Result<()> {
         // return if empty
         if textures_delta.is_empty() {
@@ -140,8 +141,6 @@ impl GuiPass {
             .begin(&begin_info)
             .context("beginning gui texture upload command buffer")?;
 
-        todo!("pipeline barriers");
-
         let mut commands_recorded = false;
         let mut upload_buffers = Vec::<Buffer>::new();
 
@@ -153,8 +152,13 @@ impl GuiPass {
 
             // create new images and record upload commands
             for (id, image_delta) in textures_delta.set {
-                let add_new_texture_res =
-                    self.process_texture_data(id, image_delta, &command_buffer)?;
+                let add_new_texture_res = self.process_texture_data(
+                    id,
+                    image_delta,
+                    &command_buffer,
+                    render_queue_family_index,
+                    transfer_queue.famliy_index(),
+                )?;
 
                 if let Some(upload_buffer) = add_new_texture_res {
                     commands_recorded = true;
@@ -174,7 +178,7 @@ impl GuiPass {
             let command_buffer_handles = [command_buffer.handle()];
             let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffer_handles);
 
-            queue
+            transfer_queue
                 .submit(&[submit_info.build()], None)
                 .context("submitting gui texture upload commands")?;
 
@@ -267,6 +271,8 @@ impl GuiPass {
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
         command_buffer: &CommandBuffer,
+        render_queue_family_index: u32,
+        transfer_queue_family_index: u32,
     ) -> anyhow::Result<Option<Buffer>> {
         // todo delta.options: TextureOptions mag/min filter for sampler
 
@@ -351,13 +357,22 @@ impl GuiPass {
                     existing_image_view,
                     &texture_staging_buffer,
                     copy_region,
+                    render_queue_family_index,
+                    transfer_queue_family_index,
                 );
             }
         } else {
             // but usually `ImageDelta.pos` is `None` meaning a new image needs to be created
             debug!("creating new gui texture. id = {:?}", texture_id);
 
-            self.create_new_texture(command_buffer, &texture_staging_buffer, delta, texture_id)?;
+            self.create_new_texture(
+                command_buffer,
+                &texture_staging_buffer,
+                delta,
+                texture_id,
+                render_queue_family_index,
+                transfer_queue_family_index,
+            )?;
         }
 
         Ok(Some(texture_staging_buffer))
@@ -392,6 +407,8 @@ impl GuiPass {
         texture_staging_buffer: &Buffer,
         delta: egui::epaint::ImageDelta,
         texture_id: TextureId,
+        render_queue_family_index: u32,
+        transfer_queue_family_index: u32,
     ) -> anyhow::Result<()> {
         let new_image_properties = ImageProperties::new_default(
             TEXTURE_FORMAT,
@@ -437,6 +454,8 @@ impl GuiPass {
             .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
             .image(new_image_view.image().handle())
             .subresource_range(new_image_view.properties().subresource_range)
+            .src_queue_family_index(render_queue_family_index)
+            .dst_queue_family_index(transfer_queue_family_index)
             .build();
 
         // then transition to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
@@ -447,6 +466,8 @@ impl GuiPass {
             .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .image(new_image_view.image().handle())
             .subresource_range(new_image_view.properties().subresource_range)
+            .src_queue_family_index(transfer_queue_family_index)
+            .dst_queue_family_index(render_queue_family_index)
             .build();
 
         unsafe {
@@ -704,6 +725,8 @@ fn upload_existing_font_texture(
     existing_image_view: &ImageView<Image>,
     texture_data_buffer: &Buffer,
     copy_region: vk::BufferImageCopy,
+    render_queue_family_index: u32,
+    transfer_queue_family_index: u32,
 ) {
     // we need to transition the image layout to vk::ImageLayout::TRANSFER_DST_OPTIMAL
     let to_general_image_barrier = vk::ImageMemoryBarrier::builder()
@@ -712,7 +735,9 @@ fn upload_existing_font_texture(
         .old_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
         .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
         .image(existing_image_view.image().handle())
-        .subresource_range(existing_image_view.properties().subresource_range);
+        .subresource_range(existing_image_view.properties().subresource_range)
+        .src_queue_family_index(render_queue_family_index)
+        .dst_queue_family_index(transfer_queue_family_index);
 
     // then transition back to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
     let to_shader_read_image_barrier = vk::ImageMemoryBarrier::builder()
@@ -721,7 +746,9 @@ fn upload_existing_font_texture(
         .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
         .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
         .image(existing_image_view.image().handle())
-        .subresource_range(existing_image_view.properties().subresource_range);
+        .subresource_range(existing_image_view.properties().subresource_range)
+        .src_queue_family_index(transfer_queue_family_index)
+        .dst_queue_family_index(render_queue_family_index);
 
     // copy buffer to image
     unsafe {
@@ -735,7 +762,7 @@ fn upload_existing_font_texture(
             vk::DependencyFlags::empty(),
             &[],
             &[],
-            &[*to_general_image_barrier],
+            &[to_general_image_barrier.build()],
         );
 
         device_ash.cmd_copy_buffer_to_image(
@@ -753,7 +780,7 @@ fn upload_existing_font_texture(
             vk::DependencyFlags::empty(),
             &[],
             &[],
-            &[*to_shader_read_image_barrier],
+            &[to_shader_read_image_barrier.build()],
         );
     }
 }

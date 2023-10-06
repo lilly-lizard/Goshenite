@@ -128,7 +128,7 @@ impl LightingPass {
 
 fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorPool>> {
     let descriptor_pool_props = DescriptorPoolProperties {
-        max_sets: 3,
+        max_sets: 8,
         pool_sizes: vec![
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::INPUT_ATTACHMENT,

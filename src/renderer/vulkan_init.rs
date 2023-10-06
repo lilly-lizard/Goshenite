@@ -209,11 +209,11 @@ pub fn create_device_and_queue(
         .queue_family_index(render_queue_family_index)
         .queue_priorities(&queue_priorities);
 
-    let mut transfer_queue_info = vk::DeviceQueueCreateInfo::builder()
+    let transfer_queue_info = vk::DeviceQueueCreateInfo::builder()
         .queue_family_index(transfer_queue_family_index)
         .queue_priorities(&queue_priorities);
 
-    let mut queue_infos = vec![render_queue_info.build(), transfer_queue_info.build()];
+    let queue_infos = vec![render_queue_info.build(), transfer_queue_info.build()];
 
     let features_1_0 = vk::PhysicalDeviceFeatures::default();
     let features_1_1 = vk::PhysicalDeviceVulkan11Features::default();

@@ -210,7 +210,7 @@ dependencies = [
 
 [[package]]
 name = "bort-vk"
-version = "0.2.2"
+version = "0.2.1"
 dependencies = [
  "ash",
  "ash-window",

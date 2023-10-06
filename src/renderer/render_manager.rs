@@ -366,8 +366,11 @@ impl RenderManager {
     ) -> anyhow::Result<()> {
         self.wait_for_previous_frame_fence()?;
 
-        self.gui_pass
-            .update_textures(textures_delta, &self.render_queue)?;
+        self.gui_pass.update_textures(
+            textures_delta,
+            &self.transfer_queue,
+            self.render_queue.famliy_index(),
+        )?;
 
         Ok(())
     }
@@ -773,33 +776,36 @@ impl RenderManager {
             .begin(&begin_info)
             .context("beginning command buffer get_element_at_screen_coordinate")?;
 
+        let device_ash = self.device.inner();
+        let command_buffer_handle = command_buffer.handle();
+
         unsafe {
-            self.device.inner().cmd_pipeline_barrier(
-                command_buffer.handle(),
+            device_ash.cmd_pipeline_barrier(
+                command_buffer_handle,
                 vk::PipelineStageFlags::FRAGMENT_SHADER,
                 vk::PipelineStageFlags::TRANSFER,
                 vk::DependencyFlags::empty(),
                 &[],
                 &[], // don't worry about buffer memory barriers because this funciton should be the only code that touches it and there's a fence wait after this
-                &[image_memory_barrier_before_transfer],
+                &[image_memory_barrier_before_transfer.build()],
             );
 
-            self.device.inner().cmd_copy_image_to_buffer(
-                command_buffer.handle(),
+            device_ash.cmd_copy_image_to_buffer(
+                command_buffer_handle,
                 last_primitive_id_buffer.image().handle(),
                 vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
                 self.cpu_read_staging_buffer.handle(),
                 &[buffer_image_copy_region],
             );
 
-            self.device.inner().cmd_pipeline_barrier(
-                command_buffer.handle(),
+            device_ash.cmd_pipeline_barrier(
+                command_buffer_handle,
                 vk::PipelineStageFlags::TRANSFER,
                 vk::PipelineStageFlags::FRAGMENT_SHADER,
                 vk::DependencyFlags::empty(),
                 &[],
                 &[],
-                &[image_memory_barrier_after_transfer],
+                &[image_memory_barrier_after_transfer.build()],
             );
         }
 
@@ -807,12 +813,17 @@ impl RenderManager {
             .end()
             .context("ending command buffer get_element_at_screen_coordinate")?;
 
-        let submit_info = vk::SubmitInfo::builder().command_buffers(&[command_buffer.handle()]);
+        let submit_command_buffers = [command_buffer_handle];
+        let submit_info = vk::SubmitInfo::builder().command_buffers(&submit_command_buffers);
 
         unsafe {
-            self.device
-                .inner()
-                .queue_submit(self.transfer_queue.handle(), submits, fence)
+            device_ash
+                .queue_submit(
+                    self.transfer_queue.handle(),
+                    &[submit_info.build()],
+                    self.buffer_upload_fence.handle(),
+                )
+                .context("submitting commands to read primitive id at coordinate")?;
         }
 
         Ok(())
