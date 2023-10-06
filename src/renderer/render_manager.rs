@@ -268,7 +268,7 @@ impl RenderManager {
             device.clone(),
             memory_allocator.clone(),
             &render_pass,
-            render_queue_family_index,
+            transfer_queue_family_index,
             scale_factor,
         )?;
 
@@ -396,7 +396,6 @@ impl RenderManager {
         self.framebuffer_index_last_rendered_to = self.framebuffer_index_currently_rendering;
 
         self.gui_pass.free_previous_vertex_and_index_buffers();
-        self.gui_pass.free_texture_upload_buffers();
 
         // note: I found that this check is needed on wayland because the later commands weren't returning 'out of date'...
         if self.window_just_resized {
@@ -439,9 +438,8 @@ impl RenderManager {
 
         // submit commands
 
-        let device_ash = self.device.inner();
-        let previous_render_fence_handle = self.previous_render_fence.handle();
-        unsafe { device_ash.reset_fences(&[previous_render_fence_handle]) }
+        self.previous_render_fence
+            .reset()
             .context("reseting previous render fence")?;
 
         let submit_command_buffers = [command_buffer.handle()];
@@ -458,10 +456,10 @@ impl RenderManager {
             .signal_semaphores(&signal_semaphores);
 
         unsafe {
-            device_ash.queue_submit(
+            self.device.inner().queue_submit(
                 self.render_queue.handle(),
                 &[submit_info.build()],
-                previous_render_fence_handle,
+                self.previous_render_fence.handle(),
             )
         }
         .context("submitting render commands")?;
@@ -494,6 +492,9 @@ impl RenderManager {
             }
         }
 
+        // putting this at the end to give the transfer commands a better chance at completing
+        self.gui_pass.check_and_free_texture_upload_buffers()?;
+
         Ok(())
     }
 
@@ -511,7 +512,9 @@ impl RenderManager {
     }
 
     pub fn reset_render_command_buffers(&self) -> anyhow::Result<()> {
-        self.wait_idle_device()?;
+        self.render_queue
+            .wait_idle()
+            .context("calling vkQueueWaitIdle for render queue")?;
 
         for command_buffer in &self.render_command_buffers {
             unsafe {
