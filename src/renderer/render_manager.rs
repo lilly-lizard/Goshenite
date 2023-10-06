@@ -51,7 +51,8 @@ pub struct RenderManager {
     transfer_queue: Arc<Queue>,
 
     memory_allocator: Arc<MemoryAllocator>,
-    command_pool: Arc<CommandPool>,
+    render_command_pool: Arc<CommandPool>,
+    transfer_command_pool: Arc<CommandPool>,
 
     window: Arc<Window>,
     surface: Arc<Surface>,
@@ -182,7 +183,8 @@ impl RenderManager {
 
         let memory_allocator = Arc::new(MemoryAllocator::new(device.clone())?);
 
-        let command_pool = create_command_pool(device.clone(), &render_queue)?;
+        let render_command_pool = create_command_pool(device.clone(), &render_queue)?;
+        let transfer_command_pool = create_command_pool(device.clone(), &transfer_queue)?;
 
         let swapchain = create_swapchain(device.clone(), surface.clone(), &window)?;
         debug!(
@@ -229,7 +231,7 @@ impl RenderManager {
         let cpu_read_staging_buffer = create_cpu_read_staging_buffer(memory_allocator.clone())?;
 
         let command_buffer_copy_coordinate_data = Arc::new(
-            command_pool
+            transfer_command_pool
                 .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, 1)
                 .context("allocating command buffer")?
                 .remove(0),
@@ -268,12 +270,13 @@ impl RenderManager {
             device.clone(),
             memory_allocator.clone(),
             &render_pass,
-            transfer_queue_family_index,
+            render_command_pool.clone(),
+            transfer_command_pool.clone(),
             scale_factor,
         )?;
 
         let render_command_buffers = create_render_command_buffers(
-            command_pool.clone(),
+            render_command_pool.clone(),
             swapchain_image_views.len() as u32,
         )?;
 
@@ -294,7 +297,8 @@ impl RenderManager {
             transfer_queue,
 
             memory_allocator,
-            command_pool,
+            render_command_pool,
+            transfer_command_pool,
 
             window,
             surface,
@@ -366,11 +370,8 @@ impl RenderManager {
     ) -> anyhow::Result<()> {
         self.wait_for_previous_frame_fence()?;
 
-        self.gui_pass.update_textures(
-            textures_delta,
-            &self.transfer_queue,
-            self.render_queue.famliy_index(),
-        )?;
+        self.gui_pass
+            .update_textures(textures_delta, &self.transfer_queue, &self.render_queue)?;
 
         Ok(())
     }
@@ -523,7 +524,7 @@ impl RenderManager {
                     vk::CommandBufferResetFlags::empty(),
                 )
             }
-            .context("resetting render command pool")?;
+            .context("resetting render command buffers")?;
         }
         Ok(())
     }
@@ -844,7 +845,17 @@ impl Drop for RenderManager {
 
         let command_pool_reset_res = unsafe {
             self.device.inner().reset_command_pool(
-                self.command_pool.handle(),
+                self.transfer_command_pool.handle(),
+                vk::CommandPoolResetFlags::RELEASE_RESOURCES,
+            )
+        };
+        if let Err(e) = command_pool_reset_res {
+            log_error_sources(&e, 0);
+        }
+
+        let command_pool_reset_res = unsafe {
+            self.device.inner().reset_command_pool(
+                self.render_command_pool.handle(),
                 vk::CommandPoolResetFlags::RELEASE_RESOURCES,
             )
         };

@@ -10,13 +10,13 @@ use anyhow::Context;
 use ash::vk;
 use bort_vk::{
     allocation_info_cpu_accessible, allocation_info_from_flags, default_subresource_layers, Buffer,
-    BufferProperties, ColorBlendState, CommandBuffer, CommandPool, CommandPoolProperties,
-    DescriptorPool, DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout,
-    DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
-    Fence, GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
-    ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool,
-    MemoryPoolPropeties, PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue,
-    RenderPass, Sampler, SamplerProperties, ShaderModule, ShaderStage, ViewportState,
+    BufferProperties, ColorBlendState, CommandBuffer, CommandPool, DescriptorPool,
+    DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
+    DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState, Fence, GraphicsPipeline,
+    GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions, ImageProperties, ImageView,
+    ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool, MemoryPoolPropeties,
+    PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue, RenderPass, Sampler,
+    SamplerProperties, Semaphore, ShaderModule, ShaderStage, ViewportState,
 };
 use bort_vma::Alloc;
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
@@ -44,9 +44,15 @@ pub struct GuiPass {
     device: Arc<Device>,
 
     memory_allocator: Arc<MemoryAllocator>,
-    transient_command_pool: Arc<CommandPool>,
     pipeline: Arc<GraphicsPipeline>,
+
+    /// Used for data transfers
+    transfer_command_buffer: Arc<CommandBuffer>,
+    /// Used for pipeline barriers to sync with the render queue family
+    render_sync_command_buffer: Arc<CommandBuffer>,
+
     texture_upload_fence: Arc<Fence>,
+    render_sync_semaphore: Arc<Semaphore>,
 
     descriptor_pools: Vec<Arc<DescriptorPool>>,
     unused_texture_desc_sets: Vec<Arc<DescriptorSet>>,
@@ -76,11 +82,19 @@ impl GuiPass {
         device: Arc<Device>,
         memory_allocator: Arc<MemoryAllocator>,
         render_pass: &RenderPass,
-        transfer_queue_family_index: u32,
+        render_command_pool: Arc<CommandPool>,
+        transfer_command_pool: Arc<CommandPool>,
         scale_factor: f32,
     ) -> anyhow::Result<Self> {
-        let transient_command_pool =
-            create_transient_command_pool(device.clone(), transfer_queue_family_index)?;
+        let transfer_command_buffer = Arc::new(
+            CommandBuffer::new(transfer_command_pool, vk::CommandBufferLevel::PRIMARY)
+                .context("allocating transfer command buffer")?,
+        );
+
+        let render_sync_command_buffer = Arc::new(
+            CommandBuffer::new(render_command_pool, vk::CommandBufferLevel::PRIMARY)
+                .context("allocating render command buffer")?,
+        );
 
         let descriptor_pool = create_descriptor_pool(device.clone())?;
         let desc_set_layout = create_descriptor_layout(device.clone())?;
@@ -92,13 +106,20 @@ impl GuiPass {
         let initial_buffer_pool = create_buffer_pool(memory_allocator.clone())?;
 
         let texture_upload_fence = create_signalled_fence(device.clone())?;
+        let render_sync_semaphore =
+            Arc::new(Semaphore::new(device.clone()).context("creating render sync semaphore")?);
 
         Ok(Self {
             device,
+
             memory_allocator,
-            transient_command_pool,
             pipeline,
+
+            transfer_command_buffer,
+            render_sync_command_buffer,
+
             texture_upload_fence,
+            render_sync_semaphore,
 
             descriptor_pools: vec![descriptor_pool],
             unused_texture_desc_sets: Vec::new(),
@@ -125,28 +146,29 @@ impl GuiPass {
         &mut self,
         textures_delta: Vec<TexturesDelta>,
         transfer_queue: &Queue,
-        render_queue_family_index: u32,
+        render_queue: &Queue,
     ) -> anyhow::Result<()> {
         // return if empty
         if textures_delta.is_empty() {
             return Ok(());
         }
 
-        // create one-time command buffer
-        let command_buffer = CommandBuffer::new(
-            self.transient_command_pool.clone(),
-            vk::CommandBufferLevel::PRIMARY,
-        )
-        .context("creating command buffer for gui texture upload")?;
+        let mut commands_recorded = false;
+        let mut upload_buffers = Vec::<Buffer>::new();
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        command_buffer
+        self.transfer_command_buffer
             .begin(&begin_info)
             .context("beginning gui texture upload command buffer")?;
 
-        let mut commands_recorded = false;
-        let mut upload_buffers = Vec::<Buffer>::new();
+        // if queue family indices are different, need to record sync commands on render queue
+        let queue_ownership_required = transfer_queue.famliy_index() != render_queue.famliy_index();
+        if queue_ownership_required {
+            self.render_sync_command_buffer
+                .begin(&begin_info)
+                .context("beginning gui render sync command buffer")?;
+        }
 
         for textures_delta in textures_delta {
             // release unused texture resources
@@ -156,13 +178,7 @@ impl GuiPass {
 
             // create new images and record upload commands
             for (id, image_delta) in textures_delta.set {
-                let add_new_texture_res = self.process_texture_data(
-                    id,
-                    image_delta,
-                    &command_buffer,
-                    render_queue_family_index,
-                    transfer_queue.famliy_index(),
-                )?;
+                let add_new_texture_res = self.process_texture_data(id, image_delta)?;
 
                 if let Some(upload_buffer) = add_new_texture_res {
                     commands_recorded = true;
@@ -173,27 +189,52 @@ impl GuiPass {
 
         self.texture_upload_buffers.append(&mut upload_buffers);
 
-        command_buffer
+        self.transfer_command_buffer
             .end()
             .context("ending gui texture upload command buffer")?;
 
+        if queue_ownership_required {
+            self.render_sync_command_buffer
+                .end()
+                .context("ending gui render sync command buffer")?;
+        }
+
         // submit upload commands
         if commands_recorded {
-            let command_buffer_handles = [command_buffer.handle()];
-            let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffer_handles);
-
             self.texture_upload_fence
                 .reset()
                 .context("reseting gui transfer fence")?;
 
+            let sync_semaphores = if queue_ownership_required {
+                vec![self.render_sync_semaphore.handle()]
+            } else {
+                Vec::new()
+            };
+            let transfer_command_buffers = [self.transfer_command_buffer.handle()];
+
+            let transfer_submit_info = vk::SubmitInfo::builder()
+                .command_buffers(&transfer_command_buffers)
+                .signal_semaphores(&sync_semaphores);
+
             transfer_queue
                 .submit(
-                    &[submit_info.build()],
+                    &[transfer_submit_info.build()],
                     Some(self.texture_upload_fence.handle()),
                 )
                 .context("submitting gui texture upload commands")?;
 
-            return Ok(());
+            if queue_ownership_required {
+                let render_sync_command_buffers = [self.render_sync_command_buffer.handle()];
+
+                let render_sync_submit_info = vk::SubmitInfo::builder()
+                    .command_buffers(&render_sync_command_buffers)
+                    .wait_semaphores(&sync_semaphores)
+                    .wait_dst_stage_mask(&[vk::PipelineStageFlags::FRAGMENT_SHADER]);
+
+                render_queue
+                    .submit(&[render_sync_submit_info.build()], None)
+                    .context("submitting texture upload render queue sync commands")?;
+            }
         }
 
         Ok(())
@@ -299,9 +340,6 @@ impl GuiPass {
         &mut self,
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
-        command_buffer: &CommandBuffer,
-        render_queue_family_index: u32,
-        transfer_queue_family_index: u32,
     ) -> anyhow::Result<Option<Buffer>> {
         // todo delta.options: TextureOptions mag/min filter for sampler
 
@@ -356,6 +394,18 @@ impl GuiPass {
             .write_iter(data, 0)
             .context("uploading gui texture data to staging buffer")?;
 
+        // determine queue indices here so we don't have to do it over and over in `create_new_texture`
+        let transfer_queue_family_index = self
+            .transfer_command_buffer
+            .command_pool()
+            .properties()
+            .queue_family_index;
+        let render_queue_family_index = self
+            .render_sync_command_buffer
+            .command_pool()
+            .properties()
+            .queue_family_index;
+
         if let Some(update_pos) = delta.pos {
             // sometimes a subregion of an already allocated texture needs to be updated e.g. when a font size is changed
             if let Some(existing_image_view) = self.texture_image_views.get(&texture_id) {
@@ -380,14 +430,16 @@ impl GuiPass {
                     texture_id, copy_region.image_offset, copy_region.image_extent
                 );
 
+                todo!("create new image");
+
                 upload_existing_font_texture(
                     &self.device,
-                    command_buffer,
+                    &self.transfer_command_buffer,
                     existing_image_view,
                     &texture_staging_buffer,
                     copy_region,
-                    render_queue_family_index,
                     transfer_queue_family_index,
+                    render_queue_family_index,
                 );
             }
         } else {
@@ -395,12 +447,11 @@ impl GuiPass {
             debug!("creating new gui texture. id = {:?}", texture_id);
 
             self.create_new_texture(
-                command_buffer,
+                transfer_queue_family_index,
+                render_queue_family_index,
                 &texture_staging_buffer,
                 delta,
                 texture_id,
-                render_queue_family_index,
-                transfer_queue_family_index,
             )?;
         }
 
@@ -432,12 +483,11 @@ impl GuiPass {
     /// has optimal tiling.
     fn create_new_texture(
         &mut self,
-        command_buffer: &CommandBuffer,
+        transfer_queue_family_index: u32,
+        render_queue_family_index: u32,
         texture_staging_buffer: &Buffer,
         delta: egui::epaint::ImageDelta,
         texture_id: TextureId,
-        render_queue_family_index: u32,
-        transfer_queue_family_index: u32,
     ) -> anyhow::Result<()> {
         let new_image_properties = ImageProperties {
             format: TEXTURE_FORMAT,
@@ -446,7 +496,7 @@ impl GuiPass {
                 delta.image.height() as u32,
             ),
             usage: vk::ImageUsageFlags::TRANSFER_DST | vk::ImageUsageFlags::SAMPLED,
-            queue_family_indices: vec![render_queue_family_index, transfer_queue_family_index],
+            sharing_mode: vk::SharingMode::EXCLUSIVE, // better performance depending (device dependant) particularly on mobile. queue ownership transfer only happens at image creation
             ..Default::default()
         };
         let new_image_allocation_info = allocation_info_from_flags(
@@ -488,11 +538,9 @@ impl GuiPass {
             .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
             .image(new_image_view.image().handle())
             .subresource_range(new_image_view.properties().subresource_range)
-            //.src_queue_family_index(vk::QUEUE_FAMILY_IGNORED)
-            //.dst_queue_family_index(transfer_queue_family_index)
             .build();
 
-        // then transition to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+        // then transition to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL and perform queue release if transfer and render queue families are different
         let after_transfer_image_barrier = vk::ImageMemoryBarrier::builder()
             .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
             .dst_access_mask(vk::AccessFlags::SHADER_READ)
@@ -504,12 +552,13 @@ impl GuiPass {
             .dst_queue_family_index(render_queue_family_index)
             .build();
 
+        // record transfer commands
+        let device_ash = self.device.inner();
         unsafe {
-            let device_ash = self.device.inner();
-            let command_buffer_handle = command_buffer.handle();
+            let transfer_command_buffer_handle = self.transfer_command_buffer.handle();
 
             device_ash.cmd_pipeline_barrier(
-                command_buffer_handle,
+                transfer_command_buffer_handle,
                 vk::PipelineStageFlags::TOP_OF_PIPE,
                 vk::PipelineStageFlags::TRANSFER,
                 vk::DependencyFlags::empty(),
@@ -519,22 +568,53 @@ impl GuiPass {
             );
 
             device_ash.cmd_copy_buffer_to_image(
-                command_buffer_handle,
+                transfer_command_buffer_handle,
                 texture_staging_buffer.handle(),
                 new_image.handle(),
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 &[copy_region],
             );
 
+            let dst_stage_mask = if render_queue_family_index == transfer_queue_family_index {
+                vk::PipelineStageFlags::FRAGMENT_SHADER
+            } else {
+                vk::PipelineStageFlags::TOP_OF_PIPE // this is a queue release operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
+            };
             device_ash.cmd_pipeline_barrier(
-                command_buffer_handle,
+                transfer_command_buffer_handle,
                 vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                dst_stage_mask,
                 vk::DependencyFlags::empty(),
                 &[],
                 &[],
                 &[after_transfer_image_barrier],
             );
+        }
+
+        if render_queue_family_index != transfer_queue_family_index {
+            // an identical queue aquire operation is required to complete the layout transition https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#synchronization-queue-transfers-release
+            let before_render_image_barrier = vk::ImageMemoryBarrier::builder()
+                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+                .dst_access_mask(vk::AccessFlags::SHADER_READ)
+                .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image(new_image_view.image().handle())
+                .subresource_range(new_image_view.properties().subresource_range)
+                .src_queue_family_index(transfer_queue_family_index)
+                .dst_queue_family_index(render_queue_family_index)
+                .build();
+
+            unsafe {
+                device_ash.cmd_pipeline_barrier(
+                    self.render_sync_command_buffer.handle(),
+                    vk::PipelineStageFlags::BOTTOM_OF_PIPE,
+                    vk::PipelineStageFlags::FRAGMENT_SHADER,
+                    vk::DependencyFlags::empty(),
+                    &[],
+                    &[],
+                    &[before_render_image_barrier],
+                );
+            }
         }
 
         let font_desc_set = self.get_new_font_texture_desc_set()?;
@@ -759,8 +839,8 @@ fn upload_existing_font_texture(
     existing_image_view: &ImageView<Image>,
     texture_data_buffer: &Buffer,
     copy_region: vk::BufferImageCopy,
-    render_queue_family_index: u32,
     transfer_queue_family_index: u32,
+    render_queue_family_index: u32,
 ) {
     // we need to transition the image layout to vk::ImageLayout::TRANSFER_DST_OPTIMAL
     let to_general_image_barrier = vk::ImageMemoryBarrier::builder()
@@ -1043,21 +1123,6 @@ fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, Sh
     );
 
     Ok((vert_stage, frag_stage))
-}
-
-fn create_transient_command_pool(
-    device: Arc<Device>,
-    queue_family_index: u32,
-) -> anyhow::Result<Arc<CommandPool>> {
-    let command_pool_props = CommandPoolProperties {
-        flags: vk::CommandPoolCreateFlags::TRANSIENT,
-        queue_family_index,
-    };
-
-    let command_pool = CommandPool::new(device, command_pool_props)
-        .context("creating gui renderer command pool")?;
-
-    Ok(Arc::new(command_pool))
 }
 
 /// Caclulates the region of the framebuffer to render a gui element

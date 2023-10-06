@@ -763,12 +763,13 @@ pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Resu
 }
 
 pub fn create_render_command_buffers(
-    command_pool: Arc<CommandPool>,
+    render_command_pool: Arc<CommandPool>,
     swapchain_image_count: u32,
 ) -> anyhow::Result<Vec<Arc<CommandBuffer>>> {
-    let command_buffers = command_pool
+    let command_buffers = render_command_pool
         .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, swapchain_image_count)
         .context("allocating per-frame command buffers")?;
+
     let command_buffer_arcs = command_buffers
         .into_iter()
         .map(|cb| Arc::new(cb))
