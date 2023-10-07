@@ -1,13 +1,13 @@
 //! shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
 
 use super::{
-    config_renderer::SHADER_ENTRY_POINT,
+    config_renderer::{SHADER_ENTRY_POINT, TIMEOUT_NANOSECS},
     shader_interfaces::{push_constants::GuiPushConstant, vertex_inputs::EguiVertex},
     vulkan_init::{create_signalled_fence, render_pass_indices},
 };
 use ahash::AHashMap;
 use anyhow::Context;
-use ash::vk;
+use ash::{prelude::VkResult, vk};
 use bort_vk::{
     allocation_info_cpu_accessible, allocation_info_from_flags, default_subresource_layers, Buffer,
     BufferProperties, ColorBlendState, CommandBuffer, CommandPool, DescriptorPool,
@@ -46,12 +46,15 @@ pub struct GuiPass {
     memory_allocator: Arc<MemoryAllocator>,
     pipeline: Arc<GraphicsPipeline>,
 
-    /// Used for data transfers
+    /// Used for data transfers asynchronous to the rendering queue
     transfer_command_buffer: Arc<CommandBuffer>,
     /// Used for pipeline barriers to sync with the render queue family
     render_sync_command_buffer: Arc<CommandBuffer>,
+    /// Used for data transfers on the rendering queue
+    render_queue_command_buffer: Arc<CommandBuffer>,
 
-    texture_upload_fence: Arc<Fence>,
+    texture_create_fence: Arc<Fence>,
+    texture_update_fence: Arc<Fence>,
     render_sync_semaphore: Arc<Semaphore>,
 
     descriptor_pools: Vec<Arc<DescriptorPool>>,
@@ -92,6 +95,11 @@ impl GuiPass {
         );
 
         let render_sync_command_buffer = Arc::new(
+            CommandBuffer::new(render_command_pool.clone(), vk::CommandBufferLevel::PRIMARY)
+                .context("allocating render command buffer")?,
+        );
+
+        let render_queue_command_buffer = Arc::new(
             CommandBuffer::new(render_command_pool, vk::CommandBufferLevel::PRIMARY)
                 .context("allocating render command buffer")?,
         );
@@ -105,7 +113,8 @@ impl GuiPass {
         let texture_sampler = create_texture_sampler(device.clone())?;
         let initial_buffer_pool = create_buffer_pool(memory_allocator.clone())?;
 
-        let texture_upload_fence = create_signalled_fence(device.clone())?;
+        let texture_create_fence = create_signalled_fence(device.clone())?;
+        let texture_update_fence = create_signalled_fence(device.clone())?;
         let render_sync_semaphore =
             Arc::new(Semaphore::new(device.clone()).context("creating render sync semaphore")?);
 
@@ -117,8 +126,10 @@ impl GuiPass {
 
             transfer_command_buffer,
             render_sync_command_buffer,
+            render_queue_command_buffer,
 
-            texture_upload_fence,
+            texture_create_fence,
+            texture_update_fence,
             render_sync_semaphore,
 
             descriptor_pools: vec![descriptor_pool],
@@ -140,36 +151,45 @@ impl GuiPass {
     }
 
     /// Creates and/or removes texture resources as required by [`TexturesDelta`](epaint::Textures::TexturesDelta)
-    /// output by [`egui::end_frame`](egui::context::Context::end_frame). If new textures were created, submits a
-    /// command buffer and returns a signal semaphore for the submission.
+    /// output by [`egui::end_frame`](egui::context::Context::end_frame).
+    ///
+    /// New images are uploaded on the async transfer queue. Updating of existing images is done on
+    /// the render queue because synchronization is required with the render queue before and after
+    /// transfer anyway.
     pub fn update_textures(
         &mut self,
         textures_delta: Vec<TexturesDelta>,
         transfer_queue: &Queue,
         render_queue: &Queue,
     ) -> anyhow::Result<()> {
-        // return if empty
         if textures_delta.is_empty() {
             return Ok(());
         }
 
-        let mut commands_recorded = false;
-        let mut upload_buffers = Vec::<Buffer>::new();
+        // wait for previous texture uploads to complete execution so command buffers can be used
+        self.wait_on_upload_fences()
+            .context("waiting for texture upload fences")?;
+        // we're sure that the previous texture uploads have completed so we can free old staging buffers
+        self.texture_upload_buffers.clear();
 
+        // begin command buffers
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         self.transfer_command_buffer
             .begin(&begin_info)
             .context("beginning gui texture upload command buffer")?;
+        self.render_sync_command_buffer
+            .begin(&begin_info)
+            .context("beginning gui render sync command buffer")?;
+        self.render_queue_command_buffer
+            .begin(&begin_info)
+            .context("beginning gui texture update command buffer")?;
 
-        // if queue family indices are different, need to record sync commands on render queue
-        let queue_ownership_required = transfer_queue.famliy_index() != render_queue.famliy_index();
-        if queue_ownership_required {
-            self.render_sync_command_buffer
-                .begin(&begin_info)
-                .context("beginning gui render sync command buffer")?;
-        }
+        let mut new_image_commands_recorded = false;
+        let mut existing_image_commands_recorded = false;
+        let mut upload_buffers = Vec::<Buffer>::new();
 
+        // loop through texture update commands
         for textures_delta in textures_delta {
             // release unused texture resources
             for &id in &textures_delta.free {
@@ -178,10 +198,13 @@ impl GuiPass {
 
             // create new images and record upload commands
             for (id, image_delta) in textures_delta.set {
-                let add_new_texture_res = self.process_texture_data(id, image_delta)?;
+                let process_texture_data_res = self.process_texture_data(id, image_delta)?;
 
-                if let Some(upload_buffer) = add_new_texture_res {
-                    commands_recorded = true;
+                new_image_commands_recorded |= process_texture_data_res.new_image_commands_recorded;
+                existing_image_commands_recorded |=
+                    process_texture_data_res.existing_image_commands_recorded;
+
+                if let Some(upload_buffer) = process_texture_data_res.texture_staging_buffer {
                     upload_buffers.push(upload_buffer);
                 }
             }
@@ -189,52 +212,30 @@ impl GuiPass {
 
         self.texture_upload_buffers.append(&mut upload_buffers);
 
+        // end command buffers
         self.transfer_command_buffer
             .end()
             .context("ending gui texture upload command buffer")?;
+        self.render_sync_command_buffer
+            .end()
+            .context("ending gui render sync command buffer")?;
+        self.render_queue_command_buffer
+            .end()
+            .context("ending gui texture update command buffer")?;
 
-        if queue_ownership_required {
-            self.render_sync_command_buffer
-                .end()
-                .context("ending gui render sync command buffer")?;
+        if new_image_commands_recorded {
+            let queue_ownership_required =
+                transfer_queue.famliy_index() != render_queue.famliy_index();
+
+            self.submit_texture_creation_commands(
+                queue_ownership_required,
+                transfer_queue,
+                render_queue,
+            )?;
         }
 
-        // submit upload commands
-        if commands_recorded {
-            self.texture_upload_fence
-                .reset()
-                .context("reseting gui transfer fence")?;
-
-            let sync_semaphores = if queue_ownership_required {
-                vec![self.render_sync_semaphore.handle()]
-            } else {
-                Vec::new()
-            };
-            let transfer_command_buffers = [self.transfer_command_buffer.handle()];
-
-            let transfer_submit_info = vk::SubmitInfo::builder()
-                .command_buffers(&transfer_command_buffers)
-                .signal_semaphores(&sync_semaphores);
-
-            transfer_queue
-                .submit(
-                    &[transfer_submit_info.build()],
-                    Some(self.texture_upload_fence.handle()),
-                )
-                .context("submitting gui texture upload commands")?;
-
-            if queue_ownership_required {
-                let render_sync_command_buffers = [self.render_sync_command_buffer.handle()];
-
-                let render_sync_submit_info = vk::SubmitInfo::builder()
-                    .command_buffers(&render_sync_command_buffers)
-                    .wait_semaphores(&sync_semaphores)
-                    .wait_dst_stage_mask(&[vk::PipelineStageFlags::FRAGMENT_SHADER]);
-
-                render_queue
-                    .submit(&[render_sync_submit_info.build()], None)
-                    .context("submitting texture upload render queue sync commands")?;
-            }
+        if existing_image_commands_recorded {
+            self.submit_texture_update_commands(render_queue)?;
         }
 
         Ok(())
@@ -298,29 +299,6 @@ impl GuiPass {
         self.index_buffers.clear();
         self.current_buffer_pool_index = 0;
     }
-
-    /// Checks wherever the last batch of `update_textures` commands have completed. If so, frees
-    /// temporary staging buffers.
-    pub fn check_and_free_texture_upload_buffers(&mut self) -> anyhow::Result<()> {
-        let timeout_nanoseconds = 100;
-        let fence_handles = [self.texture_upload_fence.handle()];
-
-        let fence_wait_res = unsafe {
-            self.device
-                .inner()
-                .wait_for_fences(&fence_handles, true, timeout_nanoseconds)
-        };
-
-        if let Err(vk_res) = fence_wait_res {
-            match vk_res {
-                vk::Result::TIMEOUT => return Ok(()),
-                _ => anyhow::bail!(vk_res),
-            }
-        }
-
-        self.texture_upload_buffers.clear();
-        Ok(())
-    }
 }
 
 impl Drop for GuiPass {
@@ -332,6 +310,85 @@ impl Drop for GuiPass {
 // Private functions
 
 impl GuiPass {
+    fn wait_on_upload_fences(&mut self) -> VkResult<()> {
+        let fence_handles = [
+            self.texture_create_fence.handle(),
+            self.texture_update_fence.handle(),
+        ];
+        unsafe {
+            self.device
+                .inner()
+                .wait_for_fences(&fence_handles, true, TIMEOUT_NANOSECS)
+        }
+    }
+
+    fn submit_texture_creation_commands(
+        &mut self,
+        queue_ownership_transfer_required: bool,
+        transfer_queue: &Queue,
+        render_queue: &Queue,
+    ) -> Result<(), anyhow::Error> {
+        self.texture_create_fence
+            .reset()
+            .context("reseting gui texture creation fence")?;
+
+        let sync_semaphores = if queue_ownership_transfer_required {
+            vec![self.render_sync_semaphore.handle()]
+        } else {
+            Vec::new()
+        };
+
+        let transfer_command_buffers = [self.transfer_command_buffer.handle()];
+
+        let transfer_submit_info = vk::SubmitInfo::builder()
+            .command_buffers(&transfer_command_buffers)
+            .signal_semaphores(&sync_semaphores);
+
+        transfer_queue
+            .submit(
+                &[transfer_submit_info.build()],
+                Some(self.texture_create_fence.handle()),
+            )
+            .context("submitting gui texture creation commands")?;
+
+        if queue_ownership_transfer_required {
+            let render_sync_command_buffers = [self.render_sync_command_buffer.handle()];
+
+            let render_sync_submit_info = vk::SubmitInfo::builder()
+                .command_buffers(&render_sync_command_buffers)
+                .wait_semaphores(&sync_semaphores)
+                .wait_dst_stage_mask(&[vk::PipelineStageFlags::FRAGMENT_SHADER]);
+
+            render_queue
+                .submit(&[render_sync_submit_info.build()], None)
+                .context("submitting texture creation render queue sync commands")?;
+        }
+
+        Ok(())
+    }
+
+    fn submit_texture_update_commands(
+        &mut self,
+        render_queue: &Queue,
+    ) -> Result<(), anyhow::Error> {
+        self.texture_update_fence
+            .reset()
+            .context("reseting gui texture update fence")?;
+
+        let command_buffers = [self.render_queue_command_buffer.handle()];
+
+        let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
+
+        render_queue
+            .submit(
+                &[submit_info.build()],
+                Some(self.texture_update_fence.handle()),
+            )
+            .context("submitting gui texture update commands")?;
+
+        Ok(())
+    }
+
     /// Either updates an existing texture or creates a new one as required for `texture_id` with the
     /// data in `delta`. If commands were recorded to `command_buffer`, returns the buffer that will
     /// be used to upload the texture data. Otherwise returns `Ok(None)` if this update was skipped
@@ -340,8 +397,14 @@ impl GuiPass {
         &mut self,
         texture_id: egui::TextureId,
         delta: egui::epaint::ImageDelta,
-    ) -> anyhow::Result<Option<Buffer>> {
+    ) -> anyhow::Result<ProcessTextureDataReturn> {
         // todo delta.options: TextureOptions mag/min filter for sampler
+
+        let mut ret = ProcessTextureDataReturn {
+            texture_staging_buffer: None,
+            existing_image_commands_recorded: false,
+            new_image_commands_recorded: false,
+        };
 
         // extract pixel data from egui
         let data: Vec<u8> = match &delta.image {
@@ -377,7 +440,7 @@ impl GuiPass {
                 "attempted to create gui texture with no data! skipping... texture_id = {:?}",
                 texture_id
             );
-            return Ok(None);
+            return Ok(ret);
         }
 
         let upload_data_dimensions: [usize; 2] = match &delta.image {
@@ -394,21 +457,10 @@ impl GuiPass {
             .write_iter(data, 0)
             .context("uploading gui texture data to staging buffer")?;
 
-        // determine queue indices here so we don't have to do it over and over in `create_new_texture`
-        let transfer_queue_family_index = self
-            .transfer_command_buffer
-            .command_pool()
-            .properties()
-            .queue_family_index;
-        let render_queue_family_index = self
-            .render_sync_command_buffer
-            .command_pool()
-            .properties()
-            .queue_family_index;
-
         if let Some(update_pos) = delta.pos {
-            // sometimes a subregion of an already allocated texture needs to be updated e.g. when a font size is changed
             if let Some(existing_image_view) = self.texture_image_views.get(&texture_id) {
+                // a subregion of an already allocated texture needs to be updated e.g. when a font size is changed
+
                 let copy_region = vk::BufferImageCopy {
                     image_subresource: default_subresource_layers(vk::ImageAspectFlags::COLOR),
                     image_offset: vk::Offset3D {
@@ -430,32 +482,27 @@ impl GuiPass {
                     texture_id, copy_region.image_offset, copy_region.image_extent
                 );
 
-                todo!("create new image");
-
                 upload_existing_font_texture(
                     &self.device,
-                    &self.transfer_command_buffer,
+                    &self.render_queue_command_buffer,
                     existing_image_view,
                     &texture_staging_buffer,
                     copy_region,
-                    transfer_queue_family_index,
-                    render_queue_family_index,
                 );
+
+                ret.existing_image_commands_recorded = true;
             }
         } else {
             // but usually `ImageDelta.pos` is `None` meaning a new image needs to be created
             debug!("creating new gui texture. id = {:?}", texture_id);
 
-            self.create_new_texture(
-                transfer_queue_family_index,
-                render_queue_family_index,
-                &texture_staging_buffer,
-                delta,
-                texture_id,
-            )?;
+            self.create_new_texture(&texture_staging_buffer, delta, texture_id)?;
+
+            ret.new_image_commands_recorded = true;
         }
 
-        Ok(Some(texture_staging_buffer))
+        ret.texture_staging_buffer = Some(texture_staging_buffer);
+        Ok(ret)
     }
 
     /// Unregister a texture that is no longer required by the gui.
@@ -483,12 +530,21 @@ impl GuiPass {
     /// has optimal tiling.
     fn create_new_texture(
         &mut self,
-        transfer_queue_family_index: u32,
-        render_queue_family_index: u32,
         texture_staging_buffer: &Buffer,
         delta: egui::epaint::ImageDelta,
         texture_id: TextureId,
     ) -> anyhow::Result<()> {
+        let transfer_queue_family_index = self
+            .transfer_command_buffer
+            .command_pool()
+            .properties()
+            .queue_family_index;
+        let render_queue_family_index = self
+            .render_sync_command_buffer
+            .command_pool()
+            .properties()
+            .queue_family_index;
+
         let new_image_properties = ImageProperties {
             format: TEXTURE_FORMAT,
             dimensions: ImageDimensions::new_2d(
@@ -839,8 +895,6 @@ fn upload_existing_font_texture(
     existing_image_view: &ImageView<Image>,
     texture_data_buffer: &Buffer,
     copy_region: vk::BufferImageCopy,
-    transfer_queue_family_index: u32,
-    render_queue_family_index: u32,
 ) {
     // we need to transition the image layout to vk::ImageLayout::TRANSFER_DST_OPTIMAL
     let to_general_image_barrier = vk::ImageMemoryBarrier::builder()
@@ -849,9 +903,7 @@ fn upload_existing_font_texture(
         .old_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
         .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
         .image(existing_image_view.image().handle())
-        .subresource_range(existing_image_view.properties().subresource_range)
-        .src_queue_family_index(render_queue_family_index)
-        .dst_queue_family_index(transfer_queue_family_index);
+        .subresource_range(existing_image_view.properties().subresource_range);
 
     // then transition back to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
     let to_shader_read_image_barrier = vk::ImageMemoryBarrier::builder()
@@ -860,9 +912,7 @@ fn upload_existing_font_texture(
         .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
         .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
         .image(existing_image_view.image().handle())
-        .subresource_range(existing_image_view.properties().subresource_range)
-        .src_queue_family_index(transfer_queue_family_index)
-        .dst_queue_family_index(render_queue_family_index);
+        .subresource_range(existing_image_view.properties().subresource_range);
 
     // copy buffer to image
     unsafe {
@@ -1167,6 +1217,14 @@ fn create_texture_staging_buffer(
     let alloc_info = allocation_info_cpu_accessible();
 
     Buffer::new(memory_allocator, buffer_props, alloc_info).context("creating texture data buffer")
+}
+
+// ~~ Other stucts ~~
+
+struct ProcessTextureDataReturn {
+    texture_staging_buffer: Option<Buffer>,
+    new_image_commands_recorded: bool,
+    existing_image_commands_recorded: bool,
 }
 
 // ~~~ Errors ~~~

@@ -493,9 +493,6 @@ impl RenderManager {
             }
         }
 
-        // putting this at the end to give the transfer commands a better chance at completing
-        self.gui_pass.check_and_free_texture_upload_buffers()?;
-
         Ok(())
     }
 
