@@ -359,9 +359,10 @@ impl RenderManager {
         Ok(())
     }
 
+    #[inline]
     pub fn update_objects(&mut self, objects_delta: ObjectsDelta) -> anyhow::Result<()> {
         self.geometry_pass
-            .update_objects(objects_delta, &self.render_queue)
+            .update_objects(objects_delta, &self.transfer_queue, &self.render_queue)
     }
 
     pub fn update_gui_textures(

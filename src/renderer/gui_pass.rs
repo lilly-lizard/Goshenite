@@ -29,9 +29,9 @@ use std::{
     sync::Arc,
 };
 
-/// 2048 vertices and 1024 indices todo breakpoint to get estimate of how much actually required...
-const BUFFER_POOL_SIZE: vk::DeviceSize =
-    (4096 * mem::size_of::<egui::epaint::Vertex>() + 1024 * 4) as vk::DeviceSize;
+/// Estimate of pretty busy gui: 8192 vertices and 16384 indices
+const BUFFER_POOL_UPPER_SIZE: vk::DeviceSize =
+    (8192 * mem::align_of::<egui::epaint::Vertex>() + 16384 * 4) as vk::DeviceSize;
 const TEXTURE_FORMAT: vk::Format = vk::Format::R8G8B8A8_SRGB;
 const MAX_DESC_SETS_PER_POOL: u32 = 64;
 
@@ -850,7 +850,7 @@ impl GuiPass {
         &mut self,
         buffer_props: BufferProperties,
     ) -> anyhow::Result<Buffer> {
-        // note: this ends up getting ignored anyway because we're allocating from a pool (https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/custom_memory_pools.html#choosing_memory_type_index)
+        // note: I think this ends up getting ignored anyway because we're allocating from a pool, not sure though... (https://gpuopen-librariesandsdks.github.io/VulkanMemoryAllocator/html/custom_memory_pools.html#choosing_memory_type_index)
         let buffer_alloc_info = allocation_info_from_flags(
             vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::DEVICE_LOCAL,
             vk::MemoryPropertyFlags::empty(),
@@ -867,6 +867,8 @@ impl GuiPass {
 
             // `VK_ERROR_OUT_OF_DEVICE_MEMORY` means the vma pool has run out of space!
             if let Err(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY) = buffer_res {
+                debug!("creating new buffer pool");
+
                 self.current_buffer_pool_index += 1;
 
                 if self.current_buffer_pool_index < self.buffer_pools.len() {
@@ -1002,7 +1004,7 @@ fn create_buffer_pool(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<
     );
 
     let buffer_info = vk::BufferCreateInfo::builder()
-        .size(BUFFER_POOL_SIZE)
+        .size(BUFFER_POOL_UPPER_SIZE)
         .usage(vk::BufferUsageFlags::VERTEX_BUFFER | vk::BufferUsageFlags::INDEX_BUFFER);
 
     let memory_type_index = unsafe {
@@ -1243,3 +1245,19 @@ impl Display for GuiRendererError {
         }
     }
 }
+
+// ~~ Notes ~~
+
+/*
+typical gui vertex/index buffer composition:
+index size = 4
+indices = 3942
+                    (546)  (1377)
+indices mem total = 2184 + 5508 + 1080 + 456 + 5508 + 456 + 576
+                  = 15768
+vertex size = 32
+vertices = 1264
+                   (260)  (322)
+vertex mem total = 8320 + 10304 + 4352 + 2048 + 10304 + 2432 + 2688
+                 = 40448
+*/

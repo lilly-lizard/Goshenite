@@ -4,10 +4,7 @@ use super::{
     shader_interfaces::{uniform_buffers::CameraUniformBuffer, vertex_inputs::BoundingBoxVertex},
     vulkan_init::render_pass_indices,
 };
-use crate::engine::object::{
-    object_collection::ObjectCollection,
-    objects_delta::{ObjectDeltaOperation, ObjectsDelta},
-};
+use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{
@@ -83,7 +80,8 @@ impl GeometryPass {
     pub fn upload_overwrite_object_collection(
         &mut self,
         object_collection: &ObjectCollection,
-        queue: &Queue,
+        transfer_queue: &Queue,
+        render_queue: &Queue,
     ) -> anyhow::Result<()> {
         self.object_buffer_manager.reset_staging_buffer_offsets();
 
@@ -92,52 +90,25 @@ impl GeometryPass {
         // added objects
         for (&object_id, object) in objects {
             trace!("uploading object id = {:?} to gpu buffer", object_id);
-            self.object_buffer_manager
-                .update_or_push(object_id, object.duplicate(), queue)?;
+            self.object_buffer_manager.update_or_push(
+                object_id,
+                object.duplicate(),
+                transfer_queue,
+            )?;
         }
 
         Ok(())
     }
 
+    #[inline]
     pub fn update_objects(
         &mut self,
         objects_delta: ObjectsDelta,
-        queue: &Queue,
+        transfer_queue: &Queue,
+        render_queue: &Queue,
     ) -> anyhow::Result<()> {
-        self.object_buffer_manager.reset_staging_buffer_offsets();
-
-        for (object_id, object_delta) in objects_delta {
-            match object_delta {
-                ObjectDeltaOperation::Add(object_duplicate) => {
-                    trace!("adding object id = {:?} to gpu buffer", object_id);
-                    self.object_buffer_manager.update_or_push(
-                        object_id,
-                        object_duplicate,
-                        queue,
-                    )?;
-                }
-                ObjectDeltaOperation::Update(object_duplicate) => {
-                    trace!("updating object id = {:?} in gpu buffer", object_id);
-                    self.object_buffer_manager.update_or_push(
-                        object_id,
-                        object_duplicate,
-                        queue,
-                    )?;
-                }
-                ObjectDeltaOperation::Remove => {
-                    if let Some(_removed_index) = self.object_buffer_manager.remove(object_id) {
-                        trace!("removing object buffer id = {:?}", object_id);
-                    } else {
-                        debug!(
-                            "attempted to remove object id = {:?} from gpu buffer but not found!",
-                            object_id
-                        );
-                    }
-                }
-            }
-        }
-
-        Ok(())
+        self.object_buffer_manager
+            .update_objects(objects_delta, transfer_queue, render_queue)
     }
 
     pub fn update_camera_descriptor_set(&self, camera_buffer: &Buffer) -> anyhow::Result<()> {

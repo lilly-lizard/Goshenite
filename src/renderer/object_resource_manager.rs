@@ -7,7 +7,10 @@ use super::{
 };
 use crate::engine::{
     aabb::AABB_VERTEX_COUNT,
-    object::object::{ObjectDuplicate, ObjectId},
+    object::{
+        object::{ObjectDuplicate, ObjectId},
+        objects_delta::{ObjectDeltaOperation, ObjectsDelta},
+    },
 };
 use anyhow::Context;
 use ash::vk;
@@ -95,6 +98,40 @@ impl ObjectResourceManager {
         })
     }
 
+    pub fn update_objects(
+        &mut self,
+        objects_delta: ObjectsDelta,
+        transfer_queue: &Queue,
+        render_queue: &Queue,
+    ) -> anyhow::Result<()> {
+        self.reset_staging_buffer_offsets();
+
+        for (object_id, object_delta) in objects_delta {
+            match object_delta {
+                ObjectDeltaOperation::Add(object_duplicate) => {
+                    trace!("adding object id = {:?} to gpu buffer", object_id);
+                    self.update_or_push(object_id, object_duplicate, queue)?;
+                }
+                ObjectDeltaOperation::Update(object_duplicate) => {
+                    trace!("updating object id = {:?} in gpu buffer", object_id);
+                    self.update_or_push(object_id, object_duplicate, queue)?;
+                }
+                ObjectDeltaOperation::Remove => {
+                    if let Some(_removed_index) = self.remove(object_id) {
+                        trace!("removing object buffer id = {:?}", object_id);
+                    } else {
+                        debug!(
+                            "attempted to remove object id = {:?} from gpu buffer but not found!",
+                            object_id
+                        );
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
     pub fn update_or_push(
         &mut self,
         object_id: ObjectId,
@@ -108,6 +145,7 @@ impl ObjectResourceManager {
         )
         .context("creating command buffer for geometry upload")?;
 
+        // begin command buffer
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         command_buffer
@@ -147,6 +185,7 @@ impl ObjectResourceManager {
             self.objects_buffers.push(new_object);
         }
 
+        // end command buffer
         command_buffer
             .end()
             .context("ending geometry upload command buffer")?;
