@@ -776,9 +776,3 @@ pub fn create_render_command_buffers(
         .collect::<Vec<_>>();
     Ok(command_buffer_arcs)
 }
-
-pub fn create_signalled_fence(device: Arc<Device>) -> anyhow::Result<Arc<Fence>> {
-    let create_info = vk::FenceCreateInfo::builder().flags(vk::FenceCreateFlags::SIGNALED);
-    let fence = Fence::new(device, create_info).context("creating fence")?;
-    Ok(Arc::new(fence))
-}

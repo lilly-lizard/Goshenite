@@ -3,7 +3,7 @@
 use super::{
     config_renderer::{SHADER_ENTRY_POINT, TIMEOUT_NANOSECS},
     shader_interfaces::{push_constants::GuiPushConstant, vertex_inputs::EguiVertex},
-    vulkan_init::{create_signalled_fence, render_pass_indices},
+    vulkan_init::render_pass_indices,
 };
 use ahash::AHashMap;
 use anyhow::Context;
@@ -113,8 +113,10 @@ impl GuiPass {
         let texture_sampler = create_texture_sampler(device.clone())?;
         let initial_buffer_pool = create_buffer_pool(memory_allocator.clone())?;
 
-        let texture_create_fence = create_signalled_fence(device.clone())?;
-        let texture_update_fence = create_signalled_fence(device.clone())?;
+        let texture_create_fence =
+            Arc::new(Fence::new_signalled(device.clone()).context("creating fence")?);
+        let texture_update_fence =
+            Arc::new(Fence::new_signalled(device.clone()).context("creating fence")?);
         let render_sync_semaphore =
             Arc::new(Semaphore::new(device.clone()).context("creating render sync semaphore")?);
 

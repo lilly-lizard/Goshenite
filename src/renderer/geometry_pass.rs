@@ -45,7 +45,8 @@ impl GeometryPass {
         memory_allocator: Arc<MemoryAllocator>,
         render_pass: &RenderPass,
         camera_buffer: &Buffer,
-        queue_family_index: u32,
+        transfer_queue_family_index: u32,
+        render_queue_family_index: u32,
     ) -> anyhow::Result<Self> {
         let descriptor_pool = create_descriptor_pool(device.clone())?;
 
@@ -65,7 +66,8 @@ impl GeometryPass {
         let object_buffer_manager = ObjectResourceManager::new(
             memory_allocator,
             primitive_ops_desc_set_layout,
-            queue_family_index,
+            transfer_queue_family_index,
+            render_queue_family_index,
         )?;
 
         Ok(Self {
@@ -77,27 +79,14 @@ impl GeometryPass {
     }
 
     /// Good for initializing
-    pub fn upload_overwrite_object_collection(
+    #[inline]
+    pub fn upload_object_collection(
         &mut self,
         object_collection: &ObjectCollection,
         transfer_queue: &Queue,
         render_queue: &Queue,
     ) -> anyhow::Result<()> {
-        self.object_buffer_manager.reset_staging_buffer_offsets();
-
-        let objects = object_collection.objects();
-
-        // added objects
-        for (&object_id, object) in objects {
-            trace!("uploading object id = {:?} to gpu buffer", object_id);
-            self.object_buffer_manager.update_or_push(
-                object_id,
-                object.duplicate(),
-                transfer_queue,
-            )?;
-        }
-
-        Ok(())
+        self.upload_object_collection(object_collection, transfer_queue, render_queue)
     }
 
     #[inline]

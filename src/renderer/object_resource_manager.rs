@@ -9,6 +9,7 @@ use crate::engine::{
     aabb::AABB_VERTEX_COUNT,
     object::{
         object::{ObjectDuplicate, ObjectId},
+        object_collection::ObjectCollection,
         objects_delta::{ObjectDeltaOperation, ObjectsDelta},
     },
 };
@@ -17,7 +18,7 @@ use ash::vk;
 use bort_vk::{
     allocation_info_cpu_accessible, allocation_info_from_flags, AllocAccess, Buffer,
     BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DescriptorPool,
-    DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, Device, DeviceOwned,
+    DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, Device, DeviceOwned, Fence,
     GraphicsPipeline, MemoryAllocator, PipelineAccess, Queue,
 };
 #[allow(unused_imports)]
@@ -29,33 +30,29 @@ const DESCRIPTOR_POOL_SIZE: u32 = 256;
 // TODO biggest optimization is a staging buffer to make the vertex/storage buffers a more optimized memory type
 
 /// Reserve for 1024 primitive ops
-const PRIMITIVE_OPS_STAGING_BUFFER_SIZE: vk::DeviceSize =
+const STAGING_BUFFER_SIZE_PRIMITIVE_OPS: vk::DeviceSize =
     (1024 * PRIMITIVE_PACKET_LEN * size_of::<PrimitiveOpBufferUnit>()) as vk::DeviceSize;
 
 /// Reserve for 16 AABBs (one aabb per object)
-const BOUNDING_MESH_STAGING_BUFFER_SIZE: vk::DeviceSize =
+const STAGING_BUFFER_SIZE_BOUNDING_MESH: vk::DeviceSize =
     (16 * AABB_VERTEX_COUNT * size_of::<BoundingBoxVertex>()) as vk::DeviceSize;
 
-#[derive(Clone)]
-struct PerObjectResources {
-    pub object_id: ObjectId,
-    pub bounding_mesh_buffer: Arc<Buffer>,
-    pub bounding_mesh_vertex_count: u32,
-    pub primitive_ops_buffer: Arc<Buffer>,
-    pub primitive_ops_descriptor_set: Arc<DescriptorSet>,
-}
+/// Time to wait when we're just checking the status of a fence.
+const CHECK_FENCE_TIMEOUT_NANOSECONDS: u64 = 100;
 
 /// Manages per-object resources for the geometry pass
 pub struct ObjectResourceManager {
     device: Arc<Device>,
 
     memory_allocator: Arc<MemoryAllocator>,
-    transient_command_pool: Arc<CommandPool>,
+    command_pool_transfer_queue: Arc<CommandPool>,
+    command_pool_render_queue: Arc<CommandPool>,
 
-    primitive_ops_staging_buffer: Buffer,
-    bounding_mesh_staging_buffer: Buffer,
-    primitive_ops_staging_buffer_offset: vk::DeviceSize,
-    bounding_mesh_staging_buffer_offset: vk::DeviceSize,
+    pending_command_resources: Vec<TransferOperationResources>,
+    available_command_resources: Vec<TransferOperationResources>,
+
+    staging_buffer_primitive_ops: Buffer,
+    staging_buffer_bounding_mesh: Buffer,
 
     objects_buffers: Vec<PerObjectResources>,
 
@@ -67,29 +64,34 @@ impl ObjectResourceManager {
     pub fn new(
         memory_allocator: Arc<MemoryAllocator>,
         primitive_ops_desc_set_layout: Arc<DescriptorSetLayout>,
-        queue_family_index: u32,
+        transfer_queue_family_index: u32,
+        render_queue_family_index: u32,
     ) -> anyhow::Result<Self> {
         let device = memory_allocator.device().clone();
 
         let initial_descriptor_pool = create_descriptor_pool(device.clone())?;
-        let transient_command_pool =
-            create_transient_command_pool(device.clone(), queue_family_index)?;
+        let command_pool_transfer_queue =
+            create_command_pool(device.clone(), transfer_queue_family_index)?;
+        let command_pool_render_queue =
+            create_command_pool(device.clone(), render_queue_family_index)?;
 
-        let primitive_ops_staging_buffer =
-            create_primitive_ops_staging_buffer(memory_allocator.clone())?;
-        let bounding_mesh_staging_buffer =
-            create_bounding_mesh_staging_buffer(memory_allocator.clone())?;
+        let staging_buffer_primitive_ops =
+            create_staging_buffer_primitive_ops(memory_allocator.clone())?;
+        let staging_buffer_bounding_mesh =
+            create_staging_buffer_bounding_mesh(memory_allocator.clone())?;
 
         Ok(Self {
             device,
 
             memory_allocator,
-            transient_command_pool,
+            command_pool_transfer_queue,
+            command_pool_render_queue,
 
-            primitive_ops_staging_buffer,
-            bounding_mesh_staging_buffer,
-            primitive_ops_staging_buffer_offset: 0,
-            bounding_mesh_staging_buffer_offset: 0,
+            pending_command_resources: Vec::new(),
+            available_command_resources: Vec::new(),
+
+            staging_buffer_primitive_ops,
+            staging_buffer_bounding_mesh,
 
             objects_buffers: Vec::new(),
 
@@ -98,29 +100,70 @@ impl ObjectResourceManager {
         })
     }
 
+    pub fn upload_object_collection(
+        &mut self,
+        object_collection: &ObjectCollection,
+        transfer_queue: &Queue,
+        render_queue: &Queue,
+    ) -> anyhow::Result<()> {
+        self.reset_staging_buffer_offsets();
+
+        let objects = object_collection.objects();
+
+        // added objects
+        for (&object_id, object) in objects {
+            trace!("uploading object id = {:?} to gpu buffer", object_id);
+            self.update_or_push(object_id, object.duplicate())?;
+        }
+
+        Ok(())
+    }
+
     pub fn update_objects(
         &mut self,
         objects_delta: ObjectsDelta,
         transfer_queue: &Queue,
         render_queue: &Queue,
     ) -> anyhow::Result<()> {
-        self.reset_staging_buffer_offsets();
+        let mut transfer_operation_resources = self.get_transfer_command_resources()?;
+
+        // begin command buffers
+        let begin_info = vk::CommandBufferBeginInfo::builder()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+        transfer_operation_resources
+            .command_buffer_transfer
+            .begin(&begin_info)
+            .context("beginning object transfer command buffer")?;
+        transfer_operation_resources
+            .command_buffer_render_sync
+            .begin(&begin_info)
+            .context("beginning object sync command buffer")?;
 
         for (object_id, object_delta) in objects_delta {
             match object_delta {
                 ObjectDeltaOperation::Add(object_duplicate) => {
                     trace!("adding object id = {:?} to gpu buffer", object_id);
-                    self.update_or_push(object_id, object_duplicate, queue)?;
+                    self.update_or_push(
+                        object_id,
+                        object_duplicate,
+                        &transfer_operation_resources.command_buffer_transfer,
+                        &transfer_operation_resources.command_buffer_render_sync,
+                    )?;
                 }
                 ObjectDeltaOperation::Update(object_duplicate) => {
                     trace!("updating object id = {:?} in gpu buffer", object_id);
-                    self.update_or_push(object_id, object_duplicate, queue)?;
+                    self.update_or_push(
+                        object_id,
+                        object_duplicate,
+                        &transfer_operation_resources.command_buffer_transfer,
+                        &transfer_operation_resources.command_buffer_render_sync,
+                    )?;
                 }
                 ObjectDeltaOperation::Remove => {
                     if let Some(_removed_index) = self.remove(object_id) {
                         trace!("removing object buffer id = {:?}", object_id);
                     } else {
-                        debug!(
+                        trace!(
                             "attempted to remove object id = {:?} from gpu buffer but not found!",
                             object_id
                         );
@@ -129,6 +172,26 @@ impl ObjectResourceManager {
             }
         }
 
+        // end command buffers
+        transfer_operation_resources
+            .command_buffer_transfer
+            .end()
+            .context("ending object transfer command buffer")?;
+        transfer_operation_resources
+            .command_buffer_render_sync
+            .end()
+            .context("ending object sync command buffer")?;
+
+        // submit upload commands
+        todo!();
+        let command_buffer_handles = [transfer_operation_resources
+            .command_buffer_transfer
+            .handle()];
+        let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffer_handles);
+        transfer_queue
+            .submit(&[*submit_info], None)
+            .context("submitting geometry buffer upload commands")?;
+
         Ok(())
     }
 
@@ -136,29 +199,15 @@ impl ObjectResourceManager {
         &mut self,
         object_id: ObjectId,
         object: ObjectDuplicate,
-        queue: &Queue,
+        transfer_resources: &mut TransferOperationResources,
     ) -> anyhow::Result<()> {
-        // create one-time command buffer
-        let command_buffer = CommandBuffer::new(
-            self.transient_command_pool.clone(),
-            vk::CommandBufferLevel::PRIMARY,
-        )
-        .context("creating command buffer for geometry upload")?;
-
-        // begin command buffer
-        let begin_info = vk::CommandBufferBeginInfo::builder()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        command_buffer
-            .begin(&begin_info)
-            .context("beginning geometry upload command buffer")?;
-
         let primitive_ops_buffer = self
-            .upload_primitive_ops(object_id, &object, &command_buffer)
+            .upload_primitive_ops(object_id, &object, transfer_resources)
             .context("initial upload object to buffer")?;
 
         if let Some(index) = self.get_index(object_id) {
             let bounding_mesh_buffer =
-                self.upload_bounding_mesh(object_id, &object, &command_buffer)?;
+                self.upload_bounding_mesh(object_id, &object, transfer_resources)?;
 
             write_desc_set_primitive_ops(
                 &self.objects_buffers[index].primitive_ops_descriptor_set,
@@ -170,7 +219,7 @@ impl ObjectResourceManager {
             self.objects_buffers[index].primitive_ops_buffer = primitive_ops_buffer;
         } else {
             let bounding_mesh_buffer =
-                self.upload_bounding_mesh(object_id, &object, &command_buffer)?;
+                self.upload_bounding_mesh(object_id, &object, transfer_resources)?;
 
             let primitive_ops_descriptor_set = self.allocate_primitive_ops_descriptor_set()?;
             write_desc_set_primitive_ops(&primitive_ops_descriptor_set, &primitive_ops_buffer)?;
@@ -184,18 +233,6 @@ impl ObjectResourceManager {
             };
             self.objects_buffers.push(new_object);
         }
-
-        // end command buffer
-        command_buffer
-            .end()
-            .context("ending geometry upload command buffer")?;
-
-        // submit upload commands
-        let command_buffer_handles = [command_buffer.handle()];
-        let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffer_handles);
-        queue
-            .submit(&[*submit_info], None)
-            .context("submitting geometry buffer upload commands")?;
 
         Ok(())
     }
@@ -270,15 +307,6 @@ impl ObjectResourceManager {
     pub fn object_count(&self) -> usize {
         self.objects_buffers.len()
     }
-
-    /// Resets the offsets for the bounding mesh and primitive ops upload staging buffers.
-    /// Make sure this is only called after commands from `Self::update_or_push` are completed
-    /// because these offsets are used to ensure that data required by previous upload commands is
-    /// being conserved.
-    pub fn reset_staging_buffer_offsets(&mut self) {
-        self.bounding_mesh_staging_buffer_offset = 0;
-        self.primitive_ops_staging_buffer_offset = 0;
-    }
 }
 
 // Private functions
@@ -312,11 +340,76 @@ impl ObjectResourceManager {
         Ok(Arc::new(desc_set))
     }
 
+    fn get_transfer_command_resources(&mut self) -> anyhow::Result<TransferOperationResources> {
+        if let Some(mut resources) = self.available_command_resources.pop() {
+            // use existing resources
+            resources.staging_buffer_region_bounding_mesh.reset();
+            resources.staging_buffer_region_primitive_ops.reset();
+            Ok(resources)
+        } else {
+            // create new resources
+            let command_buffer_transfer = Arc::new(
+                self.command_pool_transfer_queue
+                    .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
+                    .context("allocating object upload transfer command buffer")?,
+            );
+            let command_buffer_render_sync = Arc::new(
+                self.command_pool_render_queue
+                    .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
+                    .context("allocating object upload sync command buffer")?,
+            );
+            let fence =
+                Arc::new(Fence::new_unsignalled(self.device.clone()).context("creating fence")?);
+
+            Ok(TransferOperationResources {
+                command_buffer_transfer,
+                command_buffer_render_sync,
+                fence,
+                staging_buffer_region_bounding_mesh: Default::default(),
+                staging_buffer_region_primitive_ops: Default::default(),
+            })
+        }
+    }
+
+    fn check_and_reuse_pending_resources(&mut self) -> anyhow::Result<()> {
+        let mut i: usize = 0;
+        while i < self.pending_command_resources.len() {
+            let wait_res = self.pending_command_resources[i]
+                .fence
+                .wait(CHECK_FENCE_TIMEOUT_NANOSECONDS);
+
+            if let Err(vk_res) = wait_res {
+                match vk_res {
+                    // timeout means commands are still executing, can't use this one so we move on.
+                    vk::Result::TIMEOUT => {
+                        i = i + 1;
+                        continue;
+                    }
+                    // error!
+                    _ => anyhow::bail!(vk_res),
+                };
+            }
+
+            // else: commands finished executing, can reuse these resources.
+            let mut command_resources = self.pending_command_resources.remove(i);
+
+            command_resources
+                .staging_buffer_region_bounding_mesh
+                .reset();
+            command_resources
+                .staging_buffer_region_primitive_ops
+                .reset();
+
+            self.available_command_resources.push(command_resources);
+        }
+        Ok(())
+    }
+
     fn upload_bounding_mesh(
         &mut self,
         object_id: ObjectId,
         object: &ObjectDuplicate,
-        command_buffer: &CommandBuffer,
+        transfer_resources: &mut TransferOperationResources,
     ) -> anyhow::Result<Arc<Buffer>> {
         trace!(
             "uploading bounding box vertices for object id = {:?} to gpu buffer",
@@ -359,7 +452,7 @@ impl ObjectResourceManager {
                 data,
                 &new_buffer,
                 data_size,
-                command_buffer,
+                transfer_resources,
             )?;
         }
         // more info about this topic here: https://asawicki.info/news_1740_vulkan_memory_types_on_pc_and_how_to_use_them
@@ -372,14 +465,14 @@ impl ObjectResourceManager {
         data: I,
         new_buffer: &Buffer,
         data_size: u64,
-        command_buffer: &CommandBuffer,
+        transfer_resources: &mut TransferOperationResources,
     ) -> anyhow::Result<()>
     where
         I: IntoIterator<Item = T>,
         I::IntoIter: ExactSizeIterator,
     {
-        self.bounding_mesh_staging_buffer
-            .write_iter(data, self.bounding_mesh_staging_buffer_offset as usize)
+        self.staging_buffer_bounding_mesh
+            .write_iter(data, self.staging_buffer_offset_bounding_mesh as usize)
             .context("uploading geometry pass bounding box vertices to staging buffer")?;
 
         let after_transfer_barrier = vk::BufferMemoryBarrier::builder()
@@ -391,7 +484,7 @@ impl ObjectResourceManager {
             .build();
 
         let copy_region = vk::BufferCopy {
-            src_offset: self.bounding_mesh_staging_buffer_offset,
+            src_offset: self.staging_buffer_offset_bounding_mesh,
             dst_offset: 0,
             size: data_size,
         };
@@ -399,7 +492,7 @@ impl ObjectResourceManager {
         unsafe {
             self.device.inner().cmd_copy_buffer(
                 command_buffer.handle(),
-                self.bounding_mesh_staging_buffer.handle(),
+                self.staging_buffer_bounding_mesh.handle(),
                 new_buffer.handle(),
                 &[copy_region],
             );
@@ -415,7 +508,7 @@ impl ObjectResourceManager {
             );
         }
 
-        self.bounding_mesh_staging_buffer_offset += data_size;
+        self.staging_buffer_offset_bounding_mesh += data_size;
 
         Ok(())
     }
@@ -424,7 +517,7 @@ impl ObjectResourceManager {
         &mut self,
         object_id: ObjectId,
         object: &ObjectDuplicate,
-        command_buffer: &CommandBuffer,
+        transfer_resources: &mut TransferOperationResources,
     ) -> anyhow::Result<Arc<Buffer>> {
         trace!(
             "uploading primitive ops for object id = {:?} to gpu buffer",
@@ -450,8 +543,8 @@ impl ObjectResourceManager {
         // upload data
 
         // todo what do if not enough space? goes for other staging buffers here too...
-        self.primitive_ops_staging_buffer
-            .write_iter(data, self.primitive_ops_staging_buffer_offset as usize)
+        self.staging_buffer_primitive_ops
+            .write_iter(data, self.staging_buffer_offset_primitive_ops as usize)
             .context("uploading geometry pass primitive ops to staging buffer")?;
 
         let after_transfer_barrier = vk::BufferMemoryBarrier::builder()
@@ -462,8 +555,16 @@ impl ObjectResourceManager {
             .offset(0)
             .build();
 
+        let before_render_barrier = vk::BufferMemoryBarrier::builder()
+            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            .dst_access_mask(vk::AccessFlags::SHADER_READ)
+            .buffer(new_buffer.handle())
+            .size(data_size)
+            .offset(0)
+            .build();
+
         let copy_region = vk::BufferCopy {
-            src_offset: self.primitive_ops_staging_buffer_offset,
+            src_offset: self.staging_buffer_offset_primitive_ops,
             dst_offset: 0,
             size: data_size,
         };
@@ -471,7 +572,7 @@ impl ObjectResourceManager {
         unsafe {
             self.device.inner().cmd_copy_buffer(
                 command_buffer.handle(),
-                self.primitive_ops_staging_buffer.handle(),
+                self.staging_buffer_primitive_ops.handle(),
                 new_buffer.handle(),
                 &[copy_region],
             );
@@ -488,18 +589,18 @@ impl ObjectResourceManager {
         }
 
         // so the next primitive op upload doesn't overwrite the data from these primitive ops
-        self.primitive_ops_staging_buffer_offset += data_size;
+        self.staging_buffer_offset_primitive_ops += data_size;
 
         Ok(Arc::new(new_buffer))
     }
 }
 
-fn create_transient_command_pool(
+fn create_command_pool(
     device: Arc<Device>,
     queue_family_index: u32,
 ) -> anyhow::Result<Arc<CommandPool>> {
     let command_pool_props = CommandPoolProperties {
-        flags: vk::CommandPoolCreateFlags::TRANSIENT,
+        flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
         queue_family_index,
     };
 
@@ -509,11 +610,11 @@ fn create_transient_command_pool(
     Ok(Arc::new(command_pool))
 }
 
-fn create_primitive_ops_staging_buffer(
+fn create_staging_buffer_primitive_ops(
     memory_allocator: Arc<MemoryAllocator>,
 ) -> anyhow::Result<Buffer> {
     let buffer_props = BufferProperties::new_default(
-        PRIMITIVE_OPS_STAGING_BUFFER_SIZE,
+        STAGING_BUFFER_SIZE_PRIMITIVE_OPS,
         vk::BufferUsageFlags::TRANSFER_SRC,
     );
     let alloc_info = allocation_info_cpu_accessible();
@@ -522,11 +623,11 @@ fn create_primitive_ops_staging_buffer(
         .context("creating primitive op staging buffer")
 }
 
-fn create_bounding_mesh_staging_buffer(
+fn create_staging_buffer_bounding_mesh(
     memory_allocator: Arc<MemoryAllocator>,
 ) -> anyhow::Result<Buffer> {
     let buffer_props = BufferProperties::new_default(
-        BOUNDING_MESH_STAGING_BUFFER_SIZE,
+        STAGING_BUFFER_SIZE_BOUNDING_MESH,
         vk::BufferUsageFlags::TRANSFER_SRC,
     );
     let alloc_info = allocation_info_cpu_accessible();
@@ -576,4 +677,37 @@ fn write_desc_set_primitive_ops(
     }
 
     Ok(())
+}
+
+// ~~ Helper Structs ~~
+
+struct PerObjectResources {
+    pub object_id: ObjectId,
+    pub bounding_mesh_buffer: Arc<Buffer>,
+    pub bounding_mesh_vertex_count: u32,
+    pub primitive_ops_buffer: Arc<Buffer>,
+    pub primitive_ops_descriptor_set: Arc<DescriptorSet>,
+}
+
+struct TransferOperationResources {
+    pub command_buffer_transfer: Arc<CommandBuffer>,
+    pub command_buffer_render_sync: Arc<CommandBuffer>,
+    pub fence: Arc<Fence>,
+    /// Which region of the primitive ops staging buffer is used for this transfer operation
+    pub staging_buffer_region_primitive_ops: BufferRegion,
+    /// Which region of the bounding mesh staging buffer is used for this transfer operation
+    pub staging_buffer_region_bounding_mesh: BufferRegion,
+}
+
+#[derive(Clone, Copy, Default)]
+struct BufferRegion {
+    pub start: vk::DeviceSize,
+    pub end: vk::DeviceSize,
+}
+
+impl BufferRegion {
+    pub fn reset(&mut self) {
+        self.start = 0;
+        self.end = 0;
+    }
 }

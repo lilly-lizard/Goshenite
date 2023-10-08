@@ -21,8 +21,7 @@ use crate::{
         vulkan_init::{
             choose_depth_buffer_format, create_command_pool, create_cpu_read_staging_buffer,
             create_device_and_queue, create_entry, create_primitive_id_buffers,
-            create_render_command_buffers, create_signalled_fence,
-            shaders_should_write_linear_color,
+            create_render_command_buffers, shaders_should_write_linear_color,
         },
     },
     user_interface::camera::Camera,
@@ -255,7 +254,8 @@ impl RenderManager {
             memory_allocator.clone(),
             &render_pass,
             &camera_ubo,
-            render_queue.famliy_index(),
+            transfer_queue_family_index,
+            render_queue_family_index,
         )?;
 
         let lighting_pass = LightingPass::new(
@@ -280,8 +280,10 @@ impl RenderManager {
             swapchain_image_views.len() as u32,
         )?;
 
-        let previous_render_fence = create_signalled_fence(device.clone())?;
-        let buffer_upload_fence = create_signalled_fence(device.clone())?;
+        let previous_render_fence =
+            Arc::new(Fence::new_signalled(device.clone()).context("creating fence")?);
+        let buffer_upload_fence =
+            Arc::new(Fence::new_signalled(device.clone()).context("creating fence")?);
         let next_frame_wait_semaphore =
             Arc::new(Semaphore::new(device.clone()).context("creating per-frame semaphore")?);
         let swapchain_image_available_semaphore = Arc::new(
