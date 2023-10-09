@@ -146,8 +146,7 @@ impl ObjectResourceManager {
                     self.update_or_push(
                         object_id,
                         object_duplicate,
-                        &transfer_operation_resources.command_buffer_transfer,
-                        &transfer_operation_resources.command_buffer_render_sync,
+                        &mut transfer_operation_resources,
                     )?;
                 }
                 ObjectDeltaOperation::Update(object_duplicate) => {
@@ -155,8 +154,7 @@ impl ObjectResourceManager {
                     self.update_or_push(
                         object_id,
                         object_duplicate,
-                        &transfer_operation_resources.command_buffer_transfer,
-                        &transfer_operation_resources.command_buffer_render_sync,
+                        &mut transfer_operation_resources,
                     )?;
                 }
                 ObjectDeltaOperation::Remove => {
@@ -191,6 +189,9 @@ impl ObjectResourceManager {
         transfer_queue
             .submit(&[*submit_info], None)
             .context("submitting geometry buffer upload commands")?;
+
+        self.pending_command_resources
+            .push(transfer_operation_resources);
 
         Ok(())
     }
@@ -593,6 +594,80 @@ impl ObjectResourceManager {
 
         Ok(Arc::new(new_buffer))
     }
+
+    fn determine_staging_buffer_offset_primitive_ops(
+        &self,
+        upload_data_size: vk::DeviceSize,
+    ) -> Option<vk::DeviceSize> {
+        let mut regions_in_use = self
+            .pending_command_resources
+            .iter()
+            .map(|r| r.staging_buffer_region_primitive_ops)
+            .collect::<Vec<BufferRegion>>();
+
+        let staging_buffer_size = self.staging_buffer_primitive_ops.properties().size;
+
+        self.determine_staging_buffer_offset(upload_data_size, regions_in_use, staging_buffer_size)
+    }
+
+    fn determine_staging_buffer_offset_bounding_mesh(
+        &self,
+        upload_data_size: vk::DeviceSize,
+    ) -> Option<vk::DeviceSize> {
+        let mut regions_in_use = self
+            .pending_command_resources
+            .iter()
+            .map(|r| r.staging_buffer_region_bounding_mesh)
+            .collect::<Vec<BufferRegion>>();
+
+        let staging_buffer_size = self.staging_buffer_bounding_mesh.properties().size;
+
+        self.determine_staging_buffer_offset(upload_data_size, regions_in_use, staging_buffer_size)
+    }
+
+    fn determine_staging_buffer_offset(
+        &self,
+        upload_data_size: vk::DeviceSize,
+        mut regions_in_use: Vec<BufferRegion>,
+        staging_buffer_size: vk::DeviceSize,
+    ) -> Option<vk::DeviceSize> {
+        // sort by start position (`Ord` is implemented for `BufferRegion` by comparing the start position)
+        regions_in_use.sort();
+
+        if regions_in_use.len() == 0 {
+            // no regions in use so just start from beginning of the staging buffer
+            return Some(0);
+        }
+
+        if regions_in_use[0].start > upload_data_size {
+            // enough bytes before first staging buffer region to use starting space
+            return Some(0);
+        }
+
+        // check spaces inbetween regions
+        for i in 0..(regions_in_use.len() - 1) {
+            let current_region = regions_in_use[i];
+            let next_region = regions_in_use[i + 1];
+
+            let current_region_end = current_region.start + current_region.size;
+            let space_between_regions = next_region.start - current_region_end;
+
+            if upload_data_size <= space_between_regions {
+                return Some(current_region_end);
+            }
+        }
+
+        // check space after last region in use
+        let last_region = regions_in_use[regions_in_use.len() - 1];
+        let last_region_end = last_region.start + last_region.size;
+        let space_after_last_region = staging_buffer_size - last_region_end;
+        if upload_data_size <= space_after_last_region {
+            return Some(last_region_end);
+        }
+
+        // no region of contiguous data available in staging buffer
+        None
+    }
 }
 
 fn create_command_pool(
@@ -699,15 +774,42 @@ struct TransferOperationResources {
     pub staging_buffer_region_bounding_mesh: BufferRegion,
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, Ord)]
+/// Describes a sub-region of a larger allocation contiguous data
 struct BufferRegion {
+    /// Position of first byte
     pub start: vk::DeviceSize,
-    pub end: vk::DeviceSize,
+    /// Number of bytes used
+    pub size: vk::DeviceSize,
 }
 
 impl BufferRegion {
     pub fn reset(&mut self) {
         self.start = 0;
-        self.end = 0;
+        self.size = 0;
+    }
+}
+
+// just order by start position as we should only compare regions for the same buffer in which case
+// there shouldn't be any overlap
+impl PartialOrd for BufferRegion {
+    fn ge(&self, other: &Self) -> bool {
+        self.start >= other.start
+    }
+
+    fn gt(&self, other: &Self) -> bool {
+        self.start > other.start
+    }
+
+    fn le(&self, other: &Self) -> bool {
+        self.start <= other.start
+    }
+
+    fn lt(&self, other: &Self) -> bool {
+        self.start < other.start
+    }
+
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.start.partial_cmp(&other.start)
     }
 }
