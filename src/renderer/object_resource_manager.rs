@@ -344,8 +344,8 @@ impl ObjectResourceManager {
     fn get_transfer_command_resources(&mut self) -> anyhow::Result<TransferOperationResources> {
         if let Some(mut resources) = self.available_command_resources.pop() {
             // use existing resources
-            resources.staging_buffer_region_bounding_mesh.reset();
-            resources.staging_buffer_region_primitive_ops.reset();
+            resources.staging_buffer_resource_bounding_mesh.reset();
+            resources.staging_buffer_resource_primitive_ops.reset();
             Ok(resources)
         } else {
             // create new resources
@@ -362,13 +362,11 @@ impl ObjectResourceManager {
             let fence =
                 Arc::new(Fence::new_unsignalled(self.device.clone()).context("creating fence")?);
 
-            Ok(TransferOperationResources {
+            Ok(TransferOperationResources::new(
                 command_buffer_transfer,
                 command_buffer_render_sync,
                 fence,
-                staging_buffer_region_bounding_mesh: Default::default(),
-                staging_buffer_region_primitive_ops: Default::default(),
-            })
+            ))
         }
     }
 
@@ -395,10 +393,10 @@ impl ObjectResourceManager {
             let mut command_resources = self.pending_command_resources.remove(i);
 
             command_resources
-                .staging_buffer_region_bounding_mesh
+                .staging_buffer_resource_bounding_mesh
                 .reset();
             command_resources
-                .staging_buffer_region_primitive_ops
+                .staging_buffer_resource_primitive_ops
                 .reset();
 
             self.available_command_resources.push(command_resources);
@@ -543,7 +541,6 @@ impl ObjectResourceManager {
 
         // upload data
 
-        // todo what do if not enough space? goes for other staging buffers here too...
         self.staging_buffer_primitive_ops
             .write_iter(data, self.staging_buffer_offset_primitive_ops as usize)
             .context("uploading geometry pass primitive ops to staging buffer")?;
@@ -599,13 +596,16 @@ impl ObjectResourceManager {
         &self,
         upload_data_size: vk::DeviceSize,
     ) -> Option<vk::DeviceSize> {
+        let staging_buffer_size = self.staging_buffer_primitive_ops.properties().size;
+
         let mut regions_in_use = self
             .pending_command_resources
             .iter()
-            .map(|r| r.staging_buffer_region_primitive_ops)
+            .filter_map(|r| match r.staging_buffer_resource_primitive_ops {
+                StagingBufferResources::PreAllocatedRegion(region) => Some(region),
+                _ => None,
+            })
             .collect::<Vec<BufferRegion>>();
-
-        let staging_buffer_size = self.staging_buffer_primitive_ops.properties().size;
 
         self.determine_staging_buffer_offset(upload_data_size, regions_in_use, staging_buffer_size)
     }
@@ -614,13 +614,16 @@ impl ObjectResourceManager {
         &self,
         upload_data_size: vk::DeviceSize,
     ) -> Option<vk::DeviceSize> {
+        let staging_buffer_size = self.staging_buffer_bounding_mesh.properties().size;
+
         let mut regions_in_use = self
             .pending_command_resources
             .iter()
-            .map(|r| r.staging_buffer_region_bounding_mesh)
+            .filter_map(|r| match r.staging_buffer_resource_bounding_mesh {
+                StagingBufferResources::PreAllocatedRegion(region) => Some(region),
+                _ => None,
+            })
             .collect::<Vec<BufferRegion>>();
-
-        let staging_buffer_size = self.staging_buffer_bounding_mesh.properties().size;
 
         self.determine_staging_buffer_offset(upload_data_size, regions_in_use, staging_buffer_size)
     }
@@ -768,10 +771,44 @@ struct TransferOperationResources {
     pub command_buffer_transfer: Arc<CommandBuffer>,
     pub command_buffer_render_sync: Arc<CommandBuffer>,
     pub fence: Arc<Fence>,
-    /// Which region of the primitive ops staging buffer is used for this transfer operation
-    pub staging_buffer_region_primitive_ops: BufferRegion,
-    /// Which region of the bounding mesh staging buffer is used for this transfer operation
-    pub staging_buffer_region_bounding_mesh: BufferRegion,
+    pub staging_buffer_resource_primitive_ops: StagingBufferResources,
+    pub staging_buffer_resource_bounding_mesh: StagingBufferResources,
+}
+
+impl TransferOperationResources {
+    pub fn new(
+        command_buffer_transfer: Arc<CommandBuffer>,
+        command_buffer_render_sync: Arc<CommandBuffer>,
+        fence: Arc<Fence>,
+    ) -> Self {
+        Self {
+            command_buffer_transfer,
+            command_buffer_render_sync,
+            fence,
+            staging_buffer_resource_bounding_mesh: Default::default(),
+            staging_buffer_resource_primitive_ops: Default::default(),
+        }
+    }
+}
+
+enum StagingBufferResources {
+    /// A region of the large pre-allocated staging buffer is used
+    PreAllocatedRegion(BufferRegion),
+    /// There was not enough space in the pre-allocated buffer so a new one was created just for
+    /// this upload
+    DedicatedStagingBuffer(Arc<Buffer>),
+}
+
+impl Default for StagingBufferResources {
+    fn default() -> Self {
+        Self::PreAllocatedRegion(Default::default())
+    }
+}
+
+impl StagingBufferResources {
+    pub fn reset(&mut self) {
+        *self = Default::default()
+    }
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq, Ord)]
