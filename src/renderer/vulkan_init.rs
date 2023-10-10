@@ -12,7 +12,7 @@ use ash::vk;
 use bort_vk::{
     allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, Buffer,
     BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback, Device,
-    Fence, Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageProperties, ImageView,
+    Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageProperties, ImageView,
     ImageViewAccess, ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, Queue,
     RenderPass, Subpass, Surface, Swapchain, SwapchainImage, SwapchainProperties,
 };
@@ -276,7 +276,7 @@ pub fn create_device_and_queue(
 pub fn create_command_pool(device: Arc<Device>, queue: &Queue) -> anyhow::Result<Arc<CommandPool>> {
     let command_pool_props = CommandPoolProperties {
         flags: vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER,
-        queue_family_index: queue.famliy_index(),
+        queue_family_index: queue.family_index(),
     };
     let command_pool = CommandPool::new(device, command_pool_props)
         .context("creating render manager command pool")?;

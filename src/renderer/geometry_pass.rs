@@ -86,7 +86,11 @@ impl GeometryPass {
         transfer_queue: &Queue,
         render_queue: &Queue,
     ) -> anyhow::Result<()> {
-        self.upload_object_collection(object_collection, transfer_queue, render_queue)
+        self.object_buffer_manager.upload_object_collection(
+            object_collection,
+            transfer_queue,
+            render_queue,
+        )
     }
 
     #[inline]

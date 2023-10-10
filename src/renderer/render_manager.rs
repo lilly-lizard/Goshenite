@@ -745,8 +745,8 @@ impl RenderManager {
             .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
             .image(last_primitive_id_buffer.image().handle())
             .subresource_range(image_subresource_range)
-            .src_queue_family_index(self.render_queue.famliy_index())
-            .dst_queue_family_index(self.transfer_queue.famliy_index());
+            .src_queue_family_index(self.render_queue.family_index())
+            .dst_queue_family_index(self.transfer_queue.family_index());
 
         let image_memory_barrier_after_transfer = vk::ImageMemoryBarrier::builder()
             .src_access_mask(vk::AccessFlags::TRANSFER_READ)
@@ -755,8 +755,8 @@ impl RenderManager {
             .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .image(last_primitive_id_buffer.image().handle())
             .subresource_range(image_subresource_range)
-            .src_queue_family_index(self.transfer_queue.famliy_index())
-            .dst_queue_family_index(self.render_queue.famliy_index());
+            .src_queue_family_index(self.transfer_queue.family_index())
+            .dst_queue_family_index(self.render_queue.family_index());
 
         let image_subresource_layers = vk::ImageSubresourceLayers {
             aspect_mask: vk::ImageAspectFlags::COLOR,

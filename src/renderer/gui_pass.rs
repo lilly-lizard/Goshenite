@@ -227,7 +227,7 @@ impl GuiPass {
 
         if new_image_commands_recorded {
             let queue_ownership_required =
-                transfer_queue.famliy_index() != render_queue.famliy_index();
+                transfer_queue.family_index() != render_queue.family_index();
 
             self.submit_texture_creation_commands(
                 queue_ownership_required,
@@ -339,23 +339,25 @@ impl GuiPass {
         } else {
             Vec::new()
         };
+        let transfer_fence = if queue_ownership_transfer_required {
+            None // fence signalled by render sync command buffer instead
+        } else {
+            Some(self.texture_create_fence.handle())
+        };
 
         let transfer_command_buffers = [self.transfer_command_buffer.handle()];
-
         let transfer_submit_info = vk::SubmitInfo::builder()
             .command_buffers(&transfer_command_buffers)
             .signal_semaphores(&sync_semaphores);
 
         transfer_queue
-            .submit(
-                &[transfer_submit_info.build()],
-                Some(self.texture_create_fence.handle()),
-            )
+            .submit(&[transfer_submit_info.build()], transfer_fence)
             .context("submitting gui texture creation commands")?;
 
+        // todo this syncs with ALL fragment shader operations, but we only care about the gui fragment shader!
+        // todo record as secondary command buffer and submit in record_render_commands?
         if queue_ownership_transfer_required {
             let render_sync_command_buffers = [self.render_sync_command_buffer.handle()];
-
             let render_sync_submit_info = vk::SubmitInfo::builder()
                 .command_buffers(&render_sync_command_buffers)
                 .wait_semaphores(&sync_semaphores)
@@ -547,6 +549,8 @@ impl GuiPass {
             .properties()
             .queue_family_index;
 
+        // create new image
+
         let new_image_properties = ImageProperties {
             format: TEXTURE_FORMAT,
             dimensions: ImageDimensions::new_2d(
@@ -576,6 +580,8 @@ impl GuiPass {
             ImageView::new(new_image.clone(), new_image_view_properties)
                 .context("creating image view for new egui texture")?,
         );
+
+        // copy data from staging buffer to image
 
         let copy_region = vk::BufferImageCopy {
             image_subresource: default_subresource_layers(vk::ImageAspectFlags::COLOR),
@@ -610,7 +616,6 @@ impl GuiPass {
             .dst_queue_family_index(render_queue_family_index)
             .build();
 
-        // record transfer commands
         let device_ash = self.device.inner();
         unsafe {
             let transfer_command_buffer_handle = self.transfer_command_buffer.handle();
@@ -649,8 +654,10 @@ impl GuiPass {
             );
         }
 
+        // sync with render queue (if necessary)
+
         if render_queue_family_index != transfer_queue_family_index {
-            // an identical queue aquire operation is required to complete the layout transition https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#synchronization-queue-transfers-release
+            // an identical queue aquire operation is required to complete the layout transition https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#synchronization-queue-transfers-acquire
             let before_render_image_barrier = vk::ImageMemoryBarrier::builder()
                 .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
                 .dst_access_mask(vk::AccessFlags::SHADER_READ)
@@ -674,6 +681,8 @@ impl GuiPass {
                 );
             }
         }
+
+        // new descriptor set
 
         let font_desc_set = self.get_new_font_texture_desc_set()?;
 
