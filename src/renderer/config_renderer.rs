@@ -13,6 +13,7 @@ pub const SHADER_ENTRY_POINT: &str = "main";
 pub const FORMAT_NORMAL_BUFFER: vk::Format = vk::Format::R8G8B8A8_UNORM;
 pub const FORMAT_PRIMITIVE_ID_BUFFER: vk::Format = vk::Format::R32_UINT;
 
+/// 1 second
 pub const TIMEOUT_NANOSECS: u64 = 1_000_000_000;
 
 // do not change this!
