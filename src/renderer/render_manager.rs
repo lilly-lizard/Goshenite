@@ -862,6 +862,5 @@ impl Drop for RenderManager {
         if let Err(e) = command_pool_reset_res {
             log_error_sources(&e, 0);
         }
-        self.render_command_buffers.clear();
     }
 }

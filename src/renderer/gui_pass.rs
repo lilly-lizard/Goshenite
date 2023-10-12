@@ -335,10 +335,11 @@ impl GuiPass {
             .context("reseting gui texture creation fence")?;
 
         let sync_semaphores = if queue_ownership_transfer_required {
-            vec![self.render_sync_semaphore.handle()]
+            vec![self.render_sync_semaphore.handle()] // sync with render queue
         } else {
-            Vec::new()
+            Vec::new() // implicit sync
         };
+
         let transfer_fence = if queue_ownership_transfer_required {
             None // fence signalled by render sync command buffer instead
         } else {
@@ -364,7 +365,10 @@ impl GuiPass {
                 .wait_dst_stage_mask(&[vk::PipelineStageFlags::FRAGMENT_SHADER]);
 
             render_queue
-                .submit(&[render_sync_submit_info.build()], None)
+                .submit(
+                    &[render_sync_submit_info.build()],
+                    Some(self.texture_create_fence.handle()),
+                )
                 .context("submitting texture creation render queue sync commands")?;
         }
 
