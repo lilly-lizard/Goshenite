@@ -203,15 +203,9 @@ pub fn create_device_and_queue(
     render_queue_family_index: u32,
     transfer_queue_family_index: u32,
 ) -> anyhow::Result<CreateDeviceAndQueuesReturn> {
-    let queue_infos = if render_queue_family_index == transfer_queue_family_index {
-        let queue_priorities = [1.0, 1.0];
+    let separate_queue_families = render_queue_family_index != transfer_queue_family_index;
 
-        let render_and_transfer_queue_info = vk::DeviceQueueCreateInfo::builder()
-            .queue_family_index(render_queue_family_index)
-            .queue_priorities(&queue_priorities);
-
-        vec![render_and_transfer_queue_info.build()]
-    } else {
+    let queue_infos = if separate_queue_families {
         let queue_priorities = [1.0];
 
         let render_queue_info = vk::DeviceQueueCreateInfo::builder()
@@ -223,6 +217,14 @@ pub fn create_device_and_queue(
             .queue_priorities(&queue_priorities);
 
         vec![render_queue_info.build(), transfer_queue_info.build()]
+    } else {
+        let queue_priorities = [1.0];
+
+        let render_and_transfer_queue_info = vk::DeviceQueueCreateInfo::builder()
+            .queue_family_index(render_queue_family_index)
+            .queue_priorities(&queue_priorities);
+
+        vec![render_and_transfer_queue_info.build()]
     };
 
     let features_1_0 = vk::PhysicalDeviceFeatures::default();
@@ -247,24 +249,22 @@ pub fn create_device_and_queue(
 
     let render_queue = Arc::new(Queue::new(device.clone(), render_queue_family_index, 0));
     debug!(
-        "created render queue. family index = {}, queue index = {}",
-        render_queue_family_index, 0
+        "created render queue. family index = {}",
+        render_queue_family_index
     );
 
-    let transfer_queue_index = if render_queue_family_index == transfer_queue_family_index {
-        1
+    let transfer_queue = if separate_queue_families {
+        debug!(
+            "created transfer queue. family index = {}",
+            transfer_queue_family_index
+        );
+        Arc::new(Queue::new(device.clone(), transfer_queue_family_index, 0))
     } else {
-        0
+        debug!(
+            "no separate transfer queue family available. transfer queue is same as render queue"
+        );
+        render_queue.clone()
     };
-    let transfer_queue = Arc::new(Queue::new(
-        device.clone(),
-        transfer_queue_family_index,
-        transfer_queue_index,
-    ));
-    debug!(
-        "created transfer queue. family index = {}, queue index = {}",
-        transfer_queue_family_index, transfer_queue_index
-    );
 
     Ok(CreateDeviceAndQueuesReturn {
         device,

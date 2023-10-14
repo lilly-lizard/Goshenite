@@ -308,7 +308,7 @@ impl ObjectResourceManager {
     fn get_transfer_command_resources(&mut self) -> anyhow::Result<TransferOperationResources> {
         if let Some(mut resources) = self.available_command_resources.pop() {
             // use existing resources (not the buffers though, vma handles that for us!)
-            resources.free_staging_buffers();
+            resources.free_buffers();
             Ok(resources)
         } else {
             // create new resources
@@ -354,7 +354,7 @@ impl ObjectResourceManager {
             // else: commands finished executing, can reuse these resources.
             let mut command_resources = self.pending_command_resources.remove(i);
 
-            command_resources.free_staging_buffers();
+            command_resources.free_buffers();
 
             self.available_command_resources.push(command_resources);
         }
@@ -463,11 +463,14 @@ impl ObjectResourceManager {
             render_dst_access_flags,
         );
 
+        let new_buffer = Arc::new(new_buffer);
+
         transfer_resources
             .staging_buffers
             .push(Arc::new(staging_buffer));
+        transfer_resources.target_buffers.push(new_buffer.clone());
 
-        Ok(Arc::new(new_buffer))
+        Ok(new_buffer)
     }
 
     fn record_buffer_copy_commands(
@@ -626,6 +629,7 @@ struct TransferOperationResources {
     pub fence: Arc<Fence>,
     pub semaphore_queue_sync: Arc<Semaphore>,
     pub staging_buffers: Vec<Arc<Buffer>>,
+    pub target_buffers: Vec<Arc<Buffer>>,
 }
 
 impl TransferOperationResources {
@@ -652,11 +656,13 @@ impl TransferOperationResources {
             fence,
             semaphore_queue_sync,
             staging_buffers: Default::default(),
+            target_buffers: Default::default(),
         }
     }
 
-    pub fn free_staging_buffers(&mut self) {
+    pub fn free_buffers(&mut self) {
         self.staging_buffers.clear();
+        self.target_buffers.clear();
     }
 
     pub fn queue_ownership_transfer_required(&self) -> bool {
