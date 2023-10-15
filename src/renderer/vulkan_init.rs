@@ -195,6 +195,7 @@ pub struct CreateDeviceAndQueuesReturn {
     pub device: Arc<Device>,
     pub render_queue: Arc<Queue>,
     pub transfer_queue: Arc<Queue>,
+    pub render_sync_queue: Arc<Queue>,
 }
 
 pub fn create_device_and_queue(
@@ -205,16 +206,27 @@ pub fn create_device_and_queue(
 ) -> anyhow::Result<CreateDeviceAndQueuesReturn> {
     let separate_queue_families = render_queue_family_index != transfer_queue_family_index;
 
-    let queue_infos = if separate_queue_families {
-        let queue_priorities = [1.0];
+    let multiple_render_queues = physical_device
+        .queue_family_properties()
+        .get(render_queue_family_index as usize)
+        .context("indexing physical device properties with render queue family index")?
+        .queue_count
+        > 1;
 
+    let queue_infos = if separate_queue_families {
+        let render_queue_priorities = if multiple_render_queues {
+            vec![1.0, 1.0]
+        } else {
+            vec![1.0]
+        };
         let render_queue_info = vk::DeviceQueueCreateInfo::builder()
             .queue_family_index(render_queue_family_index)
-            .queue_priorities(&queue_priorities);
+            .queue_priorities(&render_queue_priorities);
 
+        let transfer_queue_priorities = [1.0];
         let transfer_queue_info = vk::DeviceQueueCreateInfo::builder()
             .queue_family_index(transfer_queue_family_index)
-            .queue_priorities(&queue_priorities);
+            .queue_priorities(&transfer_queue_priorities);
 
         vec![render_queue_info.build(), transfer_queue_info.build()]
     } else {
@@ -266,10 +278,31 @@ pub fn create_device_and_queue(
         render_queue.clone()
     };
 
+    let render_sync_queue = if separate_queue_families {
+        if multiple_render_queues {
+            debug!(
+                "created render sync queue. family index = {}",
+                render_queue_family_index
+            );
+            Arc::new(Queue::new(device.clone(), render_queue_family_index, 1))
+        } else {
+            debug!(
+                "only 1 render queue available. all render sync will be done on the render queue"
+            );
+            render_queue.clone()
+        }
+    } else {
+        debug!(
+            "no separate transfer queue family available. render sync queue is same as render queue"
+        );
+        render_queue.clone()
+    };
+
     Ok(CreateDeviceAndQueuesReturn {
         device,
         render_queue,
         transfer_queue,
+        render_sync_queue,
     })
 }
 

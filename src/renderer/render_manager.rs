@@ -48,6 +48,8 @@ pub struct RenderManager {
     device: Arc<Device>,
     render_queue: Arc<Queue>,
     transfer_queue: Arc<Queue>,
+    /// Used for queue transfer operations to and from the render queue family
+    render_sync_queue: Arc<Queue>,
 
     memory_allocator: Arc<MemoryAllocator>,
     render_command_pool: Arc<CommandPool>,
@@ -173,6 +175,7 @@ impl RenderManager {
             device,
             render_queue,
             transfer_queue,
+            render_sync_queue,
         } = create_device_and_queue(
             physical_device.clone(),
             debug_callback.clone(),
@@ -297,6 +300,7 @@ impl RenderManager {
             device,
             render_queue,
             transfer_queue,
+            render_sync_queue,
 
             memory_allocator,
             render_command_pool,
@@ -720,7 +724,7 @@ impl RenderManager {
             self.primitive_id_buffers[self.framebuffer_index_last_rendered_to].clone();
 
         let image_offset = vk::Offset3D {
-            x: screen_coordinate[0].round() as i32, // todo
+            x: screen_coordinate[0].round() as i32,
             y: screen_coordinate[1].round() as i32,
             z: 0,
         };

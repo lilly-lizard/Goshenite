@@ -6,6 +6,10 @@ SDF rendering engine thingy.
 
 If debugging, run with environment variable `RUST_BACKTRACE=1` to see [anyhow](https://github.com/dtolnay/anyhow) error backtrace.
 
+## dependencies
+
+If running in debug mode you need vulkan validation layers installed (I haven't got around to writing code that can detect the presence of layers on different platorms...)
+
 ## Cargo features
 
 - __colored-term__: (default) enables colored terminal log messages.
