@@ -32,8 +32,8 @@ pub struct ObjectResourceManager {
     command_pool_transfer_queue: Arc<CommandPool>,
     command_pool_render_queue: Arc<CommandPool>,
 
-    pending_command_resources: Vec<TransferOperationResources>,
-    available_command_resources: Vec<TransferOperationResources>,
+    pending_upload_resources: Vec<BufferUploadResources>,
+    available_upload_resources: Vec<BufferUploadResources>,
 
     objects_buffers: Vec<PerObjectResources>,
 
@@ -63,8 +63,8 @@ impl ObjectResourceManager {
             command_pool_transfer_queue,
             command_pool_render_queue,
 
-            pending_command_resources: Vec::new(),
-            available_command_resources: Vec::new(),
+            pending_upload_resources: Vec::new(),
+            available_upload_resources: Vec::new(),
 
             objects_buffers: Vec::new(),
 
@@ -102,7 +102,7 @@ impl ObjectResourceManager {
         transfer_operation_resources
             .submit_upload_and_sync_commands(transfer_queue, render_queue)?;
 
-        self.pending_command_resources
+        self.pending_upload_resources
             .push(transfer_operation_resources);
 
         Ok(())
@@ -154,7 +154,7 @@ impl ObjectResourceManager {
         transfer_operation_resources
             .submit_upload_and_sync_commands(transfer_queue, render_queue)?;
 
-        self.pending_command_resources
+        self.pending_upload_resources
             .push(transfer_operation_resources);
 
         Ok(())
@@ -164,7 +164,7 @@ impl ObjectResourceManager {
         &mut self,
         object_id: ObjectId,
         object: ObjectDuplicate,
-        transfer_resources: &mut TransferOperationResources,
+        transfer_resources: &mut BufferUploadResources,
     ) -> anyhow::Result<()> {
         let primitive_ops_buffer = self
             .upload_primitive_ops(object_id, &object, transfer_resources)
@@ -305,38 +305,26 @@ impl ObjectResourceManager {
         Ok(Arc::new(desc_set))
     }
 
-    fn get_transfer_command_resources(&mut self) -> anyhow::Result<TransferOperationResources> {
-        if let Some(mut resources) = self.available_command_resources.pop() {
+    fn get_transfer_command_resources(&mut self) -> anyhow::Result<BufferUploadResources> {
+        if let Some(mut resources) = self.available_upload_resources.pop() {
             // use existing resources (not the buffers though, vma handles that for us!)
             resources.free_buffers();
             Ok(resources)
         } else {
             // create new resources
-            let command_buffer_transfer = self
-                .command_pool_transfer_queue
-                .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
-                .context("allocating object upload transfer command buffer")?;
-            let command_buffer_render_sync = self
-                .command_pool_render_queue
-                .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
-                .context("allocating object upload sync command buffer")?;
-            let fence = Fence::new_unsignalled(self.device.clone()).context("creating fence")?;
-            let semaphore = Semaphore::new(self.device.clone()).context("creating semaphore")?;
-
-            Ok(TransferOperationResources::new(
-                Arc::new(command_buffer_transfer),
-                Arc::new(command_buffer_render_sync),
-                Arc::new(fence),
-                Arc::new(semaphore),
-            ))
+            Ok(BufferUploadResources::new(
+                self.device.clone(),
+                &self.command_pool_transfer_queue,
+                &self.command_pool_render_queue,
+            )?)
         }
     }
 
     fn check_and_reuse_pending_resources(&mut self) -> anyhow::Result<()> {
         let mut i: usize = 0;
-        while i < self.pending_command_resources.len() {
-            let wait_res = self.pending_command_resources[i]
-                .fence
+        while i < self.pending_upload_resources.len() {
+            let wait_res = self.pending_upload_resources[i]
+                .completion_fence
                 .wait(CHECK_FENCE_TIMEOUT_NANOSECONDS);
 
             if let Err(vk_res) = wait_res {
@@ -352,11 +340,11 @@ impl ObjectResourceManager {
             }
 
             // else: commands finished executing, can reuse these resources.
-            let mut command_resources = self.pending_command_resources.remove(i);
+            let mut command_resources = self.pending_upload_resources.remove(i);
 
             command_resources.free_buffers();
 
-            self.available_command_resources.push(command_resources);
+            self.available_upload_resources.push(command_resources);
         }
         Ok(())
     }
@@ -365,7 +353,7 @@ impl ObjectResourceManager {
         &mut self,
         object_id: ObjectId,
         object: &ObjectDuplicate,
-        transfer_resources: &mut TransferOperationResources,
+        transfer_resources: &mut BufferUploadResources,
     ) -> anyhow::Result<Arc<Buffer>> {
         debug!(
             "uploading bounding box vertices for object id = {:?} to gpu buffer",
@@ -389,7 +377,7 @@ impl ObjectResourceManager {
         &mut self,
         object_id: ObjectId,
         object: &ObjectDuplicate,
-        transfer_resources: &mut TransferOperationResources,
+        transfer_resources: &mut BufferUploadResources,
     ) -> anyhow::Result<Arc<Buffer>> {
         debug!(
             "uploading primitive ops for object id = {:?} to gpu buffer",
@@ -411,7 +399,7 @@ impl ObjectResourceManager {
 
     fn upload_via_staging_buffer<I, T>(
         &mut self,
-        transfer_resources: &mut TransferOperationResources,
+        transfer_resources: &mut BufferUploadResources,
         upload_data: I,
         upload_data_size: u64,
         buffer_usage_during_render: vk::BufferUsageFlags,
@@ -475,7 +463,7 @@ impl ObjectResourceManager {
 
     fn record_buffer_copy_commands(
         &mut self,
-        transfer_resources: &mut TransferOperationResources,
+        transfer_resources: &mut BufferUploadResources,
         new_buffer: &Buffer,
         staging_buffer: &Buffer,
         upload_data_size: u64,
@@ -621,43 +609,54 @@ struct PerObjectResources {
     pub primitive_ops_descriptor_set: Arc<DescriptorSet>,
 }
 
-struct TransferOperationResources {
+struct BufferUploadResources {
     pub command_buffer_transfer: Arc<CommandBuffer>,
     pub command_buffer_render_sync: Arc<CommandBuffer>,
     pub transfer_queue_family_index: u32,
     pub render_queue_family_index: u32,
-    pub fence: Arc<Fence>,
+    pub completion_fence: Arc<Fence>,
     pub semaphore_queue_sync: Arc<Semaphore>,
     pub staging_buffers: Vec<Arc<Buffer>>,
     pub target_buffers: Vec<Arc<Buffer>>,
 }
 
-impl TransferOperationResources {
+impl BufferUploadResources {
     pub fn new(
-        command_buffer_transfer: Arc<CommandBuffer>,
-        command_buffer_render_sync: Arc<CommandBuffer>,
-        fence: Arc<Fence>,
-        semaphore_queue_sync: Arc<Semaphore>,
-    ) -> Self {
-        let transfer_queue_family_index = command_buffer_transfer
-            .command_pool()
-            .properties()
-            .queue_family_index;
-        let render_queue_family_index = command_buffer_render_sync
-            .command_pool()
-            .properties()
-            .queue_family_index;
+        device: Arc<Device>,
+        command_pool_transfer_queue: &Arc<CommandPool>,
+        command_pool_render_queue: &Arc<CommandPool>,
+    ) -> anyhow::Result<Self> {
+        let command_buffer_transfer = Arc::new(
+            command_pool_transfer_queue
+                .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
+                .context("allocating object upload transfer command buffer")?,
+        );
 
-        Self {
+        let command_buffer_render_sync = Arc::new(
+            command_pool_render_queue
+                .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
+                .context("allocating object upload sync command buffer")?,
+        );
+
+        let completion_fence =
+            Arc::new(Fence::new_unsignalled(device.clone()).context("creating fence")?);
+        let semaphore_queue_sync =
+            Arc::new(Semaphore::new(device.clone()).context("creating semaphore")?);
+
+        let transfer_queue_family_index =
+            command_pool_transfer_queue.properties().queue_family_index;
+        let render_queue_family_index = command_pool_render_queue.properties().queue_family_index;
+
+        Ok(Self {
             command_buffer_transfer,
             command_buffer_render_sync,
             transfer_queue_family_index,
             render_queue_family_index,
-            fence,
+            completion_fence,
             semaphore_queue_sync,
             staging_buffers: Default::default(),
             target_buffers: Default::default(),
-        }
+        })
     }
 
     pub fn free_buffers(&mut self) {
@@ -711,7 +710,7 @@ impl TransferOperationResources {
         let transfer_fence = if queue_ownership_transfer_required {
             None // fence signalled by render sync command buffer instead
         } else {
-            Some(self.fence.handle())
+            Some(self.completion_fence.handle())
         };
 
         let transfer_command_buffers = [self.command_buffer_transfer.handle()];
@@ -735,7 +734,7 @@ impl TransferOperationResources {
             render_queue
                 .submit(
                     &[render_sync_submit_info.build()],
-                    Some(self.fence.handle()),
+                    Some(self.completion_fence.handle()),
                 )
                 .context("submitting object data upload render sync commands")?;
         }

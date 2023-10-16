@@ -51,8 +51,8 @@ pub struct RenderManager {
     render_sync_queue: Arc<Queue>,
 
     memory_allocator: Arc<MemoryAllocator>,
-    render_command_pool: Arc<CommandPool>,
-    transfer_command_pool: Arc<CommandPool>,
+    command_pool_render: Arc<CommandPool>,
+    command_pool_transfer: Arc<CommandPool>,
 
     window: Arc<Window>,
     surface: Arc<Surface>,
@@ -91,8 +91,7 @@ pub struct RenderManager {
     /// Can be set to true with [`Self::set_window_just_resized_flag`] and set to false in [`Self::render_frame`]
     window_just_resized: bool,
 
-    cpu_read_staging_buffer: Arc<Buffer>,
-    command_buffer_copy_coordinate_data: Arc<CommandBuffer>,
+    buffer_read_resources: BufferReadResources,
 }
 
 // Public functions
@@ -168,8 +167,8 @@ impl RenderManager {
 
         let memory_allocator = Arc::new(MemoryAllocator::new(device.clone())?);
 
-        let render_command_pool = create_command_pool(device.clone(), &render_queue)?;
-        let transfer_command_pool = create_command_pool(device.clone(), &transfer_queue)?;
+        let command_pool_render = create_command_pool(device.clone(), &render_queue)?;
+        let command_pool_transfer = create_command_pool(device.clone(), &transfer_queue)?;
 
         let swapchain = create_swapchain(device.clone(), surface.clone(), &window)?;
         debug!(
@@ -213,15 +212,6 @@ impl RenderManager {
             swapchain.properties().dimensions(),
         )?;
 
-        let cpu_read_staging_buffer = create_cpu_read_staging_buffer(memory_allocator.clone())?;
-
-        let command_buffer_copy_coordinate_data = Arc::new(
-            transfer_command_pool
-                .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, 1)
-                .context("allocating command buffer")?
-                .remove(0),
-        );
-
         let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
 
         let framebuffers = create_framebuffers(
@@ -256,13 +246,13 @@ impl RenderManager {
             device.clone(),
             memory_allocator.clone(),
             &render_pass,
-            render_command_pool.clone(),
-            transfer_command_pool.clone(),
+            command_pool_render.clone(),
+            command_pool_transfer.clone(),
             scale_factor,
         )?;
 
         let render_command_buffers = create_render_command_buffers(
-            render_command_pool.clone(),
+            command_pool_render.clone(),
             swapchain_image_views.len() as u32,
         )?;
 
@@ -276,6 +266,13 @@ impl RenderManager {
             Semaphore::new(device.clone()).context("creating per-swapchain-image semaphore")?,
         );
 
+        let buffer_read_resources = BufferReadResources::new(
+            device.clone(),
+            &command_pool_transfer,
+            &command_pool_render,
+            memory_allocator.clone(),
+        )?;
+
         Ok(Self {
             instance,
             debug_callback,
@@ -286,8 +283,8 @@ impl RenderManager {
             render_sync_queue,
 
             memory_allocator,
-            render_command_pool,
-            transfer_command_pool,
+            command_pool_render,
+            command_pool_transfer,
 
             window,
             surface,
@@ -318,8 +315,7 @@ impl RenderManager {
             framebuffer_index_last_rendered_to: 0,
             window_just_resized: false,
 
-            cpu_read_staging_buffer,
-            command_buffer_copy_coordinate_data,
+            buffer_read_resources,
         })
     }
 
@@ -703,6 +699,9 @@ impl RenderManager {
         &self,
         screen_coordinate: [f32; 2],
     ) -> Result<(), anyhow::Error> {
+        let different_queue_family_indices =
+            self.render_queue.family_index() != self.transfer_queue.family_index();
+
         let last_primitive_id_buffer =
             self.primitive_id_buffers[self.framebuffer_index_last_rendered_to].clone();
 
@@ -725,7 +724,10 @@ impl RenderManager {
             ..Default::default()
         };
 
-        let image_memory_barrier_before_transfer = vk::ImageMemoryBarrier::builder()
+        // render queue release. note: this is why we need a separate render sync queue, otherwise
+        // implicit submission order sync would unnecessarily delay transfer completion until the
+        // previous render commands have completed.
+        let image_barrier_after_render = vk::ImageMemoryBarrier::builder()
             .src_access_mask(vk::AccessFlags::SHADER_READ)
             .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
             .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
@@ -735,7 +737,30 @@ impl RenderManager {
             .src_queue_family_index(self.render_queue.family_index())
             .dst_queue_family_index(self.transfer_queue.family_index());
 
-        let image_memory_barrier_after_transfer = vk::ImageMemoryBarrier::builder()
+        // transfer queue aquire
+        let image_barrier_before_transfer = vk::ImageMemoryBarrier::builder()
+            .src_access_mask(vk::AccessFlags::SHADER_READ)
+            .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
+            .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .image(last_primitive_id_buffer.image().handle())
+            .subresource_range(image_subresource_range)
+            .src_queue_family_index(self.render_queue.family_index())
+            .dst_queue_family_index(self.transfer_queue.family_index());
+
+        // transfer queue release
+        let image_barrier_after_transfer = vk::ImageMemoryBarrier::builder()
+            .src_access_mask(vk::AccessFlags::TRANSFER_READ)
+            .dst_access_mask(vk::AccessFlags::SHADER_WRITE)
+            .old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .image(last_primitive_id_buffer.image().handle())
+            .subresource_range(image_subresource_range)
+            .src_queue_family_index(self.transfer_queue.family_index())
+            .dst_queue_family_index(self.render_queue.family_index());
+
+        // render queue aquire
+        let image_barrier_before_render = vk::ImageMemoryBarrier::builder()
             .src_access_mask(vk::AccessFlags::TRANSFER_READ)
             .dst_access_mask(vk::AccessFlags::SHADER_WRITE)
             .old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
@@ -771,14 +796,19 @@ impl RenderManager {
         let command_buffer_handle = command_buffer.handle();
 
         unsafe {
+            let src_stage_mask = if different_queue_family_indices {
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE // this is a queue aquire operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
+            } else {
+                vk::PipelineStageFlags::FRAGMENT_SHADER
+            };
             device_ash.cmd_pipeline_barrier(
                 command_buffer_handle,
-                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                src_stage_mask,
                 vk::PipelineStageFlags::TRANSFER,
                 vk::DependencyFlags::empty(),
                 &[],
                 &[], // don't worry about buffer memory barriers because this funciton should be the only code that touches it and there's a fence wait after this
-                &[image_memory_barrier_before_transfer.build()],
+                &[image_barrier_before_transfer.build()],
             );
 
             device_ash.cmd_copy_image_to_buffer(
@@ -789,14 +819,19 @@ impl RenderManager {
                 &[buffer_image_copy_region],
             );
 
+            let dst_stage_mask = if different_queue_family_indices {
+                vk::PipelineStageFlags::TOP_OF_PIPE // this is a queue release operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
+            } else {
+                vk::PipelineStageFlags::FRAGMENT_SHADER
+            };
             device_ash.cmd_pipeline_barrier(
                 command_buffer_handle,
                 vk::PipelineStageFlags::TRANSFER,
-                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                dst_stage_mask,
                 vk::DependencyFlags::empty(),
                 &[],
                 &[],
-                &[image_memory_barrier_after_transfer.build()],
+                &[image_barrier_after_transfer.build()],
             );
         }
 
@@ -832,7 +867,7 @@ impl Drop for RenderManager {
 
         let command_pool_reset_res = unsafe {
             self.device.inner().reset_command_pool(
-                self.transfer_command_pool.handle(),
+                self.command_pool_transfer.handle(),
                 vk::CommandPoolResetFlags::RELEASE_RESOURCES,
             )
         };
@@ -842,12 +877,63 @@ impl Drop for RenderManager {
 
         let command_pool_reset_res = unsafe {
             self.device.inner().reset_command_pool(
-                self.render_command_pool.handle(),
+                self.command_pool_render.handle(),
                 vk::CommandPoolResetFlags::RELEASE_RESOURCES,
             )
         };
         if let Err(e) = command_pool_reset_res {
             log_error_sources(&e, 0);
         }
+    }
+}
+
+// ~~ Helper Structs ~~
+
+struct BufferReadResources {
+    pub command_buffer_transfer: Arc<CommandBuffer>,
+    pub command_buffer_render_sync: Arc<CommandBuffer>,
+    pub completion_fence: Arc<Fence>,
+    pub semaphore_before_transfer: Arc<Semaphore>,
+    pub semaphore_after_transfer: Arc<Semaphore>,
+    pub cpu_read_staging_buffer: Arc<Buffer>,
+}
+
+impl BufferReadResources {
+    pub fn new(
+        device: Arc<Device>,
+        command_pool_transfer_queue: &Arc<CommandPool>,
+        command_pool_render_queue: &Arc<CommandPool>,
+        memory_allocator: Arc<MemoryAllocator>,
+    ) -> anyhow::Result<Self> {
+        let command_buffer_transfer = Arc::new(
+            command_pool_transfer_queue
+                .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
+                .context("allocating buffer read transfer queue command buffer")?,
+        );
+
+        let command_buffer_render_sync = Arc::new(
+            command_pool_render_queue
+                .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
+                .context("allocating buffer read render sync command buffer")?,
+        );
+
+        let completion_fence =
+            Arc::new(Fence::new_unsignalled(device.clone()).context("creating fence")?);
+
+        let semaphore_before_transfer =
+            Arc::new(Semaphore::new(device.clone()).context("creating semaphore")?);
+        let semaphore_after_transfer =
+            Arc::new(Semaphore::new(device.clone()).context("creating semaphore")?);
+
+        let cpu_read_staging_buffer = create_cpu_read_staging_buffer(memory_allocator)?;
+
+        Ok(Self {
+            command_buffer_transfer,
+            command_buffer_render_sync,
+            completion_fence,
+            semaphore_before_transfer,
+            semaphore_after_transfer,
+            cpu_read_staging_buffer,
+        })
     }
 }

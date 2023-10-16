@@ -553,6 +553,9 @@ impl GuiPass {
             .properties()
             .queue_family_index;
 
+        let different_queue_family_indices =
+            render_queue_family_index != transfer_queue_family_index;
+
         // create new image
 
         let new_image_properties = ImageProperties {
@@ -642,10 +645,10 @@ impl GuiPass {
                 &[copy_region],
             );
 
-            let dst_stage_mask = if render_queue_family_index == transfer_queue_family_index {
-                vk::PipelineStageFlags::FRAGMENT_SHADER
-            } else {
+            let dst_stage_mask = if different_queue_family_indices {
                 vk::PipelineStageFlags::TOP_OF_PIPE // this is a queue release operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
+            } else {
+                vk::PipelineStageFlags::FRAGMENT_SHADER
             };
             device_ash.cmd_pipeline_barrier(
                 transfer_command_buffer_handle,
@@ -660,7 +663,7 @@ impl GuiPass {
 
         // sync with render queue (if necessary)
 
-        if render_queue_family_index != transfer_queue_family_index {
+        if different_queue_family_indices {
             // an identical queue aquire operation is required to complete the layout transition https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#synchronization-queue-transfers-acquire
             let before_render_image_barrier = vk::ImageMemoryBarrier::builder()
                 .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
