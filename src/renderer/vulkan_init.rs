@@ -1,3 +1,5 @@
+use crate::{config::ENGINE_NAME, renderer::config_renderer::ENABLE_VULKAN_VALIDATION};
+
 use super::{
     config_renderer::{
         CPU_ACCESS_BUFFER_SIZE, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER,
@@ -10,7 +12,7 @@ use super::{
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{
-    allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, Buffer,
+    allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, ApiVersion, Buffer,
     BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback, Device,
     Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageProperties, ImageView,
     ImageViewAccess, ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, Queue,
@@ -19,7 +21,8 @@ use bort_vk::{
 use bort_vma::AllocationCreateInfo;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{mem, sync::Arc};
+use raw_window_handle::HasRawDisplayHandle;
+use std::{ffi::CStr, mem, sync::Arc};
 use winit::window::Window;
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
@@ -51,6 +54,58 @@ pub fn supports_required_features_1_2(
 /// Make sure to update `supports_required_features_1_2` too!
 pub fn required_features_1_2() -> vk::PhysicalDeviceVulkan12Features {
     vk::PhysicalDeviceVulkan12Features::default()
+}
+
+pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Result<Arc<Instance>> {
+    let api_version = ApiVersion::new(VULKAN_VER_MAJ, VULKAN_VER_MIN);
+
+    let mut layer_names = Vec::<&str>::new();
+
+    let validation_layer_name = "VK_LAYER_KHRONOS_validation";
+
+    if ENABLE_VULKAN_VALIDATION {
+        let layer_properties = entry
+            .enumerate_instance_layer_properties()
+            .context("enumerating instance layer properties")?;
+
+        for layer_prop in layer_properties {
+            let layer_name = unsafe { CStr::from_ptr(layer_prop.layer_name.as_ptr()) }
+                .to_str()
+                .context("decoding installed layer names")?;
+
+            if validation_layer_name == layer_name {
+                debug!("enabling vulkan layer: VK_LAYER_KHRONOS_validation");
+                layer_names.push(validation_layer_name);
+                break;
+            }
+        }
+    }
+
+    let extension_names = if ENABLE_VULKAN_VALIDATION {
+        debug!("enabling instance extension: VK_EXT_debug_utils");
+        vec!["VK_EXT_debug_utils"]
+    } else {
+        Vec::new()
+    };
+
+    let instance = Arc::new(
+        Instance::new(
+            entry,
+            api_version,
+            ENGINE_NAME,
+            window.raw_display_handle(),
+            layer_names,
+            extension_names,
+        )
+        .context("creating vulkan instance")?,
+    );
+
+    info!(
+        "created vulkan instance. api version = {:?}",
+        instance.api_version()
+    );
+
+    Ok(instance)
 }
 
 pub struct ChoosePhysicalDeviceReturn {
@@ -213,28 +268,29 @@ pub fn create_device_and_queue(
         .queue_count
         > 1;
 
+    let single_queue_priority = vec![1.0];
+    let two_queue_priorities = vec![1.0, 1.0];
+
     let queue_infos = if separate_queue_families {
         let render_queue_priorities = if multiple_render_queues {
-            vec![1.0, 1.0]
+            &two_queue_priorities
         } else {
-            vec![1.0]
+            &single_queue_priority
         };
         let render_queue_info = vk::DeviceQueueCreateInfo::builder()
             .queue_family_index(render_queue_family_index)
-            .queue_priorities(&render_queue_priorities);
+            .queue_priorities(render_queue_priorities);
 
-        let transfer_queue_priorities = [1.0];
+        let transfer_queue_priorities = &single_queue_priority;
         let transfer_queue_info = vk::DeviceQueueCreateInfo::builder()
             .queue_family_index(transfer_queue_family_index)
-            .queue_priorities(&transfer_queue_priorities);
+            .queue_priorities(transfer_queue_priorities);
 
         vec![render_queue_info.build(), transfer_queue_info.build()]
     } else {
-        let queue_priorities = [1.0];
-
         let render_and_transfer_queue_info = vk::DeviceQueueCreateInfo::builder()
             .queue_family_index(render_queue_family_index)
-            .queue_priorities(&queue_priorities);
+            .queue_priorities(&single_queue_priority);
 
         vec![render_and_transfer_queue_info.build()]
     };

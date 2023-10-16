@@ -1,5 +1,5 @@
 use super::{
-    config_renderer::{ENABLE_VULKAN_VALIDATION, TIMEOUT_NANOSECS, VULKAN_VER_MAJ, VULKAN_VER_MIN},
+    config_renderer::{ENABLE_VULKAN_VALIDATION, TIMEOUT_NANOSECS},
     debug_callback::log_vulkan_debug_callback,
     geometry_pass::GeometryPass,
     gui_pass::GuiPass,
@@ -13,14 +13,13 @@ use super::{
     },
 };
 use crate::{
-    config::ENGINE_NAME,
     engine::object::{object::ObjectId, objects_delta::ObjectsDelta, primitive_op::PrimitiveOpId},
     helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
     renderer::{
         config_renderer::MINIMUM_FRAMEBUFFER_COUNT,
         vulkan_init::{
             choose_depth_buffer_format, create_command_pool, create_cpu_read_staging_buffer,
-            create_device_and_queue, create_entry, create_primitive_id_buffers,
+            create_device_and_queue, create_entry, create_instance, create_primitive_id_buffers,
             create_render_command_buffers, shaders_should_write_linear_color,
         },
     },
@@ -29,9 +28,9 @@ use crate::{
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{
-    ApiVersion, Buffer, CommandBuffer, CommandPool, DebugCallback, DebugCallbackProperties, Device,
-    Fence, Framebuffer, Image, ImageAccess, ImageView, Instance, MemoryAllocator, Queue,
-    RenderPass, Semaphore, Surface, Swapchain, SwapchainImage,
+    Buffer, CommandBuffer, CommandPool, DebugCallback, DebugCallbackProperties, Device, Fence,
+    Framebuffer, Image, ImageAccess, ImageView, Instance, MemoryAllocator, Queue, RenderPass,
+    Semaphore, Surface, Swapchain, SwapchainImage,
 };
 use egui::{ClippedPrimitive, TexturesDelta};
 #[allow(unused_imports)]
@@ -104,23 +103,7 @@ impl RenderManager {
         let entry = create_entry()?;
 
         // create vulkan instance
-        let api_version = ApiVersion::new(VULKAN_VER_MAJ, VULKAN_VER_MIN);
-        let instance = Arc::new(
-            Instance::new(
-                entry.clone(),
-                api_version,
-                ENGINE_NAME,
-                window.raw_display_handle(),
-                ENABLE_VULKAN_VALIDATION,
-                [],
-                [],
-            )
-            .context("creating vulkan instance")?,
-        );
-        info!(
-            "created vulkan instance. api version = {:?}",
-            instance.api_version()
-        );
+        let instance = create_instance(entry.clone(), &window)?;
 
         // setup validation layer debug callback
         let debug_callback_properties = DebugCallbackProperties::default();
