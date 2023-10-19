@@ -47,8 +47,6 @@ pub struct RenderManager {
     device: Arc<Device>,
     render_queue: Arc<Queue>,
     transfer_queue: Arc<Queue>,
-    /// Used for queue transfer operations to and from the render queue family
-    render_sync_queue: Arc<Queue>,
 
     memory_allocator: Arc<MemoryAllocator>,
     command_pool_render: Arc<CommandPool>,
@@ -157,7 +155,6 @@ impl RenderManager {
             device,
             render_queue,
             transfer_queue,
-            render_sync_queue,
         } = create_device_and_queue(
             physical_device.clone(),
             debug_callback.clone(),
@@ -280,7 +277,6 @@ impl RenderManager {
             device,
             render_queue,
             transfer_queue,
-            render_sync_queue,
 
             memory_allocator,
             command_pool_render,
@@ -494,33 +490,9 @@ impl RenderManager {
     pub fn wait_idle_device(&self) -> anyhow::Result<()> {
         self.device.wait_idle().context("calling vkDeviceWaitIdle")
     }
-
-    pub fn reset_render_command_buffers(&self) -> anyhow::Result<()> {
-        self.render_queue
-            .wait_idle()
-            .context("calling vkQueueWaitIdle for render queue")?;
-
-        for command_buffer in &self.render_command_buffers {
-            unsafe {
-                self.device.inner().reset_command_buffer(
-                    command_buffer.handle(),
-                    vk::CommandBufferResetFlags::empty(),
-                )
-            }
-            .context("resetting render command buffers")?;
-        }
-        Ok(())
-    }
 }
 
-pub enum ElementAtPoint {
-    Object {
-        object_id: ObjectId,
-        primitive_op_id: PrimitiveOpId,
-    },
-    Background,
-    // X, Y, Z manilulation ui elements
-}
+// Private functions
 
 /// If there is only one swapchain image we create two framebuffers so we can access the previous
 /// render for some images.
@@ -529,8 +501,6 @@ fn determine_framebuffer_count(
 ) -> usize {
     swapchain_image_views.len().max(MINIMUM_FRAMEBUFFER_COUNT)
 }
-
-// Private functions
 
 impl RenderManager {
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
@@ -602,6 +572,23 @@ impl RenderManager {
         Ok(())
     }
 
+    fn reset_render_command_buffers(&self) -> anyhow::Result<()> {
+        self.render_queue
+            .wait_idle()
+            .context("calling vkQueueWaitIdle for render queue")?;
+
+        for command_buffer in &self.render_command_buffers {
+            unsafe {
+                self.device.inner().reset_command_buffer(
+                    command_buffer.handle(),
+                    vk::CommandBufferResetFlags::empty(),
+                )
+            }
+            .context("resetting render command buffers")?;
+        }
+        Ok(())
+    }
+
     fn wait_for_previous_frame_fence(&mut self) -> anyhow::Result<()> {
         let wait_fence_handles = [self.previous_render_fence.handle()];
 
@@ -633,16 +620,55 @@ impl RenderManager {
         command_buffer: &CommandBuffer,
         framebuffer_index: usize,
     ) -> anyhow::Result<()> {
+        let different_transfer_queue_family =
+            self.render_queue.family_index() != self.transfer_queue.family_index();
+
         let command_buffer_handle = command_buffer.handle();
         let device_ash = self.device.inner();
+        let last_primitive_id_buffer =
+            self.primitive_id_buffers[self.framebuffer_index_last_rendered_to].clone();
 
         let viewport = self.framebuffers[framebuffer_index].whole_viewport();
         let rect_2d = self.framebuffers[framebuffer_index].whole_rect();
+        let image_subresource_range = vk::ImageSubresourceRange {
+            aspect_mask: vk::ImageAspectFlags::COLOR,
+            level_count: 1,
+            layer_count: 1,
+            ..Default::default()
+        };
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
         unsafe { device_ash.begin_command_buffer(command_buffer_handle, &begin_info) }
             .context("beinning render command buffer recording")?;
+
+        // primitive id buffer layout/sync
+        let image_barrier_before_render = vk::ImageMemoryBarrier::builder()
+            .src_access_mask(vk::AccessFlags::TRANSFER_READ)
+            .dst_access_mask(vk::AccessFlags::SHADER_WRITE)
+            .old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .image(last_primitive_id_buffer.image().handle())
+            .subresource_range(image_subresource_range)
+            .src_queue_family_index(self.transfer_queue.family_index())
+            .dst_queue_family_index(self.render_queue.family_index());
+
+        unsafe {
+            let src_stage_mask = if different_queue_family_indices {
+                vk::PipelineStageFlags::BOTTOM_OF_PIPE // this is a queue aquire operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
+            } else {
+                vk::PipelineStageFlags::TRANSFER
+            };
+            device_ash.cmd_pipeline_barrier(
+                command_buffer_handle,
+                src_stage_mask,
+                vk::PipelineStageFlags::FRAGMENT_SHADER,
+                vk::DependencyFlags::empty(),
+                &[],
+                &[], // don't worry about buffer memory barriers because this funciton should be the only code that touches it and there's a fence wait after this
+                &[image_barrier_before_transfer.build()],
+            );
+        }
 
         let render_pass_begin = vk::RenderPassBeginInfo::builder()
             .render_pass(self.render_pass.handle())
@@ -702,20 +728,17 @@ impl RenderManager {
         let different_queue_family_indices =
             self.render_queue.family_index() != self.transfer_queue.family_index();
 
+        let device_ash = self.device.inner();
+
+        let semaphores_before_transfer = [self
+            .buffer_read_resources
+            .semaphore_before_transfer
+            .handle()];
+        let semaphores_after_transfer =
+            [self.buffer_read_resources.semaphore_after_transfer.handle()];
+
         let last_primitive_id_buffer =
             self.primitive_id_buffers[self.framebuffer_index_last_rendered_to].clone();
-
-        let image_offset = vk::Offset3D {
-            x: screen_coordinate[0].round() as i32,
-            y: screen_coordinate[1].round() as i32,
-            z: 0,
-        };
-
-        let image_extent = vk::Extent3D {
-            width: 1,
-            height: 1,
-            depth: 1,
-        };
 
         let image_subresource_range = vk::ImageSubresourceRange {
             aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -776,6 +799,18 @@ impl RenderManager {
             ..Default::default()
         };
 
+        let image_offset = vk::Offset3D {
+            x: screen_coordinate[0].round() as i32,
+            y: screen_coordinate[1].round() as i32,
+            z: 0,
+        };
+
+        let image_extent = vk::Extent3D {
+            width: 1,
+            height: 1,
+            depth: 1,
+        };
+
         let buffer_image_copy_region = vk::BufferImageCopy {
             buffer_offset: 0,
             image_subresource: image_subresource_layers,
@@ -784,18 +819,17 @@ impl RenderManager {
             ..Default::default()
         };
 
-        let command_buffer = self.command_buffer_copy_coordinate_data.clone();
+        let command_buffer_transfer = self.buffer_read_resources.command_buffer_transfer.clone();
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        command_buffer
+        command_buffer_transfer
             .begin(&begin_info)
             .context("beginning command buffer get_element_at_screen_coordinate")?;
 
-        let device_ash = self.device.inner();
-        let command_buffer_handle = command_buffer.handle();
-
         unsafe {
+            let command_buffer_handle = command_buffer_transfer.handle();
+
             let src_stage_mask = if different_queue_family_indices {
                 vk::PipelineStageFlags::BOTTOM_OF_PIPE // this is a queue aquire operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
             } else {
@@ -815,7 +849,7 @@ impl RenderManager {
                 command_buffer_handle,
                 last_primitive_id_buffer.image().handle(),
                 vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-                self.cpu_read_staging_buffer.handle(),
+                self.buffer_read_resources.cpu_read_staging_buffer.handle(),
                 &[buffer_image_copy_region],
             );
 
@@ -835,18 +869,25 @@ impl RenderManager {
             );
         }
 
-        command_buffer
+        command_buffer_transfer
             .end()
             .context("ending command buffer get_element_at_screen_coordinate")?;
 
-        let submit_command_buffers = [command_buffer_handle];
-        let submit_info = vk::SubmitInfo::builder().command_buffers(&submit_command_buffers);
+        let transfer_submit_command_buffers = [command_buffer_transfer.handle()];
+        let mut transfer_submit_info =
+            vk::SubmitInfo::builder().command_buffers(&transfer_submit_command_buffers);
+        if different_queue_family_indices {
+            transfer_submit_info = transfer_submit_info
+                .wait_semaphores(&semaphores_before_transfer)
+                .wait_dst_stage_mask(&[vk::PipelineStageFlags::TRANSFER])
+                .signal_semaphores(&semaphores_after_transfer);
+        }
 
         unsafe {
             device_ash
                 .queue_submit(
                     self.transfer_queue.handle(),
-                    &[submit_info.build()],
+                    &[transfer_submit_info.build()],
                     self.buffer_upload_fence.handle(),
                 )
                 .context("submitting commands to read primitive id at coordinate")?;
@@ -888,6 +929,15 @@ impl Drop for RenderManager {
 }
 
 // ~~ Helper Structs ~~
+
+pub enum ElementAtPoint {
+    Object {
+        object_id: ObjectId,
+        primitive_op_id: PrimitiveOpId,
+    },
+    Background,
+    // X, Y, Z manilulation ui elements
+}
 
 struct BufferReadResources {
     pub command_buffer_transfer: Arc<CommandBuffer>,
