@@ -701,7 +701,7 @@ fn create_primitive_id_buffer(
 
 pub fn create_cpu_read_staging_buffer(
     memory_allocator: Arc<MemoryAllocator>,
-) -> anyhow::Result<Arc<Buffer>> {
+) -> anyhow::Result<Buffer> {
     let buffer_properties =
         BufferProperties::new_default(CPU_ACCESS_BUFFER_SIZE, vk::BufferUsageFlags::TRANSFER_DST);
 
@@ -714,7 +714,7 @@ pub fn create_cpu_read_staging_buffer(
     };
 
     let buffer = Buffer::new(memory_allocator, buffer_properties, allocation_info)?;
-    Ok(Arc::new(buffer))
+    Ok(buffer)
 }
 
 /// Safety:

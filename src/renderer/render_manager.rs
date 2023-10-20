@@ -78,7 +78,6 @@ pub struct RenderManager {
     /// One per framebuffer
     render_command_buffers: Vec<Arc<CommandBuffer>>,
     previous_render_fence: Arc<Fence>,
-    buffer_upload_fence: Arc<Fence>,
     next_frame_wait_semaphore: Arc<Semaphore>,
     swapchain_image_available_semaphore: Arc<Semaphore>,
 
@@ -255,8 +254,6 @@ impl RenderManager {
 
         let previous_render_fence =
             Arc::new(Fence::new_signalled(device.clone()).context("creating fence")?);
-        let buffer_upload_fence =
-            Arc::new(Fence::new_signalled(device.clone()).context("creating fence")?);
         let next_frame_wait_semaphore =
             Arc::new(Semaphore::new(device.clone()).context("creating per-frame semaphore")?);
         let swapchain_image_available_semaphore = Arc::new(
@@ -303,7 +300,6 @@ impl RenderManager {
 
             render_command_buffers,
             previous_render_fence,
-            buffer_upload_fence,
             next_frame_wait_semaphore,
             swapchain_image_available_semaphore,
 
@@ -479,12 +475,11 @@ impl RenderManager {
     }
 
     pub fn get_element_at_screen_coordinate(
-        &self,
+        &mut self,
         screen_coordinate: [f32; 2],
     ) -> anyhow::Result<ElementAtPoint> {
         self.copy_primitive_id_at_screen_coordinate_to_buffer(screen_coordinate)?;
-
-        todo!()
+        self.read_object_id_from_buffer()
     }
 
     pub fn wait_idle_device(&self) -> anyhow::Result<()> {
@@ -686,16 +681,39 @@ impl RenderManager {
         &self,
         screen_coordinate: [f32; 2],
     ) -> Result<(), anyhow::Error> {
-        self.buffer_read_resources
-            .completion_fence
-            .wait(TIMEOUT_NANOSECS)
-            .context("waiting for buffer read fence")?;
-
         let different_queue_family_indices =
             self.render_queue.family_index() != self.transfer_queue.family_index();
 
-        let device_ash = self.device.inner();
+        if different_queue_family_indices {
+            // render queue release operation
+            self.record_and_submit_pre_transfer_sync_commands()?;
+        }
 
+        let command_buffer_transfer = &self.buffer_read_resources.command_buffer_transfer;
+
+        self.record_primitive_id_copy_commands(
+            screen_coordinate,
+            command_buffer_transfer,
+            different_queue_family_indices,
+        )?;
+        self.submit_primitive_id_copy_commands(
+            command_buffer_transfer,
+            different_queue_family_indices,
+        )?;
+
+        if different_queue_family_indices {
+            // render queue release operation
+            self.record_and_submit_post_transfer_sync_commands()?;
+        }
+
+        Ok(())
+    }
+
+    fn submit_primitive_id_copy_commands(
+        &self,
+        command_buffer_transfer: &Arc<CommandBuffer>,
+        different_queue_family_indices: bool,
+    ) -> anyhow::Result<()> {
         let semaphores_before_transfer = [self
             .buffer_read_resources
             .semaphore_before_transfer
@@ -703,6 +721,43 @@ impl RenderManager {
         let semaphores_after_transfer =
             [self.buffer_read_resources.semaphore_after_transfer.handle()];
 
+        let transfer_submit_command_buffers = [command_buffer_transfer.handle()];
+
+        let mut transfer_submit_info =
+            vk::SubmitInfo::builder().command_buffers(&transfer_submit_command_buffers);
+        if different_queue_family_indices {
+            transfer_submit_info = transfer_submit_info
+                .wait_semaphores(&semaphores_before_transfer)
+                .wait_dst_stage_mask(&[vk::PipelineStageFlags::TRANSFER])
+                .signal_semaphores(&semaphores_after_transfer);
+        }
+
+        self.buffer_read_resources
+            .completion_fence
+            .reset()
+            .context("resetting primitive id buffer reset fn")?;
+
+        unsafe {
+            self.device
+                .inner()
+                .queue_submit(
+                    self.transfer_queue.handle(),
+                    &[transfer_submit_info.build()],
+                    self.buffer_read_resources.completion_fence.handle(),
+                )
+                .context("submitting commands to read primitive id at coordinate")?;
+        }
+
+        Ok(())
+    }
+
+    // todo move to BufferReadResources and just have submit as sub-function
+    fn record_primitive_id_copy_commands(
+        &self,
+        screen_coordinate: [f32; 2],
+        command_buffer_transfer: &CommandBuffer,
+        different_queue_family_indices: bool,
+    ) -> anyhow::Result<()> {
         let last_primitive_id_buffer =
             self.primitive_id_buffers[self.framebuffer_index_last_rendered_to].clone();
 
@@ -712,33 +767,6 @@ impl RenderManager {
             layer_count: 1,
             ..Default::default()
         };
-
-        if different_queue_family_indices {
-            // render queue release operation
-            self.record_and_submit_pre_transfer_sync_commands()?;
-        }
-
-        // transfer queue aquire
-        let image_barrier_before_transfer = vk::ImageMemoryBarrier::builder()
-            .src_access_mask(vk::AccessFlags::SHADER_READ)
-            .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
-            .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-            .image(last_primitive_id_buffer.image().handle())
-            .subresource_range(image_subresource_range)
-            .src_queue_family_index(self.render_queue.family_index())
-            .dst_queue_family_index(self.transfer_queue.family_index());
-
-        // transfer queue release
-        let image_barrier_after_transfer = vk::ImageMemoryBarrier::builder()
-            .src_access_mask(vk::AccessFlags::TRANSFER_READ)
-            .dst_access_mask(vk::AccessFlags::SHADER_WRITE)
-            .old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-            .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .image(last_primitive_id_buffer.image().handle())
-            .subresource_range(image_subresource_range)
-            .src_queue_family_index(self.transfer_queue.family_index())
-            .dst_queue_family_index(self.render_queue.family_index());
 
         let image_subresource_layers = vk::ImageSubresourceLayers {
             aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -766,7 +794,25 @@ impl RenderManager {
             ..Default::default()
         };
 
-        let command_buffer_transfer = self.buffer_read_resources.command_buffer_transfer.clone();
+        let image_barrier_before_transfer = vk::ImageMemoryBarrier::builder()
+            .src_access_mask(vk::AccessFlags::SHADER_READ)
+            .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
+            .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .image(last_primitive_id_buffer.image().handle())
+            .subresource_range(image_subresource_range)
+            .src_queue_family_index(self.render_queue.family_index())
+            .dst_queue_family_index(self.transfer_queue.family_index());
+
+        let image_barrier_after_transfer = vk::ImageMemoryBarrier::builder()
+            .src_access_mask(vk::AccessFlags::TRANSFER_READ)
+            .dst_access_mask(vk::AccessFlags::SHADER_WRITE)
+            .old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+            .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .image(last_primitive_id_buffer.image().handle())
+            .subresource_range(image_subresource_range)
+            .src_queue_family_index(self.transfer_queue.family_index())
+            .dst_queue_family_index(self.render_queue.family_index());
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -774,6 +820,7 @@ impl RenderManager {
             .begin(&begin_info)
             .context("beginning command buffer get_element_at_screen_coordinate")?;
 
+        let device_ash = self.device.inner();
         unsafe {
             let command_buffer_handle = command_buffer_transfer.handle();
 
@@ -819,31 +866,6 @@ impl RenderManager {
         command_buffer_transfer
             .end()
             .context("ending command buffer get_element_at_screen_coordinate")?;
-
-        let transfer_submit_command_buffers = [command_buffer_transfer.handle()];
-        let mut transfer_submit_info =
-            vk::SubmitInfo::builder().command_buffers(&transfer_submit_command_buffers);
-        if different_queue_family_indices {
-            transfer_submit_info = transfer_submit_info
-                .wait_semaphores(&semaphores_before_transfer)
-                .wait_dst_stage_mask(&[vk::PipelineStageFlags::TRANSFER])
-                .signal_semaphores(&semaphores_after_transfer);
-        }
-
-        unsafe {
-            device_ash
-                .queue_submit(
-                    self.transfer_queue.handle(),
-                    &[transfer_submit_info.build()],
-                    self.buffer_upload_fence.handle(),
-                )
-                .context("submitting commands to read primitive id at coordinate")?;
-        }
-
-        if different_queue_family_indices {
-            // render queue release operation
-            self.record_and_submit_post_transfer_sync_commands()?;
-        }
 
         Ok(())
     }
@@ -996,6 +1018,22 @@ impl RenderManager {
 
         Ok(())
     }
+
+    fn read_object_id_from_buffer(&mut self) -> anyhow::Result<ElementAtPoint> {
+        self.buffer_read_resources
+            .completion_fence
+            .wait(TIMEOUT_NANOSECS)
+            .context("waiting for render id buffer copy fence")?;
+
+        let rendered_id = self
+            .buffer_read_resources
+            .cpu_read_staging_buffer
+            .memory_allocation_mut()
+            .read_struct::<u32>(0)
+            .context("reading render id")?;
+
+        Ok(ElementAtPoint::from_rendered_id(rendered_id))
+    }
 }
 
 impl Drop for RenderManager {
@@ -1040,6 +1078,26 @@ pub enum ElementAtPoint {
     // X, Y, Z manilulation ui elements
 }
 
+impl ElementAtPoint {
+    pub fn from_rendered_id(rendered_id: u32) -> Self {
+        match rendered_id {
+            0 => Self::Background,
+            encoded_id => {
+                let object_id_u32 = encoded_id << 16;
+                let object_id = ObjectId::from(object_id_u32 as usize);
+
+                let primitive_op_id_u32 = encoded_id & 0x0000FFFF;
+                let primitive_op_id = PrimitiveOpId::from(encoded_id as usize);
+
+                Self::Object {
+                    object_id,
+                    primitive_op_id,
+                }
+            }
+        }
+    }
+}
+
 struct BufferReadResources {
     pub command_buffer_transfer: Arc<CommandBuffer>,
     pub command_buffer_post_render_sync: Arc<CommandBuffer>,
@@ -1047,7 +1105,7 @@ struct BufferReadResources {
     pub completion_fence: Arc<Fence>,
     pub semaphore_before_transfer: Arc<Semaphore>,
     pub semaphore_after_transfer: Arc<Semaphore>,
-    pub cpu_read_staging_buffer: Arc<Buffer>,
+    pub cpu_read_staging_buffer: Buffer,
 }
 
 impl BufferReadResources {
