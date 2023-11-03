@@ -38,11 +38,8 @@ pub fn create_entry() -> anyhow::Result<Arc<ash::Entry>> {
     Ok(Arc::new(entry))
 }
 
-pub fn required_device_extensions() -> [&'static str; 1] {
-    ["VK_KHR_swapchain"]
-}
-pub fn required_device_extensions_cstr() -> [&'static std::ffi::CStr; 1] {
-    [vk::KhrSwapchainFn::name()]
+pub fn required_device_extensions() -> [&'static str; 2] {
+    ["VK_KHR_swapchain", "VK_KHR_synchronization2"]
 }
 
 /// Make sure to update `required_features_1_2` too!
@@ -51,6 +48,7 @@ pub fn supports_required_features_1_2(
 ) -> bool {
     true
 }
+
 /// Make sure to update `supports_required_features_1_2` too!
 pub fn required_features_1_2() -> vk::PhysicalDeviceVulkan12Features {
     vk::PhysicalDeviceVulkan12Features::default()
@@ -81,11 +79,10 @@ pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Resul
         }
     }
 
-    let extension_names = if ENABLE_VULKAN_VALIDATION {
+    let mut extension_names = Vec::<&str>::new();
+    if ENABLE_VULKAN_VALIDATION {
         debug!("enabling instance extension: VK_EXT_debug_utils");
-        vec!["VK_EXT_debug_utils"]
-    } else {
-        Vec::new()
+        extension_names.push("VK_EXT_debug_utils");
     };
 
     let instance = Arc::new(
@@ -285,22 +282,32 @@ pub fn create_device_and_queue(
     let features_1_0 = vk::PhysicalDeviceFeatures::default();
     let features_1_1 = vk::PhysicalDeviceVulkan11Features::default();
     let features_1_2 = required_features_1_2();
+    let features_1_3 = vk::PhysicalDeviceVulkan13Features::default();
 
     let extension_names: Vec<String> = required_device_extensions()
         .into_iter()
         .map(|s| s.to_string())
         .collect();
 
-    let device = Arc::new(Device::new(
-        physical_device,
-        queue_infos.as_slice(),
-        features_1_0,
-        features_1_1,
-        features_1_2,
-        extension_names,
-        [],
-        debug_callback,
-    )?);
+    // enable synchronization2 feature for vulkan api <= 1.2 (1.3 )
+    let synchronization_feature =
+        vk::PhysicalDeviceSynchronization2Features::builder().synchronization2(true);
+
+    let device_raw = unsafe {
+        Device::new_with_p_next_chain(
+            physical_device,
+            queue_infos.as_slice(),
+            features_1_0,
+            features_1_1,
+            features_1_2,
+            features_1_3,
+            extension_names,
+            [],
+            debug_callback,
+            vec![synchronization_feature],
+        )?
+    };
+    let device = Arc::new(device_raw);
 
     let render_queue = Arc::new(Queue::new(device.clone(), render_queue_family_index, 0));
     debug!(

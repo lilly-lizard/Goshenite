@@ -26,7 +26,7 @@ use crate::{
     user_interface::camera::Camera,
 };
 use anyhow::Context;
-use ash::vk;
+use ash::{extensions::khr::Synchronization2, vk};
 use bort_vk::{
     Buffer, CommandBuffer, CommandPool, DebugCallback, DebugCallbackProperties, Device, Fence,
     Framebuffer, Image, ImageAccess, ImageView, Instance, MemoryAllocator, Queue, RenderPass,
@@ -43,8 +43,8 @@ use winit::window::Window;
 pub struct RenderManager {
     instance: Arc<Instance>,
     debug_callback: Option<Arc<DebugCallback>>,
-
     device: Arc<Device>,
+
     render_queue: Arc<Queue>,
     transfer_queue: Arc<Queue>,
 
@@ -270,8 +270,8 @@ impl RenderManager {
         Ok(Self {
             instance,
             debug_callback,
-
             device,
+
             render_queue,
             transfer_queue,
 

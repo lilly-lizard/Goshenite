@@ -8,7 +8,7 @@ use crate::engine::{
     },
 };
 use anyhow::Context;
-use ash::vk;
+use ash::{extensions::khr::Synchronization2, vk};
 use bort_vk::{
     allocation_info_from_flags, AllocAccess, Buffer, BufferProperties, CommandBuffer, CommandPool,
     CommandPoolProperties, DescriptorPool, DescriptorPoolProperties, DescriptorSet,
@@ -27,6 +27,7 @@ const CHECK_FENCE_TIMEOUT_NANOSECONDS: u64 = 100;
 /// Manages per-object resources for the geometry pass
 pub struct ObjectResourceManager {
     device: Arc<Device>,
+    synchronization_2_functions: Synchronization2,
 
     memory_allocator: Arc<MemoryAllocator>,
     command_pool_transfer_queue: Arc<CommandPool>,
@@ -49,6 +50,8 @@ impl ObjectResourceManager {
         render_queue_family_index: u32,
     ) -> anyhow::Result<Self> {
         let device = memory_allocator.device().clone();
+        let synchronization_2_functions =
+            Synchronization2::new(&device.instance().inner(), &device.inner());
 
         let initial_descriptor_pool = create_descriptor_pool(device.clone())?;
         let command_pool_transfer_queue =
@@ -58,6 +61,7 @@ impl ObjectResourceManager {
 
         Ok(Self {
             device,
+            synchronization_2_functions,
 
             memory_allocator,
             command_pool_transfer_queue,
@@ -368,8 +372,8 @@ impl ObjectResourceManager {
             data,
             data_size,
             vk::BufferUsageFlags::VERTEX_BUFFER,
-            vk::PipelineStageFlags::VERTEX_INPUT,
-            vk::AccessFlags::VERTEX_ATTRIBUTE_READ,
+            vk::PipelineStageFlags2::VERTEX_INPUT,
+            vk::AccessFlags2::VERTEX_ATTRIBUTE_READ,
         )
     }
 
@@ -392,8 +396,8 @@ impl ObjectResourceManager {
             data,
             data_size,
             vk::BufferUsageFlags::STORAGE_BUFFER,
-            vk::PipelineStageFlags::FRAGMENT_SHADER,
-            vk::AccessFlags::SHADER_READ,
+            vk::PipelineStageFlags2::FRAGMENT_SHADER,
+            vk::AccessFlags2::SHADER_READ,
         )
     }
 
@@ -403,8 +407,8 @@ impl ObjectResourceManager {
         upload_data: I,
         upload_data_size: u64,
         buffer_usage_during_render: vk::BufferUsageFlags,
-        render_dst_stage: vk::PipelineStageFlags,
-        render_dst_access_flags: vk::AccessFlags,
+        render_dst_stage: vk::PipelineStageFlags2,
+        render_dst_access_flags: vk::AccessFlags2,
     ) -> anyhow::Result<Arc<Buffer>>
     where
         I: IntoIterator<Item = T>,
@@ -467,18 +471,33 @@ impl ObjectResourceManager {
         new_buffer: &Buffer,
         staging_buffer: &Buffer,
         upload_data_size: u64,
-        render_dst_stage: vk::PipelineStageFlags,
-        render_dst_access_flags: vk::AccessFlags,
+        render_dst_stage: vk::PipelineStageFlags2,
+        render_dst_access_flags: vk::AccessFlags2,
     ) {
-        let after_transfer_barrier = vk::BufferMemoryBarrier::builder()
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(render_dst_access_flags)
+        let mut dst_stage_mask = render_dst_stage;
+        let mut dst_access_mask = render_dst_access_flags;
+        if transfer_resources.queue_ownership_transfer_required() {
+            // this is a queue release operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
+            // these values will be ignored by the driver, but we set them to null to stop the validation layers from freaking out
+            dst_stage_mask = vk::PipelineStageFlags2::empty();
+            dst_access_mask = vk::AccessFlags2::empty();
+        }
+
+        let after_transfer_barrier = vk::BufferMemoryBarrier2::builder()
+            .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+            .dst_stage_mask(dst_stage_mask)
+            .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+            .dst_access_mask(dst_access_mask)
             .buffer(new_buffer.handle())
             .size(upload_data_size)
             .offset(0)
             .src_queue_family_index(transfer_resources.transfer_queue_family_index)
             .dst_queue_family_index(transfer_resources.render_queue_family_index)
             .build();
+
+        let after_transfer_barriers = [after_transfer_barrier];
+        let after_transfer_dependency =
+            vk::DependencyInfo::builder().buffer_memory_barriers(&after_transfer_barriers);
 
         let copy_region = vk::BufferCopy {
             src_offset: 0,
@@ -496,28 +515,18 @@ impl ObjectResourceManager {
                 &[copy_region],
             );
 
-            let dst_stage_mask = if transfer_resources.queue_ownership_transfer_required() {
-                vk::PipelineStageFlags::TOP_OF_PIPE // this is a queue release operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
-            } else {
-                render_dst_stage
-            };
-            self.device.inner().cmd_pipeline_barrier(
-                command_buffer_handle,
-                vk::PipelineStageFlags::TRANSFER,
-                dst_stage_mask,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[after_transfer_barrier],
-                &[],
-            );
+            self.synchronization_2_functions
+                .cmd_pipeline_barrier2(command_buffer_handle, &after_transfer_dependency);
         }
 
         // sync with render queue (if necessary)
 
         if transfer_resources.queue_ownership_transfer_required() {
             // an identical queue aquire operation is required to complete the layout transition https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#synchronization-queue-transfers-acquire
-            let before_render_barrier = vk::BufferMemoryBarrier::builder()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+            let before_render_barrier = vk::BufferMemoryBarrier2::builder()
+                .src_stage_mask(vk::PipelineStageFlags2::empty())
+                .dst_stage_mask(render_dst_stage)
+                .src_access_mask(vk::AccessFlags2::empty())
                 .dst_access_mask(render_dst_access_flags)
                 .buffer(new_buffer.handle())
                 .size(upload_data_size)
@@ -526,15 +535,14 @@ impl ObjectResourceManager {
                 .dst_queue_family_index(transfer_resources.render_queue_family_index)
                 .build();
 
+            let before_render_barriers = [before_render_barrier];
+            let before_render_dependency =
+                vk::DependencyInfo::builder().buffer_memory_barriers(&before_render_barriers);
+
             unsafe {
-                self.device.inner().cmd_pipeline_barrier(
+                self.synchronization_2_functions.cmd_pipeline_barrier2(
                     transfer_resources.command_buffer_render_sync.handle(),
-                    vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                    render_dst_stage,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[before_render_barrier],
-                    &[],
+                    &before_render_dependency,
                 );
             }
         }
