@@ -7,16 +7,16 @@ use super::{
 };
 use ahash::AHashMap;
 use anyhow::Context;
-use ash::{prelude::VkResult, vk};
+use ash::{extensions::khr::Synchronization2, prelude::VkResult, vk};
 use bort_vk::{
-    allocation_info_cpu_accessible, allocation_info_from_flags, default_subresource_layers, Buffer,
-    BufferProperties, ColorBlendState, CommandBuffer, CommandPool, DescriptorPool,
-    DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
-    DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState, Fence, GraphicsPipeline,
-    GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions, ImageProperties, ImageView,
-    ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool, MemoryPoolPropeties,
-    PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue, RenderPass, Sampler,
-    SamplerProperties, Semaphore, ShaderModule, ShaderStage, ViewportState,
+    allocation_info_cpu_accessible, allocation_info_from_flags, default_subresource_layers,
+    AllocAccess, Buffer, BufferProperties, ColorBlendState, CommandBuffer, CommandPool,
+    DescriptorPool, DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout,
+    DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
+    Fence, GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
+    ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool,
+    MemoryPoolPropeties, PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue,
+    RenderPass, Sampler, SamplerProperties, Semaphore, ShaderModule, ShaderStage, ViewportState,
 };
 use bort_vma::Alloc;
 use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
@@ -42,6 +42,7 @@ mod descriptor {
 
 pub struct GuiPass {
     device: Arc<Device>,
+    synchronization_2_functions: Synchronization2,
 
     memory_allocator: Arc<MemoryAllocator>,
     pipeline: Arc<GraphicsPipeline>,
@@ -82,13 +83,16 @@ pub struct GuiPass {
 impl GuiPass {
     /// Initializes the gui renderer
     pub fn new(
-        device: Arc<Device>,
         memory_allocator: Arc<MemoryAllocator>,
         render_pass: &RenderPass,
         render_command_pool: Arc<CommandPool>,
         transfer_command_pool: Arc<CommandPool>,
         scale_factor: f32,
     ) -> anyhow::Result<Self> {
+        let device = memory_allocator.device().clone();
+        let synchronization_2_functions =
+            Synchronization2::new(&device.instance().inner(), &device.inner());
+
         let transfer_command_buffer = Arc::new(
             CommandBuffer::new(transfer_command_pool, vk::CommandBufferLevel::PRIMARY)
                 .context("allocating transfer command buffer")?,
@@ -122,6 +126,7 @@ impl GuiPass {
 
         Ok(Self {
             device,
+            synchronization_2_functions,
 
             memory_allocator,
             pipeline,
@@ -491,7 +496,7 @@ impl GuiPass {
                 );
 
                 upload_existing_font_texture(
-                    &self.device,
+                    &self.synchronization_2_functions,
                     &self.render_queue_command_buffer,
                     existing_image_view,
                     &texture_staging_buffer,
@@ -602,62 +607,66 @@ impl GuiPass {
         };
 
         // we need to transition the image layout to vk::ImageLayout::TRANSFER_DST_OPTIMAL
-        let before_transfer_image_barrier = vk::ImageMemoryBarrier::builder()
-            .src_access_mask(vk::AccessFlags::empty())
-            .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+        let before_transfer_image_barrier = vk::ImageMemoryBarrier2::builder()
+            .src_stage_mask(vk::PipelineStageFlags2::empty())
+            .dst_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+            .src_access_mask(vk::AccessFlags2::empty())
+            .dst_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
             .old_layout(vk::ImageLayout::UNDEFINED)
             .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
             .image(new_image_view.image().handle())
-            .subresource_range(new_image_view.properties().subresource_range)
-            .build();
+            .subresource_range(new_image_view.properties().subresource_range);
 
-        // then transition to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL and perform queue release if transfer and render queue families are different
-        let after_transfer_image_barrier = vk::ImageMemoryBarrier::builder()
-            .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-            .dst_access_mask(vk::AccessFlags::SHADER_READ)
-            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-            .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-            .image(new_image_view.image().handle())
-            .subresource_range(new_image_view.properties().subresource_range)
-            .src_queue_family_index(transfer_queue_family_index)
-            .dst_queue_family_index(render_queue_family_index)
-            .build();
+        let before_transfer_barriers = [before_transfer_image_barrier.build()];
+        let before_transfer_dependency =
+            vk::DependencyInfo::builder().image_memory_barriers(&before_transfer_barriers);
 
-        let device_ash = self.device.inner();
+        // then transition to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL (and perform queue release if transfer and render queue families are different)
+        let after_transfer_image_barrier = {
+            let mut dst_stage_mask = vk::PipelineStageFlags2::FRAGMENT_SHADER;
+            let mut dst_access_mask = vk::AccessFlags2::SHADER_READ;
+
+            if different_queue_family_indices {
+                // this is a queue release operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
+                // these values will be ignored by the driver, but we set them to null to stop the validation layers from freaking out
+                dst_stage_mask = vk::PipelineStageFlags2::empty();
+                dst_access_mask = vk::AccessFlags2::empty();
+            }
+
+            vk::ImageMemoryBarrier2::builder()
+                .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+                .dst_stage_mask(dst_stage_mask)
+                .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+                .dst_access_mask(dst_access_mask)
+                .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+                .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+                .image(new_image_view.image().handle())
+                .subresource_range(new_image_view.properties().subresource_range)
+                .src_queue_family_index(transfer_queue_family_index)
+                .dst_queue_family_index(render_queue_family_index)
+        };
+
+        let after_transfer_barriers = [after_transfer_image_barrier.build()];
+        let after_transfer_dependency =
+            vk::DependencyInfo::builder().image_memory_barriers(&after_transfer_barriers);
+
         unsafe {
-            let transfer_command_buffer_handle = self.transfer_command_buffer.handle();
-
-            device_ash.cmd_pipeline_barrier(
-                transfer_command_buffer_handle,
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[before_transfer_image_barrier],
+            self.synchronization_2_functions.cmd_pipeline_barrier2(
+                self.transfer_command_buffer.handle(),
+                &before_transfer_dependency,
             );
 
-            device_ash.cmd_copy_buffer_to_image(
-                transfer_command_buffer_handle,
+            self.device.inner().cmd_copy_buffer_to_image(
+                self.transfer_command_buffer.handle(),
                 texture_staging_buffer.handle(),
                 new_image.handle(),
                 vk::ImageLayout::TRANSFER_DST_OPTIMAL,
                 &[copy_region],
             );
 
-            let dst_stage_mask = if different_queue_family_indices {
-                vk::PipelineStageFlags::TOP_OF_PIPE // this is a queue release operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
-            } else {
-                vk::PipelineStageFlags::FRAGMENT_SHADER
-            };
-            device_ash.cmd_pipeline_barrier(
-                transfer_command_buffer_handle,
-                vk::PipelineStageFlags::TRANSFER,
-                dst_stage_mask,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[after_transfer_image_barrier],
+            self.synchronization_2_functions.cmd_pipeline_barrier2(
+                self.transfer_command_buffer.handle(),
+                &after_transfer_dependency,
             );
         }
 
@@ -665,9 +674,11 @@ impl GuiPass {
 
         if different_queue_family_indices {
             // an identical queue aquire operation is required to complete the layout transition https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#synchronization-queue-transfers-acquire
-            let before_render_image_barrier = vk::ImageMemoryBarrier::builder()
-                .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-                .dst_access_mask(vk::AccessFlags::SHADER_READ)
+            let before_render_image_barrier = vk::ImageMemoryBarrier2::builder()
+                .src_stage_mask(vk::PipelineStageFlags2::empty())
+                .dst_stage_mask(vk::PipelineStageFlags2::FRAGMENT_SHADER)
+                .src_access_mask(vk::AccessFlags2::empty())
+                .dst_access_mask(vk::AccessFlags2::SHADER_READ)
                 .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
                 .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
                 .image(new_image_view.image().handle())
@@ -676,15 +687,14 @@ impl GuiPass {
                 .dst_queue_family_index(render_queue_family_index)
                 .build();
 
+            let before_render_barriers = [before_render_image_barrier];
+            let before_render_dependency =
+                vk::DependencyInfo::builder().image_memory_barriers(&before_render_barriers);
+
             unsafe {
-                device_ash.cmd_pipeline_barrier(
+                self.synchronization_2_functions.cmd_pipeline_barrier2(
                     self.render_sync_command_buffer.handle(),
-                    vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                    vk::PipelineStageFlags::FRAGMENT_SHADER,
-                    vk::DependencyFlags::empty(),
-                    &[],
-                    &[],
-                    &[before_render_image_barrier],
+                    &before_render_dependency,
                 );
             }
         }
@@ -910,62 +920,55 @@ impl GuiPass {
 }
 
 fn upload_existing_font_texture(
-    device: &Device,
+    synchronization_2_functions: &Synchronization2,
     command_buffer: &CommandBuffer,
     existing_image_view: &ImageView<Image>,
     texture_data_buffer: &Buffer,
     copy_region: vk::BufferImageCopy,
 ) {
     // we need to transition the image layout to vk::ImageLayout::TRANSFER_DST_OPTIMAL
-    let to_general_image_barrier = vk::ImageMemoryBarrier::builder()
-        .src_access_mask(vk::AccessFlags::SHADER_READ)
-        .dst_access_mask(vk::AccessFlags::TRANSFER_WRITE)
+    let to_general_image_barrier = vk::ImageMemoryBarrier2::builder()
+        .src_stage_mask(vk::PipelineStageFlags2::FRAGMENT_SHADER)
+        .dst_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+        .src_access_mask(vk::AccessFlags2::SHADER_READ)
+        .dst_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
         .old_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
         .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
         .image(existing_image_view.image().handle())
         .subresource_range(existing_image_view.properties().subresource_range);
 
+    let to_general_barriers = [to_general_image_barrier.build()];
+    let to_general_dependency =
+        vk::DependencyInfo::builder().image_memory_barriers(&to_general_barriers);
+
     // then transition back to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-    let to_shader_read_image_barrier = vk::ImageMemoryBarrier::builder()
-        .src_access_mask(vk::AccessFlags::TRANSFER_WRITE)
-        .dst_access_mask(vk::AccessFlags::SHADER_READ)
+    let to_shader_read_image_barrier = vk::ImageMemoryBarrier2::builder()
+        .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+        .dst_access_mask(vk::AccessFlags2::SHADER_READ)
         .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
         .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
         .image(existing_image_view.image().handle())
         .subresource_range(existing_image_view.properties().subresource_range);
 
+    let to_shader_read_barriers = [to_shader_read_image_barrier.build()];
+    let to_shader_read_dependency =
+        vk::DependencyInfo::builder().image_memory_barriers(&to_shader_read_barriers);
+
     // copy buffer to image
     unsafe {
-        let device_ash = device.inner();
-        let command_buffer_handle = command_buffer.handle();
+        synchronization_2_functions
+            .cmd_pipeline_barrier2(command_buffer.handle(), &to_general_dependency);
 
-        device_ash.cmd_pipeline_barrier(
-            command_buffer_handle,
-            vk::PipelineStageFlags::FRAGMENT_SHADER,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::DependencyFlags::empty(),
-            &[],
-            &[],
-            &[to_general_image_barrier.build()],
-        );
-
-        device_ash.cmd_copy_buffer_to_image(
-            command_buffer_handle,
+        command_buffer.device().inner().cmd_copy_buffer_to_image(
+            command_buffer.handle(),
             texture_data_buffer.handle(),
             existing_image_view.image().handle(),
             vk::ImageLayout::TRANSFER_DST_OPTIMAL,
             &[copy_region],
         );
 
-        device_ash.cmd_pipeline_barrier(
-            command_buffer_handle,
-            vk::PipelineStageFlags::TRANSFER,
-            vk::PipelineStageFlags::FRAGMENT_SHADER,
-            vk::DependencyFlags::empty(),
-            &[],
-            &[],
-            &[to_shader_read_image_barrier.build()],
-        );
+        synchronization_2_functions
+            .cmd_pipeline_barrier2(command_buffer.handle(), &to_shader_read_dependency);
     }
 }
 

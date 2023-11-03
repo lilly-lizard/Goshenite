@@ -474,28 +474,30 @@ impl ObjectResourceManager {
         render_dst_stage: vk::PipelineStageFlags2,
         render_dst_access_flags: vk::AccessFlags2,
     ) {
-        let mut dst_stage_mask = render_dst_stage;
-        let mut dst_access_mask = render_dst_access_flags;
-        if transfer_resources.queue_ownership_transfer_required() {
-            // this is a queue release operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
-            // these values will be ignored by the driver, but we set them to null to stop the validation layers from freaking out
-            dst_stage_mask = vk::PipelineStageFlags2::empty();
-            dst_access_mask = vk::AccessFlags2::empty();
-        }
+        let after_transfer_barrier = {
+            let mut dst_stage_mask = render_dst_stage;
+            let mut dst_access_mask = render_dst_access_flags;
 
-        let after_transfer_barrier = vk::BufferMemoryBarrier2::builder()
-            .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
-            .dst_stage_mask(dst_stage_mask)
-            .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
-            .dst_access_mask(dst_access_mask)
-            .buffer(new_buffer.handle())
-            .size(upload_data_size)
-            .offset(0)
-            .src_queue_family_index(transfer_resources.transfer_queue_family_index)
-            .dst_queue_family_index(transfer_resources.render_queue_family_index)
-            .build();
+            if transfer_resources.queue_ownership_transfer_required() {
+                // this is a queue release operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
+                // these values will be ignored by the driver, but we set them to null to stop the validation layers from freaking out
+                dst_stage_mask = vk::PipelineStageFlags2::empty();
+                dst_access_mask = vk::AccessFlags2::empty();
+            }
 
-        let after_transfer_barriers = [after_transfer_barrier];
+            vk::BufferMemoryBarrier2::builder()
+                .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+                .dst_stage_mask(dst_stage_mask)
+                .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+                .dst_access_mask(dst_access_mask)
+                .buffer(new_buffer.handle())
+                .size(upload_data_size)
+                .offset(0)
+                .src_queue_family_index(transfer_resources.transfer_queue_family_index)
+                .dst_queue_family_index(transfer_resources.render_queue_family_index)
+        };
+
+        let after_transfer_barriers = [after_transfer_barrier.build()];
         let after_transfer_dependency =
             vk::DependencyInfo::builder().buffer_memory_barriers(&after_transfer_barriers);
 

@@ -26,7 +26,7 @@ use crate::{
     user_interface::camera::Camera,
 };
 use anyhow::Context;
-use ash::{extensions::khr::Synchronization2, vk};
+use ash::vk;
 use bort_vk::{
     Buffer, CommandBuffer, CommandPool, DebugCallback, DebugCallbackProperties, Device, Fence,
     Framebuffer, Image, ImageAccess, ImageView, Instance, MemoryAllocator, Queue, RenderPass,
@@ -239,7 +239,6 @@ impl RenderManager {
         )?;
 
         let gui_pass = GuiPass::new(
-            device.clone(),
             memory_allocator.clone(),
             &render_pass,
             command_pool_render.clone(),
