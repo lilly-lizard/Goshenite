@@ -490,7 +490,7 @@ impl GuiPass {
                     buffer_row_length: 0,
                     buffer_image_height: 0,
                 };
-                debug!(
+                trace!(
                     "updating existing gui texture. id = {:?}, region offset = {:?}, region extent = {:?}",
                     texture_id, copy_region.image_offset, copy_region.image_extent
                 );
@@ -507,7 +507,7 @@ impl GuiPass {
             }
         } else {
             // but usually `ImageDelta.pos` is `None` meaning a new image needs to be created
-            debug!("creating new gui texture. id = {:?}", texture_id);
+            trace!("creating new gui texture. id = {:?}", texture_id);
 
             self.create_new_texture(&texture_staging_buffer, delta, texture_id)?;
 
@@ -522,7 +522,7 @@ impl GuiPass {
     ///
     /// Helper function for [`Self::update_textures`]
     fn unregister_image(&mut self, texture_id: egui::TextureId) {
-        debug!("removing unneeded gui texture id = {:?}", texture_id);
+        trace!("removing unneeded gui texture id = {:?}", texture_id);
         self.texture_image_views.remove(&texture_id);
         let unused_desc_set = self.texture_desc_sets.remove(&texture_id);
         if let Some(unused_desc_set) = unused_desc_set {
@@ -895,7 +895,7 @@ impl GuiPass {
 
             // `VK_ERROR_OUT_OF_DEVICE_MEMORY` means the vma pool has run out of space!
             if let Err(vk::Result::ERROR_OUT_OF_DEVICE_MEMORY) = buffer_res {
-                debug!("creating new buffer pool");
+                debug!("creating new gui pass buffer pool");
 
                 self.current_buffer_pool_index += 1;
 
@@ -943,6 +943,8 @@ fn upload_existing_font_texture(
 
     // then transition back to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
     let to_shader_read_image_barrier = vk::ImageMemoryBarrier2::builder()
+        .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+        .dst_stage_mask(vk::PipelineStageFlags2::FRAGMENT_SHADER)
         .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
         .dst_access_mask(vk::AccessFlags2::SHADER_READ)
         .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
