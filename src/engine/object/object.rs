@@ -71,7 +71,7 @@ impl Object {
         let index = self
             .primitive_ops
             .iter()
-            .position(|PrimitiveOpWithId(prim_op_id_iter, _p_op)| *prim_op_id_iter == prim_op_id);
+            .position(|primitive_op_with_id| primitive_op_with_id.id == prim_op_id);
 
         if let Some(index) = index {
             self.primitive_ops.remove(index);
@@ -105,7 +105,7 @@ impl Object {
             .expect("todo should probably handle this somehow...");
         let pop_id = PrimitiveOpId(new_raw_id);
 
-        self.primitive_ops.push(PrimitiveOpWithId(
+        self.primitive_ops.push(PrimitiveOpWithId::new(
             pop_id,
             PrimitiveOp::new(operation, primitive),
         ));
@@ -138,15 +138,16 @@ impl Object {
 
     /// If found, returns a ref to the primitive op and the vec index
     pub fn get_primitive_op(&self, prim_op_id: PrimitiveOpId) -> Option<(&PrimitiveOp, usize)> {
-        self.primitive_ops.iter().enumerate().find_map(
-            |(index, PrimitiveOpWithId(prim_op_id_iter, prim_op))| {
-                if *prim_op_id_iter == prim_op_id {
-                    Some((prim_op, index))
+        self.primitive_ops
+            .iter()
+            .enumerate()
+            .find_map(|(index, primitive_op_with_id)| {
+                if primitive_op_with_id.id == prim_op_id {
+                    Some((&primitive_op_with_id.primitive_op, index))
                 } else {
                     None
                 }
-            },
-        )
+            })
     }
 
     pub fn set_primitive_op(
@@ -154,18 +155,20 @@ impl Object {
         prim_op_id: PrimitiveOpId,
         primitive_op_data: PrimitiveOp,
     ) -> Result<(), CollectionError> {
-        let primitive_op_search_res = self.primitive_ops.iter_mut().enumerate().find_map(
-            |(_index, PrimitiveOpWithId(prim_op_id_iter, prim_op))| {
-                if *prim_op_id_iter == prim_op_id {
-                    Some(prim_op)
-                } else {
-                    None
-                }
-            },
-        );
+        let primitive_op_search_res =
+            self.primitive_ops
+                .iter_mut()
+                .enumerate()
+                .find_map(|(_index, primitive_op_with_id)| {
+                    if primitive_op_with_id.id == prim_op_id {
+                        Some(&mut primitive_op_with_id.primitive_op)
+                    } else {
+                        None
+                    }
+                });
 
-        if let Some(primitive_op) = primitive_op_search_res {
-            *primitive_op = primitive_op_data;
+        if let Some(primitive_op_ref) = primitive_op_search_res {
+            *primitive_op_ref = primitive_op_data;
             return Ok(());
         } else {
             return Err(CollectionError::InvalidId {
@@ -192,12 +195,15 @@ impl ObjectDuplicate {
         debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);
 
         let mut encoded_primitives = Vec::<PrimitiveOpPacket>::new();
-        for PrimitiveOpWithId(_primitive_op_id, primitive_op) in &self.primitive_ops {
-            let op_code = primitive_op.op.op_code();
-            let primitive_type_code = primitive_op.primitive.type_code();
+        for primitive_op_with_id in &self.primitive_ops {
+            let primitive_op = &primitive_op_with_id.primitive_op;
+            let primitive = primitive_op.primitive;
 
-            let transform = primitive_op.primitive.transform().encoded(self.origin);
-            let props = primitive_op.primitive.encoded_props();
+            let op_code = primitive_op.op.op_code();
+            let primitive_type_code = primitive.type_code();
+
+            let transform = primitive.transform().encoded(self.origin);
+            let props = primitive.encoded_props();
 
             let packet = create_primitive_op_packet(op_code, primitive_type_code, transform, props);
             encoded_primitives.push(packet);
@@ -220,8 +226,8 @@ impl ObjectDuplicate {
 
     pub fn aabb(&self) -> Aabb {
         let mut aabb = Aabb::new_zero();
-        for PrimitiveOpWithId(_primitive_op_id, primitive_op) in &self.primitive_ops {
-            aabb.union(primitive_op.primitive.aabb());
+        for primitive_op_with_id in &self.primitive_ops {
+            aabb.union(primitive_op_with_id.primitive_op.primitive.aabb());
         }
         aabb.offset(self.origin);
         aabb

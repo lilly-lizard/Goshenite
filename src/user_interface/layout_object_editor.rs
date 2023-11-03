@@ -36,27 +36,11 @@ pub fn object_editor_layout(
     object_collection: &mut ObjectCollection,
 ) {
     // selected object name
-    let no_object_text = RichText::new("No object selected...").italics();
-    let selected_object_id = match gui_state.selected_object_id() {
-        Some(o) => o.clone(),
-        None => {
-            ui.label(no_object_text);
-            return;
-        }
-    };
-    let selected_object = match object_collection.get_object_mut(selected_object_id) {
-        Some(o) => o,
-        None => {
-            debug!("selected object dropped. deselecting object...");
-            gui_state.deselect_object();
-            ui.label(no_object_text);
-            return;
-        }
-    };
-    ui.horizontal(|ui| {
-        ui.label("Name:");
-        ui.text_edit_singleline(&mut selected_object.name);
-    });
+    let (selected_object_id, selected_object) =
+        match label_and_get_selected_object(gui_state, ui, object_collection) {
+            Some(value) => value,
+            None => return,
+        };
 
     let mut object_edit_state = EditState::NoChange;
 
@@ -72,6 +56,40 @@ pub fn object_editor_layout(
     if object_edit_state == EditState::Modified {
         let _ = object_collection.mark_object_for_data_update(selected_object_id);
     }
+}
+
+fn label_and_get_selected_object<'a>(
+    gui_state: &mut GuiState,
+    ui: &mut egui::Ui,
+    object_collection: &'a mut ObjectCollection,
+) -> Option<(ObjectId, &'a mut Object)> {
+    let no_object_text = RichText::new("No object selected...").italics();
+
+    let selected_object_id = match gui_state.selected_object_id() {
+        Some(o) => o.clone(),
+        None => {
+            ui.label(no_object_text);
+            return None;
+        }
+    };
+
+    let selected_object = match object_collection.get_object_mut(selected_object_id) {
+        Some(o) => o,
+        None => {
+            // may be invalid object id
+            debug!("selected object dropped. deselecting object...");
+            gui_state.deselect_object();
+            ui.label(no_object_text);
+            return None;
+        }
+    };
+
+    ui.horizontal(|ui| {
+        ui.label("Name:");
+        ui.text_edit_singleline(&mut selected_object.name);
+    });
+
+    Some((selected_object_id, selected_object))
 }
 
 pub fn object_properties_editor(
@@ -162,14 +180,14 @@ pub fn primitive_op_list(
             // label text
             let primitive_op_text = RichText::new(format!(
                 "{} {}",
-                primitive_op_with_id.1.op.name(),
-                primitive_op_with_id.1.primitive.type_name()
+                primitive_op_with_id.primitive_op.op.name(),
+                primitive_op_with_id.primitive_op.primitive.type_name()
             ))
             .text_style(TextStyle::Monospace);
 
             // check if this primitive op is selected
             let is_selected = match selected_prim_op {
-                Some(some_selected_prim_op) => some_selected_prim_op.0 == primitive_op_with_id.0,
+                Some(some_selected_prim_op) => some_selected_prim_op.0 == primitive_op_with_id.id,
                 None => false,
             };
 
@@ -183,9 +201,9 @@ pub fn primitive_op_list(
                 // label to select this primitive op
                 let prim_op_res = ui_h.selectable_label(is_selected, primitive_op_text);
 
-                // if clicked, select it
+                // primitive op selected
                 if prim_op_res.clicked() {
-                    gui_state.set_selected_primitive_op_id(primitive_op_with_id.0);
+                    gui_state.set_selected_primitive_op(primitive_op_with_id);
                 }
             });
         },
@@ -497,6 +515,6 @@ pub fn cube_editor_ui_fields(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &
 
 impl DragableItem for PrimitiveOpWithId {
     fn drag_id(&self) -> egui::Id {
-        egui::Id::new(format!("p-op-drag{}", self.0))
+        egui::Id::new(format!("p-op-drag{}", self.id))
     }
 }

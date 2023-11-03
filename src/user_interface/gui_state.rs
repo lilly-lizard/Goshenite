@@ -50,6 +50,11 @@ impl GuiState {
         self.selected_object_id = Some(selected_object_id);
     }
 
+    pub fn set_selected_primitive_op(&mut self, selected_primitive_op: &PrimitiveOpWithId) {
+        self.set_selected_primitive_op_id(selected_primitive_op.id);
+        self.set_primitive_fields(selected_primitive_op.primitive_op.primitive);
+    }
+
     pub fn set_selected_primitive_op_id(&mut self, selected_primitive_op_id: PrimitiveOpId) {
         self.selected_primitive_op_id = Some(selected_primitive_op_id);
     }
@@ -86,7 +91,7 @@ impl GuiState {
     ) {
         if let Some(select_index) = choose_closest_valid_index(primitive_ops, target_prim_op_index)
         {
-            let select_primitive_op_id = primitive_ops[select_index].0;
+            let select_primitive_op_id = primitive_ops[select_index].id;
             self.set_selected_primitive_op_id(select_primitive_op_id)
         } else {
             self.deselect_primitive_op();

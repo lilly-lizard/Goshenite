@@ -93,7 +93,7 @@ impl ObjectResourceManager {
         transfer_operation_resources.begin_command_buffers()?;
 
         for (&object_id, object) in objects {
-            debug!("uploading object id = {:?} to gpu buffer", object_id);
+            trace!("uploading object id = {:?} to gpu buffer", object_id);
             self.update_or_push(
                 object_id,
                 object.duplicate(),
@@ -125,7 +125,7 @@ impl ObjectResourceManager {
         for (object_id, object_delta) in objects_delta {
             match object_delta {
                 ObjectDeltaOperation::Add(object_duplicate) => {
-                    debug!("adding object id = {:?} to gpu buffer", object_id);
+                    trace!("adding object id = {:?} to gpu buffer", object_id);
                     self.update_or_push(
                         object_id,
                         object_duplicate,
@@ -133,7 +133,7 @@ impl ObjectResourceManager {
                     )?;
                 }
                 ObjectDeltaOperation::Update(object_duplicate) => {
-                    debug!("updating object id = {:?} in gpu buffer", object_id);
+                    trace!("updating object id = {:?} in gpu buffer", object_id);
                     self.update_or_push(
                         object_id,
                         object_duplicate,
@@ -142,9 +142,9 @@ impl ObjectResourceManager {
                 }
                 ObjectDeltaOperation::Remove => {
                     if let Some(_removed_index) = self.remove(object_id) {
-                        debug!("removing object buffer id = {:?}", object_id);
+                        trace!("removing object buffer id = {:?}", object_id);
                     } else {
-                        debug!(
+                        trace!(
                             "attempted to remove object id = {:?} from gpu buffer but not found!",
                             object_id
                         );
@@ -359,7 +359,7 @@ impl ObjectResourceManager {
         object: &ObjectDuplicate,
         transfer_resources: &mut BufferUploadResources,
     ) -> anyhow::Result<Arc<Buffer>> {
-        debug!(
+        trace!(
             "uploading bounding box vertices for object id = {:?} to gpu buffer",
             object_id
         );
@@ -383,7 +383,7 @@ impl ObjectResourceManager {
         object: &ObjectDuplicate,
         transfer_resources: &mut BufferUploadResources,
     ) -> anyhow::Result<Arc<Buffer>> {
-        debug!(
+        trace!(
             "uploading primitive ops for object id = {:?} to gpu buffer",
             object_id
         );
