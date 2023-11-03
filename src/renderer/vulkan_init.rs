@@ -147,7 +147,7 @@ pub fn choose_physical_device_and_queue_families(
         .filter(|p| p.supports_extensions(required_extensions.into_iter()))
         // filter for queue support
         .filter_map(|p| check_physical_device_queue_support(p, surface, &instance))
-        // preference of device type
+        // prefer discrete gpus
         .max_by_key(
             |ChoosePhysicalDeviceReturn {
                  physical_device, ..
@@ -161,9 +161,10 @@ pub fn choose_physical_device_and_queue_families(
             },
         );
 
+    // converts Option to Result
     chosen_device.with_context(|| {
         format!(
-            "could not find a suitable vulkan physical device. requirements:\n
+            "could not find a suitable vulkan implimentation (device and driver). requirements:\n
             \t- must support minimum vulkan version {}.{}\n
             \t- must contain queue family supporting graphics, transfer and surface operations\n
             \t- must support device extensions: {:?}\n
