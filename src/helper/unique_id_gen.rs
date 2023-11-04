@@ -1,19 +1,21 @@
 use std::{
     collections::BTreeSet,
     error, fmt,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{AtomicU16, Ordering},
 };
 
-pub type UniqueId = usize;
+// gpu id buffer packed as 16 bits for object and 16 bits for primitive op.
+// 32 bit uint images have guarenteed vulkan support
+pub type UniqueId = u16;
 
 pub struct UniqueIdGen {
-    counter: AtomicUsize,
+    counter: AtomicU16,
     recycled_ids: BTreeSet<UniqueId>,
 }
 impl UniqueIdGen {
     pub const fn new() -> Self {
         Self {
-            counter: AtomicUsize::new(1),
+            counter: AtomicU16::new(1),
             recycled_ids: BTreeSet::new(),
         }
     }

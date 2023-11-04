@@ -3,6 +3,7 @@ mod debug_callback;
 mod geometry_pass;
 mod gui_pass;
 mod lighting_pass;
+pub mod object_id_reader;
 mod object_resource_manager;
 pub mod render_manager;
 pub mod shader_interfaces;
