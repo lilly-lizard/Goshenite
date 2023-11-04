@@ -4,7 +4,7 @@ use crate::{
             object::ObjectId,
             object_collection::ObjectCollection,
             operation::Operation,
-            primitive_op::{PrimitiveOpId, PrimitiveOpWithId},
+            primitive_op::{PrimitiveOp, PrimitiveOpId},
         },
         primitives::primitive::Primitive,
     },
@@ -50,17 +50,14 @@ impl GuiState {
         self.selected_object_id = Some(selected_object_id);
     }
 
-    pub fn set_selected_primitive_op(&mut self, selected_primitive_op: &PrimitiveOpWithId) {
-        self.set_selected_primitive_op_id(selected_primitive_op.id);
-        self.set_primitive_fields(selected_primitive_op.primitive_op.primitive);
+    pub fn set_selected_primitive_op(&mut self, selected_primitive_op: &PrimitiveOp) {
+        self.set_selected_primitive_op_id(selected_primitive_op.id());
+        self.primitive_fields = selected_primitive_op.primitive;
+        self.op_field = selected_primitive_op.op;
     }
 
     pub fn set_selected_primitive_op_id(&mut self, selected_primitive_op_id: PrimitiveOpId) {
         self.selected_primitive_op_id = Some(selected_primitive_op_id);
-    }
-
-    pub fn set_primitive_fields(&mut self, primitive: Primitive) {
-        self.primitive_fields = primitive;
     }
 
     pub fn set_primitive_op_list(&mut self, primitive_op_list: DragDropUi) {
@@ -86,12 +83,12 @@ impl GuiState {
     /// `target_prim_op_index`. If `primitive_ops` is empty, deselects primitive op in `self`.
     pub fn select_primitive_op_closest_index(
         &mut self,
-        primitive_ops: &Vec<PrimitiveOpWithId>,
+        primitive_ops: &Vec<PrimitiveOp>,
         target_prim_op_index: usize,
     ) {
         if let Some(select_index) = choose_closest_valid_index(primitive_ops, target_prim_op_index)
         {
-            let select_primitive_op_id = primitive_ops[select_index].id;
+            let select_primitive_op_id = primitive_ops[select_index].id();
             self.set_selected_primitive_op_id(select_primitive_op_id)
         } else {
             self.deselect_primitive_op();
@@ -113,10 +110,9 @@ impl GuiState {
             self.deselect_object();
         }
     }
-}
 
-// Getters
-impl GuiState {
+    // Getters
+
     pub fn selected_object_id(&self) -> Option<ObjectId> {
         self.selected_object_id
     }

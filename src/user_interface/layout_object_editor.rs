@@ -11,7 +11,7 @@ use crate::{
             object::{Object, ObjectId},
             object_collection::ObjectCollection,
             operation::Operation,
-            primitive_op::{PrimitiveOpId, PrimitiveOpWithId},
+            primitive_op::{PrimitiveOp, PrimitiveOpId},
         },
         primitives::{
             cube::Cube,
@@ -156,7 +156,7 @@ pub fn primitive_op_list(
     let selected_prim_op = match gui_state.selected_primitive_op_id() {
         Some(selected_prim_op_id) => {
             match selected_object.get_primitive_op(selected_prim_op_id) {
-                Some((selected_prim_op, _index)) => Some((selected_prim_op_id, selected_prim_op)),
+                Some((found_prim_op, _index)) => Some(found_prim_op),
                 None => {
                     // selected_prim_op_id not in selected_obejct! invalid id so we set to none
                     gui_state.deselect_primitive_op();
@@ -169,32 +169,32 @@ pub fn primitive_op_list(
 
     // draw each item in the primitive op list
     let mut prim_op_list_drag_state = gui_state.primtive_op_list.clone();
-    let drag_drop_response = prim_op_list_drag_state.list_ui::<PrimitiveOpWithId>(
+    let drag_drop_response = prim_op_list_drag_state.list_ui::<PrimitiveOp>(
         ui,
         selected_object.primitive_ops.iter(),
         // function to draw a single primitive op entry in the list
-        |ui, drag_handle, index, primitive_op_with_id| {
+        |ui, drag_handle, index, primitive_op| {
             let draggable_text =
                 RichText::new(format!("{}", index)).text_style(TextStyle::Monospace);
 
             // label text
             let primitive_op_text = RichText::new(format!(
                 "{} {}",
-                primitive_op_with_id.primitive_op.op.name(),
-                primitive_op_with_id.primitive_op.primitive.type_name()
+                primitive_op.op.name(),
+                primitive_op.primitive.type_name()
             ))
             .text_style(TextStyle::Monospace);
 
             // check if this primitive op is selected
             let is_selected = match selected_prim_op {
-                Some(some_selected_prim_op) => some_selected_prim_op.0 == primitive_op_with_id.id,
+                Some(some_selected_prim_op) => some_selected_prim_op.id() == primitive_op.id(),
                 None => false,
             };
 
             // draw ui for this primitive op
             ui.horizontal(|ui_h| {
                 // anything inside the handle can be used to drag the item
-                drag_handle.ui(ui_h, primitive_op_with_id, |handle_ui| {
+                drag_handle.ui(ui_h, primitive_op, |handle_ui| {
                     handle_ui.label(draggable_text);
                 });
 
@@ -203,7 +203,7 @@ pub fn primitive_op_list(
 
                 // primitive op selected
                 if prim_op_res.clicked() {
-                    gui_state.set_selected_primitive_op(primitive_op_with_id);
+                    gui_state.set_selected_primitive_op(primitive_op);
                 }
             });
         },
@@ -237,7 +237,7 @@ fn existing_primitive_op_editor(
     let mut prim_op_edit_state = EditState::NoChange;
 
     let selected_object_id = selected_object.id();
-    let (mut updated_prim_op, selected_prim_op_index) =
+    let (mut modified_prim_op, selected_prim_op_index) =
         match selected_object.get_primitive_op(selected_prim_op_id) {
             Some((prim_op, index)) => (prim_op.clone(), index),
             None => {
@@ -256,10 +256,10 @@ fn existing_primitive_op_editor(
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        let possible_updated_op = op_drop_down(ui_h, selected_object_id, updated_prim_op.op);
+        let possible_updated_op = op_drop_down(ui_h, selected_object_id, modified_prim_op.op);
         if let Some(updated_op) = possible_updated_op {
             // user edited the op via drop-down menu
-            updated_prim_op.op = updated_op;
+            modified_prim_op.op = updated_op;
             prim_op_edit_state = EditState::Modified;
         }
 
@@ -267,7 +267,7 @@ fn existing_primitive_op_editor(
         let primitive_type_changed = primitive_type_drop_down(ui_h, gui_state, selected_object_id);
         if primitive_type_changed {
             // replace old primitive according to new type
-            updated_prim_op.primitive = gui_state.primitive_fields.clone();
+            modified_prim_op.primitive = gui_state.primitive_fields.clone();
             prim_op_edit_state = EditState::Modified;
         }
     });
@@ -281,7 +281,7 @@ fn existing_primitive_op_editor(
     };
     if primitive_edited {
         // replace primitive with edited one
-        updated_prim_op.primitive = gui_state.primitive_fields.clone();
+        modified_prim_op.primitive = gui_state.primitive_fields.clone();
         prim_op_edit_state = EditState::Modified;
     }
 
@@ -312,7 +312,11 @@ fn existing_primitive_op_editor(
     let object_edit_state = match prim_op_edit_state {
         EditState::Modified => {
             // update the primitive op data with what we've been using
-            let _ = selected_object.set_primitive_op(selected_prim_op_id, updated_prim_op);
+            let _ = selected_object.set_primitive_op(
+                selected_prim_op_id,
+                modified_prim_op.primitive,
+                modified_prim_op.op,
+            );
             EditState::Modified
         }
         EditState::Removed => EditState::Modified,
@@ -427,7 +431,7 @@ fn primitive_type_drop_down(
                     // new primitive type was selected
                     type_has_changed = true;
                     let new_primitive = default_primitive_from_type_name(primitive_type_name);
-                    gui_state.set_primitive_fields(new_primitive);
+                    gui_state.primitive_fields = new_primitive;
                 }
             }
         });
@@ -513,8 +517,8 @@ pub fn cube_editor_ui_fields(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &
     something_changed
 }
 
-impl DragableItem for PrimitiveOpWithId {
+impl DragableItem for PrimitiveOp {
     fn drag_id(&self) -> egui::Id {
-        egui::Id::new(format!("p-op-drag{}", self.id))
+        egui::Id::new(format!("p-op-drag{}", self.id()))
     }
 }
