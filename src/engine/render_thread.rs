@@ -1,6 +1,6 @@
 use crate::{
     helper::anyhow_panic::anyhow_unwrap,
-    renderer::{object_id_reader::ElementAtPoint, render_manager::RenderManager},
+    renderer::{element_id_reader::ElementAtPoint, render_manager::RenderManager},
     user_interface::camera::Camera,
 };
 use egui::{ClippedPrimitive, TexturesDelta};
@@ -19,7 +19,7 @@ use super::object::objects_delta::ObjectsDelta;
 #[derive(Clone, Copy)]
 pub enum RenderThreadCommand {
     DoNothing,
-    RenderFrame,
+    Run,
     Quit,
 }
 
@@ -82,7 +82,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
             match render_command {
                 RenderThreadCommand::Quit => break,
                 RenderThreadCommand::DoNothing => continue,
-                RenderThreadCommand::RenderFrame => (),
+                RenderThreadCommand::Run => (),
             }
 
             // check for state updates
@@ -110,7 +110,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
                     ),
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(mpsc::TryRecvError::Disconnected) => {
-                        warn!("render thread > textures delta sender disconnected! stopping render thread...");
+                        error!("render thread > textures delta sender disconnected! stopping render thread...");
                         break;
                     }
                 }
@@ -125,7 +125,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
                     ),
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(mpsc::TryRecvError::Disconnected) => {
-                        warn!("render thread > textures delta sender disconnected! stopping render thread...");
+                        error!("render thread > textures delta sender disconnected! stopping render thread...");
                         break;
                     }
                 }
@@ -145,7 +145,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
                 );
 
                 if let Err(NoReceiverError(_)) = element_id_tx.update(element_id) {
-                    warn!("render thread > element id receiver disconnected! stopping render thread...");
+                    error!("render thread > element id receiver disconnected! stopping render thread...");
                     break;
                 }
             }
@@ -158,7 +158,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
 
             frame_timestamp = RenderFrameTimestamp::incriment(frame_timestamp.frame_num);
             if let Err(NoReceiverError(_)) = frame_timestamp_tx.update(Some(frame_timestamp)) {
-                warn!("render thread > frame timestamp receiver disconnected! stopping render thread...");
+                error!("render thread > frame timestamp receiver disconnected! stopping render thread...");
                 break;
             }
         }

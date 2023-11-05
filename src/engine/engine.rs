@@ -10,7 +10,7 @@ use crate::{
     renderer::render_manager::RenderManager,
     user_interface::camera::Camera,
     user_interface::{
-        cursor::{Cursor, MouseButton},
+        cursor::{Cursor, CursorEvent, MouseButton},
         gui::Gui,
     },
 };
@@ -154,7 +154,7 @@ impl Engine {
 
             // per frame logic
             Event::MainEventsCleared => {
-                let process_frame_res = self.process_frame();
+                let process_frame_res = self.per_frame_processing();
 
                 if let Err(e) = process_frame_res {
                     error!("error during per-frame processing: {}", e);
@@ -173,7 +173,7 @@ impl Engine {
         trace!("winit event: {:?}", event);
 
         // egui event handling
-        let captured_by_gui = self.gui.process_event(&event).consumed;
+        let captured_by_egui = self.gui.process_event(&event).consumed;
 
         // engine event handling
         match event {
@@ -185,11 +185,11 @@ impl Engine {
             // send mouse button events to cursor state
             WindowEvent::MouseInput { state, button, .. } => {
                 self.cursor_state
-                    .set_click_state(button, state, captured_by_gui)
+                    .set_click_state(button, state, captured_by_egui)
             }
             WindowEvent::MouseWheel { delta, .. } => self
                 .cursor_state
-                .accumulate_scroll_delta(delta, captured_by_gui),
+                .accumulate_scroll_delta(delta, captured_by_egui),
 
             // cursor entered window
             WindowEvent::CursorEntered { .. } => self.cursor_state.set_in_window_state(true),
@@ -220,30 +220,15 @@ impl Engine {
         Ok(())
     }
 
-    fn update_window_inner_size(
-        &mut self,
-        new_inner_size: winit::dpi::PhysicalSize<u32>,
-    ) -> Result<(), EngineError> {
-        self.camera.set_aspect_ratio(new_inner_size.into());
-        let thread_send_res = self.render_thread_channels.set_window_just_resized_flag();
-
-        check_channel_updater_result(thread_send_res)
-    }
-
-    fn set_scale_factor(&mut self, scale_factor: f64) -> Result<(), EngineError> {
-        self.scale_factor = scale_factor;
-        self.gui.set_scale_factor(self.scale_factor as f32);
+    fn per_frame_processing(&mut self) -> Result<(), EngineError> {
+        // make sure the render thread is active to receive the upcoming messages
         let thread_send_res = self
             .render_thread_channels
-            .set_scale_factor(scale_factor as f32);
+            .set_render_thread_command(RenderThreadCommand::Run);
+        check_channel_updater_result(thread_send_res)?;
 
-        check_channel_updater_result(thread_send_res)
-    }
-
-    /// Per frame engine logic and rendering.
-    fn process_frame(&mut self) -> Result<(), EngineError> {
         // process recieved events for cursor state
-        self.cursor_state.process_frame();
+        let cursor_event = self.cursor_state.process_frame();
 
         // process gui inputs and update layout
         if let Some(cursor_icon) = self.cursor_state.get_cursor_icon() {
@@ -287,19 +272,53 @@ impl Engine {
             check_channel_updater_result(thread_send_res)?;
         }
 
-        // now that frame processing is done, tell renderer to render a frame
-        let thread_send_res = self
-            .render_thread_channels
-            .set_render_thread_command(RenderThreadCommand::RenderFrame);
-        check_channel_updater_result(thread_send_res)?;
+        // check if an object was clicked
+        if let CursorEvent::LeftClickInPlace = cursor_event {
+            if let Some(cursor_screen_coordinates_dvec2) = self.cursor_state.position() {
+                let cursor_screen_coordinates =
+                    cursor_screen_coordinates_dvec2.as_vec2().to_array();
 
-        self.main_thread_frame_number += 1;
+                // send request
+                let thread_send_res = self
+                    .render_thread_channels
+                    .request_element_id_at_screen_coordinate(cursor_screen_coordinates);
+                check_channel_updater_result(thread_send_res)?;
+            }
+        }
+        if let Some(element_at_point) = self
+            .render_thread_channels
+            .receive_element_id_at_screen_coordinate()
+        {
+            debug!("debugging: element clicked = {:?}", element_at_point);
+        }
 
         let latest_render_frame_timestamp = self
             .render_thread_channels
             .get_latest_render_frame_timestamp();
 
+        self.main_thread_frame_number += 1;
+
         Ok(())
+    }
+
+    fn update_window_inner_size(
+        &mut self,
+        new_inner_size: winit::dpi::PhysicalSize<u32>,
+    ) -> Result<(), EngineError> {
+        self.camera.set_aspect_ratio(new_inner_size.into());
+        let thread_send_res = self.render_thread_channels.set_window_just_resized_flag();
+
+        check_channel_updater_result(thread_send_res)
+    }
+
+    fn set_scale_factor(&mut self, scale_factor: f64) -> Result<(), EngineError> {
+        self.scale_factor = scale_factor;
+        self.gui.set_scale_factor(self.scale_factor as f32);
+        let thread_send_res = self
+            .render_thread_channels
+            .set_scale_factor(scale_factor as f32);
+
+        check_channel_updater_result(thread_send_res)
     }
 
     fn update_camera(&mut self) {

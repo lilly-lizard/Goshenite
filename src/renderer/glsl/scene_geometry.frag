@@ -229,6 +229,7 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist, out vec3 o_
 	}
 
 	// ray miss
+	// see create_clear_values() in vulkan_init.rs for the default framebuffer values
 	discard;
 }
 
@@ -236,11 +237,6 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist, out vec3 o_
 
 void main()
 {
-	// debugging...
-	// out_normal = vec4(0.9, 0.7, 0.5, 1.);
-	// out_object_id = 1;
-	// return;
-	
 	// clip space position in frame (between -1 and 1)
 	vec2 screen_space = gl_FragCoord.xy + vec2(0.5);
 	vec2 clip_space_uv = screen_space / cam.framebuffer_dims * 2. - 1.;

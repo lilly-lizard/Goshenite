@@ -1,10 +1,10 @@
 use super::{
     config_renderer::{ENABLE_VULKAN_VALIDATION, TIMEOUT_NANOSECS},
     debug_callback::log_vulkan_debug_callback,
+    element_id_reader::{ElementAtPoint, ElementIdReader},
     geometry_pass::GeometryPass,
     gui_pass::GuiPass,
     lighting_pass::LightingPass,
-    object_id_reader::{ElementAtPoint, ObjectIdReader},
     shader_interfaces::uniform_buffers::CameraUniformBuffer,
     vulkan_init::{
         choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
@@ -76,7 +76,7 @@ pub struct RenderManager {
     geometry_pass: GeometryPass,
     gui_pass: GuiPass,
 
-    object_id_reader: ObjectIdReader,
+    object_id_reader: ElementIdReader,
 
     /// One per framebuffer
     render_command_buffers: Vec<Arc<CommandBuffer>>,
@@ -261,7 +261,7 @@ impl RenderManager {
             Semaphore::new(device.clone()).context("creating per-swapchain-image semaphore")?,
         );
 
-        let object_id_reader = ObjectIdReader::new(
+        let object_id_reader = ElementIdReader::new(
             transfer_queue.clone(),
             render_queue.clone(),
             &command_pool_transfer,

@@ -97,7 +97,7 @@ impl Cursor {
     }
 
     /// Process events to update internal state
-    pub fn process_frame(&mut self) {
+    pub fn process_frame(&mut self) -> CursorEvent {
         // position processing
         self.position_frame_change =
             self.position.unwrap_or_default() - self.position_previous.unwrap_or_default();
@@ -105,11 +105,16 @@ impl Cursor {
             self.position_frame_change.x != 0_f64 || self.position_frame_change.y != 0_f64;
         self.position_previous = self.position;
 
+        // check previous states before ButtonStates::increment_frame() overwrites it
+        let left_click_released_in_place = self.button_states.get(MouseButton::Left).is_unpressed()
+            && self.button_states.get_previous(MouseButton::Left).is_down()
+            && self.which_dragging.is_none();
+
         // dragging logic
         self.button_states.increment_frame();
         if let Some(dragging_button) = self.which_dragging {
             // if which_dragging set but button released, unset which_dragging
-            if self.button_states.is_released(dragging_button) {
+            if self.button_states.is_unpressed(dragging_button) {
                 self.which_dragging = None;
                 self.cursor_icon = None;
             }
@@ -127,6 +132,17 @@ impl Cursor {
                 }
             }
         }
+
+        if left_click_released_in_place {
+            CursorEvent::LeftClickInPlace
+        } else {
+            CursorEvent::None
+        }
+    }
+
+    /// Will only be `None` before receiving the first [`WindowEvent::CursorMoved`](winit::event::WindowEvent::CursorMoved) event
+    pub fn position(&self) -> Option<DVec2> {
+        self.position
     }
 
     pub fn get_cursor_icon(&self) -> Option<egui::CursorIcon> {
@@ -150,6 +166,12 @@ impl Cursor {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum CursorEvent {
+    None,
+    LeftClickInPlace,
+}
+
 /// Mouse buttons supported by engine
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum MouseButton {
@@ -170,7 +192,7 @@ impl MouseButton {
             winit::event::MouseButton::Right => Ok(Self::Right),
             winit::event::MouseButton::Middle => Ok(Self::Middle),
             winit::event::MouseButton::Other(code) => match code {
-                #[cfg(target_os = "linux")]
+                #[cfg(target_os = "linux")] // haven't tested this on other platforms yet
                 8 => Ok(Self::Button4),
                 #[cfg(target_os = "linux")]
                 9 => Ok(Self::Button5),
@@ -185,18 +207,18 @@ impl MouseButton {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ButtonState {
-    Released,
-    Pressed,
+    UnPressed,
+    Clicked,
     Held,
 }
 
 impl ButtonState {
-    pub fn is_released(&self) -> bool {
-        *self == Self::Released
+    pub fn is_unpressed(&self) -> bool {
+        *self == Self::UnPressed
     }
 
-    pub fn is_pressed(&self) -> bool {
-        *self == Self::Pressed
+    pub fn is_clicked(&self) -> bool {
+        *self == Self::Clicked
     }
 
     pub fn is_held(&self) -> bool {
@@ -205,21 +227,21 @@ impl ButtonState {
 
     /// Button is pressed or held
     pub fn is_down(&self) -> bool {
-        self.is_pressed() || self.is_held()
+        self.is_clicked() || self.is_held()
     }
 }
 
 impl Default for ButtonState {
     fn default() -> Self {
-        Self::Released
+        Self::UnPressed
     }
 }
 
 impl From<ElementState> for ButtonState {
     fn from(value: ElementState) -> Self {
         match value {
-            ElementState::Pressed => Self::Pressed,
-            ElementState::Released => Self::Released,
+            ElementState::Pressed => Self::Clicked,
+            ElementState::Released => Self::UnPressed,
         }
     }
 }
@@ -284,7 +306,7 @@ impl MouseButtonStates {
 
     #[inline]
     fn set_via_button_pointer(button: &mut ButtonState, previous: ButtonState, new: ButtonState) {
-        if new.is_pressed() && previous.is_held() {
+        if new.is_clicked() && previous.is_held() {
             // stay held
             return;
         }
@@ -301,12 +323,22 @@ impl MouseButtonStates {
         }
     }
 
-    pub fn is_pressed(&self, button: MouseButton) -> bool {
-        self.get(button).is_pressed()
+    pub fn get_previous(&self, button: MouseButton) -> ButtonState {
+        match button {
+            MouseButton::Left => self.previous_left,
+            MouseButton::Right => self.previous_right,
+            MouseButton::Middle => self.previous_middle,
+            MouseButton::Button4 => self.previous_button_4,
+            MouseButton::Button5 => self.previous_button_5,
+        }
     }
 
-    pub fn is_released(&self, button: MouseButton) -> bool {
-        self.get(button).is_released()
+    pub fn is_clicked(&self, button: MouseButton) -> bool {
+        self.get(button).is_clicked()
+    }
+
+    pub fn is_unpressed(&self, button: MouseButton) -> bool {
+        self.get(button).is_unpressed()
     }
 
     pub fn is_held(&self, button: MouseButton) -> bool {

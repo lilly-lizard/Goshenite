@@ -506,7 +506,7 @@ fn attachment_descriptions(
             .format(FORMAT_PRIMITIVE_ID_BUFFER)
             .samples(vk::SampleCountFlags::TYPE_1)
             .load_op(vk::AttachmentLoadOp::CLEAR)
-            .store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .store_op(vk::AttachmentStoreOp::STORE)
             .initial_layout(vk::ImageLayout::UNDEFINED) // what it will be in at the beginning of the render pass
             .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) // what it will transition to at the end of the render pass
             .build();

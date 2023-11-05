@@ -1,13 +1,18 @@
-use super::{config_renderer::TIMEOUT_NANOSECS, vulkan_init::create_cpu_read_staging_buffer};
+use super::{
+    config_renderer::TIMEOUT_NANOSECS,
+    shader_interfaces::primitive_op_buffer::PRIMITIVE_ID_INVALID,
+    vulkan_init::create_cpu_read_staging_buffer,
+};
 use crate::engine::object::{object::ObjectId, primitive_op::PrimitiveOpId};
 use anyhow::Context;
-use ash::vk;
+use ash::{extensions::khr::Synchronization2, vk};
 use bort_vk::{
     Buffer, CommandBuffer, CommandPool, Device, DeviceOwned, Fence, Image, ImageAccess, ImageView,
     MemoryAllocator, Queue, Semaphore,
 };
 use std::sync::Arc;
 
+#[derive(Debug, Clone, Copy)]
 pub enum ElementAtPoint {
     Object {
         object_id: ObjectId,
@@ -20,7 +25,7 @@ pub enum ElementAtPoint {
 impl ElementAtPoint {
     pub fn from_rendered_id(rendered_id: u32) -> Self {
         match rendered_id {
-            0 => Self::Background,
+            PRIMITIVE_ID_INVALID => Self::Background,
             encoded_id => {
                 let object_id_u32 = encoded_id >> 16;
                 let object_id = ObjectId::from(object_id_u32 as u16);
@@ -37,23 +42,25 @@ impl ElementAtPoint {
     }
 }
 
-pub(super) struct ObjectIdReader {
-    pub device: Arc<Device>,
-    pub transfer_queue: Arc<Queue>,
-    pub render_queue: Arc<Queue>,
+pub(super) struct ElementIdReader {
+    device: Arc<Device>,
+    synchronization_2_functions: Synchronization2,
 
-    pub command_buffer_transfer: Arc<CommandBuffer>,
-    pub command_buffer_post_render_sync: Arc<CommandBuffer>,
-    pub command_buffer_pre_render_sync: Arc<CommandBuffer>,
+    transfer_queue: Arc<Queue>,
+    render_queue: Arc<Queue>,
 
-    pub completion_fence: Arc<Fence>,
-    pub semaphore_before_transfer: Arc<Semaphore>,
-    pub semaphore_after_transfer: Arc<Semaphore>,
+    command_buffer_transfer: CommandBuffer,
+    command_buffer_post_render_sync: CommandBuffer,
+    command_buffer_pre_render_sync: CommandBuffer,
 
-    pub cpu_read_staging_buffer: Buffer,
+    completion_fence: Fence,
+    semaphore_before_transfer: Semaphore,
+    semaphore_after_transfer: Semaphore,
+
+    cpu_read_staging_buffer: Buffer,
 }
 
-impl ObjectIdReader {
+impl ElementIdReader {
     pub fn new(
         transfer_queue: Arc<Queue>,
         render_queue: Arc<Queue>,
@@ -62,37 +69,34 @@ impl ObjectIdReader {
         memory_allocator: Arc<MemoryAllocator>,
     ) -> anyhow::Result<Self> {
         let device = transfer_queue.device().clone();
+        let synchronization_2_functions =
+            Synchronization2::new(&device.instance().inner(), &device.inner());
 
-        let command_buffer_transfer = Arc::new(
-            command_pool_transfer_queue
-                .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
-                .context("allocating buffer read transfer queue command buffer")?,
-        );
+        let command_buffer_transfer = command_pool_transfer_queue
+            .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
+            .context("allocating buffer read transfer queue command buffer")?;
 
-        let command_buffer_post_render_sync = Arc::new(
-            command_pool_render_queue
-                .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
-                .context("allocating buffer read render sync command buffer")?,
-        );
+        let command_buffer_post_render_sync = command_pool_render_queue
+            .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
+            .context("allocating buffer read render sync command buffer")?;
 
-        let command_buffer_pre_render_sync = Arc::new(
-            command_pool_render_queue
-                .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
-                .context("allocating buffer read render sync command buffer")?,
-        );
+        let command_buffer_pre_render_sync = command_pool_render_queue
+            .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
+            .context("allocating buffer read render sync command buffer")?;
 
-        let completion_fence =
-            Arc::new(Fence::new_unsignalled(device.clone()).context("creating fence")?);
+        let completion_fence = Fence::new_unsignalled(device.clone()).context("creating fence")?;
 
         let semaphore_before_transfer =
-            Arc::new(Semaphore::new(device.clone()).context("creating semaphore")?);
+            Semaphore::new(device.clone()).context("creating semaphore")?;
         let semaphore_after_transfer =
-            Arc::new(Semaphore::new(device.clone()).context("creating semaphore")?);
+            Semaphore::new(device.clone()).context("creating semaphore")?;
 
         let cpu_read_staging_buffer = create_cpu_read_staging_buffer(memory_allocator)?;
 
         Ok(Self {
             device,
+            synchronization_2_functions,
+
             transfer_queue,
             render_queue,
 
@@ -108,12 +112,12 @@ impl ObjectIdReader {
         })
     }
 
+    /// Assumes that the render and transfer queue families are different, otherwise there's no
+    /// need to call this function.
     pub fn record_and_submit_pre_transfer_sync_commands(
         &self,
         last_primitive_id_buffer: Arc<ImageView<Image>>,
     ) -> anyhow::Result<()> {
-        let device_ash = self.device.inner();
-
         let semaphores_before_transfer = [self.semaphore_before_transfer.handle()];
 
         let image_subresource_range = vk::ImageSubresourceRange {
@@ -124,9 +128,11 @@ impl ObjectIdReader {
         };
 
         // render queue release
-        let image_barrier_after_render = vk::ImageMemoryBarrier::builder()
-            .src_access_mask(vk::AccessFlags::SHADER_READ)
-            .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
+        let after_render_image_barrier = vk::ImageMemoryBarrier2::builder()
+            .src_stage_mask(vk::PipelineStageFlags2::FRAGMENT_SHADER)
+            .dst_stage_mask(vk::PipelineStageFlags2::empty())
+            .src_access_mask(vk::AccessFlags2::INPUT_ATTACHMENT_READ)
+            .dst_access_mask(vk::AccessFlags2::empty())
             .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
             .image(last_primitive_id_buffer.image().handle())
@@ -134,37 +140,35 @@ impl ObjectIdReader {
             .src_queue_family_index(self.render_queue.family_index())
             .dst_queue_family_index(self.transfer_queue.family_index());
 
-        let command_buffer_render_sync = self.command_buffer_post_render_sync.clone();
+        let after_render_barriers = [after_render_image_barrier.build()];
+        let after_render_dependency =
+            vk::DependencyInfo::builder().image_memory_barriers(&after_render_barriers);
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        command_buffer_render_sync
+        self.command_buffer_post_render_sync
             .begin(&begin_info)
             .context("beginning command buffer record_and_submit_pre_transfer_sync_commands")?;
 
         unsafe {
-            device_ash.cmd_pipeline_barrier(
-                command_buffer_render_sync.handle(),
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                vk::PipelineStageFlags::TOP_OF_PIPE,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[image_barrier_after_render.build()],
+            self.synchronization_2_functions.cmd_pipeline_barrier2(
+                self.command_buffer_post_render_sync.handle(),
+                &after_render_dependency,
             );
         }
 
-        command_buffer_render_sync
+        self.command_buffer_post_render_sync
             .end()
             .context("ending command buffer record_and_submit_pre_transfer_sync_commands")?;
 
-        let submit_command_buffers = [command_buffer_render_sync.handle()];
+        let submit_command_buffers = [self.command_buffer_post_render_sync.handle()];
         let submit_info = vk::SubmitInfo::builder()
             .command_buffers(&submit_command_buffers)
             .signal_semaphores(&semaphores_before_transfer);
 
         unsafe {
-            device_ash
+            self.device
+                .inner()
                 .queue_submit(
                     self.render_queue.handle(),
                     &[submit_info.build()],
@@ -217,25 +221,61 @@ impl ObjectIdReader {
             ..Default::default()
         };
 
-        let image_barrier_before_transfer = vk::ImageMemoryBarrier::builder()
-            .src_access_mask(vk::AccessFlags::SHADER_READ)
-            .dst_access_mask(vk::AccessFlags::TRANSFER_READ)
-            .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-            .image(last_primitive_id_buffer.image().handle())
-            .subresource_range(image_subresource_range)
-            .src_queue_family_index(self.render_queue.family_index())
-            .dst_queue_family_index(self.transfer_queue.family_index());
+        let before_transfer_image_barrier = {
+            let mut src_stage_mask = vk::PipelineStageFlags2::FRAGMENT_SHADER;
+            let mut src_access_mask = vk::AccessFlags2::INPUT_ATTACHMENT_READ;
 
-        let image_barrier_after_transfer = vk::ImageMemoryBarrier::builder()
-            .src_access_mask(vk::AccessFlags::TRANSFER_READ)
-            .dst_access_mask(vk::AccessFlags::SHADER_WRITE)
-            .old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
-            .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
-            .image(last_primitive_id_buffer.image().handle())
-            .subresource_range(image_subresource_range)
-            .src_queue_family_index(self.transfer_queue.family_index())
-            .dst_queue_family_index(self.render_queue.family_index());
+            if different_queue_family_indices {
+                // this is a queue aquire operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
+                // these values will be ignored by the driver, but we set them to null to stop the validation layers from freaking out
+                src_stage_mask = vk::PipelineStageFlags2::empty();
+                src_access_mask = vk::AccessFlags2::empty();
+            }
+
+            vk::ImageMemoryBarrier2::builder()
+                .src_stage_mask(src_stage_mask)
+                .dst_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+                .src_access_mask(src_access_mask)
+                .dst_access_mask(vk::AccessFlags2::TRANSFER_READ)
+                .old_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .new_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+                .image(last_primitive_id_buffer.image().handle())
+                .subresource_range(image_subresource_range)
+                .src_queue_family_index(self.render_queue.family_index())
+                .dst_queue_family_index(self.transfer_queue.family_index())
+        };
+
+        let before_transfer_barriers = [before_transfer_image_barrier.build()];
+        let before_transfer_dependency =
+            vk::DependencyInfo::builder().image_memory_barriers(&before_transfer_barriers);
+
+        let after_transfer_image_barrier = {
+            let mut dst_stage_mask = vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT;
+            let mut dst_access_mask = vk::AccessFlags2::COLOR_ATTACHMENT_WRITE;
+
+            if different_queue_family_indices {
+                // this is a queue release operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
+                // these values will be ignored by the driver, but we set them to null to stop the validation layers from freaking out
+                dst_stage_mask = vk::PipelineStageFlags2::empty();
+                dst_access_mask = vk::AccessFlags2::empty();
+            }
+
+            vk::ImageMemoryBarrier2::builder()
+                .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+                .dst_stage_mask(dst_stage_mask)
+                .src_access_mask(vk::AccessFlags2::TRANSFER_READ)
+                .dst_access_mask(dst_access_mask)
+                .old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
+                .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+                .image(last_primitive_id_buffer.image().handle())
+                .subresource_range(image_subresource_range)
+                .src_queue_family_index(self.transfer_queue.family_index())
+                .dst_queue_family_index(self.render_queue.family_index())
+        };
+
+        let after_transfer_barriers = [after_transfer_image_barrier.build()];
+        let after_transfer_dependency =
+            vk::DependencyInfo::builder().image_memory_barriers(&after_transfer_barriers);
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -243,26 +283,13 @@ impl ObjectIdReader {
             .begin(&begin_info)
             .context("beginning command buffer get_element_at_screen_coordinate")?;
 
-        let device_ash = self.device.inner();
         unsafe {
             let command_buffer_handle = self.command_buffer_transfer.handle();
 
-            let src_stage_mask = if different_queue_family_indices {
-                vk::PipelineStageFlags::BOTTOM_OF_PIPE // this is a queue aquire operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
-            } else {
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
-            };
-            device_ash.cmd_pipeline_barrier(
-                command_buffer_handle,
-                src_stage_mask,
-                vk::PipelineStageFlags::TRANSFER,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[], // don't worry about buffer memory barriers because this funciton should be the only code that touches it and there's a fence wait after this
-                &[image_barrier_before_transfer.build()],
-            );
+            self.synchronization_2_functions
+                .cmd_pipeline_barrier2(command_buffer_handle, &before_transfer_dependency);
 
-            device_ash.cmd_copy_image_to_buffer(
+            self.device.inner().cmd_copy_image_to_buffer(
                 command_buffer_handle,
                 last_primitive_id_buffer.image().handle(),
                 vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
@@ -270,20 +297,8 @@ impl ObjectIdReader {
                 &[buffer_image_copy_region],
             );
 
-            let dst_stage_mask = if different_queue_family_indices {
-                vk::PipelineStageFlags::TOP_OF_PIPE // this is a queue release operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
-            } else {
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT
-            };
-            device_ash.cmd_pipeline_barrier(
-                command_buffer_handle,
-                vk::PipelineStageFlags::TRANSFER,
-                dst_stage_mask,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[image_barrier_after_transfer.build()],
-            );
+            self.synchronization_2_functions
+                .cmd_pipeline_barrier2(command_buffer_handle, &after_transfer_dependency);
         }
 
         self.command_buffer_transfer
@@ -294,8 +309,16 @@ impl ObjectIdReader {
     }
 
     pub fn submit_primitive_id_copy_commands(&self) -> anyhow::Result<()> {
-        let semaphores_before_transfer = [self.semaphore_before_transfer.handle()];
-        let semaphores_after_transfer = [self.semaphore_after_transfer.handle()];
+        let different_queue_family_indices =
+            self.render_queue.family_index() != self.transfer_queue.family_index();
+
+        let mut semaphores_before_transfer = Vec::<vk::Semaphore>::new();
+        let mut semaphores_after_transfer = Vec::<vk::Semaphore>::new();
+        if different_queue_family_indices {
+            // only need semaphores to sync with other queue families
+            semaphores_before_transfer.push(self.semaphore_before_transfer.handle());
+            semaphores_after_transfer.push(self.semaphore_after_transfer.handle());
+        }
 
         let transfer_submit_command_buffers = [self.command_buffer_transfer.handle()];
 
@@ -329,13 +352,13 @@ impl ObjectIdReader {
         Ok(())
     }
 
+    /// Assumes that the render and transfer queue families are different, otherwise there's no
+    /// need to call this function.
     pub fn record_and_submit_post_transfer_sync_commands(
         &self,
         last_primitive_id_buffer: Arc<ImageView<Image>>,
     ) -> anyhow::Result<()> {
-        let device_ash = self.device.inner();
-
-        let semaphores_after_transfer = [self.semaphore_before_transfer.handle()];
+        let semaphores_after_transfer = [self.semaphore_after_transfer.handle()];
 
         let image_subresource_range = vk::ImageSubresourceRange {
             aspect_mask: vk::ImageAspectFlags::COLOR,
@@ -345,9 +368,11 @@ impl ObjectIdReader {
         };
 
         // render queue aquire
-        let image_barrier_before_render = vk::ImageMemoryBarrier::builder()
-            .src_access_mask(vk::AccessFlags::TRANSFER_READ)
-            .dst_access_mask(vk::AccessFlags::SHADER_WRITE)
+        let before_render_image_barrier = vk::ImageMemoryBarrier2::builder()
+            .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+            .dst_stage_mask(vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT)
+            .src_access_mask(vk::AccessFlags2::TRANSFER_READ)
+            .dst_access_mask(vk::AccessFlags2::COLOR_ATTACHMENT_WRITE)
             .old_layout(vk::ImageLayout::TRANSFER_SRC_OPTIMAL)
             .new_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .image(last_primitive_id_buffer.image().handle())
@@ -355,38 +380,36 @@ impl ObjectIdReader {
             .src_queue_family_index(self.transfer_queue.family_index())
             .dst_queue_family_index(self.render_queue.family_index());
 
-        let command_buffer_render_sync = self.command_buffer_pre_render_sync.clone();
+        let before_render_barriers = [before_render_image_barrier.build()];
+        let before_render_dependency =
+            vk::DependencyInfo::builder().image_memory_barriers(&before_render_barriers);
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        command_buffer_render_sync
+        self.command_buffer_pre_render_sync
             .begin(&begin_info)
             .context("beginning command buffer record_and_submit_pre_transfer_sync_commands")?;
 
         unsafe {
-            device_ash.cmd_pipeline_barrier(
-                command_buffer_render_sync.handle(),
-                vk::PipelineStageFlags::BOTTOM_OF_PIPE,
-                vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT,
-                vk::DependencyFlags::empty(),
-                &[],
-                &[],
-                &[image_barrier_before_render.build()],
+            self.synchronization_2_functions.cmd_pipeline_barrier2(
+                self.command_buffer_pre_render_sync.handle(),
+                &before_render_dependency,
             );
         }
 
-        command_buffer_render_sync
+        self.command_buffer_pre_render_sync
             .end()
             .context("ending command buffer record_and_submit_pre_transfer_sync_commands")?;
 
-        let submit_command_buffers = [command_buffer_render_sync.handle()];
+        let submit_command_buffers = [self.command_buffer_pre_render_sync.handle()];
         let submit_info = vk::SubmitInfo::builder()
             .command_buffers(&submit_command_buffers)
             .wait_semaphores(&semaphores_after_transfer)
             .wait_dst_stage_mask(&[vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT]);
 
         unsafe {
-            device_ash
+            self.device
+                .inner()
                 .queue_submit(
                     self.render_queue.handle(),
                     &[submit_info.build()],
