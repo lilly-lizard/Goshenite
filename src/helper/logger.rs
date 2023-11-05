@@ -16,7 +16,7 @@ impl log::Log for ConsoleLogger {
         if self.enabled(record.metadata()) {
             // level color
             let color = match record.level() {
-                Level::Error => Color::Red,
+                Level::Error => Color::BrightRed,
                 Level::Warn => Color::Yellow,
                 Level::Info => Color::Cyan,
                 Level::Debug => Color::Magenta,
@@ -25,8 +25,8 @@ impl log::Log for ConsoleLogger {
             // log message
             let args = format!("{}", record.args());
             let args = if record.level() == Level::Error {
-                // only color message for errors to make them stand out
-                args.color(Color::BrightRed)
+                // only color error message to make them stand out
+                args.color(Color::Red)
             } else {
                 ColoredString::from(args.as_str())
             };
