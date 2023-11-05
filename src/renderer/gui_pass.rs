@@ -861,7 +861,7 @@ impl GuiPass {
 
         // upload data
 
-        // todo can avoid the vec clones here! look at `gui::mesh_primitives` and `free_previous_vertex_and_index_buffers`
+        // todo can avoid the vec clones here with moves! look at `gui::mesh_primitives` and `free_previous_vertex_and_index_buffers`
 
         vertex_buffer
             .write_iter(vertices, 0)
@@ -1019,8 +1019,9 @@ fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorP
 }
 
 fn create_buffer_pool(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Arc<MemoryPool>> {
-    // todo use device local with staging buffers because host visible + device local is a relatively
+    // may consider use device local with staging buffers because host visible + device local is a relatively
     // scarce resource on discrete cards https://asawicki.info/news_1740_vulkan_memory_types_on_pc_and_how_to_use_them
+    // on the other hand we are writing to these buffers each frame so this is probably the optimal path
     let buffer_alloc_info = allocation_info_from_flags(
         vk::MemoryPropertyFlags::HOST_VISIBLE | vk::MemoryPropertyFlags::DEVICE_LOCAL,
         vk::MemoryPropertyFlags::empty(),

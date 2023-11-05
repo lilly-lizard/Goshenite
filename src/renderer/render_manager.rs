@@ -14,14 +14,14 @@ use super::{
     },
 };
 use crate::{
-    engine::object::{object::ObjectId, objects_delta::ObjectsDelta, primitive_op::PrimitiveOpId},
+    engine::object::objects_delta::ObjectsDelta,
     helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
     renderer::{
         config_renderer::MINIMUM_FRAMEBUFFER_COUNT,
         vulkan_init::{
-            choose_depth_buffer_format, create_command_pool, create_cpu_read_staging_buffer,
-            create_device_and_queue, create_entry, create_instance, create_primitive_id_buffers,
-            create_render_command_buffers, shaders_should_write_linear_color,
+            choose_depth_buffer_format, create_command_pool, create_device_and_queue, create_entry,
+            create_instance, create_primitive_id_buffers, create_render_command_buffers,
+            shaders_should_write_linear_color,
         },
     },
     user_interface::camera::Camera,
@@ -29,9 +29,9 @@ use crate::{
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{
-    Buffer, CommandBuffer, CommandPool, DebugCallback, DebugCallbackProperties, Device,
-    DeviceOwned, Fence, Framebuffer, Image, ImageAccess, ImageView, Instance, MemoryAllocator,
-    Queue, RenderPass, Semaphore, Surface, Swapchain, SwapchainImage,
+    Buffer, CommandBuffer, CommandPool, DebugCallback, DebugCallbackProperties, Device, Fence,
+    Framebuffer, Image, ImageView, Instance, MemoryAllocator, Queue, RenderPass, Semaphore,
+    Surface, Swapchain, SwapchainImage,
 };
 use egui::{ClippedPrimitive, TexturesDelta};
 #[allow(unused_imports)]
@@ -76,20 +76,21 @@ pub struct RenderManager {
     geometry_pass: GeometryPass,
     gui_pass: GuiPass,
 
+    object_id_reader: ObjectIdReader,
+
     /// One per framebuffer
     render_command_buffers: Vec<Arc<CommandBuffer>>,
     previous_render_fence: Arc<Fence>,
     next_frame_wait_semaphore: Arc<Semaphore>,
     swapchain_image_available_semaphore: Arc<Semaphore>,
 
+    renderer_state: RendererState,
     /// Indicates which framebuffer is being processed right now.
     framebuffer_index_currently_rendering: usize,
     /// Indicates which framebuffer was rendered to in the previous frame.
     framebuffer_index_last_rendered_to: usize,
     /// Can be set to true with [`Self::set_window_just_resized_flag`] and set to false in [`Self::render_frame`]
     window_just_resized: bool,
-
-    object_id_reader: ObjectIdReader,
 }
 
 // Public functions
@@ -299,16 +300,17 @@ impl RenderManager {
             lighting_pass,
             gui_pass,
 
+            object_id_reader,
+
             render_command_buffers,
             previous_render_fence,
             next_frame_wait_semaphore,
             swapchain_image_available_semaphore,
 
+            renderer_state: RendererState::Initialized,
             framebuffer_index_currently_rendering: 0,
             framebuffer_index_last_rendered_to: 0,
             window_just_resized: false,
-
-            object_id_reader,
         })
     }
 
@@ -472,13 +474,20 @@ impl RenderManager {
             }
         }
 
+        self.renderer_state = RendererState::Rendering;
         Ok(())
     }
 
     pub fn get_element_at_screen_coordinate(
         &mut self,
         screen_coordinate: [f32; 2],
-    ) -> anyhow::Result<ElementAtPoint> {
+    ) -> anyhow::Result<Option<ElementAtPoint>> {
+        if let RendererState::Initialized = self.renderer_state {
+            // buffer data and sync is undefined as no render commands have been submitted yet
+            warn!("element at screen coordinate queried but renderer is in {:?} state. ignoring request.", self.renderer_state);
+            return Ok(None);
+        }
+
         let last_primitive_id_buffer =
             self.primitive_id_buffers[self.framebuffer_index_last_rendered_to].clone();
 
@@ -503,7 +512,8 @@ impl RenderManager {
                 .record_and_submit_post_transfer_sync_commands(last_primitive_id_buffer)?;
         }
 
-        self.object_id_reader.read_object_id_from_buffer()
+        let element_at_point = self.object_id_reader.read_object_id_from_buffer()?;
+        Ok(Some(element_at_point))
     }
 
     pub fn wait_idle_device(&self) -> anyhow::Result<()> {
@@ -731,4 +741,14 @@ impl Drop for RenderManager {
             log_error_sources(&e, 0);
         }
     }
+}
+
+// ~~ Helper structs ~~
+
+#[derive(Debug, Clone, Copy)]
+enum RendererState {
+    /// Before rendering has started. Undefined rendering data.
+    Initialized,
+    /// Rendering commands have been submitted since initialization.
+    Rendering,
 }

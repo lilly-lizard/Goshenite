@@ -1,5 +1,6 @@
 use crate::{
-    helper::anyhow_panic::anyhow_unwrap, renderer::render_manager::RenderManager,
+    helper::anyhow_panic::anyhow_unwrap,
+    renderer::{object_id_reader::ElementAtPoint, render_manager::RenderManager},
     user_interface::camera::Camera,
 };
 use egui::{ClippedPrimitive, TexturesDelta};
@@ -66,6 +67,10 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
     let initial_render_frame_timestamp = RenderFrameTimestamp::start();
     let (frame_timestamp_rx, frame_timestamp_tx) = single_value_channel::channel();
 
+    let (mut element_id_coordinate_rx, element_id_coordinate_tx) =
+        single_value_channel::channel::<[f32; 2]>();
+    let (element_id_rx, element_id_tx) = single_value_channel::channel::<ElementAtPoint>();
+
     // render thread loop
     let render_thread_handle = thread::spawn(move || {
         let mut frame_timestamp = initial_render_frame_timestamp;
@@ -130,6 +135,21 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
                 renderer.set_gui_primitives(gui_primitives);
             }
 
+            // request data from previous render. this is done just before next-frame submission to
+            // minimize fence stalling
+
+            if let Some(screen_coordinate) = mem::take(element_id_coordinate_rx.latest_mut()) {
+                let element_id = anyhow_unwrap(
+                    renderer.get_element_at_screen_coordinate(screen_coordinate),
+                    "getting element id at screen cordinate",
+                );
+
+                if let Err(NoReceiverError(_)) = element_id_tx.update(element_id) {
+                    warn!("render thread > element id receiver disconnected! stopping render thread...");
+                    break;
+                }
+            }
+
             // submit frame rendering commands
 
             anyhow_unwrap(renderer.render_frame(), "render frame");
@@ -148,12 +168,18 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
         render_thread_handle,
         RenderThreadChannels {
             render_command_tx,
+
             window_resize_flag_tx,
             scale_factor_tx,
+
             camera_tx,
             objects_delta_tx,
             textures_delta_tx,
             gui_primitives_tx,
+
+            element_id_coordinate_tx,
+            element_id_rx,
+
             frame_timestamp_rx,
         },
     )
@@ -162,12 +188,18 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
 /// Render thread channel handles for the main thread to send/receive data
 pub struct RenderThreadChannels {
     pub render_command_tx: single_value_channel::Updater<RenderThreadCommand>,
+
     pub window_resize_flag_tx: single_value_channel::Updater<Option<bool>>,
     pub scale_factor_tx: single_value_channel::Updater<Option<f32>>,
+
     pub camera_tx: single_value_channel::Updater<Option<Camera>>,
     pub objects_delta_tx: mpsc::Sender<ObjectsDelta>,
     pub textures_delta_tx: mpsc::Sender<Vec<TexturesDelta>>,
     pub gui_primitives_tx: single_value_channel::Updater<Option<Vec<ClippedPrimitive>>>,
+
+    pub element_id_coordinate_tx: single_value_channel::Updater<Option<[f32; 2]>>,
+    pub element_id_rx: single_value_channel::Receiver<Option<ElementAtPoint>>,
+
     pub frame_timestamp_rx: single_value_channel::Receiver<Option<RenderFrameTimestamp>>,
 }
 
@@ -210,6 +242,18 @@ impl RenderThreadChannels {
         gui_primitives: Vec<ClippedPrimitive>,
     ) -> Result<(), NoReceiverError<Option<Vec<ClippedPrimitive>>>> {
         self.gui_primitives_tx.update(Some(gui_primitives))
+    }
+
+    pub fn request_element_id_at_screen_coordinate(
+        &self,
+        screen_coordinates: [f32; 2],
+    ) -> Result<(), NoReceiverError<Option<[f32; 2]>>> {
+        self.element_id_coordinate_tx
+            .update(Some(screen_coordinates))
+    }
+
+    pub fn receive_element_id_at_screen_coordinate(&mut self) -> Option<ElementAtPoint> {
+        mem::take(self.element_id_rx.latest_mut())
     }
 
     pub fn get_latest_render_frame_timestamp(&mut self) -> Option<RenderFrameTimestamp> {
