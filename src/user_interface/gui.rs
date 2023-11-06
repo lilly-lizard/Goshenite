@@ -7,7 +7,9 @@ use super::{
     layout_object_list::object_list_layout,
     layout_panel::bottom_panel_layout,
 };
-use crate::engine::object::{object::ObjectId, object_collection::ObjectCollection};
+use crate::engine::object::{
+    object::ObjectId, object_collection::ObjectCollection, primitive_op::PrimitiveOpId,
+};
 use egui::{TexturesDelta, Visuals};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
@@ -145,6 +147,18 @@ impl Gui {
 
     pub fn selected_object_id(&self) -> Option<ObjectId> {
         self.gui_state.selected_object_id()
+    }
+
+    pub fn selected_primitive_op_id(&self) -> Option<PrimitiveOpId> {
+        self.gui_state.selected_primitive_op_id()
+    }
+
+    pub fn set_selected_object_id(&mut self, object_id: ObjectId) {
+        self.gui_state.set_selected_object_id(object_id);
+    }
+
+    pub fn set_selected_primitive_op_id(&mut self, primitive_op_id: PrimitiveOpId) {
+        self.gui_state.set_selected_primitive_op_id(primitive_op_id)
     }
 
     pub fn set_theme_winit(&self, theme: winit::window::Theme) {
