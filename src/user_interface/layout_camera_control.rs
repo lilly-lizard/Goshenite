@@ -1,15 +1,18 @@
 use super::camera::{Camera, LookMode};
+use crate::engine::commands::Command;
 use egui::Ui;
 
 // toggle target on object select
 // show distance from target
 
-pub fn camera_control_layout(ui: &mut Ui, camera: &mut Camera) {
+pub fn camera_control_layout(ui: &mut Ui, camera: Camera) -> Vec<Command> {
+    let mut commands = Vec::<Command>::new();
+
     // reset button
     ui.horizontal(|ui| {
         let reset_res = ui.button("Reset");
         if reset_res.clicked() {
-            camera.reset();
+            commands.push(Command::ResetCamera);
         }
     });
 
@@ -25,7 +28,7 @@ pub fn camera_control_layout(ui: &mut Ui, camera: &mut Camera) {
         });
 
         if unset_res.clicked() {
-            camera.unset_lock_on_target();
+            commands.push(Command::UnsetCameraLockOn);
         }
     });
 
@@ -58,4 +61,6 @@ pub fn camera_control_layout(ui: &mut Ui, camera: &mut Camera) {
             ));
         }
     }
+
+    commands
 }

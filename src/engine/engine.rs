@@ -1,4 +1,5 @@
 use super::{
+    commands::Command,
     config_engine,
     object::{object::ObjectId, object_collection::ObjectCollection, operation::Operation},
     primitives::{cube::Cube, null_primitive::NullPrimitive, primitive::Primitive, sphere::Sphere},
@@ -19,6 +20,7 @@ use glam::{Quat, Vec3};
 use log::{debug, error, info, trace, warn};
 use single_value_channel::NoReceiverError;
 use std::{
+    collections::VecDeque,
     env,
     sync::{mpsc::SendError, Arc},
     thread::JoinHandle,
@@ -39,6 +41,7 @@ pub struct Engine {
     cursor_state: Cursor,
     object_collection: ObjectCollection,
     main_thread_frame_number: u64,
+    pending_commands: VecDeque<Command>,
 
     // controllers
     camera: Camera,
@@ -78,11 +81,11 @@ impl Engine {
 
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
-        let mut renderer = anyhow_unwrap(
-            RenderManager::new(window.clone(), scale_factor as f32),
-            "initialize renderer",
-        );
-        anyhow_unwrap(renderer.update_camera(&camera), "init renderer camera");
+        let init_renderer_res = RenderManager::new(window.clone(), scale_factor as f32);
+        let mut renderer = anyhow_unwrap(init_renderer_res, "initialize renderer");
+
+        let renderer_update_camera_res = renderer.update_camera(&camera);
+        anyhow_unwrap(renderer_update_camera_res, "init renderer camera");
 
         let gui = Gui::new(&event_loop, scale_factor as f32);
 
@@ -104,6 +107,7 @@ impl Engine {
             cursor_state,
             object_collection,
             main_thread_frame_number: 0,
+            pending_commands: VecDeque::new(),
 
             camera,
             gui,
@@ -229,16 +233,19 @@ impl Engine {
 
         // process recieved events for cursor state
         let cursor_event = self.cursor_state.process_frame();
-
-        // process gui inputs and update layout
         if let Some(cursor_icon) = self.cursor_state.get_cursor_icon() {
             self.gui.set_cursor_icon(cursor_icon);
         }
-        anyhow_unwrap(
+
+        // process gui inputs and update layout
+        let update_gui_res =
             self.gui
-                .update_gui(&self.window, &mut self.object_collection, &mut self.camera),
-            "update gui",
-        );
+                .update_gui(&self.window, self.camera, &mut self.object_collection);
+        let commands_from_gui = anyhow_unwrap(update_gui_res, "update gui");
+        self.pending_commands.extend(commands_from_gui.into_iter());
+
+        // process commands from gui
+        self.process_commands();
 
         // update camera
         self.update_camera();
@@ -272,7 +279,7 @@ impl Engine {
             check_channel_updater_result(thread_send_res)?;
         }
 
-        // check if an object was clicked
+        // if render clicked, send request to find out what
         if let CursorEvent::LeftClickInPlace = cursor_event {
             if let Some(cursor_screen_coordinates_dvec2) = self.cursor_state.position() {
                 let cursor_screen_coordinates =
@@ -285,13 +292,17 @@ impl Engine {
                 check_channel_updater_result(thread_send_res)?;
             }
         }
+
+        // receive clicked element response
         if let Some(element_at_point) = self
             .render_thread_channels
             .receive_element_id_at_screen_coordinate()
         {
             debug!("element clicked = {:?}", element_at_point);
             match element_at_point {
-                ElementAtPoint::Background => self.gui.deselect_primitive_op(),
+                ElementAtPoint::Background => {
+                    self.gui.deselect_primitive_op();
+                }
                 ElementAtPoint::Object {
                     object_id,
                     primitive_op_index,
@@ -311,6 +322,7 @@ impl Engine {
     fn select_object_and_primitive_op(&mut self, object_id: ObjectId, primitive_op_index: usize) {
         if let Some(object) = self.object_collection.get_object(object_id) {
             self.gui.set_selected_object(object_id);
+            self.camera.set_lock_on_target(object.origin.as_dvec3());
 
             if let Some(primitive_op) = object.primitive_ops.get(primitive_op_index) {
                 self.gui.set_selected_primitive_op(primitive_op.id());
@@ -357,6 +369,18 @@ impl Engine {
         // zoom in/out logic
         let scroll_delta = self.cursor_state.get_and_clear_scroll_delta();
         self.camera.scroll_zoom(scroll_delta.y);
+    }
+
+    fn process_commands(&mut self) {
+        while let Some(command) = self.pending_commands.pop_front() {
+            match command {
+                Command::SetCameraLockOn { target_pos } => {
+                    self.camera.set_lock_on_target(target_pos)
+                }
+                Command::UnsetCameraLockOn => self.camera.unset_lock_on_target(),
+                Command::ResetCamera => self.camera.reset(),
+            }
+        }
     }
 
     fn stop_render_thread(&self) {
@@ -454,8 +478,6 @@ fn object_testing(object_collection: &mut ObjectCollection, renderer: &mut Rende
     let _ = object_collection.mark_object_for_data_update(another_object_id);
 
     let objects_delta = object_collection.get_and_clear_objects_delta();
-    anyhow_unwrap(
-        renderer.update_objects(objects_delta),
-        "update object buffers",
-    );
+    let update_objects_res = renderer.update_objects(objects_delta);
+    anyhow_unwrap(update_objects_res, "update object buffers");
 }

@@ -98,16 +98,17 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
             }
 
             if let Some(camera) = mem::take(camera_rx.latest_mut()) {
-                anyhow_unwrap(renderer.update_camera(&camera), "update camera buffer");
+                let update_camera_res = renderer.update_camera(&camera);
+                anyhow_unwrap(update_camera_res, "update camera buffer");
             }
 
             // the main thread may have sent multiple objects delta packages since we last checked...
             loop {
                 match objects_delta_rx.try_recv() {
-                    Ok(objects_delta) => anyhow_unwrap(
-                        renderer.update_objects(objects_delta),
-                        "update object buffers",
-                    ),
+                    Ok(objects_delta) => {
+                        let update_objects_res = renderer.update_objects(objects_delta);
+                        anyhow_unwrap(update_objects_res, "update object buffers");
+                    }
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(mpsc::TryRecvError::Disconnected) => {
                         error!("render thread > textures delta sender disconnected! stopping render thread...");
@@ -119,10 +120,10 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
             // the main thread may have sent multiple texture delta packages since we last checked...
             loop {
                 match textures_delta_rx.try_recv() {
-                    Ok(textures_delta) => anyhow_unwrap(
-                        renderer.update_gui_textures(textures_delta),
-                        "update gui textures",
-                    ),
+                    Ok(textures_delta) => {
+                        let update_textures_res = renderer.update_gui_textures(textures_delta);
+                        anyhow_unwrap(update_textures_res, "update gui textures");
+                    }
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(mpsc::TryRecvError::Disconnected) => {
                         error!("render thread > textures delta sender disconnected! stopping render thread...");
@@ -139,10 +140,9 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
             // minimize fence stalling
 
             if let Some(screen_coordinate) = mem::take(element_id_coordinate_rx.latest_mut()) {
-                let element_id = anyhow_unwrap(
-                    renderer.get_element_at_screen_coordinate(screen_coordinate),
-                    "getting element id at screen cordinate",
-                );
+                let get_element_res = renderer.get_element_at_screen_coordinate(screen_coordinate);
+                let element_id =
+                    anyhow_unwrap(get_element_res, "getting element id at screen cordinate");
 
                 if let Err(NoReceiverError(_)) = element_id_tx.update(element_id) {
                     error!("render thread > element id receiver disconnected! stopping render thread...");
@@ -152,7 +152,8 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
 
             // submit frame rendering commands
 
-            anyhow_unwrap(renderer.render_frame(), "render frame");
+            let render_frame_res = renderer.render_frame();
+            anyhow_unwrap(render_frame_res, "render frame");
 
             // send new frame timestamp
 

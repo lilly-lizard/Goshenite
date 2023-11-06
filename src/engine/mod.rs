@@ -1,4 +1,5 @@
 pub mod aabb;
+pub mod commands;
 pub mod config_engine;
 pub mod engine;
 pub mod object;
