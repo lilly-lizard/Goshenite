@@ -148,17 +148,23 @@ impl Gui {
     pub fn selected_object_id(&self) -> Option<ObjectId> {
         self.gui_state.selected_object_id()
     }
-
     pub fn selected_primitive_op_id(&self) -> Option<PrimitiveOpId> {
         self.gui_state.selected_primitive_op_id()
     }
 
-    pub fn set_selected_object_id(&mut self, object_id: ObjectId) {
+    pub fn set_selected_object(&mut self, object_id: ObjectId) {
         self.gui_state.set_selected_object_id(object_id);
     }
-
-    pub fn set_selected_primitive_op_id(&mut self, primitive_op_id: PrimitiveOpId) {
+    pub fn set_selected_primitive_op(&mut self, primitive_op_id: PrimitiveOpId) {
         self.gui_state.set_selected_primitive_op_id(primitive_op_id)
+    }
+
+    /// Also deselects primitive op
+    pub fn deselect_object(&mut self) {
+        self.gui_state.deselect_object();
+    }
+    pub fn deselect_primitive_op(&mut self) {
+        self.gui_state.deselect_primitive_op();
     }
 
     pub fn set_theme_winit(&self, theme: winit::window::Theme) {

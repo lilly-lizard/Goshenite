@@ -1,13 +1,13 @@
 use super::{
     config_engine,
-    object::{object_collection::ObjectCollection, operation::Operation},
+    object::{object::ObjectId, object_collection::ObjectCollection, operation::Operation},
     primitives::{cube::Cube, null_primitive::NullPrimitive, primitive::Primitive, sphere::Sphere},
     render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
 };
 use crate::{
     config,
     helper::anyhow_panic::anyhow_unwrap,
-    renderer::render_manager::RenderManager,
+    renderer::{element_id_reader::ElementAtPoint, render_manager::RenderManager},
     user_interface::camera::Camera,
     user_interface::{
         cursor::{Cursor, CursorEvent, MouseButton},
@@ -289,7 +289,14 @@ impl Engine {
             .render_thread_channels
             .receive_element_id_at_screen_coordinate()
         {
-            debug!("debugging: element clicked = {:?}", element_at_point);
+            debug!("element clicked = {:?}", element_at_point);
+            match element_at_point {
+                ElementAtPoint::Background => self.gui.deselect_primitive_op(),
+                ElementAtPoint::Object {
+                    object_id,
+                    primitive_op_index,
+                } => self.select_object_and_primitive_op(object_id, primitive_op_index),
+            }
         }
 
         let latest_render_frame_timestamp = self
@@ -299,6 +306,20 @@ impl Engine {
         self.main_thread_frame_number += 1;
 
         Ok(())
+    }
+
+    fn select_object_and_primitive_op(&mut self, object_id: ObjectId, primitive_op_index: usize) {
+        if let Some(object) = self.object_collection.get_object(object_id) {
+            self.gui.set_selected_object(object_id);
+
+            if let Some(primitive_op) = object.primitive_ops.get(primitive_op_index) {
+                self.gui.set_selected_primitive_op(primitive_op.id());
+            } else {
+                warn!("gpu recorded primitive op index that doesn't exist in object");
+            }
+        } else {
+            warn!("gpu recorded object id that doesn't exist in object collection");
+        }
     }
 
     fn update_window_inner_size(
