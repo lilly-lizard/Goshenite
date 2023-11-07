@@ -45,15 +45,12 @@ pub fn object_list_layout(
                     .clicked();
 
                 if delete_clicked {
-                    let _ = object_collection.remove_object(selected_object_id);
-
-                    // select closest object in list
-                    gui_state.select_object_closest_index(&object_collection, selected_object_id);
+                    commands.push(Command::RemoveObject(selected_object_id));
                 }
             } else {
                 debug!("selected object dropped. deselecting object...");
-                gui_state.deselect_object();
             }
+            gui_state.deselect_object();
         }
     });
 

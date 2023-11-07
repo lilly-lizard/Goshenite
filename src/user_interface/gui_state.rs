@@ -2,7 +2,6 @@ use crate::{
     engine::{
         object::{
             object::ObjectId,
-            object_collection::ObjectCollection,
             operation::Operation,
             primitive_op::{PrimitiveOp, PrimitiveOpId},
         },
@@ -95,22 +94,6 @@ impl GuiState {
         }
     }
 
-    /// Selects an object in `self` from `object_collection` which has the closest id to
-    /// `target_object_id`. If `object_collection` is empty, deselects object in `self`.
-    pub fn select_object_closest_index(
-        &mut self,
-        object_collection: &ObjectCollection,
-        target_object_id: ObjectId,
-    ) {
-        if let Some(selected_object_id) =
-            choose_object_closest_index(object_collection, target_object_id)
-        {
-            self.set_selected_object_id(selected_object_id);
-        } else {
-            self.deselect_object();
-        }
-    }
-
     // Getters
 
     pub fn selected_object_id(&self) -> Option<ObjectId> {
@@ -132,20 +115,4 @@ impl Default for GuiState {
             primtive_op_list: Default::default(),
         }
     }
-}
-
-/// Returns the id of an object from `object_collection` which has the closest id to
-/// `target_object_id`.
-pub fn choose_object_closest_index(
-    object_collection: &ObjectCollection,
-    target_object_id: ObjectId,
-) -> Option<ObjectId> {
-    let mut select_object: Option<ObjectId> = None;
-    for (&current_id, _) in object_collection.objects().iter() {
-        select_object = Some(current_id);
-        if target_object_id <= current_id {
-            break;
-        }
-    }
-    return select_object;
 }

@@ -1,5 +1,5 @@
 use super::{
-    commands::Command,
+    commands::{Command, CommandWithSource},
     config_engine,
     object::{object::ObjectId, object_collection::ObjectCollection, operation::Operation},
     primitives::{cube::Cube, null_primitive::NullPrimitive, primitive::Primitive, sphere::Sphere},
@@ -41,7 +41,7 @@ pub struct Engine {
     cursor_state: Cursor,
     object_collection: ObjectCollection,
     main_thread_frame_number: u64,
-    pending_commands: VecDeque<Command>,
+    pending_commands: VecDeque<CommandWithSource>,
 
     // controllers
     camera: Camera,
@@ -378,13 +378,26 @@ impl Engine {
     }
 
     fn execute_engine_commands(&mut self) {
-        while let Some(command) = self.pending_commands.pop_front() {
+        while let Some(CommandWithSource {
+            command,
+            source: _source,
+        }) = self.pending_commands.pop_front()
+        {
             match command {
+                // camera
                 Command::SetCameraLockOn { target_pos } => {
                     self.camera.set_lock_on_target(target_pos)
                 }
                 Command::UnsetCameraLockOn => self.camera.unset_lock_on_target(),
                 Command::ResetCamera => self.camera.reset(),
+
+                // object
+                Command::RemoveObject(object_id) => {
+                    let res = self.object_collection.remove_object(object_id);
+                    if let Err(e) = res {
+                        warn!("remove object command failed: {:?}", e);
+                    }
+                }
             }
         }
     }

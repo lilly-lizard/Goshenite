@@ -8,7 +8,7 @@ use super::{
     layout_panel::bottom_panel_layout,
 };
 use crate::engine::{
-    commands::Command,
+    commands::{Command, CommandWithSource},
     object::{object::ObjectId, object_collection::ObjectCollection, primitive_op::PrimitiveOpId},
 };
 use egui::{TexturesDelta, Visuals};
@@ -99,7 +99,7 @@ impl Gui {
         window: &Window,
         camera: Camera,
         object_collection: &mut ObjectCollection,
-    ) -> anyhow::Result<Vec<Command>> {
+    ) -> anyhow::Result<Vec<CommandWithSource>> {
         let mut commands = Vec::<Command>::new();
 
         // begin frame
@@ -139,7 +139,10 @@ impl Gui {
             self.textures_delta_accumulation.push(textures_delta);
         }
 
-        Ok(commands)
+        Ok(commands
+            .into_iter()
+            .map(|command| CommandWithSource::new_from_gui(command))
+            .collect())
     }
 
     pub fn set_cursor_icon(&self, cursor_icon: egui::CursorIcon) {
