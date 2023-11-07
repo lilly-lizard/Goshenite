@@ -1,5 +1,4 @@
 use super::{
-    camera::Camera,
     config_ui,
     gui::EditState,
     gui_state::{GuiState, DRAG_INC},
@@ -7,6 +6,7 @@ use super::{
 use crate::{
     config,
     engine::{
+        commands::Command,
         object::{
             object::{Object, ObjectId},
             object_collection::ObjectCollection,
@@ -31,31 +31,35 @@ use log::{debug, error, info, trace, warn};
 
 pub fn object_editor_layout(
     ui: &mut egui::Ui,
-    camera: &mut Camera,
     gui_state: &mut GuiState,
     object_collection: &mut ObjectCollection,
-) {
+) -> Vec<Command> {
+    let mut commands = Vec::<Command>::new();
+
     // selected object name
     let (selected_object_id, selected_object) =
         match label_and_get_selected_object(gui_state, ui, object_collection) {
             Some(value) => value,
-            None => return,
+            None => return commands,
         };
 
     let mut object_edit_state = EditState::NoChange;
 
-    object_edit_state =
-        object_properties_editor(ui, camera, selected_object).combine(object_edit_state);
+    let (mut new_commands, new_object_edit_state) = object_properties_editor(ui, selected_object);
+    commands.append(&mut new_commands);
+    object_edit_state = new_object_edit_state.combine(object_edit_state);
 
-    object_edit_state =
-        primitive_op_editor(ui, gui_state, selected_object).combine(object_edit_state);
+    let new_object_edit_state = primitive_op_editor(ui, gui_state, selected_object);
+    object_edit_state = new_object_edit_state.combine(object_edit_state);
 
-    object_edit_state =
-        primitive_op_list(ui, gui_state, selected_object).combine(object_edit_state);
+    let new_object_edit_state = primitive_op_list(ui, gui_state, selected_object);
+    object_edit_state = new_object_edit_state.combine(object_edit_state);
 
     if object_edit_state == EditState::Modified {
         let _ = object_collection.mark_object_for_data_update(selected_object_id);
     }
+
+    commands
 }
 
 fn label_and_get_selected_object<'a>(
@@ -94,9 +98,9 @@ fn label_and_get_selected_object<'a>(
 
 pub fn object_properties_editor(
     ui: &mut egui::Ui,
-    camera: &mut Camera,
     object: &mut Object,
-) -> EditState {
+) -> (Vec<Command>, EditState) {
+    let mut commands = Vec::<Command>::new();
     let mut object_edit_state = EditState::NoChange;
 
     ui.separator();
@@ -114,11 +118,13 @@ pub fn object_properties_editor(
 
     if original_origin != origin_mut {
         object.origin = origin_mut;
-        camera.set_lock_on_target_from_object(object);
+        commands.push(Command::SetCameraLockOn {
+            target_pos: object.origin.as_dvec3(),
+        });
         object_edit_state = EditState::Modified;
     }
 
-    object_edit_state
+    (commands, object_edit_state)
 }
 
 pub fn primitive_op_editor(

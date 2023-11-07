@@ -1,14 +1,10 @@
 use super::config_ui;
-use crate::{
-    config,
-    engine::{object::object::Object, primitives::primitive::EncodablePrimitive},
-    helper::angle::Angle,
-};
+use crate::{config, helper::angle::Angle};
 use glam::{DMat3, DMat4, DVec2, DVec3, Mat4, Vec4};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum LookMode {
     /// Look in a given direction
     Direction(DVec3),
@@ -26,7 +22,7 @@ impl Default for LookMode {
 }
 
 /// Describes the orientation and properties of a camera that can be used for perspective rendering
-#[derive(Clone, Default)]
+#[derive(Clone, Copy, Default, PartialEq)]
 pub struct Camera {
     position: DVec3,
     look_mode: LookMode,
@@ -116,18 +112,6 @@ impl Camera {
         self.check_for_and_recover_from_vertical_orientation_alignment();
     }
 
-    /// Sets the lock on target to the object origin.
-    pub fn set_lock_on_target_from_object(&mut self, object: &Object) {
-        let target_pos = object.origin.as_dvec3();
-        self.set_lock_on_target(target_pos);
-    }
-
-    /// Sets the lock on target to the primitive center.
-    pub fn set_lock_on_target_from_primitive(&mut self, primitive: &dyn EncodablePrimitive) {
-        let target_pos = primitive.transform().center.as_dvec3();
-        self.set_lock_on_target(target_pos);
-    }
-
     pub fn unset_lock_on_target(&mut self) {
         if let LookMode::Target(target_pos) = self.look_mode {
             let direction = target_pos - self.position;
@@ -201,7 +185,7 @@ impl Camera {
     }
 
     pub fn look_mode(&self) -> LookMode {
-        self.look_mode.clone()
+        self.look_mode
     }
 
     pub fn near_plane(&self) -> f64 {

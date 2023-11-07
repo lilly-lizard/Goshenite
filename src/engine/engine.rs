@@ -1,13 +1,14 @@
 use super::{
+    commands::Command,
     config_engine,
-    object::{object_collection::ObjectCollection, operation::Operation},
+    object::{object::ObjectId, object_collection::ObjectCollection, operation::Operation},
     primitives::{cube::Cube, null_primitive::NullPrimitive, primitive::Primitive, sphere::Sphere},
     render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
 };
 use crate::{
     config,
     helper::anyhow_panic::anyhow_unwrap,
-    renderer::render_manager::RenderManager,
+    renderer::{element_id_reader::ElementAtPoint, render_manager::RenderManager},
     user_interface::camera::Camera,
     user_interface::{
         cursor::{Cursor, CursorEvent, MouseButton},
@@ -19,6 +20,7 @@ use glam::{Quat, Vec3};
 use log::{debug, error, info, trace, warn};
 use single_value_channel::NoReceiverError;
 use std::{
+    collections::VecDeque,
     env,
     sync::{mpsc::SendError, Arc},
     thread::JoinHandle,
@@ -39,6 +41,7 @@ pub struct Engine {
     cursor_state: Cursor,
     object_collection: ObjectCollection,
     main_thread_frame_number: u64,
+    pending_commands: VecDeque<Command>,
 
     // controllers
     camera: Camera,
@@ -78,11 +81,11 @@ impl Engine {
 
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
-        let mut renderer = anyhow_unwrap(
-            RenderManager::new(window.clone(), scale_factor as f32),
-            "initialize renderer",
-        );
-        anyhow_unwrap(renderer.update_camera(&camera), "init renderer camera");
+        let init_renderer_res = RenderManager::new(window.clone(), scale_factor as f32);
+        let mut renderer = anyhow_unwrap(init_renderer_res, "initialize renderer");
+
+        let renderer_update_camera_res = renderer.update_camera(&camera);
+        anyhow_unwrap(renderer_update_camera_res, "init renderer camera");
 
         let gui = Gui::new(&event_loop, scale_factor as f32);
 
@@ -104,6 +107,7 @@ impl Engine {
             cursor_state,
             object_collection,
             main_thread_frame_number: 0,
+            pending_commands: VecDeque::new(),
 
             camera,
             gui,
@@ -229,16 +233,19 @@ impl Engine {
 
         // process recieved events for cursor state
         let cursor_event = self.cursor_state.process_frame();
-
-        // process gui inputs and update layout
         if let Some(cursor_icon) = self.cursor_state.get_cursor_icon() {
             self.gui.set_cursor_icon(cursor_icon);
         }
-        anyhow_unwrap(
+
+        // process gui inputs and update layout
+        let update_gui_res =
             self.gui
-                .update_gui(&self.window, &mut self.object_collection, &mut self.camera),
-            "update gui",
-        );
+                .update_gui(&self.window, self.camera, &mut self.object_collection);
+        let commands_from_gui = anyhow_unwrap(update_gui_res, "update gui");
+        self.pending_commands.extend(commands_from_gui.into_iter());
+
+        // process commands from gui
+        self.execute_engine_commands();
 
         // update camera
         self.update_camera();
@@ -272,25 +279,13 @@ impl Engine {
             check_channel_updater_result(thread_send_res)?;
         }
 
-        // check if an object was clicked
+        // if render clicked, send request to find out which element on scene it is
         if let CursorEvent::LeftClickInPlace = cursor_event {
-            if let Some(cursor_screen_coordinates_dvec2) = self.cursor_state.position() {
-                let cursor_screen_coordinates =
-                    cursor_screen_coordinates_dvec2.as_vec2().to_array();
+            self.submit_request_for_element_id_at_point()?;
+        }
 
-                // send request
-                let thread_send_res = self
-                    .render_thread_channels
-                    .request_element_id_at_screen_coordinate(cursor_screen_coordinates);
-                check_channel_updater_result(thread_send_res)?;
-            }
-        }
-        if let Some(element_at_point) = self
-            .render_thread_channels
-            .receive_element_id_at_screen_coordinate()
-        {
-            debug!("debugging: element clicked = {:?}", element_at_point);
-        }
+        // receive clicked element response
+        self.receive_and_select_element_id_at_point();
 
         let latest_render_frame_timestamp = self
             .render_thread_channels
@@ -338,6 +333,62 @@ impl Engine {
         self.camera.scroll_zoom(scroll_delta.y);
     }
 
+    fn submit_request_for_element_id_at_point(&mut self) -> Result<(), EngineError> {
+        if let Some(cursor_screen_coordinates_dvec2) = self.cursor_state.position() {
+            let cursor_screen_coordinates = cursor_screen_coordinates_dvec2.as_vec2().to_array();
+
+            // send request
+            let thread_send_res = self
+                .render_thread_channels
+                .request_element_id_at_screen_coordinate(cursor_screen_coordinates);
+            check_channel_updater_result(thread_send_res)?;
+        }
+        Ok(())
+    }
+
+    fn receive_and_select_element_id_at_point(&mut self) {
+        if let Some(element_at_point) = self
+            .render_thread_channels
+            .receive_element_id_at_screen_coordinate()
+        {
+            debug!("element clicked = {:?}", element_at_point);
+            match element_at_point {
+                ElementAtPoint::Background => self.background_clicked(),
+                ElementAtPoint::Object {
+                    object_id,
+                    primitive_op_index,
+                } => self.object_clicked(object_id, primitive_op_index),
+            }
+        }
+    }
+
+    fn select_object_and_primitive_op(&mut self, object_id: ObjectId, primitive_op_index: usize) {
+        if let Some(object) = self.object_collection.get_object(object_id) {
+            self.gui.set_selected_object(object_id);
+            self.camera.set_lock_on_target(object.origin.as_dvec3());
+
+            if let Some(primitive_op) = object.primitive_ops.get(primitive_op_index) {
+                self.gui.set_selected_primitive_op(primitive_op.id());
+            } else {
+                warn!("gpu recorded primitive op index that doesn't exist in object");
+            }
+        } else {
+            warn!("gpu recorded object id that doesn't exist in object collection");
+        }
+    }
+
+    fn execute_engine_commands(&mut self) {
+        while let Some(command) = self.pending_commands.pop_front() {
+            match command {
+                Command::SetCameraLockOn { target_pos } => {
+                    self.camera.set_lock_on_target(target_pos)
+                }
+                Command::UnsetCameraLockOn => self.camera.unset_lock_on_target(),
+                Command::ResetCamera => self.camera.reset(),
+            }
+        }
+    }
+
     fn stop_render_thread(&self) {
         debug!("sending quit command to render thread...");
         let _render_thread_send_res = self
@@ -367,28 +418,16 @@ impl Engine {
     }
 }
 
-/// If `thread_send_res` is an error, returns `EngineError::RenderThreadClosedPrematurely`.
-/// Otherwise returns `Ok`.
-fn check_channel_updater_result<T>(
-    thread_send_res: Result<(), NoReceiverError<T>>,
-) -> Result<(), EngineError> {
-    if let Err(e) = thread_send_res {
-        warn!("render thread receiver dropped prematurely ({})", e);
-        return Err(EngineError::RenderThreadClosedPrematurely);
-    }
-    Ok(())
-}
+// ~~ Misc UI Logic ~~
 
-/// If `thread_send_res` is an error, returns `EngineError::RenderThreadClosedPrematurely`.
-/// Otherwise returns `Ok`.
-fn check_channel_sender_result<T>(
-    thread_send_res: Result<(), SendError<T>>,
-) -> Result<(), EngineError> {
-    if let Err(e) = thread_send_res {
-        warn!("render thread receiver dropped prematurely ({})", e);
-        return Err(EngineError::RenderThreadClosedPrematurely);
+impl Engine {
+    fn background_clicked(&mut self) {
+        self.gui.deselect_primitive_op();
     }
-    Ok(())
+
+    fn object_clicked(&mut self, object_id: ObjectId, primitive_op_index: usize) {
+        self.select_object_and_primitive_op(object_id, primitive_op_index)
+    }
 }
 
 // ~~ Engine Error ~~
@@ -433,8 +472,30 @@ fn object_testing(object_collection: &mut ObjectCollection, renderer: &mut Rende
     let _ = object_collection.mark_object_for_data_update(another_object_id);
 
     let objects_delta = object_collection.get_and_clear_objects_delta();
-    anyhow_unwrap(
-        renderer.update_objects(objects_delta),
-        "update object buffers",
-    );
+    let update_objects_res = renderer.update_objects(objects_delta);
+    anyhow_unwrap(update_objects_res, "update object buffers");
+}
+
+/// If `thread_send_res` is an error, returns `EngineError::RenderThreadClosedPrematurely`.
+/// Otherwise returns `Ok`.
+fn check_channel_updater_result<T>(
+    thread_send_res: Result<(), NoReceiverError<T>>,
+) -> Result<(), EngineError> {
+    if let Err(e) = thread_send_res {
+        warn!("render thread receiver dropped prematurely ({})", e);
+        return Err(EngineError::RenderThreadClosedPrematurely);
+    }
+    Ok(())
+}
+
+/// If `thread_send_res` is an error, returns `EngineError::RenderThreadClosedPrematurely`.
+/// Otherwise returns `Ok`.
+fn check_channel_sender_result<T>(
+    thread_send_res: Result<(), SendError<T>>,
+) -> Result<(), EngineError> {
+    if let Err(e) = thread_send_res {
+        warn!("render thread receiver dropped prematurely ({})", e);
+        return Err(EngineError::RenderThreadClosedPrematurely);
+    }
+    Ok(())
 }

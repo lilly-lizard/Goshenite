@@ -1,5 +1,5 @@
-use super::{camera::Camera, gui_state::GuiState};
-use crate::engine::object::object_collection::ObjectCollection;
+use super::gui_state::GuiState;
+use crate::engine::{commands::Command, object::object_collection::ObjectCollection};
 use egui::{RichText, TextStyle};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -8,8 +8,9 @@ pub fn object_list_layout(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
     object_collection: &mut ObjectCollection,
-    camera: &mut Camera,
-) {
+) -> Vec<Command> {
+    let mut commands = Vec::<Command>::new();
+
     ui.horizontal(|ui_h| {
         // add object button
         let add_response = ui_h.button("Add object");
@@ -27,7 +28,10 @@ pub fn object_list_layout(
             let new_object = object_collection
                 .get_object(new_object_id)
                 .expect("literally just created this");
-            camera.set_lock_on_target_from_object(new_object);
+
+            commands.push(Command::SetCameraLockOn {
+                target_pos: new_object.origin.as_dvec3(),
+            });
 
             // deselect primitive op (previous one would have been for different object)
             gui_state.deselect_primitive_op();
@@ -76,9 +80,13 @@ pub fn object_list_layout(
             // select object in the object editor
             gui_state.set_selected_object_id(*current_id);
             // set lock on target to selected object
-            camera.set_lock_on_target_from_object(current_object);
+            commands.push(Command::SetCameraLockOn {
+                target_pos: current_object.origin.as_dvec3(),
+            });
             // deselect primitive op (previous one would have been for different object)
             gui_state.deselect_primitive_op();
         }
     }
+
+    commands
 }

@@ -3,7 +3,7 @@ use super::{
     shader_interfaces::primitive_op_buffer::PRIMITIVE_ID_INVALID,
     vulkan_init::create_cpu_read_staging_buffer,
 };
-use crate::engine::object::{object::ObjectId, primitive_op::PrimitiveOpId};
+use crate::engine::object::object::ObjectId;
 use anyhow::Context;
 use ash::{extensions::khr::Synchronization2, vk};
 use bort_vk::{
@@ -16,7 +16,7 @@ use std::sync::Arc;
 pub enum ElementAtPoint {
     Object {
         object_id: ObjectId,
-        primitive_op_id: PrimitiveOpId,
+        primitive_op_index: usize,
     },
     Background,
     // X, Y, Z manilulation ui elements
@@ -30,12 +30,11 @@ impl ElementAtPoint {
                 let object_id_u32 = encoded_id >> 16;
                 let object_id = ObjectId::from(object_id_u32 as u16);
 
-                let primitive_op_id_u32 = encoded_id & 0x0000FFFF;
-                let primitive_op_id = PrimitiveOpId::from(primitive_op_id_u32 as u16);
+                let primitive_op_index = (encoded_id & 0x0000FFFF) as usize;
 
                 Self::Object {
                     object_id,
-                    primitive_op_id,
+                    primitive_op_index,
                 }
             }
         }

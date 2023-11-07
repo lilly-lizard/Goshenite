@@ -10,8 +10,11 @@ pub mod ENV {
     pub const SCALE_FACTOR: &str = "GOSH_SCALE_FACTOR";
 }
 
-/// Log level filter. Logs of levels lower than this will not be displayed.
+/// Log level filter. Log messages with lower levels than this will not be displayed.
+#[cfg(debug_assertions)]
 pub const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Debug;
+#[cfg(not(debug_assertions))]
+pub const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Info;
 
 /// Wherever the app window starts maximized
 pub const START_MAXIMIZED: bool = false;

@@ -7,7 +7,10 @@ use super::{
     layout_object_list::object_list_layout,
     layout_panel::bottom_panel_layout,
 };
-use crate::engine::object::{object::ObjectId, object_collection::ObjectCollection};
+use crate::engine::{
+    commands::Command,
+    object::{object::ObjectId, object_collection::ObjectCollection, primitive_op::PrimitiveOpId},
+};
 use egui::{TexturesDelta, Visuals};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
@@ -94,9 +97,11 @@ impl Gui {
     pub fn update_gui(
         &mut self,
         window: &Window,
+        camera: Camera,
         object_collection: &mut ObjectCollection,
-        camera: &mut Camera,
-    ) -> anyhow::Result<()> {
+    ) -> anyhow::Result<Vec<Command>> {
+        let mut commands = Vec::<Command>::new();
+
         // begin frame
         let raw_input = self.winit_state.take_egui_input(window);
         self.context.begin_frame(raw_input);
@@ -104,13 +109,16 @@ impl Gui {
         // draw
         self.top_panel();
         if self.window_states.object_list {
-            self.object_list_window(object_collection, camera);
+            let mut new_commands = self.object_list_window(object_collection);
+            commands.append(&mut new_commands);
         }
         if self.window_states.object_editor {
-            self.object_editor_window(object_collection, camera);
+            let mut new_commands = self.object_editor_window(object_collection);
+            commands.append(&mut new_commands);
         }
         if self.window_states.camera_control {
-            self.camera_control_window(camera);
+            let mut new_commands = self.camera_control_window(camera);
+            commands.append(&mut new_commands);
         }
 
         // end frame
@@ -131,7 +139,7 @@ impl Gui {
             self.textures_delta_accumulation.push(textures_delta);
         }
 
-        Ok(())
+        Ok(commands)
     }
 
     pub fn set_cursor_icon(&self, cursor_icon: egui::CursorIcon) {
@@ -145,6 +153,24 @@ impl Gui {
 
     pub fn selected_object_id(&self) -> Option<ObjectId> {
         self.gui_state.selected_object_id()
+    }
+    pub fn selected_primitive_op_id(&self) -> Option<PrimitiveOpId> {
+        self.gui_state.selected_primitive_op_id()
+    }
+
+    pub fn set_selected_object(&mut self, object_id: ObjectId) {
+        self.gui_state.set_selected_object_id(object_id);
+    }
+    pub fn set_selected_primitive_op(&mut self, primitive_op_id: PrimitiveOpId) {
+        self.gui_state.set_selected_primitive_op_id(primitive_op_id)
+    }
+
+    /// Also deselects primitive op
+    pub fn deselect_object(&mut self) {
+        self.gui_state.deselect_object();
+    }
+    pub fn deselect_primitive_op(&mut self) {
+        self.gui_state.deselect_primitive_op();
     }
 
     pub fn set_theme_winit(&self, theme: winit::window::Theme) {
@@ -172,16 +198,15 @@ impl Gui {
         });
     }
 
-    fn object_list_window(
-        &mut self,
-        object_collection: &mut ObjectCollection,
-        camera: &mut Camera,
-    ) {
+    fn object_list_window(&mut self, object_collection: &mut ObjectCollection) -> Vec<Command> {
+        let mut commands = Vec::<Command>::new();
+
         let add_contents = |ui: &mut egui::Ui| {
             if EGUI_TRACE {
                 egui::trace!(ui);
             }
-            object_list_layout(ui, &mut self.gui_state, object_collection, camera);
+            let mut new_commands = object_list_layout(ui, &mut self.gui_state, object_collection);
+            commands.append(&mut new_commands);
         };
 
         egui::Window::new("Objects")
@@ -190,18 +215,19 @@ impl Gui {
             .vscroll(true)
             .hscroll(true)
             .show(&self.context, add_contents);
+
+        commands
     }
 
-    fn object_editor_window(
-        &mut self,
-        object_collection: &mut ObjectCollection,
-        camera: &mut Camera,
-    ) {
+    fn object_editor_window(&mut self, object_collection: &mut ObjectCollection) -> Vec<Command> {
+        let mut commands = Vec::<Command>::new();
+
         let add_contents = |ui: &mut egui::Ui| {
             if EGUI_TRACE {
                 egui::trace!(ui);
             }
-            object_editor_layout(ui, camera, &mut self.gui_state, object_collection);
+            let mut new_commands = object_editor_layout(ui, &mut self.gui_state, object_collection);
+            commands.append(&mut new_commands);
         };
 
         egui::Window::new("Object Editor")
@@ -210,14 +236,19 @@ impl Gui {
             .vscroll(true)
             .hscroll(true)
             .show(&self.context, add_contents);
+
+        commands
     }
 
-    fn camera_control_window(&mut self, camera: &mut Camera) {
+    fn camera_control_window(&mut self, camera: Camera) -> Vec<Command> {
+        let mut commands = Vec::<Command>::new();
+
         let add_contents = |ui: &mut egui::Ui| {
             if EGUI_TRACE {
                 egui::trace!(ui);
             }
-            camera_control_layout(ui, camera);
+            let mut new_commands = camera_control_layout(ui, camera);
+            commands.append(&mut new_commands);
         };
 
         egui::Window::new("Camera")
@@ -226,5 +257,7 @@ impl Gui {
             .vscroll(true)
             .hscroll(true)
             .show(&self.context, add_contents);
+
+        commands
     }
 }
