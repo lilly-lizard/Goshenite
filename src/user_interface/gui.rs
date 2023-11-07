@@ -241,13 +241,14 @@ impl Gui {
     }
 
     fn camera_control_window(&mut self, camera: Camera) -> Vec<Command> {
-        let commands = Vec::<Command>::new();
+        let mut commands = Vec::<Command>::new();
 
         let add_contents = |ui: &mut egui::Ui| {
             if EGUI_TRACE {
                 egui::trace!(ui);
             }
-            camera_control_layout(ui, camera);
+            let mut new_commands = camera_control_layout(ui, camera);
+            commands.append(&mut new_commands);
         };
 
         egui::Window::new("Camera")
