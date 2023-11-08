@@ -1,4 +1,4 @@
-use super::object::object::ObjectId;
+use super::object::{object::ObjectId, primitive_op::PrimitiveOpId};
 use glam::DVec3;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -9,13 +9,22 @@ pub enum Command {
     ResetCamera,
 
     // objects
+    SelectObject(ObjectId),
+    DeselectObject(),
     RemoveObject(ObjectId),
+
+    // primtive op
+    SelectPrimitiveOp(PrimitiveOpId),
+    DeselectPrimtiveOp(),
+    RemovePrimitiveOp(PrimitiveOpId),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandSource {
     Gui,
     CommandPalette,
+    // todo https://docs.rs/keyboard-types/latest/keyboard_types/struct.ShortcutMatcher.html
+    KeyboardShortcut,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

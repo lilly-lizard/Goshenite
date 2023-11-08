@@ -33,8 +33,6 @@ pub const DRAG_INC: f64 = 0.02;
 
 /// State persisting between frames
 pub struct GuiState {
-    selected_object_id: Option<ObjectId>,
-    selected_primitive_op_id: Option<PrimitiveOpId>,
     /// Stotes state of the op field in the 'New Primitive Op' editor
     pub op_field: Operation,
     /// Stotes state of the fields in the 'New Primitive Op' editor

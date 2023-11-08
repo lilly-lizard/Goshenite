@@ -1,7 +1,10 @@
 use super::{
     commands::{Command, CommandWithSource},
     config_engine,
-    object::{object::ObjectId, object_collection::ObjectCollection, operation::Operation},
+    object::{
+        object::ObjectId, object_collection::ObjectCollection, operation::Operation,
+        primitive_op::PrimitiveOpId,
+    },
     primitives::{cube::Cube, null_primitive::NullPrimitive, primitive::Primitive, sphere::Sphere},
     render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
 };
@@ -38,12 +41,14 @@ pub struct Engine {
 
     // state
     scale_factor: f64,
-    cursor_state: Cursor,
     object_collection: ObjectCollection,
     main_thread_frame_number: u64,
     pending_commands: VecDeque<CommandWithSource>,
+    selected_object_id: Option<ObjectId>,
+    selected_primitive_op_id: Option<PrimitiveOpId>,
 
     // controllers
+    cursor: Cursor,
     camera: Camera,
     gui: Gui,
 
@@ -77,7 +82,7 @@ impl Engine {
         };
         let scale_factor = scale_factor_override.unwrap_or(window.scale_factor());
 
-        let cursor_state = Cursor::new();
+        let cursor = Cursor::new();
 
         let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
 
@@ -104,11 +109,13 @@ impl Engine {
             window,
 
             scale_factor,
-            cursor_state,
             object_collection,
             main_thread_frame_number: 0,
             pending_commands: VecDeque::new(),
+            selected_object_id: None,
+            selected_primitive_op_id: None,
 
+            cursor,
             camera,
             gui,
 
@@ -182,24 +189,21 @@ impl Engine {
         // engine event handling
         match event {
             // cursor moved. triggered when cursor is in window or if currently dragging and started in the window (on linux at least)
-            WindowEvent::CursorMoved { position, .. } => {
-                self.cursor_state.set_position(position.into())
-            }
+            WindowEvent::CursorMoved { position, .. } => self.cursor.set_position(position.into()),
 
             // send mouse button events to cursor state
             WindowEvent::MouseInput { state, button, .. } => {
-                self.cursor_state
-                    .set_click_state(button, state, captured_by_egui)
+                self.cursor.set_click_state(button, state, captured_by_egui)
             }
-            WindowEvent::MouseWheel { delta, .. } => self
-                .cursor_state
-                .accumulate_scroll_delta(delta, captured_by_egui),
+            WindowEvent::MouseWheel { delta, .. } => {
+                self.cursor.accumulate_scroll_delta(delta, captured_by_egui)
+            }
 
             // cursor entered window
-            WindowEvent::CursorEntered { .. } => self.cursor_state.set_in_window_state(true),
+            WindowEvent::CursorEntered { .. } => self.cursor.set_in_window_state(true),
 
             // cursor left window
-            WindowEvent::CursorLeft { .. } => self.cursor_state.set_in_window_state(false),
+            WindowEvent::CursorLeft { .. } => self.cursor.set_in_window_state(false),
 
             // window resize
             WindowEvent::Resized(new_inner_size) => {
@@ -232,8 +236,8 @@ impl Engine {
         check_channel_updater_result(thread_send_res)?;
 
         // process recieved events for cursor state
-        let cursor_event = self.cursor_state.process_frame();
-        if let Some(cursor_icon) = self.cursor_state.get_cursor_icon() {
+        let cursor_event = self.cursor.process_frame();
+        if let Some(cursor_icon) = self.cursor.get_cursor_icon() {
             self.gui.set_cursor_icon(cursor_icon);
         }
 
@@ -323,18 +327,18 @@ impl Engine {
         }
 
         // left mouse button dragging changes camera orientation
-        if self.cursor_state.which_dragging() == Some(MouseButton::Left) {
+        if self.cursor.which_dragging() == Some(MouseButton::Left) {
             self.camera
-                .rotate_from_cursor_delta(self.cursor_state.position_frame_change());
+                .rotate_from_cursor_delta(self.cursor.position_frame_change());
         }
 
         // zoom in/out logic
-        let scroll_delta = self.cursor_state.get_and_clear_scroll_delta();
+        let scroll_delta = self.cursor.get_and_clear_scroll_delta();
         self.camera.scroll_zoom(scroll_delta.y);
     }
 
     fn submit_request_for_element_id_at_point(&mut self) -> Result<(), EngineError> {
-        if let Some(cursor_screen_coordinates_dvec2) = self.cursor_state.position() {
+        if let Some(cursor_screen_coordinates_dvec2) = self.cursor.position() {
             let cursor_screen_coordinates = cursor_screen_coordinates_dvec2.as_vec2().to_array();
 
             // send request
@@ -392,10 +396,59 @@ impl Engine {
                 Command::ResetCamera => self.camera.reset(),
 
                 // object
+                Command::SelectObject(object_id) => {
+                    if let Some(_object) = self.object_collection.get_object(object_id) {
+                        self.selected_object_id = Some(object_id);
+                    } else {
+                        command_failed_warn(command, "invalid object id");
+                    }
+                }
+                Command::DeselectObject() => {
+                    self.selected_object_id = None;
+                }
                 Command::RemoveObject(object_id) => {
                     let res = self.object_collection.remove_object(object_id);
                     if let Err(e) = res {
-                        warn!("remove object command failed: {:?}", e);
+                        command_failed_warn(command, "invalid object id");
+                    }
+                }
+
+                // primitive op
+                Command::SelectPrimitiveOp(primitive_op_id) => {
+                    if let Some(selected_object_id) = self.selected_object_id {
+                        if let Some(selected_object) =
+                            self.object_collection.get_object(selected_object_id)
+                        {
+                            if let Some(_primitive_op) =
+                                selected_object.get_primitive_op(primitive_op_id)
+                            {
+                                self.selected_primitive_op_id = Some(primitive_op_id);
+                            } else {
+                                command_failed_warn(command, "invalid primitive op id");
+                            }
+                        } else {
+                            command_failed_warn(command, "selected object dropped");
+                        }
+                    } else {
+                        command_failed_warn(command, "no selected object");
+                    }
+                }
+                Command::DeselectPrimtiveOp() => {
+                    self.selected_primitive_op_id = None;
+                }
+                Command::RemovePrimitiveOp(primitive_op_id) => {
+                    if let Some(selected_object_id) = self.selected_object_id {
+                        if let Some(selected_object) =
+                            self.object_collection.get_object(selected_object_id)
+                        {
+                            if let Err(_e) = selected_object.remove_primitive_op(primitive_op_id) {
+                                command_failed_warn(command, "invalid primitive op id");
+                            }
+                        } else {
+                            command_failed_warn(command, "selected object dropped");
+                        }
+                    } else {
+                        command_failed_warn(command, "no selected object");
                     }
                 }
             }
@@ -429,6 +482,10 @@ impl Engine {
             }
         }
     }
+}
+
+fn command_failed_warn(command: Command, failed_while: &'static str) {
+    warn!("command {:?} failed due to {}", command, failed_while);
 }
 
 // ~~ Misc UI Logic ~~
