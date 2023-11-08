@@ -2,15 +2,17 @@ use super::{
     commands::{Command, CommandWithSource},
     config_engine,
     object::{
-        object::ObjectId, object_collection::ObjectCollection, operation::Operation,
-        primitive_op::PrimitiveOpId,
+        object::ObjectId,
+        object_collection::ObjectCollection,
+        operation::Operation,
+        primitive_op::{PrimitiveOp, PrimitiveOpId},
     },
     primitives::{cube::Cube, null_primitive::NullPrimitive, primitive::Primitive, sphere::Sphere},
     render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
 };
 use crate::{
     config,
-    helper::anyhow_panic::anyhow_unwrap,
+    helper::{anyhow_panic::anyhow_unwrap, list::choose_closest_valid_index},
     renderer::{element_id_reader::ElementAtPoint, render_manager::RenderManager},
     user_interface::camera::Camera,
     user_interface::{
@@ -381,80 +383,6 @@ impl Engine {
         }
     }
 
-    fn execute_engine_commands(&mut self) {
-        while let Some(CommandWithSource {
-            command,
-            source: _source,
-        }) = self.pending_commands.pop_front()
-        {
-            match command {
-                // camera
-                Command::SetCameraLockOn { target_pos } => {
-                    self.camera.set_lock_on_target(target_pos)
-                }
-                Command::UnsetCameraLockOn => self.camera.unset_lock_on_target(),
-                Command::ResetCamera => self.camera.reset(),
-
-                // object
-                Command::SelectObject(object_id) => {
-                    if let Some(_object) = self.object_collection.get_object(object_id) {
-                        self.selected_object_id = Some(object_id);
-                    } else {
-                        command_failed_warn(command, "invalid object id");
-                    }
-                }
-                Command::DeselectObject() => {
-                    self.selected_object_id = None;
-                }
-                Command::RemoveObject(object_id) => {
-                    let res = self.object_collection.remove_object(object_id);
-                    if let Err(e) = res {
-                        command_failed_warn(command, "invalid object id");
-                    }
-                }
-
-                // primitive op
-                Command::SelectPrimitiveOp(primitive_op_id) => {
-                    if let Some(selected_object_id) = self.selected_object_id {
-                        if let Some(selected_object) =
-                            self.object_collection.get_object(selected_object_id)
-                        {
-                            if let Some(_primitive_op) =
-                                selected_object.get_primitive_op(primitive_op_id)
-                            {
-                                self.selected_primitive_op_id = Some(primitive_op_id);
-                            } else {
-                                command_failed_warn(command, "invalid primitive op id");
-                            }
-                        } else {
-                            command_failed_warn(command, "selected object dropped");
-                        }
-                    } else {
-                        command_failed_warn(command, "no selected object");
-                    }
-                }
-                Command::DeselectPrimtiveOp() => {
-                    self.selected_primitive_op_id = None;
-                }
-                Command::RemovePrimitiveOp(primitive_op_id) => {
-                    if let Some(selected_object_id) = self.selected_object_id {
-                        if let Some(selected_object) =
-                            self.object_collection.get_object(selected_object_id)
-                        {
-                            if let Err(_e) = selected_object.remove_primitive_op(primitive_op_id) {
-                                command_failed_warn(command, "invalid primitive op id");
-                            }
-                        } else {
-                            command_failed_warn(command, "selected object dropped");
-                        }
-                    } else {
-                        command_failed_warn(command, "no selected object");
-                    }
-                }
-            }
-        }
-    }
-
     fn stop_render_thread(&self) {
         debug!("sending quit command to render thread...");
         let _render_thread_send_res = self
@@ -484,8 +412,135 @@ impl Engine {
     }
 }
 
-fn command_failed_warn(command: Command, failed_while: &'static str) {
-    warn!("command {:?} failed due to {}", command, failed_while);
+// ~~ Commands ~~
+
+impl Engine {
+    fn execute_engine_commands(&mut self) {
+        while let Some(CommandWithSource {
+            command,
+            source: _source,
+        }) = self.pending_commands.pop_front()
+        {
+            match command {
+                // camera
+                Command::SetCameraLockOn { target_pos } => {
+                    self.camera.set_lock_on_target(target_pos)
+                }
+                Command::UnsetCameraLockOn => self.camera.unset_lock_on_target(),
+                Command::ResetCamera => self.camera.reset(),
+
+                // object
+                Command::SelectObject(object_id) => {
+                    if let Some(_object) = self.object_collection.get_object(object_id) {
+                        self.selected_object_id = Some(object_id);
+                    } else {
+                        command_failed_warn(command, "invalid object id");
+                    }
+                }
+                Command::DeselectObject() => {
+                    self.selected_object_id = None;
+                }
+
+                Command::RemoveObject(object_id) => {
+                    let res = self.object_collection.remove_object(object_id);
+                    if let Err(e) = res {
+                        command_failed_warn(command, "invalid object id");
+                    }
+                }
+                Command::RemoveSelectedObject() => {
+                    if let Some(selected_object_id) = self.selected_object_id {
+                        let res = self.object_collection.remove_object(selected_object_id);
+                        if let Err(e) = res {
+                            command_failed_warn(command, "selected object id invalid");
+                        }
+                    } else {
+                        command_failed_warn(command, "no selected object");
+                    }
+                }
+
+                // primitive op
+                Command::SelectPrimitiveOp(primitive_op_id) => {
+                    if let Some(selected_object_id) = self.selected_object_id {
+                        if let Some(selected_object) =
+                            self.object_collection.get_object(selected_object_id)
+                        {
+                            if let Some(_primitive_op) =
+                                selected_object.get_primitive_op(primitive_op_id)
+                            {
+                                self.selected_primitive_op_id = Some(primitive_op_id);
+                            } else {
+                                command_failed_warn(command, "invalid primitive op id");
+                            }
+                        } else {
+                            command_failed_warn(command, "selected object dropped");
+                        }
+                    } else {
+                        command_failed_warn(command, "no selected object");
+                    }
+                }
+                Command::DeselectPrimtiveOp() => {
+                    self.selected_primitive_op_id = None;
+                }
+
+                Command::RemovePrimitiveOp(primitive_op_id) => {
+                    if let Some(selected_object_id) = self.selected_object_id {
+                        if let Some(selected_object) =
+                            self.object_collection.get_object(selected_object_id)
+                        {
+                            if let Err(_e) = selected_object.remove_primitive_op(primitive_op_id) {
+                                command_failed_warn(command, "invalid primitive op id");
+                            }
+                        } else {
+                            command_failed_warn(command, "selected object dropped");
+                        }
+                    } else {
+                        command_failed_warn(command, "no selected object");
+                    }
+                }
+                Command::RemoveSelectedPrimitiveOp() => {
+                    if let Some(selected_object_id) = self.selected_object_id {
+                        if let Some(selected_object) =
+                            self.object_collection.get_object(selected_object_id)
+                        {
+                            if let Some(primitive_op_id) = self.selected_primitive_op_id {
+                                if let Err(_e) =
+                                    selected_object.remove_primitive_op(primitive_op_id)
+                                {
+                                    command_failed_warn(command, "invalid primitive op id");
+                                }
+                            } else {
+                                command_failed_warn(command, "no selected primitive op");
+                            }
+                        } else {
+                            command_failed_warn(command, "selected object dropped");
+                        }
+                    } else {
+                        command_failed_warn(command, "no selected object");
+                    }
+                }
+            }
+        }
+    }
+
+    /// Selects a primitive op in `self` from `primitive_ops` which has the closest index to
+    /// `target_prim_op_index`. If `primitive_ops` is empty, deselects primitive op in `self`.
+    pub fn select_primitive_op_closest_index(
+        &mut self,
+        primitive_ops: &Vec<PrimitiveOp>,
+        target_prim_op_index: usize,
+    ) {
+        if let Some(select_index) = choose_closest_valid_index(primitive_ops, target_prim_op_index)
+        {
+            let select_primitive_op_id = primitive_ops[select_index].id();
+            self.set_selected_primitive_op_id(select_primitive_op_id)
+        } else {
+            self.deselect_primitive_op();
+        }
+    }
+}
+
+fn command_failed_warn(command: Command, failed_because: &'static str) {
+    warn!("command {:?} failed due to {}", command, failed_because);
 }
 
 // ~~ Misc UI Logic ~~

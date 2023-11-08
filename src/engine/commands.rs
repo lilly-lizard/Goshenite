@@ -12,11 +12,13 @@ pub enum Command {
     SelectObject(ObjectId),
     DeselectObject(),
     RemoveObject(ObjectId),
+    RemoveSelectedObject(),
 
     // primtive op
     SelectPrimitiveOp(PrimitiveOpId),
     DeselectPrimtiveOp(),
     RemovePrimitiveOp(PrimitiveOpId),
+    RemoveSelectedPrimitiveOp(),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,6 +47,13 @@ impl CommandWithSource {
         Self {
             command,
             source: CommandSource::CommandPalette,
+        }
+    }
+
+    pub fn new_from_shortcut(command: Command) -> Self {
+        Self {
+            command,
+            source: CommandSource::KeyboardShortcut,
         }
     }
 }

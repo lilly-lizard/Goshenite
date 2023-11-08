@@ -106,8 +106,6 @@ impl GuiState {
 impl Default for GuiState {
     fn default() -> Self {
         Self {
-            selected_object_id: None,
-            selected_primitive_op_id: None,
             op_field: Operation::NOP,
             primitive_fields: Default::default(),
             primtive_op_list: Default::default(),
