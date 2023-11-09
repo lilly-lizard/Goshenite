@@ -15,9 +15,11 @@ pub enum Command {
     RemoveSelectedObject(),
 
     // primtive op
-    SelectPrimitiveOp(PrimitiveOpId),
+    SelectPrimitiveOpId(PrimitiveOpId),
+    SelectPrimitiveOpIndex(usize),
     DeselectPrimtiveOp(),
-    RemovePrimitiveOp(PrimitiveOpId),
+    RemovePrimitiveOpId(PrimitiveOpId),
+    RemovePrimitiveOpIndex(usize),
     RemoveSelectedPrimitiveOp(),
 }
 

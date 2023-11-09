@@ -43,18 +43,9 @@ pub struct GuiState {
 
 // Setters
 impl GuiState {
-    pub fn set_selected_object_id(&mut self, selected_object_id: ObjectId) {
-        self.selected_object_id = Some(selected_object_id);
-    }
-
     pub fn set_selected_primitive_op(&mut self, selected_primitive_op: &PrimitiveOp) {
-        self.set_selected_primitive_op_id(selected_primitive_op.id());
         self.primitive_fields = selected_primitive_op.primitive;
         self.op_field = selected_primitive_op.op;
-    }
-
-    pub fn set_selected_primitive_op_id(&mut self, selected_primitive_op_id: PrimitiveOpId) {
-        self.selected_primitive_op_id = Some(selected_primitive_op_id);
     }
 
     pub fn set_primitive_op_list(&mut self, primitive_op_list: DragDropUi) {
@@ -62,13 +53,7 @@ impl GuiState {
     }
 
     pub fn deselect_object(&mut self) {
-        self.selected_object_id = None;
         self.primtive_op_list = Default::default();
-        self.deselect_primitive_op();
-    }
-
-    pub fn deselect_primitive_op(&mut self) {
-        self.selected_primitive_op_id = None;
     }
 
     pub fn reset_primitive_op_fields(&mut self) {
@@ -90,16 +75,6 @@ impl GuiState {
         } else {
             self.deselect_primitive_op();
         }
-    }
-
-    // Getters
-
-    pub fn selected_object_id(&self) -> Option<ObjectId> {
-        self.selected_object_id
-    }
-
-    pub fn selected_primitive_op_id(&self) -> Option<PrimitiveOpId> {
-        self.selected_primitive_op_id
     }
 }
 

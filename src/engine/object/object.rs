@@ -64,10 +64,11 @@ impl Object {
         }
     }
 
-    pub fn remove_primitive_op(
+    /// Returns the index of the removed primitive op
+    pub fn remove_primitive_op_id(
         &mut self,
         prim_op_id: PrimitiveOpId,
-    ) -> Result<(), CollectionError> {
+    ) -> Result<usize, CollectionError> {
         let index = self
             .primitive_ops
             .iter()
@@ -75,7 +76,7 @@ impl Object {
 
         if let Some(index) = index {
             self.primitive_ops.remove(index);
-            return Ok(());
+            return Ok(index);
         } else {
             return Err(CollectionError::InvalidId {
                 raw_id: prim_op_id.raw_id(),
@@ -84,7 +85,10 @@ impl Object {
         // todo recycle_id (for primitive too? on drop?)
     }
 
-    pub fn remove_primitive_op_index(&mut self, index: usize) -> Result<(), CollectionError> {
+    pub fn remove_primitive_op_index(
+        &mut self,
+        index: usize,
+    ) -> Result<PrimitiveOpId, CollectionError> {
         let op_count = self.primitive_ops.len();
         if index >= op_count {
             return Err(CollectionError::OutOfBounds {
@@ -92,8 +96,8 @@ impl Object {
                 size: op_count,
             });
         }
-        self.primitive_ops.remove(index);
-        Ok(())
+        let removed_prim_op = self.primitive_ops.remove(index);
+        Ok(removed_prim_op.id())
         // todo recycle_id
     }
 

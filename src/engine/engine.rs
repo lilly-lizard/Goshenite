@@ -2,7 +2,7 @@ use super::{
     commands::{Command, CommandWithSource},
     config_engine,
     object::{
-        object::ObjectId,
+        object::{Object, ObjectId},
         object_collection::ObjectCollection,
         operation::Operation,
         primitive_op::{PrimitiveOp, PrimitiveOpId},
@@ -431,100 +431,171 @@ impl Engine {
 
                 // object
                 Command::SelectObject(object_id) => {
-                    if let Some(_object) = self.object_collection.get_object(object_id) {
-                        self.selected_object_id = Some(object_id);
-                    } else {
-                        command_failed_warn(command, "invalid object id");
-                    }
+                    self.select_object_via_command(object_id, command);
                 }
-                Command::DeselectObject() => {
-                    self.selected_object_id = None;
-                }
-
+                Command::DeselectObject() => self.deselect_object(),
                 Command::RemoveObject(object_id) => {
-                    let res = self.object_collection.remove_object(object_id);
-                    if let Err(e) = res {
-                        command_failed_warn(command, "invalid object id");
-                    }
+                    self.remove_object_via_command(object_id, command)
                 }
-                Command::RemoveSelectedObject() => {
-                    if let Some(selected_object_id) = self.selected_object_id {
-                        let res = self.object_collection.remove_object(selected_object_id);
-                        if let Err(e) = res {
-                            command_failed_warn(command, "selected object id invalid");
-                        }
-                    } else {
-                        command_failed_warn(command, "no selected object");
-                    }
-                }
+                Command::RemoveSelectedObject() => self.remove_selected_object_via_command(command),
 
                 // primitive op
-                Command::SelectPrimitiveOp(primitive_op_id) => {
-                    if let Some(selected_object_id) = self.selected_object_id {
-                        if let Some(selected_object) =
-                            self.object_collection.get_object(selected_object_id)
-                        {
-                            if let Some(_primitive_op) =
-                                selected_object.get_primitive_op(primitive_op_id)
-                            {
-                                self.selected_primitive_op_id = Some(primitive_op_id);
-                            } else {
-                                command_failed_warn(command, "invalid primitive op id");
-                            }
-                        } else {
-                            command_failed_warn(command, "selected object dropped");
-                        }
-                    } else {
-                        command_failed_warn(command, "no selected object");
-                    }
+                Command::SelectPrimitiveOpId(primitive_op_id) => {
+                    self.select_primitive_op_via_command(primitive_op_id, command)
                 }
-                Command::DeselectPrimtiveOp() => {
-                    self.selected_primitive_op_id = None;
+                Command::SelectPrimitiveOpIndex(primitive_op_index) => {
+                    self.select_primitive_op_via_command(primitive_op_id, command)
                 }
-
-                Command::RemovePrimitiveOp(primitive_op_id) => {
-                    if let Some(selected_object_id) = self.selected_object_id {
-                        if let Some(selected_object) =
-                            self.object_collection.get_object(selected_object_id)
-                        {
-                            if let Err(_e) = selected_object.remove_primitive_op(primitive_op_id) {
-                                command_failed_warn(command, "invalid primitive op id");
-                            }
-                        } else {
-                            command_failed_warn(command, "selected object dropped");
-                        }
-                    } else {
-                        command_failed_warn(command, "no selected object");
-                    }
+                Command::DeselectPrimtiveOp() => self.deselect_primitive_op(),
+                Command::RemovePrimitiveOpId(primitive_op_id) => {
+                    self.remove_primitive_op_id_via_command(primitive_op_id, command);
+                }
+                Command::RemovePrimitiveOpIndex(primitive_op_index) => {
+                    self.remove_primitive_op_index_via_command(primitive_op_index, command);
                 }
                 Command::RemoveSelectedPrimitiveOp() => {
-                    if let Some(selected_object_id) = self.selected_object_id {
-                        if let Some(selected_object) =
-                            self.object_collection.get_object(selected_object_id)
-                        {
-                            if let Some(primitive_op_id) = self.selected_primitive_op_id {
-                                if let Err(_e) =
-                                    selected_object.remove_primitive_op(primitive_op_id)
-                                {
-                                    command_failed_warn(command, "invalid primitive op id");
-                                }
-                            } else {
-                                command_failed_warn(command, "no selected primitive op");
-                            }
-                        } else {
-                            command_failed_warn(command, "selected object dropped");
-                        }
-                    } else {
-                        command_failed_warn(command, "no selected object");
-                    }
+                    self.remove_selected_primitive_op_via_command(command);
                 }
             }
         }
     }
 
+    fn deselect_object(&mut self) {
+        self.selected_object_id = None;
+        self.selected_primitive_op_id = None;
+    }
+
+    fn select_object_via_command(&mut self, object_id: ObjectId, command: Command) {
+        if let Some(_object) = self.object_collection.get_object(object_id) {
+            self.selected_object_id = Some(object_id);
+        } else {
+            command_failed_warn(command, "invalid object id");
+        }
+    }
+
+    fn remove_object_via_command(&mut self, object_id: ObjectId, command: Command) {
+        let res = self.object_collection.remove_object(object_id);
+        if let Err(e) = res {
+            command_failed_warn(command, "invalid object id");
+        }
+    }
+
+    fn remove_selected_object_via_command(&mut self, command: Command) {
+        if let Some(selected_object_id) = self.selected_object_id {
+            let res = self.object_collection.remove_object(selected_object_id);
+            if let Err(e) = res {
+                command_failed_warn(command, "selected object id invalid");
+            }
+        } else {
+            command_failed_warn(command, "no selected object");
+        }
+    }
+
+    fn select_primitive_op_via_command(
+        &mut self,
+        primitive_op_id: PrimitiveOpId,
+        command: Command,
+    ) {
+        if let Some(selected_object_id) = self.selected_object_id {
+            if let Some(selected_object) = self.object_collection.get_object(selected_object_id) {
+                if let Some(_primitive_op) = selected_object.get_primitive_op(primitive_op_id) {
+                    self.selected_primitive_op_id = Some(primitive_op_id);
+                } else {
+                    command_failed_warn(command, "invalid primitive op id");
+                }
+            } else {
+                command_failed_warn(command, "selected object dropped");
+            }
+        } else {
+            command_failed_warn(command, "no selected object");
+        }
+    }
+
+    fn deselect_primitive_op(&mut self) {
+        self.selected_primitive_op_id = None;
+    }
+
+    fn remove_primitive_op_id_via_command(
+        &mut self,
+        primitive_op_id: PrimitiveOpId,
+        command: Command,
+    ) {
+        if let Some(selected_object_id) = self.selected_object_id {
+            if let Some(selected_object) = self.object_collection.get_object(selected_object_id) {
+                let remove_res = selected_object.remove_primitive_op_id(primitive_op_id);
+                match remove_res {
+                    // this primitive op may have been currently selected, in which case we may have
+                    // to select the primitive op next to it.
+                    Ok(removed_index) => self.check_and_select_closest_primitive_op(
+                        primitive_op_id,
+                        removed_index,
+                        selected_object,
+                    ),
+                    Err(_e) => command_failed_warn(command, "invalid primitive op id"),
+                }
+            } else {
+                command_failed_warn(command, "selected object dropped");
+            }
+        } else {
+            command_failed_warn(command, "no selected object");
+        }
+    }
+
+    fn remove_primitive_op_index_via_command(
+        &mut self,
+        primitive_op_index: usize,
+        command: Command,
+    ) {
+        if let Some(selected_object_id) = self.selected_object_id {
+            if let Some(selected_object) = self.object_collection.get_object(selected_object_id) {
+                let remove_res = selected_object.remove_primitive_op_index(primitive_op_index);
+                match remove_res {
+                    // this primitive op may have been currently selected, in which case we may have
+                    // to select the primitive op next to it.
+                    Ok(removed_id) => self.check_and_select_closest_primitive_op(
+                        removed_id,
+                        primitive_op_index,
+                        selected_object,
+                    ),
+                    Err(_e) => command_failed_warn(command, "invalid primitive op id"),
+                }
+            } else {
+                command_failed_warn(command, "selected object dropped");
+            }
+        } else {
+            command_failed_warn(command, "no selected object");
+        }
+    }
+
+    /// If a removed primitive op is currently selected, select a different primitive op with the
+    /// closest index to the removed primitive op.
+    fn check_and_select_closest_primitive_op(
+        &mut self,
+        removed_primitive_op_id: PrimitiveOpId,
+        removed_primitive_op_index: usize,
+        selected_object: &Object,
+    ) {
+        if let Some(selected_primitive_op_id) = self.selected_primitive_op_id {
+            if selected_primitive_op_id == removed_primitive_op_id {
+                self.select_primitive_op_with_closest_index(
+                    &selected_object.primitive_ops,
+                    removed_primitive_op_index,
+                );
+            }
+        }
+    }
+
+    fn remove_selected_primitive_op_via_command(&mut self, command: Command) {
+        if let Some(selected_primitive_op_id) = self.selected_primitive_op_id {
+            self.remove_primitive_op_id_via_command(selected_primitive_op_id, command);
+        } else {
+            command_failed_warn(command, "no selected primitive op");
+        }
+    }
+
     /// Selects a primitive op in `self` from `primitive_ops` which has the closest index to
     /// `target_prim_op_index`. If `primitive_ops` is empty, deselects primitive op in `self`.
-    pub fn select_primitive_op_closest_index(
+    pub fn select_primitive_op_with_closest_index(
         &mut self,
         primitive_ops: &Vec<PrimitiveOp>,
         target_prim_op_index: usize,
@@ -532,7 +603,7 @@ impl Engine {
         if let Some(select_index) = choose_closest_valid_index(primitive_ops, target_prim_op_index)
         {
             let select_primitive_op_id = primitive_ops[select_index].id();
-            self.set_selected_primitive_op_id(select_primitive_op_id)
+            self.selected_primitive_op_id = Some(select_primitive_op_id)
         } else {
             self.deselect_primitive_op();
         }
