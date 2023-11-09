@@ -59,3 +59,28 @@ impl CommandWithSource {
         }
     }
 }
+
+// ~~ Errors ~~
+
+#[derive(Debug, Clone, Copy)]
+pub enum CommandError {
+    InvalidObjectId(ObjectId),
+    InvalidPrimitiveOpId(ObjectId, PrimitiveOpId),
+}
+
+impl std::fmt::Display for CommandError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            Self::InvalidObjectId(object_id) => write!(f, "invalid object id {}", object_id),
+            Self::InvalidPrimitiveOpId(object_id, primitive_op_id) => {
+                write!(
+                    f,
+                    "primitive op id {} not present in object id {}",
+                    primitive_op_id, object_id
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for CommandError {}

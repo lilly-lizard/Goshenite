@@ -1,5 +1,4 @@
 pub mod camera;
-pub mod commands;
 pub mod config_ui;
 pub mod cursor;
 pub mod gui;

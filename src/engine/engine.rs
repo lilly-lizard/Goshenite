@@ -368,21 +368,6 @@ impl Engine {
         }
     }
 
-    fn select_object_and_primitive_op(&mut self, object_id: ObjectId, primitive_op_index: usize) {
-        if let Some(object) = self.object_collection.get_object(object_id) {
-            self.gui.set_selected_object(object_id);
-            self.camera.set_lock_on_target(object.origin.as_dvec3());
-
-            if let Some(primitive_op) = object.primitive_ops.get(primitive_op_index) {
-                self.gui.set_selected_primitive_op(primitive_op.id());
-            } else {
-                warn!("gpu recorded primitive op index that doesn't exist in object");
-            }
-        } else {
-            warn!("gpu recorded object id that doesn't exist in object collection");
-        }
-    }
-
     fn stop_render_thread(&self) {
         debug!("sending quit command to render thread...");
         let _render_thread_send_res = self
@@ -441,10 +426,10 @@ impl Engine {
 
                 // primitive op
                 Command::SelectPrimitiveOpId(primitive_op_id) => {
-                    self.select_primitive_op_via_command(primitive_op_id, command)
+                    self.select_primitive_op_id_via_command(primitive_op_id, command)
                 }
                 Command::SelectPrimitiveOpIndex(primitive_op_index) => {
-                    self.select_primitive_op_via_command(primitive_op_id, command)
+                    self.select_primitive_op_index_via_command(primitive_op_index, command)
                 }
                 Command::DeselectPrimtiveOp() => self.deselect_primitive_op(),
                 Command::RemovePrimitiveOpId(primitive_op_id) => {
@@ -480,6 +465,23 @@ impl Engine {
         }
     }
 
+    fn select_object_and_primitive_op(&mut self, object_id: ObjectId, primitive_op_index: usize) {
+        if let Some(object) = self.object_collection.get_object(object_id) {
+            self.selected_object_id = Some(object_id);
+            self.gui.set_selected_object(object_id);
+            self.camera.set_lock_on_target(object.origin.as_dvec3());
+
+            if let Some(primitive_op) = object.primitive_ops.get(primitive_op_index) {
+                self.selected_primitive_op_id = Some(primitive_op.id());
+                self.gui.set_selected_primitive_op(primitive_op.id());
+            } else {
+                warn!("attempted to select primitive op index that doesn't exist in object");
+            }
+        } else {
+            warn!("attempted to select object id that doesn't exist in object collection");
+        }
+    }
+
     fn remove_selected_object_via_command(&mut self, command: Command) {
         if let Some(selected_object_id) = self.selected_object_id {
             let res = self.object_collection.remove_object(selected_object_id);
@@ -491,7 +493,7 @@ impl Engine {
         }
     }
 
-    fn select_primitive_op_via_command(
+    fn select_primitive_op_id_via_command(
         &mut self,
         primitive_op_id: PrimitiveOpId,
         command: Command,
@@ -502,6 +504,26 @@ impl Engine {
                     self.selected_primitive_op_id = Some(primitive_op_id);
                 } else {
                     command_failed_warn(command, "invalid primitive op id");
+                }
+            } else {
+                command_failed_warn(command, "selected object dropped");
+            }
+        } else {
+            command_failed_warn(command, "no selected object");
+        }
+    }
+
+    fn select_primitive_op_index_via_command(
+        &mut self,
+        primitive_op_index: usize,
+        command: Command,
+    ) {
+        if let Some(selected_object_id) = self.selected_object_id {
+            if let Some(selected_object) = self.object_collection.get_object(selected_object_id) {
+                if let Some(primitive_op) = selected_object.primitive_ops.get(primitive_op_index) {
+                    self.selected_primitive_op_id = Some(primitive_op.id());
+                } else {
+                    command_failed_warn(command, "invalid primitive op index");
                 }
             } else {
                 command_failed_warn(command, "selected object dropped");
@@ -618,6 +640,7 @@ fn command_failed_warn(command: Command, failed_because: &'static str) {
 
 impl Engine {
     fn background_clicked(&mut self) {
+        self.deselect_primitive_op();
         self.gui.deselect_primitive_op();
     }
 
@@ -645,6 +668,32 @@ impl std::fmt::Display for EngineError {
 
 impl std::error::Error for EngineError {}
 
+/// If `thread_send_res` is an error, returns `EngineError::RenderThreadClosedPrematurely`.
+/// Otherwise returns `Ok`.
+fn check_channel_updater_result<T>(
+    thread_send_res: Result<(), NoReceiverError<T>>,
+) -> Result<(), EngineError> {
+    if let Err(e) = thread_send_res {
+        warn!("render thread receiver dropped prematurely ({})", e);
+        return Err(EngineError::RenderThreadClosedPrematurely);
+    }
+    Ok(())
+}
+
+/// If `thread_send_res` is an error, returns `EngineError::RenderThreadClosedPrematurely`.
+/// Otherwise returns `Ok`.
+fn check_channel_sender_result<T>(
+    thread_send_res: Result<(), SendError<T>>,
+) -> Result<(), EngineError> {
+    if let Err(e) = thread_send_res {
+        warn!("render thread receiver dropped prematurely ({})", e);
+        return Err(EngineError::RenderThreadClosedPrematurely);
+    }
+    Ok(())
+}
+
+// ~~ Testing ~~
+
 fn object_testing(object_collection: &mut ObjectCollection, renderer: &mut RenderManager) {
     let sphere = Sphere::new(Vec3::new(0., 0., 0.), Quat::IDENTITY, 0.5);
     let cube = Cube::new(
@@ -670,28 +719,4 @@ fn object_testing(object_collection: &mut ObjectCollection, renderer: &mut Rende
     let objects_delta = object_collection.get_and_clear_objects_delta();
     let update_objects_res = renderer.update_objects(objects_delta);
     anyhow_unwrap(update_objects_res, "update object buffers");
-}
-
-/// If `thread_send_res` is an error, returns `EngineError::RenderThreadClosedPrematurely`.
-/// Otherwise returns `Ok`.
-fn check_channel_updater_result<T>(
-    thread_send_res: Result<(), NoReceiverError<T>>,
-) -> Result<(), EngineError> {
-    if let Err(e) = thread_send_res {
-        warn!("render thread receiver dropped prematurely ({})", e);
-        return Err(EngineError::RenderThreadClosedPrematurely);
-    }
-    Ok(())
-}
-
-/// If `thread_send_res` is an error, returns `EngineError::RenderThreadClosedPrematurely`.
-/// Otherwise returns `Ok`.
-fn check_channel_sender_result<T>(
-    thread_send_res: Result<(), SendError<T>>,
-) -> Result<(), EngineError> {
-    if let Err(e) = thread_send_res {
-        warn!("render thread receiver dropped prematurely ({})", e);
-        return Err(EngineError::RenderThreadClosedPrematurely);
-    }
-    Ok(())
 }
