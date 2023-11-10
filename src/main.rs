@@ -7,7 +7,7 @@ mod helper;
 mod renderer;
 mod user_interface;
 
-use engine::engine::Engine;
+use engine::engine_instance::EngineInstance;
 use helper::logger::ConsoleLogger;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -41,7 +41,7 @@ fn main() {
     let event_loop = EventLoop::new();
 
     // init engine
-    let mut engine_instance = Engine::new(&event_loop);
+    let mut engine_instance = EngineInstance::new(&event_loop);
 
     // start engine
     event_loop.run(move |event, _, control_flow| engine_instance.control_flow(event, control_flow));

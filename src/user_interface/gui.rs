@@ -94,10 +94,17 @@ impl Gui {
         self.winit_state.set_pixels_per_point(scale_factor);
     }
 
+    /// Call this when the selected object is changed
+    pub fn selected_object_changed(&mut self) {
+        self.gui_state.primitive_op_list_drag_state = Default::default();
+    }
+
     pub fn update_gui(
         &mut self,
         window: &Window,
         camera: Camera,
+        selected_object_id: Option<ObjectId>,
+        selected_primitive_op_id: Option<PrimitiveOpId>,
         object_collection: &mut ObjectCollection,
     ) -> anyhow::Result<Vec<CommandWithSource>> {
         let mut commands = Vec::<Command>::new();

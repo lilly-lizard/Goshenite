@@ -38,7 +38,7 @@ pub struct GuiState {
     /// Stotes state of the fields in the 'New Primitive Op' editor
     pub primitive_fields: Primitive,
     /// Stores the drag and drop state of the primitive op list of the selected object
-    pub primtive_op_list: DragDropUi,
+    pub primitive_op_list_drag_state: DragDropUi,
 }
 
 // Setters
@@ -48,12 +48,9 @@ impl GuiState {
         self.op_field = selected_primitive_op.op;
     }
 
-    pub fn set_primitive_op_list(&mut self, primitive_op_list: DragDropUi) {
-        self.primtive_op_list = primitive_op_list;
-    }
-
-    pub fn deselect_object(&mut self) {
-        self.primtive_op_list = Default::default();
+    /// Call this if no object is selected
+    pub fn reset_primitive_op_list_drag_state(&mut self) {
+        self.primitive_op_list_drag_state = Default::default();
     }
 
     pub fn reset_primitive_op_fields(&mut self) {
@@ -83,7 +80,7 @@ impl Default for GuiState {
         Self {
             op_field: Operation::NOP,
             primitive_fields: Default::default(),
-            primtive_op_list: Default::default(),
+            primitive_op_list_drag_state: Default::default(),
         }
     }
 }

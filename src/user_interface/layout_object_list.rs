@@ -1,5 +1,8 @@
 use super::gui_state::GuiState;
-use crate::engine::{commands::Command, object::object_collection::ObjectCollection};
+use crate::engine::{
+    commands::Command,
+    object::{object::ObjectId, object_collection::ObjectCollection},
+};
 use egui::{RichText, TextStyle};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -7,6 +10,7 @@ use log::{debug, error, info, trace, warn};
 pub fn object_list_layout(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
+    selected_object_id: Option<ObjectId>,
     object_collection: &mut ObjectCollection,
 ) -> Vec<Command> {
     let mut commands = Vec::<Command>::new();
@@ -21,8 +25,8 @@ pub fn object_list_layout(
             // tell the rest of the engine there's been a change to the object collection
             let _ = object_collection.mark_object_for_data_update(new_object_id);
 
-            // select new object in the object editor
-            gui_state.set_selected_object_id(new_object_id);
+            // select the new object
+            commands.push(Command::SelectObject(new_object_id));
 
             // set lock on target to selected object
             let new_object = object_collection
@@ -32,13 +36,10 @@ pub fn object_list_layout(
             commands.push(Command::SetCameraLockOn {
                 target_pos: new_object.origin.as_dvec3(),
             });
-
-            // deselect primitive op (previous one would have been for different object)
-            gui_state.deselect_primitive_op();
         }
 
         // delete object button
-        if let Some(selected_object_id) = gui_state.selected_object_id() {
+        if let Some(selected_object_id) = selected_object_id {
             if let Some(selected_object) = object_collection.get_object(selected_object_id) {
                 let delete_clicked = ui_h
                     .button(format!("Delete: \"{}\"", selected_object.name))

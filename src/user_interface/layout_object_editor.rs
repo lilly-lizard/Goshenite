@@ -174,8 +174,8 @@ pub fn primitive_op_list(
     };
 
     // draw each item in the primitive op list
-    let mut prim_op_list_drag_state = gui_state.primtive_op_list.clone();
-    let drag_drop_response = prim_op_list_drag_state.list_ui::<PrimitiveOp>(
+    let mut primitive_op_list_drag_state = gui_state.primitive_op_list_drag_state.clone();
+    let drag_drop_response = primitive_op_list_drag_state.list_ui::<PrimitiveOp>(
         ui,
         selected_object.primitive_ops.iter(),
         // function to draw a single primitive op entry in the list
@@ -214,7 +214,7 @@ pub fn primitive_op_list(
             });
         },
     );
-    gui_state.set_primitive_op_list(prim_op_list_drag_state);
+    gui_state.primitive_op_list_drag_state = primitive_op_list_drag_state;
 
     // if an item has been dropped after being dragged, re-arrange the primtive ops list
     if let DragDropResponse::Completed(drag_indices) = drag_drop_response {
