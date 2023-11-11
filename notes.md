@@ -7,7 +7,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - new: spawn render thread, thread waits to receive window handle before initializing renderer
 - StartCause::Init sends window to renderer
 
-- mouse select primitive
+- object/primitive op ids in gui
 
 - can all gui manip stuff be passed to command manager?
 	- would be great to have ui in its own thread so that input is always processed

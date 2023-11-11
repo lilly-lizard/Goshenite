@@ -1,6 +1,5 @@
-use super::gui_state::GuiState;
 use crate::engine::{
-    commands::Command,
+    commands::{Command, ValidationCommand},
     object::{object::ObjectId, object_collection::ObjectCollection},
 };
 use egui::{RichText, TextStyle};
@@ -9,7 +8,6 @@ use log::{debug, error, info, trace, warn};
 
 pub fn object_list_layout(
     ui: &mut egui::Ui,
-    gui_state: &mut GuiState,
     selected_object_id: Option<ObjectId>,
     object_collection: &mut ObjectCollection,
 ) -> Vec<Command> {
@@ -51,22 +49,21 @@ pub fn object_list_layout(
             } else {
                 debug!("selected object dropped. deselecting object...");
             }
-            gui_state.deselect_object();
         }
     });
 
     // object list
-    for (current_id, current_object) in object_collection.objects().iter() {
+    for (&current_id, current_object) in object_collection.objects().iter() {
         let label_text =
             RichText::new(format!("{} - {}", current_id.raw_id(), current_object.name))
                 .text_style(TextStyle::Monospace);
 
-        let is_selected = if let Some(selected_obeject_id) = gui_state.selected_object_id() {
-            if let Some(selected_object) = object_collection.get_object(selected_obeject_id) {
+        let is_selected = if let Some(some_selected_object_id) = selected_object_id {
+            if let Some(selected_object) = object_collection.get_object(some_selected_object_id) {
                 selected_object.id() == current_object.id()
             } else {
-                debug!("selected object dropped. deselecting object...");
-                gui_state.deselect_object();
+                debug!("selected object {} dropped", some_selected_object_id);
+                commands.push(ValidationCommand::SelectedObject().into());
                 false
             }
         } else {
@@ -76,13 +73,11 @@ pub fn object_list_layout(
         let object_label_res = ui.selectable_label(is_selected, label_text);
         if object_label_res.clicked() {
             // select object in the object editor
-            gui_state.set_selected_object_id(*current_id);
+            commands.push(Command::SelectObject(current_id));
             // set lock on target to selected object
             commands.push(Command::SetCameraLockOn {
                 target_pos: current_object.origin.as_dvec3(),
             });
-            // deselect primitive op (previous one would have been for different object)
-            gui_state.deselect_primitive_op();
         }
     }
 

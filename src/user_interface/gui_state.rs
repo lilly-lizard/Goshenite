@@ -1,13 +1,6 @@
-use crate::{
-    engine::{
-        object::{
-            object::ObjectId,
-            operation::Operation,
-            primitive_op::{PrimitiveOp, PrimitiveOpId},
-        },
-        primitives::primitive::Primitive,
-    },
-    helper::list::choose_closest_valid_index,
+use crate::engine::{
+    object::{operation::Operation, primitive_op::PrimitiveOp},
+    primitives::primitive::Primitive,
 };
 use egui_dnd::DragDropUi;
 
@@ -56,22 +49,6 @@ impl GuiState {
     pub fn reset_primitive_op_fields(&mut self) {
         self.op_field = Default::default();
         self.primitive_fields = Default::default();
-    }
-
-    /// Selects a primitive op in `self` from `primitive_ops` which has the closest index to
-    /// `target_prim_op_index`. If `primitive_ops` is empty, deselects primitive op in `self`.
-    pub fn select_primitive_op_closest_index(
-        &mut self,
-        primitive_ops: &Vec<PrimitiveOp>,
-        target_prim_op_index: usize,
-    ) {
-        if let Some(select_index) = choose_closest_valid_index(primitive_ops, target_prim_op_index)
-        {
-            let select_primitive_op_id = primitive_ops[select_index].id();
-            self.set_selected_primitive_op_id(select_primitive_op_id)
-        } else {
-            self.deselect_primitive_op();
-        }
     }
 }
 

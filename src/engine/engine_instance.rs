@@ -43,17 +43,17 @@ pub struct EngineInstance {
     window: Arc<Window>,
 
     // state
-    pub(super) scale_factor: f64,
-    pub(super) object_collection: ObjectCollection, // note: some engine code written on the assumtion that there is only one object collection
-    pub(super) main_thread_frame_number: u64,
-    pub(super) pending_commands: VecDeque<CommandWithSource>,
-    pub(super) selected_object_id: Option<ObjectId>,
-    pub(super) selected_primitive_op_id: Option<PrimitiveOpId>,
+    scale_factor: f64,
+    object_collection: ObjectCollection, // note: some engine code written on the assumtion that there is only one object collection
+    main_thread_frame_number: u64,
+    pending_commands: VecDeque<CommandWithSource>,
+    selected_object_id: Option<ObjectId>,
+    selected_primitive_op_id: Option<PrimitiveOpId>,
 
     // controllers
-    pub(super) cursor: Cursor,
-    pub(super) camera: Camera,
-    pub(super) gui: Gui,
+    cursor: Cursor,
+    camera: Camera,
+    gui: Gui,
 
     // render thread
     render_thread_handle: JoinHandle<()>,
@@ -246,11 +246,11 @@ impl EngineInstance {
 
         // process gui inputs and update layout
         let update_gui_res = self.gui.update_gui(
+            &mut self.object_collection,
             &self.window,
             self.camera,
             self.selected_object_id,
             self.selected_primitive_op_id,
-            &mut self.object_collection,
         );
         let commands_from_gui = anyhow_unwrap(update_gui_res, "update gui");
         self.pending_commands.extend(commands_from_gui.into_iter());
@@ -328,8 +328,18 @@ impl EngineInstance {
     }
 
     fn update_camera(&mut self) {
-        // if no primitive selected use arcball mode
-        if self.gui.selected_object_id().is_none() {
+        if let Some(selected_object_id) = self.selected_object_id {
+            if let Some(selected_object) = self.object_collection.get_object(selected_object_id) {
+                // follow selected object
+                self.camera
+                    .set_lock_on_target(selected_object.origin.as_dvec3());
+            } else {
+                debug!("selected object {} dropped!", selected_object_id);
+                self.deselect_object();
+                self.camera.unset_lock_on_target();
+            }
+        } else {
+            // if no primitive selected use arcball mode
             self.camera.unset_lock_on_target();
         }
 
@@ -407,7 +417,6 @@ impl EngineInstance {
 impl EngineInstance {
     fn background_clicked(&mut self) {
         self.deselect_primitive_op();
-        self.gui.deselect_primitive_op();
     }
 
     fn object_clicked(&mut self, object_id: ObjectId, primitive_op_index: usize) {

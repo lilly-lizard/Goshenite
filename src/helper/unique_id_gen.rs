@@ -8,6 +8,7 @@ use std::{
 // 32 bit uint images have guarenteed vulkan support
 pub type UniqueId = u16;
 
+#[derive(Debug)]
 pub struct UniqueIdGen {
     counter: AtomicU16,
     recycled_ids: BTreeSet<UniqueId>,

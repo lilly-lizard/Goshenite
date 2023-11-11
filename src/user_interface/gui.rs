@@ -9,7 +9,11 @@ use super::{
 };
 use crate::engine::{
     commands::{Command, CommandWithSource},
-    object::{object::ObjectId, object_collection::ObjectCollection, primitive_op::PrimitiveOpId},
+    object::{
+        object::ObjectId,
+        object_collection::ObjectCollection,
+        primitive_op::{PrimitiveOp, PrimitiveOpId},
+    },
 };
 use egui::{TexturesDelta, Visuals};
 use egui_winit::EventResponse;
@@ -22,7 +26,6 @@ use winit::{event_loop::EventLoopWindowTarget, window::Window};
 pub enum EditState {
     NoChange,
     Modified,
-    Removed,
 }
 
 impl EditState {
@@ -99,13 +102,19 @@ impl Gui {
         self.gui_state.primitive_op_list_drag_state = Default::default();
     }
 
+    /// Call this when a primitive op is selected
+    pub fn primitive_op_selected(&mut self, selected_primitive_op: &PrimitiveOp) {
+        self.gui_state
+            .set_selected_primitive_op(selected_primitive_op);
+    }
+
     pub fn update_gui(
         &mut self,
+        object_collection: &mut ObjectCollection,
         window: &Window,
         camera: Camera,
         selected_object_id: Option<ObjectId>,
         selected_primitive_op_id: Option<PrimitiveOpId>,
-        object_collection: &mut ObjectCollection,
     ) -> anyhow::Result<Vec<CommandWithSource>> {
         let mut commands = Vec::<Command>::new();
 
@@ -116,11 +125,15 @@ impl Gui {
         // draw
         self.top_panel();
         if self.window_states.object_list {
-            let mut new_commands = self.object_list_window(object_collection);
+            let mut new_commands = self.object_list_window(object_collection, selected_object_id);
             commands.append(&mut new_commands);
         }
         if self.window_states.object_editor {
-            let mut new_commands = self.object_editor_window(object_collection);
+            let mut new_commands = self.object_editor_window(
+                object_collection,
+                selected_object_id,
+                selected_primitive_op_id,
+            );
             commands.append(&mut new_commands);
         }
         if self.window_states.camera_control {
@@ -161,21 +174,6 @@ impl Gui {
         std::mem::take(&mut self.textures_delta_accumulation)
     }
 
-    pub fn selected_object_id(&self) -> Option<ObjectId> {
-        self.gui_state.selected_object_id()
-    }
-    pub fn selected_primitive_op_id(&self) -> Option<PrimitiveOpId> {
-        self.gui_state.selected_primitive_op_id()
-    }
-
-    /// Also deselects primitive op
-    pub fn deselect_object(&mut self) {
-        self.gui_state.deselect_object();
-    }
-    pub fn deselect_primitive_op(&mut self) {
-        self.gui_state.deselect_primitive_op();
-    }
-
     pub fn set_theme_winit(&self, theme: winit::window::Theme) {
         let visuals = match theme {
             winit::window::Theme::Dark => Visuals::dark(),
@@ -201,14 +199,18 @@ impl Gui {
         });
     }
 
-    fn object_list_window(&mut self, object_collection: &mut ObjectCollection) -> Vec<Command> {
+    fn object_list_window(
+        &mut self,
+        object_collection: &mut ObjectCollection,
+        selected_object_id: Option<ObjectId>,
+    ) -> Vec<Command> {
         let mut commands = Vec::<Command>::new();
 
         let add_contents = |ui: &mut egui::Ui| {
             if EGUI_TRACE {
                 egui::trace!(ui);
             }
-            let mut new_commands = object_list_layout(ui, &mut self.gui_state, object_collection);
+            let mut new_commands = object_list_layout(ui, selected_object_id, object_collection);
             commands.append(&mut new_commands);
         };
 
@@ -222,14 +224,25 @@ impl Gui {
         commands
     }
 
-    fn object_editor_window(&mut self, object_collection: &mut ObjectCollection) -> Vec<Command> {
+    fn object_editor_window(
+        &mut self,
+        object_collection: &mut ObjectCollection,
+        selected_object_id: Option<ObjectId>,
+        selected_primitive_op_id: Option<PrimitiveOpId>,
+    ) -> Vec<Command> {
         let mut commands = Vec::<Command>::new();
 
         let add_contents = |ui: &mut egui::Ui| {
             if EGUI_TRACE {
                 egui::trace!(ui);
             }
-            let mut new_commands = object_editor_layout(ui, &mut self.gui_state, object_collection);
+            let mut new_commands = object_editor_layout(
+                ui,
+                &mut self.gui_state,
+                object_collection,
+                selected_object_id,
+                selected_primitive_op_id,
+            );
             commands.append(&mut new_commands);
         };
 

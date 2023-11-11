@@ -6,7 +6,7 @@ use super::{
 use crate::{
     config,
     engine::{
-        commands::Command,
+        commands::{Command, ValidationCommand},
         object::{
             object::{Object, ObjectId},
             object_collection::ObjectCollection,
@@ -33,26 +33,43 @@ pub fn object_editor_layout(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
     object_collection: &mut ObjectCollection,
+    selected_object_id: Option<ObjectId>,
+    selected_primitive_op_id: Option<PrimitiveOpId>,
 ) -> Vec<Command> {
     let mut commands = Vec::<Command>::new();
 
     // selected object name
-    let (selected_object_id, selected_object) =
-        match label_and_get_selected_object(gui_state, ui, object_collection) {
-            Some(value) => value,
-            None => return commands,
-        };
+    let (selected_object_id, selected_object) = match label_and_get_selected_object(
+        ui,
+        &mut commands,
+        object_collection,
+        selected_object_id,
+    ) {
+        Some(value) => value,
+        None => return commands,
+    };
 
     let mut object_edit_state = EditState::NoChange;
 
-    let (mut new_commands, new_object_edit_state) = object_properties_editor(ui, selected_object);
-    commands.append(&mut new_commands);
+    let new_object_edit_state = object_properties_editor(ui, &mut commands, selected_object);
     object_edit_state = new_object_edit_state.combine(object_edit_state);
 
-    let new_object_edit_state = primitive_op_editor(ui, gui_state, selected_object);
+    let new_object_edit_state = primitive_op_editor(
+        ui,
+        &mut commands,
+        gui_state,
+        selected_object,
+        selected_primitive_op_id,
+    );
     object_edit_state = new_object_edit_state.combine(object_edit_state);
 
-    let new_object_edit_state = primitive_op_list(ui, gui_state, selected_object);
+    let new_object_edit_state = primitive_op_list(
+        ui,
+        &mut commands,
+        gui_state,
+        selected_object,
+        selected_primitive_op_id,
+    );
     object_edit_state = new_object_edit_state.combine(object_edit_state);
 
     if object_edit_state == EditState::Modified {
@@ -63,14 +80,15 @@ pub fn object_editor_layout(
 }
 
 fn label_and_get_selected_object<'a>(
-    gui_state: &mut GuiState,
     ui: &mut egui::Ui,
+    commands: &mut Vec<Command>,
     object_collection: &'a mut ObjectCollection,
+    selected_object_id: Option<ObjectId>,
 ) -> Option<(ObjectId, &'a mut Object)> {
     let no_object_text = RichText::new("No object selected...").italics();
 
-    let selected_object_id = match gui_state.selected_object_id() {
-        Some(o) => o.clone(),
+    let selected_object_id = match selected_object_id {
+        Some(id) => id,
         None => {
             ui.label(no_object_text);
             return None;
@@ -80,9 +98,10 @@ fn label_and_get_selected_object<'a>(
     let selected_object = match object_collection.get_object_mut(selected_object_id) {
         Some(o) => o,
         None => {
-            // may be invalid object id
-            debug!("selected object dropped. deselecting object...");
-            gui_state.deselect_object();
+            // invalid object id
+            debug!("selected object {} dropped", selected_object_id);
+            commands.push(ValidationCommand::SelectedObject().into());
+
             ui.label(no_object_text);
             return None;
         }
@@ -98,9 +117,9 @@ fn label_and_get_selected_object<'a>(
 
 pub fn object_properties_editor(
     ui: &mut egui::Ui,
+    commands: &mut Vec<Command>,
     object: &mut Object,
-) -> (Vec<Command>, EditState) {
-    let mut commands = Vec::<Command>::new();
+) -> EditState {
     let mut object_edit_state = EditState::NoChange;
 
     ui.separator();
@@ -124,48 +143,260 @@ pub fn object_properties_editor(
         object_edit_state = EditState::Modified;
     }
 
-    (commands, object_edit_state)
+    object_edit_state
 }
 
 pub fn primitive_op_editor(
     ui: &mut egui::Ui,
+    commands: &mut Vec<Command>,
     gui_state: &mut GuiState,
     selected_object: &mut Object,
+    selected_primitive_op_id: Option<PrimitiveOpId>,
 ) -> EditState {
-    if let Some(selected_prim_op_id) = gui_state.selected_primitive_op_id() {
-        return existing_primitive_op_editor(ui, gui_state, selected_object, selected_prim_op_id);
+    if let Some(selected_prim_op_id) = selected_primitive_op_id {
+        return existing_primitive_op_editor(
+            ui,
+            commands,
+            gui_state,
+            selected_object,
+            selected_prim_op_id,
+        );
     } else {
-        return new_primitive_op_editor(ui, gui_state, selected_object);
+        return new_primitive_op_editor(ui, commands, gui_state, selected_object);
     }
 }
 
-/// Draw the primitive op list. each list element can be dragged/dropped elsewhere in the list,
-/// or selected with a button for editing.
-pub fn primitive_op_list(
+fn existing_primitive_op_editor(
     ui: &mut egui::Ui,
+    commands: &mut Vec<Command>,
+    gui_state: &mut GuiState,
+    selected_object: &mut Object,
+    selected_prim_op_id: PrimitiveOpId,
+) -> EditState {
+    let mut prim_op_edit_state = EditState::NoChange;
+
+    let selected_object_id = selected_object.id();
+    let (mut modified_prim_op, selected_prim_op_index) =
+        match selected_object.get_primitive_op(selected_prim_op_id) {
+            Some((prim_op, index)) => (prim_op.clone(), index),
+            None => {
+                // selected_prim_op_id not in selected_obejct -> invalid id
+                debug!("selected object {} dropped", selected_object_id);
+                commands.push(ValidationCommand::SelectedObject().into());
+
+                return new_primitive_op_editor(ui, commands, gui_state, selected_object);
+            }
+        };
+
+    ui.separator();
+
+    ui.label(format!("Primitive op {}:", selected_prim_op_index));
+
+    // primitive type/op selection
+
+    ui.horizontal(|ui_h| {
+        // op drop down menu
+        let possible_updated_op = op_drop_down(ui_h, selected_object_id, modified_prim_op.op);
+        if let Some(updated_op) = possible_updated_op {
+            // user edited the op via drop-down menu
+            modified_prim_op.op = updated_op;
+            prim_op_edit_state = EditState::Modified;
+        }
+
+        // primitive type drop down menu
+        let primitive_type_changed = primitive_type_drop_down(ui_h, gui_state, selected_object_id);
+        if primitive_type_changed {
+            // replace old primitive according to new type
+            modified_prim_op.primitive = gui_state.primitive_fields.clone();
+            prim_op_edit_state = EditState::Modified;
+        }
+    });
+
+    // primitive editor
+
+    let primitive_edited = match &mut gui_state.primitive_fields {
+        Primitive::Sphere(p) => sphere_editor_ui(ui, p),
+        Primitive::Cube(p) => cube_editor_ui(ui, p),
+        _ => false,
+    };
+    if primitive_edited {
+        // replace primitive with edited one
+        modified_prim_op.primitive = gui_state.primitive_fields.clone();
+        prim_op_edit_state = EditState::Modified;
+    }
+
+    // delete button
+
+    let delete_clicked = ui.button("Delete").clicked();
+    if delete_clicked {
+        commands.push(Command::RemovePrimitiveOpId(
+            selected_object.id(),
+            selected_prim_op_id,
+        ));
+    }
+
+    let object_edit_state = match prim_op_edit_state {
+        EditState::Modified => {
+            // update the primitive op data with what we've been using
+            let _ = selected_object.set_primitive_op(
+                selected_prim_op_id,
+                modified_prim_op.primitive,
+                modified_prim_op.op,
+            );
+            EditState::Modified
+        }
+        EditState::NoChange => EditState::NoChange,
+    };
+
+    object_edit_state
+}
+
+/// Returns wherever the object has been edited
+fn new_primitive_op_editor(
+    ui: &mut egui::Ui,
+    commands: &mut Vec<Command>,
     gui_state: &mut GuiState,
     selected_object: &mut Object,
 ) -> EditState {
     let mut object_edit_state = EditState::NoChange;
 
     ui.separator();
+    ui.label("New primitive");
 
-    // new primitive op button
-    let new_op_response = ui.selectable_label(
-        gui_state.selected_primitive_op_id().is_none(),
-        "New primitive op",
-    );
-    if new_op_response.clicked() {
-        gui_state.deselect_primitive_op();
+    ui.horizontal(|ui_h| {
+        // op drop down menu
+        let possible_updated_op = op_drop_down(ui_h, selected_object.id(), gui_state.op_field);
+        if let Some(updated_op) = possible_updated_op {
+            // user edited the op via drop-down menu
+            gui_state.op_field = updated_op;
+        }
+
+        // primitive type drop down menu
+        primitive_type_drop_down(ui_h, gui_state, selected_object.id());
+    });
+
+    // primitive editor
+
+    match &mut gui_state.primitive_fields {
+        Primitive::Sphere(p) => {
+            sphere_editor_ui(ui, p);
+        }
+        Primitive::Cube(p) => {
+            cube_editor_ui(ui, p);
+        }
+        _ => (),
     }
 
-    let selected_prim_op = match gui_state.selected_primitive_op_id() {
+    // Add and Reset buttons
+
+    let mut clicked_add = false;
+    let mut clicked_reset = false;
+    ui.horizontal(|ui_h| {
+        clicked_add = ui_h.button("Add").clicked();
+        clicked_reset = ui_h.button("Reset").clicked();
+    });
+    if clicked_add {
+        // append primitive op to selected object and mark for updating
+        let new_primitive = gui_state.primitive_fields.clone();
+        let primitive_op_id = selected_object.push_op(gui_state.op_field, new_primitive);
+        object_edit_state = EditState::Modified;
+
+        if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
+            commands.push(Command::SelectPrimitiveOpId(
+                selected_object.id(),
+                primitive_op_id,
+            ))
+        }
+    }
+    if clicked_reset {
+        gui_state.reset_primitive_op_fields();
+    }
+
+    object_edit_state
+}
+
+/// Returns a new operation if a different one is selected
+fn op_drop_down(
+    ui: &mut egui::Ui,
+    object_id: ObjectId,
+    selected_op: Operation,
+) -> Option<Operation> {
+    let mut new_op = selected_op.clone();
+
+    ComboBox::from_id_source(format!("op drop down {:?}", object_id))
+        .selected_text(selected_op.name())
+        .show_ui(ui, |ui_op| {
+            for (op, op_name) in Operation::variant_names() {
+                ui_op.selectable_value(&mut new_op, op, op_name);
+            }
+        });
+
+    if selected_op != new_op {
+        return Some(new_op);
+    }
+    None
+}
+
+/// Returns true if the primitive type was changed. If this happens, gui_state.primitive_fields
+/// gets set to the default of the chosen type.
+fn primitive_type_drop_down(
+    ui: &mut egui::Ui,
+    gui_state: &mut GuiState,
+    selected_object_id: ObjectId,
+) -> bool {
+    let selected_primitive_type_name: &str = gui_state.primitive_fields.type_name();
+    let mut type_has_changed = false;
+
+    ComboBox::from_id_source(format!("primitive type drop down {:?}", selected_object_id))
+        .selected_text(selected_primitive_type_name)
+        .show_ui(ui, |ui_p| {
+            for primitive_type_name in primitive_names::NAME_LIST {
+                // drop-down option for each primitive type
+                let this_is_selected = selected_primitive_type_name == primitive_type_name;
+                let label_clicked = ui_p
+                    .selectable_label(this_is_selected, primitive_type_name)
+                    .clicked();
+
+                if label_clicked & !this_is_selected {
+                    // new primitive type was selected
+                    type_has_changed = true;
+                    let new_primitive = default_primitive_from_type_name(primitive_type_name);
+                    gui_state.primitive_fields = new_primitive;
+                }
+            }
+        });
+
+    type_has_changed
+}
+
+/// Draw the primitive op list. each list element can be dragged/dropped elsewhere in the list,
+/// or selected with a button for editing.
+pub fn primitive_op_list(
+    ui: &mut egui::Ui,
+    commands: &mut Vec<Command>,
+    gui_state: &mut GuiState,
+    selected_object: &mut Object,
+    selected_primitive_op_id: Option<PrimitiveOpId>,
+) -> EditState {
+    let mut object_edit_state = EditState::NoChange;
+
+    ui.separator();
+
+    // new primitive op button
+    let new_op_response =
+        ui.selectable_label(selected_primitive_op_id.is_none(), "New primitive op");
+    if new_op_response.clicked() {
+        commands.push(Command::DeselectPrimtiveOp());
+    }
+
+    let selected_prim_op = match selected_primitive_op_id {
         Some(selected_prim_op_id) => {
             match selected_object.get_primitive_op(selected_prim_op_id) {
                 Some((found_prim_op, _index)) => Some(found_prim_op),
                 None => {
                     // selected_prim_op_id not in selected_obejct! invalid id so we set to none
-                    gui_state.deselect_primitive_op();
+                    debug!("primitive op id not found in selected object!");
+                    commands.push(Command::DeselectPrimtiveOp());
                     None
                 }
             }
@@ -232,217 +463,6 @@ pub fn primitive_op_list(
     }
 
     object_edit_state
-}
-
-fn existing_primitive_op_editor(
-    ui: &mut egui::Ui,
-    gui_state: &mut GuiState,
-    selected_object: &mut Object,
-    selected_prim_op_id: PrimitiveOpId,
-) -> EditState {
-    let mut prim_op_edit_state = EditState::NoChange;
-
-    let selected_object_id = selected_object.id();
-    let (mut modified_prim_op, selected_prim_op_index) =
-        match selected_object.get_primitive_op(selected_prim_op_id) {
-            Some((prim_op, index)) => (prim_op.clone(), index),
-            None => {
-                // selected_prim_op_id not in selected_obejct -> invalid id
-                gui_state.deselect_primitive_op();
-
-                return new_primitive_op_editor(ui, gui_state, selected_object);
-            }
-        };
-
-    ui.separator();
-
-    ui.label(format!("Primitive op {}:", selected_prim_op_index));
-
-    // primitive type/op selection
-
-    ui.horizontal(|ui_h| {
-        // op drop down menu
-        let possible_updated_op = op_drop_down(ui_h, selected_object_id, modified_prim_op.op);
-        if let Some(updated_op) = possible_updated_op {
-            // user edited the op via drop-down menu
-            modified_prim_op.op = updated_op;
-            prim_op_edit_state = EditState::Modified;
-        }
-
-        // primitive type drop down menu
-        let primitive_type_changed = primitive_type_drop_down(ui_h, gui_state, selected_object_id);
-        if primitive_type_changed {
-            // replace old primitive according to new type
-            modified_prim_op.primitive = gui_state.primitive_fields.clone();
-            prim_op_edit_state = EditState::Modified;
-        }
-    });
-
-    // primitive editor
-
-    let primitive_edited = match &mut gui_state.primitive_fields {
-        Primitive::Sphere(p) => sphere_editor_ui(ui, p),
-        Primitive::Cube(p) => cube_editor_ui(ui, p),
-        _ => false,
-    };
-    if primitive_edited {
-        // replace primitive with edited one
-        modified_prim_op.primitive = gui_state.primitive_fields.clone();
-        prim_op_edit_state = EditState::Modified;
-    }
-
-    // delete button
-
-    let delete_clicked = ui.button("Delete").clicked();
-    if delete_clicked {
-        // remove primitive op
-        let remove_res = selected_object.remove_primitive_op_index(selected_prim_op_index);
-        if let Err(_) = remove_res {
-            // invalid index! what's going on??
-            warn!(
-                "invalid index {} when attempting to remove primitive op from object {:?}",
-                selected_prim_op_index, selected_object_id
-            );
-        } else {
-            // successful removal -> mark object for update
-            prim_op_edit_state = EditState::Removed;
-        }
-
-        // now select a different primitive op
-        gui_state.select_primitive_op_closest_index(
-            &selected_object.primitive_ops,
-            selected_prim_op_index,
-        );
-    }
-
-    let object_edit_state = match prim_op_edit_state {
-        EditState::Modified => {
-            // update the primitive op data with what we've been using
-            let _ = selected_object.set_primitive_op(
-                selected_prim_op_id,
-                modified_prim_op.primitive,
-                modified_prim_op.op,
-            );
-            EditState::Modified
-        }
-        EditState::Removed => EditState::Modified,
-        EditState::NoChange => EditState::NoChange,
-    };
-    object_edit_state
-}
-
-/// Returns wherever the object has been edited
-fn new_primitive_op_editor(
-    ui: &mut egui::Ui,
-    gui_state: &mut GuiState,
-    selected_object: &mut Object,
-) -> EditState {
-    let mut object_edit_state = EditState::NoChange;
-
-    ui.separator();
-    ui.label("New primitive");
-
-    ui.horizontal(|ui_h| {
-        // op drop down menu
-        let possible_updated_op = op_drop_down(ui_h, selected_object.id(), gui_state.op_field);
-        if let Some(updated_op) = possible_updated_op {
-            // user edited the op via drop-down menu
-            gui_state.op_field = updated_op;
-        }
-
-        // primitive type drop down menu
-        primitive_type_drop_down(ui_h, gui_state, selected_object.id());
-    });
-
-    // primitive editor
-
-    match &mut gui_state.primitive_fields {
-        Primitive::Sphere(p) => {
-            sphere_editor_ui(ui, p);
-        }
-        Primitive::Cube(p) => {
-            cube_editor_ui(ui, p);
-        }
-        _ => (),
-    }
-
-    // Add and Reset buttons
-
-    let mut clicked_add = false;
-    let mut clicked_reset = false;
-    ui.horizontal(|ui_h| {
-        clicked_add = ui_h.button("Add").clicked();
-        clicked_reset = ui_h.button("Reset").clicked();
-    });
-    if clicked_add {
-        // append primitive op to selected object and mark for updating
-        let new_primitive = gui_state.primitive_fields.clone();
-        let p_op_id = selected_object.push_op(gui_state.op_field, new_primitive);
-        object_edit_state = EditState::Modified;
-
-        if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
-            gui_state.set_selected_primitive_op_id(p_op_id);
-        }
-    }
-    if clicked_reset {
-        gui_state.reset_primitive_op_fields();
-    }
-
-    object_edit_state
-}
-
-/// Returns a new operation if a different one is selected
-fn op_drop_down(
-    ui: &mut egui::Ui,
-    object_id: ObjectId,
-    selected_op: Operation,
-) -> Option<Operation> {
-    let mut new_op = selected_op.clone();
-
-    ComboBox::from_id_source(format!("op drop down {:?}", object_id))
-        .selected_text(selected_op.name())
-        .show_ui(ui, |ui_op| {
-            for (op, op_name) in Operation::variant_names() {
-                ui_op.selectable_value(&mut new_op, op, op_name);
-            }
-        });
-
-    if selected_op != new_op {
-        return Some(new_op);
-    }
-    None
-}
-
-/// Returns true if the primitive type was changed. If this happens, gui_state.primitive_fields
-/// gets set to the default of the chosen type.
-fn primitive_type_drop_down(
-    ui: &mut egui::Ui,
-    gui_state: &mut GuiState,
-    selected_object_id: ObjectId,
-) -> bool {
-    let selected_primitive_type_name: &str = gui_state.primitive_fields.type_name();
-    let mut type_has_changed = false;
-
-    ComboBox::from_id_source(format!("primitive type drop down {:?}", selected_object_id))
-        .selected_text(selected_primitive_type_name)
-        .show_ui(ui, |ui_p| {
-            for primitive_type_name in primitive_names::NAME_LIST {
-                // drop-down option for each primitive type
-                let this_is_selected = selected_primitive_type_name == primitive_type_name;
-                let label_clicked = ui_p
-                    .selectable_label(this_is_selected, primitive_type_name)
-                    .clicked();
-
-                if label_clicked & !this_is_selected {
-                    // new primitive type was selected
-                    type_has_changed = true;
-                    let new_primitive = default_primitive_from_type_name(primitive_type_name);
-                    gui_state.primitive_fields = new_primitive;
-                }
-            }
-        });
-
-    type_has_changed
 }
 
 /// Same as `sphere_editor_ui` but takes a `Sphere` as arg.

@@ -15,19 +15,35 @@ pub enum Command {
     RemoveSelectedObject(),
 
     // primtive op
-    SelectPrimitiveOpId(PrimitiveOpId),
-    SelectPrimitiveOpIndex(usize),
+    SelectPrimitiveOpId(ObjectId, PrimitiveOpId),
+    SelectPrimitiveOpIndex(ObjectId, usize),
     DeselectPrimtiveOp(),
-    RemovePrimitiveOpId(PrimitiveOpId),
-    RemovePrimitiveOpIndex(usize),
     RemoveSelectedPrimitiveOp(),
+    RemovePrimitiveOpId(ObjectId, PrimitiveOpId),
+    RemovePrimitiveOpIndex(ObjectId, usize),
+    RemovePrimitiveOpIdFromSelectedObject(PrimitiveOpId),
+    RemovePrimitiveOpIndexFromSelectedObject(usize),
+
+    // internal
+    Validate(ValidationCommand),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ValidationCommand {
+    SelectedObject(),
+}
+
+impl From<ValidationCommand> for Command {
+    fn from(v_command: ValidationCommand) -> Self {
+        Self::Validate(v_command)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandSource {
     Gui,
     CommandPalette,
-    // todo https://docs.rs/keyboard-types/latest/keyboard_types/struct.ShortcutMatcher.html
+    // https://docs.rs/keyboard-types/latest/keyboard_types/struct.ShortcutMatcher.html
     KeyboardShortcut,
 }
 

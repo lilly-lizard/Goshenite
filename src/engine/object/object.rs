@@ -44,6 +44,7 @@ impl std::fmt::Display for ObjectId {
 
 // OBJECT
 
+#[derive(Debug)]
 pub struct Object {
     id: ObjectId,
     pub name: String,
