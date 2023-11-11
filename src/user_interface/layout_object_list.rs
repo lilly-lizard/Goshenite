@@ -12,7 +12,7 @@ use log::{debug, error, info, trace, warn};
 pub fn object_list_layout(
     ui: &mut egui::Ui,
     selected_object_id: Option<ObjectId>,
-    object_collection: &mut ObjectCollection,
+    object_collection: &ObjectCollection,
 ) -> Vec<Command> {
     let mut commands = Vec::<Command>::new();
 
@@ -20,25 +20,7 @@ pub fn object_list_layout(
         // add object button
         let add_response = ui_h.button("Add object");
         if add_response.clicked() {
-            // create new object
-            let (new_object_id, _) = object_collection
-                .new_object_default()
-                .expect("todo make command");
-
-            // tell the rest of the engine there's been a change to the object collection
-            let _ = object_collection.mark_object_for_data_update(new_object_id);
-
-            // select the new object
-            commands.push(Command::SelectObject(new_object_id));
-
-            // set lock on target to selected object
-            let new_object = object_collection
-                .get_object(new_object_id)
-                .expect("literally just created this");
-
-            commands.push(Command::SetCameraLockOn {
-                target_pos: new_object.origin.as_dvec3(),
-            });
+            commands.push(Command::CreateAndSelectNewDefaultObject());
         }
 
         // delete object button

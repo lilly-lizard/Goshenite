@@ -13,6 +13,7 @@ pub enum Command {
     DeselectObject(),
     RemoveObject(ObjectId),
     RemoveSelectedObject(),
+    CreateAndSelectNewDefaultObject(),
 
     // primtive op
     SelectPrimitiveOpId(ObjectId, PrimitiveOpId),
@@ -21,8 +22,6 @@ pub enum Command {
     RemoveSelectedPrimitiveOp(),
     RemovePrimitiveOpId(ObjectId, PrimitiveOpId),
     RemovePrimitiveOpIndex(ObjectId, usize),
-    RemovePrimitiveOpIdFromSelectedObject(PrimitiveOpId),
-    RemovePrimitiveOpIndexFromSelectedObject(usize),
 
     // internal
     Validate(ValidationCommand),

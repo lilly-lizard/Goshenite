@@ -38,6 +38,9 @@ impl EngineInstance {
                     self.remove_object_via_command(object_id, command)
                 }
                 Command::RemoveSelectedObject() => self.remove_selected_object_via_command(command),
+                Command::CreateAndSelectNewDefaultObject() => {
+                    self.create_and_select_new_default_object_via_command(command)
+                }
 
                 // primitive op
                 Command::SelectPrimitiveOpId(object_id, primitive_op_id) => {
@@ -59,23 +62,13 @@ impl EngineInstance {
                         command,
                     );
                 }
-                Command::RemovePrimitiveOpIdFromSelectedObject(primitive_op_id) => {
-                    self.remove_primitive_op_id_from_selected_object_via_command(
-                        primitive_op_id,
-                        command,
-                    );
-                }
-                Command::RemovePrimitiveOpIndexFromSelectedObject(primitive_op_index) => {
-                    self.remove_primitive_op_index_from_selected_object_via_command(
-                        primitive_op_index,
-                        command,
-                    );
-                }
 
                 Command::Validate(v_command) => self.execute_validation_command(v_command),
             }
         }
     }
+
+    // ~~ Object ~~
 
     pub(super) fn deselect_object(&mut self) {
         if self.selected_object_id.is_some() {
@@ -87,7 +80,7 @@ impl EngineInstance {
 
     fn select_object_via_command(&mut self, object_id: ObjectId, command: Command) {
         if let Some(object) = self.object_collection.get_object(object_id) {
-            self.select_object(object.id(), object.origin);
+            self.select_object_unchecked(object.id(), object.origin);
         } else {
             command_failed_warn(command, "invalid object id");
         }
@@ -95,7 +88,7 @@ impl EngineInstance {
 
     /// Doesn't check validity of `object_id`. Ideally we'd pass a reference to the object here
     /// to account for this, but the borrow checker doesn't like that...
-    pub(super) fn select_object(&mut self, object_id: ObjectId, object_origin: Vec3) {
+    pub(super) fn select_object_unchecked(&mut self, object_id: ObjectId, object_origin: Vec3) {
         let mut selected_object_changed = true;
         if let Some(previously_selected_object_id) = self.selected_object_id {
             if previously_selected_object_id == object_id {
@@ -140,7 +133,7 @@ impl EngineInstance {
             return;
         };
 
-        self.select_object(object_id, object.origin);
+        self.select_object_unchecked(object_id, object.origin);
         self.select_primitive_op(primitive_op);
     }
 
@@ -195,6 +188,32 @@ impl EngineInstance {
             command_failed_warn(command, "no selected object");
         }
     }
+
+    fn create_and_select_new_default_object_via_command(&mut self, command: Command) {
+        let new_object_res = self.object_collection.new_object_default();
+
+        let (new_object_id, new_object) = match new_object_res {
+            Ok(object_and_id) => object_and_id,
+            Err(e) => {
+                error!(
+                    "the engine has run out of unique ids to assign to new objects.\
+                    this case is not yet handled by goshenite!\
+                    please report this as a bug..."
+                );
+                error!("command {:?} critially failed with error {}", command, e);
+                return;
+            }
+        };
+
+        let new_object_origin = new_object.origin;
+        self.select_object_unchecked(new_object_id, new_object_origin);
+
+        let _ = self
+            .object_collection
+            .mark_object_for_data_update(new_object_id);
+    }
+
+    // ~~ Primitive Op ~~
 
     fn select_primitive_op_id_via_command(
         &mut self,
@@ -394,6 +413,8 @@ impl EngineInstance {
             command_failed_warn(command, "no selected primitive op");
         }
     }
+
+    // ~~ Internal ~~
 
     fn execute_validation_command(&mut self, v_command: ValidationCommand) {
         match v_command {

@@ -201,7 +201,7 @@ impl Gui {
 
     fn object_list_window(
         &mut self,
-        object_collection: &mut ObjectCollection,
+        object_collection: &ObjectCollection,
         selected_object_id: Option<ObjectId>,
     ) -> Vec<Command> {
         let mut commands = Vec::<Command>::new();

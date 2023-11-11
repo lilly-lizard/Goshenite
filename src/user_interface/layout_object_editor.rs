@@ -299,7 +299,7 @@ fn new_primitive_op_editor(
     if clicked_add {
         // append primitive op to selected object and mark for updating
         let new_primitive = gui_state.primitive_fields.clone();
-        let primitive_op_id = selected_object
+        let new_primitive_op_id = selected_object
             .push_op(gui_state.op_field, new_primitive)
             .expect("todo make command");
         object_edit_state = EditState::Modified;
@@ -307,7 +307,7 @@ fn new_primitive_op_editor(
         if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
             commands.push(Command::SelectPrimitiveOpId(
                 selected_object.id(),
-                primitive_op_id,
+                new_primitive_op_id,
             ))
         }
     }
