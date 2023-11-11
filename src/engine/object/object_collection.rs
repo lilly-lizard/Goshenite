@@ -2,7 +2,10 @@ use super::{
     object::{Object, ObjectId},
     objects_delta::{ObjectDeltaOperation, ObjectsDelta},
 };
-use crate::helper::{more_errors::CollectionError, unique_id_gen::UniqueIdGen};
+use crate::helper::{
+    more_errors::CollectionError,
+    unique_id_gen::{UniqueIdError, UniqueIdGen, UniqueIdType},
+};
 use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -12,7 +15,7 @@ pub const DEFAULT_ORIGIN: Vec3 = Vec3::ZERO;
 
 /// Should only be one per engine instance.
 pub struct ObjectCollection {
-    unique_id_gen: UniqueIdGen,
+    unique_id_gen: UniqueIdGen<ObjectId>,
     objects: BTreeMap<ObjectId, Object>,
     objects_delta_accumulation: ObjectsDelta,
 }
@@ -26,27 +29,23 @@ impl ObjectCollection {
         }
     }
 
-    pub fn new_object(&mut self, name: String, origin: Vec3) -> (ObjectId, &mut Object) {
-        let new_raw_id = self
-            .unique_id_gen
-            .new_id()
-            .expect("todo should probably handle this somehow...");
-        let object_id = ObjectId(new_raw_id);
+    pub fn new_object(
+        &mut self,
+        name: String,
+        origin: Vec3,
+    ) -> Result<(ObjectId, &mut Object), UniqueIdError> {
+        let object_id = self.unique_id_gen.new_id()?;
 
-        self.new_object_internal(object_id, name, origin)
+        Ok(self.new_object_internal(object_id, name, origin))
     }
 
-    pub fn new_object_default(&mut self) -> (ObjectId, &mut Object) {
-        let new_raw_id = self
-            .unique_id_gen
-            .new_id()
-            .expect("todo should probably handle this somehow...");
-        let object_id = ObjectId(new_raw_id);
+    pub fn new_object_default(&mut self) -> Result<(ObjectId, &mut Object), UniqueIdError> {
+        let object_id = self.unique_id_gen.new_id()?;
 
         let name = format!("New Object {}", object_id.raw_id());
         let origin = DEFAULT_ORIGIN;
 
-        self.new_object_internal(object_id, name, origin)
+        Ok(self.new_object_internal(object_id, name, origin))
     }
 
     pub fn remove_object(&mut self, object_id: ObjectId) -> Result<Object, CollectionError> {
@@ -54,7 +53,7 @@ impl ObjectCollection {
 
         if let Some(removed_object) = removed_object_option {
             // tell object id generator it can reuse the old object id now
-            if let Err(e) = self.unique_id_gen.recycle_id(object_id.raw_id()) {
+            if let Err(e) = self.unique_id_gen.recycle_id(object_id) {
                 warn!("{}", e); // todo should probably handle this somehow...
             }
 

@@ -1,4 +1,4 @@
-use crate::engine::object::object::ObjectId;
+use crate::{engine::object::object::ObjectId, helper::unique_id_gen::UniqueIdType};
 use ash::vk;
 use bort_vk::VertexInputState;
 use glam::Vec3;
@@ -100,7 +100,7 @@ pub struct BoundingBoxVertex {
 }
 
 impl BoundingBoxVertex {
-    pub const fn new(position: Vec3, object_id: ObjectId) -> Self {
+    pub fn new(position: Vec3, object_id: ObjectId) -> Self {
         Self {
             in_position: [position.x, position.y, position.z, 1.],
             in_object_id: object_id.raw_id() as u32,

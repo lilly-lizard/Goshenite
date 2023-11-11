@@ -1,6 +1,9 @@
-use crate::engine::{
-    commands::{Command, ValidationCommand},
-    object::{object::ObjectId, object_collection::ObjectCollection},
+use crate::{
+    engine::{
+        commands::{Command, ValidationCommand},
+        object::{object::ObjectId, object_collection::ObjectCollection},
+    },
+    helper::unique_id_gen::UniqueIdType,
 };
 use egui::{RichText, TextStyle};
 #[allow(unused_imports)]
@@ -18,7 +21,9 @@ pub fn object_list_layout(
         let add_response = ui_h.button("Add object");
         if add_response.clicked() {
             // create new object
-            let (new_object_id, _) = object_collection.new_object_default();
+            let (new_object_id, _) = object_collection
+                .new_object_default()
+                .expect("todo make command");
 
             // tell the rest of the engine there's been a change to the object collection
             let _ = object_collection.mark_object_for_data_update(new_object_id);

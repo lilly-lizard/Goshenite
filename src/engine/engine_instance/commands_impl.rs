@@ -77,24 +77,6 @@ impl EngineInstance {
         }
     }
 
-    fn execute_validation_command(&mut self, v_command: ValidationCommand) {
-        match v_command {
-            ValidationCommand::SelectedObject() => self.validate_selected_object(),
-        }
-    }
-
-    pub(super) fn validate_selected_object(&mut self) {
-        if let Some(some_selected_object_id) = self.selected_object_id {
-            let object_exists = self
-                .object_collection
-                .get_object(some_selected_object_id)
-                .is_some();
-            if !object_exists {
-                self.selected_object_id = None;
-            }
-        }
-    }
-
     pub(super) fn deselect_object(&mut self) {
         if self.selected_object_id.is_some() {
             self.gui.selected_object_changed();
@@ -117,7 +99,6 @@ impl EngineInstance {
         let mut selected_object_changed = true;
         if let Some(previously_selected_object_id) = self.selected_object_id {
             if previously_selected_object_id == object_id {
-                // note: written this way to consider the case where it was None before
                 selected_object_changed = false;
             }
         }
@@ -138,29 +119,28 @@ impl EngineInstance {
         object_id: ObjectId,
         primitive_op_index: usize,
     ) {
-        let (object_origin, primitive_op) =
-            if let Some(object) = self.object_collection.get_object(object_id) {
-                let primitive_op =
-                    if let Some(primitive_op) = object.primitive_ops.get(primitive_op_index) {
-                        primitive_op.clone()
-                    } else {
-                        warn!(
-                        "attempted to select primitive op index {} that doesn't exist in object {}",
-                        primitive_op_index, object_id
-                    );
-                        return;
-                    };
+        let object = if let Some(object) = self.object_collection.get_object(object_id) {
+            object
+        } else {
+            warn!(
+                "attempted to select object id {} that doesn't exist in object collection",
+                object_id
+            );
+            return;
+        };
 
-                (object.origin, primitive_op)
-            } else {
-                warn!(
-                    "attempted to select object id {} that doesn't exist in object collection",
-                    object_id
-                );
-                return;
-            };
+        let primitive_op = if let Some(primitive_op) = object.primitive_ops.get(primitive_op_index)
+        {
+            primitive_op.clone()
+        } else {
+            warn!(
+                "attempted to select primitive op index {} that doesn't exist in object {}",
+                primitive_op_index, object_id
+            );
+            return;
+        };
 
-        self.select_object(object_id, object_origin);
+        self.select_object(object_id, object.origin);
         self.select_primitive_op(primitive_op);
     }
 
@@ -185,6 +165,7 @@ impl EngineInstance {
                 return;
             }
         }
+
         gui.primitive_op_selected(&primitive_op);
         *selected_primitive_op_id = Some(primitive_op.id());
     }
@@ -208,6 +189,7 @@ impl EngineInstance {
             if let Err(_e) = res {
                 command_failed_warn(command, "selected object id invalid");
             }
+
             self.deselect_object();
         } else {
             command_failed_warn(command, "no selected object");
@@ -267,35 +249,35 @@ impl EngineInstance {
         primitive_op_id: PrimitiveOpId,
         command: Command,
     ) {
-        if let Some(object) = self.object_collection.get_object_mut(object_id) {
-            let remove_res = object.remove_primitive_op_id(primitive_op_id);
-            match remove_res {
-                // this primitive op may have been currently selected, in which case we may have
-                // to select the primitive op next to it.
-                Ok(removed_index) => Self::check_and_select_closest_primitive_op(
-                    &mut self.selected_primitive_op_id,
-                    &mut self.gui,
-                    primitive_op_id,
-                    removed_index,
-                    object,
-                ),
-                Err(_e) => command_failed_warn(command, "invalid primitive op id"),
-            }
+        let object = if let Some(object) = self.object_collection.get_object_mut(object_id) {
+            object
         } else {
             command_failed_warn(command, "invalid object id");
-        }
-    }
+            return;
+        };
 
-    fn remove_primitive_op_id_from_selected_object_via_command(
-        &mut self,
-        primitive_op_id: PrimitiveOpId,
-        command: Command,
-    ) {
-        if let Some(selected_object_id) = self.selected_object_id {
-            self.remove_primitive_op_id_via_command(selected_object_id, primitive_op_id, command);
-        } else {
-            command_failed_warn(command, "no selected object");
-        }
+        let remove_res = object.remove_primitive_op_id(primitive_op_id);
+        let removed_index = match remove_res {
+            Ok(removed_index) => removed_index,
+            Err(_e) => {
+                command_failed_warn(command, "invalid primitive op id");
+                return;
+            }
+        };
+
+        // this primitive op may have been currently selected, in which case we may have
+        // to select the primitive op next to it.
+        Self::check_and_select_closest_primitive_op(
+            &mut self.selected_primitive_op_id,
+            &mut self.gui,
+            primitive_op_id,
+            removed_index,
+            object,
+        );
+
+        let _ = self
+            .object_collection
+            .mark_object_for_data_update(object_id);
     }
 
     fn remove_primitive_op_index_via_command(
@@ -304,39 +286,35 @@ impl EngineInstance {
         primitive_op_index: usize,
         command: Command,
     ) {
-        if let Some(object) = self.object_collection.get_object_mut(object_id) {
-            let remove_res = object.remove_primitive_op_index(primitive_op_index);
-            match remove_res {
-                // this primitive op may have been currently selected, in which case we may have
-                // to select the primitive op next to it.
-                Ok(removed_id) => Self::check_and_select_closest_primitive_op(
-                    &mut self.selected_primitive_op_id,
-                    &mut self.gui,
-                    removed_id,
-                    primitive_op_index,
-                    object,
-                ),
-                Err(_e) => command_failed_warn(command, "invalid primitive op id"),
-            }
+        let object = if let Some(object) = self.object_collection.get_object_mut(object_id) {
+            object
         } else {
             command_failed_warn(command, "invalid object id");
-        }
-    }
+            return;
+        };
 
-    fn remove_primitive_op_index_from_selected_object_via_command(
-        &mut self,
-        primitive_op_index: usize,
-        command: Command,
-    ) {
-        if let Some(selected_object_id) = self.selected_object_id {
-            self.remove_primitive_op_index_via_command(
-                selected_object_id,
-                primitive_op_index,
-                command,
-            );
-        } else {
-            command_failed_warn(command, "no selected object");
-        }
+        let remove_res = object.remove_primitive_op_index(primitive_op_index);
+        let removed_id = match remove_res {
+            Ok(removed_id) => removed_id,
+            Err(_e) => {
+                command_failed_warn(command, "invalid primitive op id");
+                return;
+            }
+        };
+
+        // this primitive op may have been currently selected, in which case we may have
+        // to select the primitive op next to it.
+        Self::check_and_select_closest_primitive_op(
+            &mut self.selected_primitive_op_id,
+            &mut self.gui,
+            removed_id,
+            primitive_op_index,
+            object,
+        );
+
+        let _ = self
+            .object_collection
+            .mark_object_for_data_update(object_id);
     }
 
     /// If a removed primitive op is currently selected, select a different primitive op with the
@@ -378,6 +356,34 @@ impl EngineInstance {
         }
     }
 
+    fn remove_primitive_op_id_from_selected_object_via_command(
+        &mut self,
+        primitive_op_id: PrimitiveOpId,
+        command: Command,
+    ) {
+        if let Some(selected_object_id) = self.selected_object_id {
+            self.remove_primitive_op_id_via_command(selected_object_id, primitive_op_id, command);
+        } else {
+            command_failed_warn(command, "no selected object");
+        }
+    }
+
+    fn remove_primitive_op_index_from_selected_object_via_command(
+        &mut self,
+        primitive_op_index: usize,
+        command: Command,
+    ) {
+        if let Some(selected_object_id) = self.selected_object_id {
+            self.remove_primitive_op_index_via_command(
+                selected_object_id,
+                primitive_op_index,
+                command,
+            );
+        } else {
+            command_failed_warn(command, "no selected object");
+        }
+    }
+
     fn remove_selected_primitive_op_via_command(&mut self, command: Command) {
         if let Some(selected_primitive_op_id) = self.selected_primitive_op_id {
             self.remove_primitive_op_id_from_selected_object_via_command(
@@ -386,6 +392,25 @@ impl EngineInstance {
             );
         } else {
             command_failed_warn(command, "no selected primitive op");
+        }
+    }
+
+    fn execute_validation_command(&mut self, v_command: ValidationCommand) {
+        match v_command {
+            ValidationCommand::SelectedObject() => self.validate_selected_object(),
+        }
+    }
+
+    pub(super) fn validate_selected_object(&mut self) {
+        if let Some(some_selected_object_id) = self.selected_object_id {
+            let object_exists = self
+                .object_collection
+                .get_object(some_selected_object_id)
+                .is_some();
+
+            if !object_exists {
+                self.selected_object_id = None;
+            }
         }
     }
 }

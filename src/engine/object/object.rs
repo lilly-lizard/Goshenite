@@ -9,7 +9,7 @@ use crate::{
     },
     helper::{
         more_errors::CollectionError,
-        unique_id_gen::{UniqueId, UniqueIdGen},
+        unique_id_gen::{UniqueId, UniqueIdError, UniqueIdGen, UniqueIdType},
     },
     renderer::shader_interfaces::primitive_op_buffer::{
         create_primitive_op_packet, nop_primitive_op_packet, PrimitiveOpBufferUnit,
@@ -26,16 +26,19 @@ const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ObjectId(pub UniqueId);
-impl ObjectId {
-    pub const fn raw_id(&self) -> UniqueId {
+
+impl UniqueIdType for ObjectId {
+    fn raw_id(&self) -> UniqueId {
         self.0
     }
 }
+
 impl From<UniqueId> for ObjectId {
     fn from(id: UniqueId) -> Self {
         Self(id)
     }
 }
+
 impl std::fmt::Display for ObjectId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.raw_id())
@@ -51,7 +54,7 @@ pub struct Object {
     pub origin: Vec3,
     pub primitive_ops: Vec<PrimitiveOp>,
 
-    primitive_op_id_gen: UniqueIdGen,
+    primitive_op_id_gen: UniqueIdGen<PrimitiveOpId>,
 }
 
 impl Object {
@@ -68,22 +71,23 @@ impl Object {
     /// Returns the index of the removed primitive op
     pub fn remove_primitive_op_id(
         &mut self,
-        prim_op_id: PrimitiveOpId,
+        primitive_op_id: PrimitiveOpId,
     ) -> Result<usize, CollectionError> {
-        let index = self
+        let index_res = self
             .primitive_ops
             .iter()
-            .position(|primitive_op| primitive_op.id() == prim_op_id);
+            .position(|primitive_op| primitive_op.id() == primitive_op_id);
 
-        if let Some(index) = index {
+        let _ = self.primitive_op_id_gen.recycle_id(primitive_op_id);
+
+        if let Some(index) = index_res {
             self.primitive_ops.remove(index);
             return Ok(index);
         } else {
             return Err(CollectionError::InvalidId {
-                raw_id: prim_op_id.raw_id(),
+                raw_id: primitive_op_id.raw_id(),
             });
         }
-        // todo recycle_id (for primitive too? on drop?)
     }
 
     pub fn remove_primitive_op_index(
@@ -97,22 +101,24 @@ impl Object {
                 size: op_count,
             });
         }
+
         let removed_prim_op = self.primitive_ops.remove(index);
+
+        let _ = self.primitive_op_id_gen.recycle_id(removed_prim_op.id());
         Ok(removed_prim_op.id())
-        // todo recycle_id
     }
 
     /// Returns the id of the newly created primitive op
-    pub fn push_op(&mut self, operation: Operation, primitive: Primitive) -> PrimitiveOpId {
-        let new_raw_id = self
-            .primitive_op_id_gen
-            .new_id()
-            .expect("todo should probably handle this somehow...");
-        let p_op_id = PrimitiveOpId(new_raw_id);
+    pub fn push_op(
+        &mut self,
+        operation: Operation,
+        primitive: Primitive,
+    ) -> Result<PrimitiveOpId, UniqueIdError> {
+        let primitive_op_id = self.primitive_op_id_gen.new_id()?;
 
         self.primitive_ops
-            .push(PrimitiveOp::new(p_op_id, operation, primitive));
-        p_op_id
+            .push(PrimitiveOp::new(primitive_op_id, operation, primitive));
+        Ok(primitive_op_id)
     }
 
     pub fn shift_primitive_ops(

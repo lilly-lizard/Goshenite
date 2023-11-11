@@ -22,6 +22,7 @@ use crate::{
             sphere::Sphere,
         },
     },
+    helper::unique_id_gen::UniqueIdType,
 };
 use egui::{ComboBox, DragValue, RichText, TextStyle};
 use egui_dnd::{DragDropResponse, DragableItem};
@@ -298,7 +299,9 @@ fn new_primitive_op_editor(
     if clicked_add {
         // append primitive op to selected object and mark for updating
         let new_primitive = gui_state.primitive_fields.clone();
-        let primitive_op_id = selected_object.push_op(gui_state.op_field, new_primitive);
+        let primitive_op_id = selected_object
+            .push_op(gui_state.op_field, new_primitive)
+            .expect("todo make command");
         object_edit_state = EditState::Modified;
 
         if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
@@ -440,7 +443,10 @@ pub fn primitive_op_list(
 
                 // primitive op selected
                 if prim_op_res.clicked() {
-                    gui_state.set_selected_primitive_op(primitive_op);
+                    commands.push(Command::SelectPrimitiveOpId(
+                        selected_object.id(),
+                        primitive_op.id(),
+                    ))
                 }
             });
         },

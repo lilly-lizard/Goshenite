@@ -1,5 +1,8 @@
 use super::operation::Operation;
-use crate::{engine::primitives::primitive::Primitive, helper::unique_id_gen::UniqueId};
+use crate::{
+    engine::primitives::primitive::Primitive,
+    helper::unique_id_gen::{UniqueId, UniqueIdType},
+};
 
 // PRIMITIVE OP
 
@@ -25,8 +28,9 @@ impl PrimitiveOp {
 
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PrimitiveOpId(pub UniqueId);
-impl PrimitiveOpId {
-    pub const fn raw_id(&self) -> UniqueId {
+
+impl UniqueIdType for PrimitiveOpId {
+    fn raw_id(&self) -> UniqueId {
         self.0
     }
 }
