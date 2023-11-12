@@ -9,10 +9,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - object/primitive op ids in gui
 
-- can all gui manip stuff be passed to command manager?
-	- would be great to have ui in its own thread so that input is always processed
-	- would be great to get rid of weak ptrs/ref counting/cells
-	- gonna have command pallete anyway so ideal to unify interface
 - debug outline for aabbs
 - gui code that edits engine stuff e.g. camera, objects, primitives -> funcitons that could be called via command interface!
 - json save theme setting
@@ -34,7 +30,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 ## ui additions
 
-- add/remove objects
 - comand palette and keyboard shortcuts
 - undo (egui::undoer)
 - serde save gui state (start with theme)
@@ -42,10 +37,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - Bang Wong color palette
 
 ## bugz!
-
-- not handling primitive op index rearrange properly
-- update target pos when selected object moves (requires moving stuff out of gui and into engine...)
-- CursorState not initialized properly! e.g. cursor position 0,0 at start so start dragging before moving it and a big jump occurs. also check latest winit in case querying was made better?
 
 ## optimize
 

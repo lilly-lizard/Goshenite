@@ -271,6 +271,34 @@ impl GuiPass {
         );
         let push_constant_bytes = bytemuck::bytes_of(&push_constant_data);
 
+        let viewport = vk::Viewport {
+            x: 0.,
+            y: 0.,
+            width: framebuffer_dimensions[0],
+            height: framebuffer_dimensions[1],
+            min_depth: 0.,
+            max_depth: 1.,
+        };
+
+        unsafe {
+            let device_ash = self.device.inner();
+            let command_buffer_handle = command_buffer.handle();
+
+            device_ash.cmd_bind_pipeline(
+                command_buffer_handle,
+                vk::PipelineBindPoint::GRAPHICS,
+                self.pipeline.handle(),
+            );
+            device_ash.cmd_push_constants(
+                command_buffer_handle,
+                self.pipeline.pipeline_layout().handle(),
+                vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
+                0,
+                push_constant_bytes,
+            );
+            device_ash.cmd_set_viewport(command_buffer_handle, 0, &[viewport]);
+        }
+
         for ClippedPrimitive {
             clip_rect,
             primitive,
@@ -285,7 +313,6 @@ impl GuiPass {
 
                     self.record_mesh_commands(
                         command_buffer,
-                        push_constant_bytes,
                         mesh,
                         self.scale_factor,
                         framebuffer_dimensions,
@@ -759,7 +786,6 @@ impl GuiPass {
     fn record_mesh_commands(
         &mut self,
         command_buffer: &CommandBuffer,
-        push_constant_bytes: &[u8],
         mesh: Mesh,
         scale_factor: f32,
         framebuffer_dimensions: [f32; 2],
@@ -773,31 +799,17 @@ impl GuiPass {
         let scissor =
             calculate_gui_element_scissor(scale_factor, framebuffer_dimensions, clip_rect);
 
-        let viewport = vk::Viewport {
-            x: 0.,
-            y: 0.,
-            width: framebuffer_dimensions[0],
-            height: framebuffer_dimensions[1],
-            min_depth: 0.,
-            max_depth: 1.,
-        };
-
         let desc_set = self
             .texture_desc_sets
             .get(&texture_id)
             .ok_or(GuiRendererError::TextureDescSetMissing { id: texture_id })
             .context("recording gui render commands")?
             .clone();
+
         unsafe {
             let device_ash = self.device.inner();
             let command_buffer_handle = command_buffer.handle();
 
-            device_ash.cmd_bind_pipeline(
-                command_buffer_handle,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline.handle(),
-            );
-            device_ash.cmd_set_viewport(command_buffer_handle, 0, &[viewport]);
             device_ash.cmd_set_scissor(command_buffer_handle, 0, &[scissor]);
             device_ash.cmd_bind_descriptor_sets(
                 command_buffer_handle,
@@ -806,13 +818,6 @@ impl GuiPass {
                 0,
                 &[desc_set.handle()],
                 &[],
-            );
-            device_ash.cmd_push_constants(
-                command_buffer_handle,
-                self.pipeline.pipeline_layout().handle(),
-                vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
-                0,
-                push_constant_bytes,
             );
             device_ash.cmd_bind_vertex_buffers(
                 command_buffer_handle,
