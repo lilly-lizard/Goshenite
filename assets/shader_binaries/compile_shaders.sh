@@ -3,14 +3,14 @@
 # stop on first error
 set -e
 
-cd ../../src/renderer/glsl
-
-FRAG_SRC="*.frag"
-VERT_SRC="*.vert"
+FRAG_SRC="../../src/renderer/glsl/*.frag"
+VERT_SRC="../../src/renderer/glsl/*.vert"
 
 for src in $FRAG_SRC; do
-	glslc $src -o "../../../assets/shader_binaries/$src.spv"
+	glslc "$src" -o "$src.spv"
+	spirv-opt -O $src.spv -o "$src.spv"
 done
 for src in $VERT_SRC; do
-	glslc $src -o "../../../assets/shader_binaries/$src.spv"
+	glslc "$src" -o "$src.spv"
+	spirv-opt -O "$src.spv" -o "$src.spv"
 done
