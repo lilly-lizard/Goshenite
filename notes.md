@@ -4,11 +4,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
-- new: spawn render thread, thread waits to receive window handle before initializing renderer
-- StartCause::Init sends window to renderer
-
 - object/primitive op ids in gui
-
 - debug outline for aabbs
 - gui code that edits engine stuff e.g. camera, objects, primitives -> funcitons that could be called via command interface!
 - json save theme setting
