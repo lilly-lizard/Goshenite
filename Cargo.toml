@@ -30,7 +30,7 @@ raw-window-handle = "0.5"
 ash = "0.37.2"
 ash-window = "0.12"
 # bort has a bunch of helper structs and functions wrapped around ash
-bort-vk = "0.2.2"
+bort-vk = "0.2.4"
 # AMD vulkan memory allocator bindings
 bort-vma = { version = "0.3", features = ["vulkan-1-2"] }
 # bit-casting crate (for cpu<->gpu buffers)
