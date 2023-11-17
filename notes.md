@@ -4,6 +4,8 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- get rid of curved egui borders
+- change egui font
 - object/primitive op ids in gui
 - debug outline for aabbs
 - gui code that edits engine stuff e.g. camera, objects, primitives -> funcitons that could be called via command interface!

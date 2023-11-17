@@ -210,9 +210,9 @@ dependencies = [
 
 [[package]]
 name = "bort-vk"
-version = "0.2.2"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a1782525e084ac97e0d4b14a767e35671f9513114d05de2d50e6586a5851db0"
+checksum = "902477d29cebeae87f58f48ec50f58b863a87e710d997a2a39f289735784cf71"
 dependencies = [
  "ash",
  "ash-window",
@@ -222,9 +222,9 @@ dependencies = [
 
 [[package]]
 name = "bort-vma"
-version = "0.3.1"
+version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8d27e97e88e877c355289607b6b42baa2e214197f4316ce21314a8b699d1be27"
+checksum = "0fb75e352d944db9b072c5073214854de09c7affb5423bea13328f7f975f77a8"
 dependencies = [
  "ash",
  "bitflags 2.4.0",
