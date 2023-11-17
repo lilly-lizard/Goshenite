@@ -1,6 +1,5 @@
 use super::{
     camera::Camera,
-    config_ui::EGUI_TRACE,
     gui_state::{GuiState, WindowStates},
     layout_camera_control::camera_control_layout,
     layout_object_editor::object_editor_layout,
@@ -192,9 +191,6 @@ impl Gui {
 impl Gui {
     fn top_panel(&mut self) {
         egui::TopBottomPanel::bottom("main top panel").show(&self.context, |ui| {
-            if EGUI_TRACE {
-                egui::trace!(ui);
-            }
             bottom_panel_layout(ui, &mut self.window_states);
         });
     }
@@ -207,9 +203,6 @@ impl Gui {
         let mut commands = Vec::<Command>::new();
 
         let add_contents = |ui: &mut egui::Ui| {
-            if EGUI_TRACE {
-                egui::trace!(ui);
-            }
             let mut new_commands = object_list_layout(ui, selected_object_id, object_collection);
             commands.append(&mut new_commands);
         };
@@ -233,9 +226,6 @@ impl Gui {
         let mut commands = Vec::<Command>::new();
 
         let add_contents = |ui: &mut egui::Ui| {
-            if EGUI_TRACE {
-                egui::trace!(ui);
-            }
             let mut new_commands = object_editor_layout(
                 ui,
                 &mut self.gui_state,
@@ -260,9 +250,6 @@ impl Gui {
         let mut commands = Vec::<Command>::new();
 
         let add_contents = |ui: &mut egui::Ui| {
-            if EGUI_TRACE {
-                egui::trace!(ui);
-            }
             let mut new_commands = camera_control_layout(ui, camera);
             commands.append(&mut new_commands);
         };

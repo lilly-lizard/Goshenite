@@ -36,9 +36,9 @@ bort-vma = { version = "0.3", features = ["vulkan-1-2"] }
 # bit-casting crate (for cpu<->gpu buffers)
 bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
-egui = "0.21"
-egui-winit = "0.21"
-egui_dnd = { git = "https://github.com/lilly-lizard/egui_dnd-fork/", ref = "9d450d7" }
+egui = { version = "0.23", features = ["callstack"] }
+egui-winit = "0.23"
+egui_dnd = { git = "https://github.com/lilly-lizard/egui_dnd-fork/", ref = "d6d6fcc" }
 # hash library used by egui (fast af boii)
 ahash = { version = "0.8", default-features = false, features = [
     "no-rng", # we don't need DOS-protection, so we let users opt-in to it instead
@@ -51,7 +51,7 @@ single_value_channel = "1.2"
 
 [target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
 # moltenvk is a vulkan wrapper over metal allowing us to use vulkan on apple platforms
-ash-molten = { version = "0.15", features = [
+ash-molten = { version = "0.16", features = [
     "pre-built", # download pre-built release
 ] }
 

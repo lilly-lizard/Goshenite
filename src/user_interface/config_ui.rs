@@ -5,9 +5,6 @@ use crate::helper::angle::Angle;
 /// If set to true, after clicking "Add primitive op" the newly created primitive op will be selected
 pub const SELECT_PRIMITIVE_OP_AFTER_ADD: bool = false;
 
-/// Enables option to show egui debug overlay
-pub const EGUI_TRACE: bool = false;
-
 /// Limits how close camera vertical direction can get to world space up
 pub const VERTICAL_ANGLE_CLAMP: Angle = Angle::Degrees(1.);
 
