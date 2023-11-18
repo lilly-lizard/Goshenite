@@ -4,6 +4,10 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- heat map
+- single primitive function (unbound)
+- blend function (primitive op)
+
 - get rid of curved egui borders
 - change egui font
 - object/primitive op ids in gui
