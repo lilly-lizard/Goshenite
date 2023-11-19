@@ -4,7 +4,9 @@ use glam::DVec3;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Command {
     // camera
-    SetCameraLockOn { target_pos: DVec3 },
+    SetCameraLockOn {
+        target_pos: DVec3,
+    },
     UnsetCameraLockOn,
     ResetCamera,
 
@@ -22,6 +24,11 @@ pub enum Command {
     RemoveSelectedPrimitiveOp(),
     RemovePrimitiveOpId(ObjectId, PrimitiveOpId),
     RemovePrimitiveOpIndex(ObjectId, usize),
+    ShiftPrimitiveOps {
+        object_id: ObjectId,
+        source_index: usize,
+        target_index: usize,
+    },
 
     // internal
     Validate(ValidationCommand),

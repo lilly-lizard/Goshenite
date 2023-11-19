@@ -64,14 +64,13 @@ pub fn object_editor_layout(
     );
     object_edit_state = new_object_edit_state.combine(object_edit_state);
 
-    let new_object_edit_state = primitive_op_list(
+    primitive_op_list(
         ui,
         &mut commands,
         gui_state,
         selected_object,
         selected_primitive_op_id,
     );
-    object_edit_state = new_object_edit_state.combine(object_edit_state);
 
     if object_edit_state == EditState::Modified {
         let _ = object_collection.mark_object_for_data_update(selected_object_id);
@@ -378,11 +377,9 @@ pub fn primitive_op_list(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
     gui_state: &mut GuiState,
-    selected_object: &mut Object,
+    selected_object: &Object,
     selected_primitive_op_id: Option<PrimitiveOpId>,
-) -> EditState {
-    let mut object_edit_state = EditState::NoChange;
-
+) {
     ui.separator();
 
     // new primitive op button
@@ -455,20 +452,12 @@ pub fn primitive_op_list(
 
     // if an item has been dropped after being dragged, re-arrange the primtive ops list
     if let DragDropResponse::Completed(drag_indices) = drag_drop_response {
-        let shift_res =
-            selected_object.shift_primitive_ops(drag_indices.source, drag_indices.target);
-        if let Err(e) = shift_res {
-            error!(
-                "bug when trying to re-arrange primitive op list of object {}: {}",
-                selected_object.id().raw_id(),
-                e
-            );
-        }
-
-        object_edit_state = EditState::Modified;
+        commands.push(Command::ShiftPrimitiveOps {
+            object_id: selected_object.id(),
+            source_index: drag_indices.source,
+            target_index: drag_indices.target,
+        });
     }
-
-    object_edit_state
 }
 
 /// Same as `sphere_editor_ui` but takes a `Sphere` as arg.

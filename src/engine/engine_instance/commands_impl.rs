@@ -62,6 +62,18 @@ impl EngineInstance {
                         command,
                     );
                 }
+                Command::ShiftPrimitiveOps {
+                    object_id,
+                    source_index,
+                    target_index,
+                } => {
+                    self.shift_primitive_ops_via_command(
+                        object_id,
+                        source_index,
+                        target_index,
+                        command,
+                    );
+                }
 
                 Command::Validate(v_command) => self.execute_validation_command(v_command),
             }
@@ -414,6 +426,32 @@ impl EngineInstance {
         }
     }
 
+    fn shift_primitive_ops_via_command(
+        &mut self,
+        object_id: ObjectId,
+        source_index: usize,
+        target_index: usize,
+        command: Command,
+    ) {
+        let object = if let Some(some_object) = self.object_collection.get_object_mut(object_id) {
+            some_object
+        } else {
+            command_failed_warn(command, "invalid object id");
+            return;
+        };
+
+        let shift_res = object.shift_primitive_ops(source_index, target_index);
+
+        if let Err(e) = shift_res {
+            let error_msg = format!("{}", e);
+            command_failed_warn(command, &error_msg);
+        }
+
+        let _ = self
+            .object_collection
+            .mark_object_for_data_update(object_id);
+    }
+
     // ~~ Internal ~~
 
     fn execute_validation_command(&mut self, v_command: ValidationCommand) {
@@ -436,6 +474,6 @@ impl EngineInstance {
     }
 }
 
-fn command_failed_warn(command: Command, failed_because: &'static str) {
+fn command_failed_warn(command: Command, failed_because: &str) {
     warn!("command {:?} failed due to {}", command, failed_because);
 }
