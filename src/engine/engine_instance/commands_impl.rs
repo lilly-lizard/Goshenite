@@ -4,11 +4,13 @@ use crate::{
         commands::{Command, CommandWithSource, ValidationCommand},
         object::{
             object::{Object, ObjectId},
+            operation::Operation,
             primitive_op::{PrimitiveOp, PrimitiveOpId},
         },
+        primitives::primitive::Primitive,
     },
     helper::list::choose_closest_valid_index,
-    user_interface::gui::Gui,
+    user_interface::{config_ui, gui::Gui},
 };
 use glam::Vec3;
 #[allow(unused_imports)]
@@ -53,7 +55,7 @@ impl EngineInstance {
                     self.remove_selected_primitive_op_via_command(command);
                 }
                 Command::RemovePrimitiveOpId(object_id, primitive_op_id) => {
-                    self.remove_primitive_op_id_via_command(object_id, primitive_op_id, command);
+                    self.remove_primitive_op_id_via_command(object_id, primitive_op_id, command)
                 }
                 Command::RemovePrimitiveOpIndex(object_id, primitive_op_index) => {
                     self.remove_primitive_op_index_via_command(
@@ -74,6 +76,11 @@ impl EngineInstance {
                         command,
                     );
                 }
+                Command::PushOp {
+                    object_id,
+                    operation,
+                    primitive,
+                } => self.push_op_via_command(object_id, operation, primitive, command),
 
                 Command::Validate(v_command) => self.execute_validation_command(v_command),
             }
@@ -119,7 +126,59 @@ impl EngineInstance {
         }
     }
 
-    pub(super) fn select_object_and_primitive_op(
+    fn remove_object_via_command(&mut self, object_id: ObjectId, command: Command) {
+        let res = self.object_collection.remove_object(object_id);
+        if let Err(_e) = res {
+            command_failed_warn(command, "invalid object id");
+        }
+
+        if let Some(previously_selected_object_id) = self.selected_object_id {
+            if previously_selected_object_id == object_id {
+                self.deselect_object();
+            }
+        }
+    }
+
+    fn remove_selected_object_via_command(&mut self, command: Command) {
+        if let Some(selected_object_id) = self.selected_object_id {
+            let res = self.object_collection.remove_object(selected_object_id);
+            if let Err(_e) = res {
+                command_failed_warn(command, "selected object id invalid");
+            }
+
+            self.deselect_object();
+        } else {
+            command_failed_warn(command, "no selected object");
+        }
+    }
+
+    fn create_and_select_new_default_object_via_command(&mut self, command: Command) {
+        let new_object_res = self.object_collection.new_object_default();
+
+        let (new_object_id, new_object) = match new_object_res {
+            Ok(object_and_id) => object_and_id,
+            Err(e) => {
+                error!(
+                    "the engine has run out of unique ids to assign to new objects.\
+                    this case is not yet handled by goshenite!\
+                    please report this as a bug..."
+                );
+                error!("command {:?} critially failed with error {}", command, e);
+                return;
+            }
+        };
+
+        let new_object_origin = new_object.origin;
+        self.select_object_unchecked(new_object_id, new_object_origin);
+
+        let _ = self
+            .object_collection
+            .mark_object_for_data_update(new_object_id);
+    }
+
+    // ~~ Primitive Op ~~
+
+    pub(super) fn select_object_and_primitive_op_index(
         &mut self,
         object_id: ObjectId,
         primitive_op_index: usize,
@@ -174,58 +233,6 @@ impl EngineInstance {
         gui.primitive_op_selected(&primitive_op);
         *selected_primitive_op_id = Some(primitive_op.id());
     }
-
-    fn remove_object_via_command(&mut self, object_id: ObjectId, command: Command) {
-        let res = self.object_collection.remove_object(object_id);
-        if let Err(_e) = res {
-            command_failed_warn(command, "invalid object id");
-        }
-
-        if let Some(previously_selected_object_id) = self.selected_object_id {
-            if previously_selected_object_id == object_id {
-                self.deselect_object();
-            }
-        }
-    }
-
-    fn remove_selected_object_via_command(&mut self, command: Command) {
-        if let Some(selected_object_id) = self.selected_object_id {
-            let res = self.object_collection.remove_object(selected_object_id);
-            if let Err(_e) = res {
-                command_failed_warn(command, "selected object id invalid");
-            }
-
-            self.deselect_object();
-        } else {
-            command_failed_warn(command, "no selected object");
-        }
-    }
-
-    fn create_and_select_new_default_object_via_command(&mut self, command: Command) {
-        let new_object_res = self.object_collection.new_object_default();
-
-        let (new_object_id, new_object) = match new_object_res {
-            Ok(object_and_id) => object_and_id,
-            Err(e) => {
-                error!(
-                    "the engine has run out of unique ids to assign to new objects.\
-                    this case is not yet handled by goshenite!\
-                    please report this as a bug..."
-                );
-                error!("command {:?} critially failed with error {}", command, e);
-                return;
-            }
-        };
-
-        let new_object_origin = new_object.origin;
-        self.select_object_unchecked(new_object_id, new_object_origin);
-
-        let _ = self
-            .object_collection
-            .mark_object_for_data_update(new_object_id);
-    }
-
-    // ~~ Primitive Op ~~
 
     fn select_primitive_op_id_via_command(
         &mut self,
@@ -450,6 +457,40 @@ impl EngineInstance {
         let _ = self
             .object_collection
             .mark_object_for_data_update(object_id);
+    }
+
+    fn push_op_via_command(
+        &mut self,
+        object_id: ObjectId,
+        operation: Operation,
+        primitive: Primitive,
+        command: Command,
+    ) {
+        let object = if let Some(some_object) = self.object_collection.get_object_mut(object_id) {
+            some_object
+        } else {
+            command_failed_warn(command, "invalid object id");
+            return;
+        };
+
+        let push_op_res = object.push_op(operation, primitive);
+
+        let new_primitive_op_id = match push_op_res {
+            Err(e) => {
+                let error_msg = format!("{}", e);
+                command_failed_warn(command, &error_msg);
+                return;
+            }
+            Ok(id) => id,
+        };
+
+        let _ = self
+            .object_collection
+            .mark_object_for_data_update(object_id);
+
+        if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
+            self.select_object_and_primitive_op(object_id, new_primitive_op_id);
+        }
     }
 
     // ~~ Internal ~~

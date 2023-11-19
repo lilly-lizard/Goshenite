@@ -1,4 +1,7 @@
-use super::object::{object::ObjectId, primitive_op::PrimitiveOpId};
+use super::{
+    object::{object::ObjectId, operation::Operation, primitive_op::PrimitiveOpId},
+    primitives::primitive::Primitive,
+};
 use glam::DVec3;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -28,6 +31,11 @@ pub enum Command {
         object_id: ObjectId,
         source_index: usize,
         target_index: usize,
+    },
+    PushOp {
+        object_id: ObjectId,
+        operation: Operation,
+        primitive: Primitive,
     },
 
     // internal

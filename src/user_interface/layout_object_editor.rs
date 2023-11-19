@@ -256,10 +256,8 @@ fn new_primitive_op_editor(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
     gui_state: &mut GuiState,
-    selected_object: &mut Object,
-) -> EditState {
-    let mut object_edit_state = EditState::NoChange;
-
+    selected_object: &Object,
+) {
     ui.separator();
     ui.label("New primitive");
 
@@ -301,7 +299,6 @@ fn new_primitive_op_editor(
         let new_primitive_op_id = selected_object
             .push_op(gui_state.op_field, new_primitive)
             .expect("todo make command");
-        object_edit_state = EditState::Modified;
 
         if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
             commands.push(Command::SelectPrimitiveOpId(
@@ -313,8 +310,6 @@ fn new_primitive_op_editor(
     if clicked_reset {
         gui_state.reset_primitive_op_fields();
     }
-
-    object_edit_state
 }
 
 /// Returns a new operation if a different one is selected
