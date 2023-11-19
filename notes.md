@@ -186,36 +186,6 @@ mold 26.29s
 - print sizeof(variable/type) -> sizeof
 - info frame [args] -> info about stack frame
 
-## p $sp
-
-debug:
-main.rs:30 (start of main)						-> 0x7fffffffdae0
-render_manager.rs:73 (start of new) 			-> 0x7fffffff9d20
-vulkano::shader::ShaderModule::from_words		-> 0x7fffffff96f0
-spirv.rs:53 (start of Spirv::new)				-> 0x7fffffff6f60
-spirv_parse.rs Instruction::parse				-> 0x7fffffefa4c0
-(gdb) info frame
-Stack level 0, frame at 0x7fffffff6f60:
- rip = 0x555555815f4e in vulkano::shader::spirv::Instruction::parse
-    (/home/david/Documents/source/DEV/Goshenite/target/debug/build/vulkano-04304a039d33c327/out/spirv_parse.rs:3977); saved rip = 0x555555811b52
- called by frame at 0x7fffffff96f0
- source language rust.
- Arglist at 0x7fffffefa4b8, args: reader=0x7fffffff7590
- Locals at 0x7fffffefa4b8, Previous frame's sp is 0x7fffffff6f60
- Saved registers:
-  rip at 0x7fffffff6f58
-
-release-with-debug-info:
-main.rs:30 (start of main)						-> 0x7fffffffdc20
-render_manager.rs:73 (start of new) 			-> 0x7fffffffc640
-spirv.rs:53 (start of Spirv::new)				-> 0x7fffffffbec0
-b spirv.rs:87; step
-spirv_parse.rs Instruction::parse				-> 0x7fffffffbc40
-
-nightly debug:
-spirv.rs:53 (start of Spirv::new)				-> 0x7fffffff6f70
-spirv_parse.rs Instruction::parse				-> 0x7fffffefa4d0
-
 # gpu hardware
 
 - https://github.com/VerticalResearchGroup/miaow
