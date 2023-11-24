@@ -162,7 +162,8 @@ pub fn primitive_op_editor(
             selected_prim_op_id,
         );
     } else {
-        return new_primitive_op_editor(ui, commands, gui_state, selected_object);
+        new_primitive_op_editor(ui, commands, gui_state, selected_object);
+        return EditState::NoChange;
     }
 }
 
@@ -184,7 +185,8 @@ fn existing_primitive_op_editor(
                 debug!("selected object {} dropped", selected_object_id);
                 commands.push(ValidationCommand::SelectedObject().into());
 
-                return new_primitive_op_editor(ui, commands, gui_state, selected_object);
+                new_primitive_op_editor(ui, commands, gui_state, selected_object);
+                return EditState::NoChange;
             }
         };
 
@@ -294,17 +296,18 @@ fn new_primitive_op_editor(
         clicked_reset = ui_h.button("Reset").clicked();
     });
     if clicked_add {
-        // append primitive op to selected object and mark for updating
-        let new_primitive = gui_state.primitive_fields.clone();
-        let new_primitive_op_id = selected_object
-            .push_op(gui_state.op_field, new_primitive)
-            .expect("todo make command");
-
         if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
-            commands.push(Command::SelectPrimitiveOpId(
-                selected_object.id(),
-                new_primitive_op_id,
-            ))
+            commands.push(Command::PushOpAndSelect {
+                object_id: selected_object.id(),
+                operation: gui_state.op_field,
+                primitive: gui_state.primitive_fields.clone(),
+            });
+        } else {
+            commands.push(Command::PushOp {
+                object_id: selected_object.id(),
+                operation: gui_state.op_field,
+                primitive: gui_state.primitive_fields.clone(),
+            });
         }
     }
     if clicked_reset {

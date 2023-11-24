@@ -80,7 +80,12 @@ impl EngineInstance {
                     object_id,
                     operation,
                     primitive,
-                } => self.push_op_via_command(object_id, operation, primitive, command),
+                } => _ = self.push_op_via_command(object_id, operation, primitive, command),
+                Command::PushOpAndSelect {
+                    object_id,
+                    operation,
+                    primitive,
+                } => self.push_op_and_select_via_command(object_id, operation, primitive, command),
 
                 Command::Validate(v_command) => self.execute_validation_command(v_command),
             }
@@ -512,18 +517,35 @@ impl EngineInstance {
             .mark_object_for_data_update(object_id);
     }
 
-    fn push_op_via_command(
+    fn push_op_and_select_via_command(
         &mut self,
         object_id: ObjectId,
         operation: Operation,
         primitive: Primitive,
         command: Command,
     ) {
+        let push_op_res = self.push_op_via_command(object_id, operation, primitive, command);
+
+        let new_primitive_op_id = match push_op_res {
+            Some(id) => id,
+            None => return,
+        };
+        self.select_object_and_primitive_op_id(object_id, new_primitive_op_id);
+    }
+
+    /// Returns the primitive op id
+    fn push_op_via_command(
+        &mut self,
+        object_id: ObjectId,
+        operation: Operation,
+        primitive: Primitive,
+        command: Command,
+    ) -> Option<PrimitiveOpId> {
         let object = if let Some(some_object) = self.object_collection.get_object_mut(object_id) {
             some_object
         } else {
             command_failed_warn(command, "invalid object id");
-            return;
+            return None;
         };
 
         let push_op_res = object.push_op(operation, primitive);
@@ -532,7 +554,7 @@ impl EngineInstance {
             Err(e) => {
                 let error_msg = format!("{}", e);
                 command_failed_warn(command, &error_msg);
-                return;
+                return None;
             }
             Ok(id) => id,
         };
@@ -541,9 +563,7 @@ impl EngineInstance {
             .object_collection
             .mark_object_for_data_update(object_id);
 
-        if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
-            self.select_object_and_primitive_op_id(object_id, new_primitive_op_id);
-        }
+        Some(new_primitive_op_id)
     }
 
     // ~~ Internal ~~

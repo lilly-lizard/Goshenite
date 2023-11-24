@@ -37,6 +37,11 @@ pub enum Command {
         operation: Operation,
         primitive: Primitive,
     },
+    PushOpAndSelect {
+        object_id: ObjectId,
+        operation: Operation,
+        primitive: Primitive,
+    },
 
     // internal
     Validate(ValidationCommand),
