@@ -10,7 +10,7 @@ use crate::{
         primitives::primitive::Primitive,
     },
     helper::list::choose_closest_valid_index,
-    user_interface::{config_ui, gui::Gui},
+    user_interface::gui::Gui,
 };
 use glam::Vec3;
 #[allow(unused_imports)]
@@ -44,13 +44,15 @@ impl EngineInstance {
                     self.create_and_select_new_default_object_via_command(command)
                 }
 
-                // primitive op
+                // primtive op - selection
                 Command::SelectPrimitiveOpId(object_id, primitive_op_id) => {
                     self.select_primitive_op_id_via_command(object_id, primitive_op_id, command)
                 }
                 Command::SelectPrimitiveOpIndex(object_id, primitive_op_index) => self
                     .select_primitive_op_index_via_command(object_id, primitive_op_index, command),
                 Command::DeselectPrimtiveOp() => self.deselect_primitive_op(),
+
+                // primitive op - remove
                 Command::RemoveSelectedPrimitiveOp() => {
                     self.remove_selected_primitive_op_via_command(command);
                 }
@@ -64,6 +66,32 @@ impl EngineInstance {
                         command,
                     );
                 }
+
+                // primitive op - push
+                Command::PushOp {
+                    object_id,
+                    operation,
+                    primitive,
+                } => _ = self.push_op_via_command(object_id, operation, primitive, command),
+                Command::PushOpAndSelect {
+                    object_id,
+                    operation,
+                    primitive,
+                } => self.push_op_and_select_via_command(object_id, operation, primitive, command),
+
+                // primitive op - modify
+                Command::SetPrimitiveOp {
+                    object_id,
+                    primitive_op_id,
+                    new_primitive,
+                    new_operation,
+                } => self.set_primitive_op_via_command(
+                    object_id,
+                    primitive_op_id,
+                    new_primitive,
+                    new_operation,
+                    command,
+                ),
                 Command::ShiftPrimitiveOps {
                     object_id,
                     source_index,
@@ -76,16 +104,6 @@ impl EngineInstance {
                         command,
                     );
                 }
-                Command::PushOp {
-                    object_id,
-                    operation,
-                    primitive,
-                } => _ = self.push_op_via_command(object_id, operation, primitive, command),
-                Command::PushOpAndSelect {
-                    object_id,
-                    operation,
-                    primitive,
-                } => self.push_op_and_select_via_command(object_id, operation, primitive, command),
 
                 Command::Validate(v_command) => self.execute_validation_command(v_command),
             }
@@ -491,32 +509,6 @@ impl EngineInstance {
         }
     }
 
-    fn shift_primitive_ops_via_command(
-        &mut self,
-        object_id: ObjectId,
-        source_index: usize,
-        target_index: usize,
-        command: Command,
-    ) {
-        let object = if let Some(some_object) = self.object_collection.get_object_mut(object_id) {
-            some_object
-        } else {
-            command_failed_warn(command, "invalid object id");
-            return;
-        };
-
-        let shift_res = object.shift_primitive_ops(source_index, target_index);
-
-        if let Err(e) = shift_res {
-            let error_msg = format!("{}", e);
-            command_failed_warn(command, &error_msg);
-        }
-
-        let _ = self
-            .object_collection
-            .mark_object_for_data_update(object_id);
-    }
-
     fn push_op_and_select_via_command(
         &mut self,
         object_id: ObjectId,
@@ -552,7 +544,7 @@ impl EngineInstance {
 
         let new_primitive_op_id = match push_op_res {
             Err(e) => {
-                let error_msg = format!("{}", e);
+                let error_msg = e.to_string();
                 command_failed_warn(command, &error_msg);
                 return None;
             }
@@ -564,6 +556,63 @@ impl EngineInstance {
             .mark_object_for_data_update(object_id);
 
         Some(new_primitive_op_id)
+    }
+
+    fn set_primitive_op_via_command(
+        &mut self,
+        object_id: ObjectId,
+        primitive_op_id: PrimitiveOpId,
+        new_primitive: Primitive,
+        new_operation: Operation,
+        command: Command,
+    ) {
+        let object_get_res = self.object_collection.get_object_mut(object_id);
+        let object = match object_get_res {
+            Some(object) => object,
+            None => {
+                command_failed_warn(command, "invalid object id");
+                return;
+            }
+        };
+
+        let set_primitive_op_res =
+            object.set_primitive_op(primitive_op_id, new_primitive, new_operation);
+
+        if let Err(e) = set_primitive_op_res {
+            let error_msg = e.to_string();
+            command_failed_warn(command, &error_msg);
+            return;
+        }
+
+        let _ = self
+            .object_collection
+            .mark_object_for_data_update(object_id);
+    }
+
+    fn shift_primitive_ops_via_command(
+        &mut self,
+        object_id: ObjectId,
+        source_index: usize,
+        target_index: usize,
+        command: Command,
+    ) {
+        let object = if let Some(some_object) = self.object_collection.get_object_mut(object_id) {
+            some_object
+        } else {
+            command_failed_warn(command, "invalid object id");
+            return;
+        };
+
+        let shift_res = object.shift_primitive_ops(source_index, target_index);
+
+        if let Err(e) = shift_res {
+            let error_msg = e.to_string();
+            command_failed_warn(command, &error_msg);
+        }
+
+        let _ = self
+            .object_collection
+            .mark_object_for_data_update(object_id);
     }
 
     // ~~ Internal ~~

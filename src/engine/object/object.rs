@@ -146,12 +146,15 @@ impl Object {
     }
 
     /// If found, returns a ref to the primitive op and the vec index
-    pub fn get_primitive_op(&self, prim_op_id: PrimitiveOpId) -> Option<(&PrimitiveOp, usize)> {
+    pub fn get_primitive_op(
+        &self,
+        primitive_op_id: PrimitiveOpId,
+    ) -> Option<(&PrimitiveOp, usize)> {
         self.primitive_ops
             .iter()
             .enumerate()
             .find_map(|(index, primitive_op)| {
-                if primitive_op.id() == prim_op_id {
+                if primitive_op.id() == primitive_op_id {
                     Some((primitive_op, index))
                 } else {
                     None
@@ -161,7 +164,7 @@ impl Object {
 
     pub fn set_primitive_op(
         &mut self,
-        prim_op_id: PrimitiveOpId,
+        primitive_op_id: PrimitiveOpId,
         new_primitive: Primitive,
         new_op: Operation,
     ) -> Result<(), CollectionError> {
@@ -170,7 +173,7 @@ impl Object {
                 .iter_mut()
                 .enumerate()
                 .find_map(|(_index, primitive_op)| {
-                    if primitive_op.id() == prim_op_id {
+                    if primitive_op.id() == primitive_op_id {
                         Some(primitive_op)
                     } else {
                         None
@@ -183,7 +186,7 @@ impl Object {
             return Ok(());
         } else {
             return Err(CollectionError::InvalidId {
-                raw_id: prim_op_id.raw_id(),
+                raw_id: primitive_op_id.raw_id(),
             });
         }
     }

@@ -44,7 +44,7 @@ fn get_spirv_dir() -> PathBuf {
 #[cfg(feature = "shader-compile")]
 fn gen_shader_spirv() {
     // rerun when shaders change
-    println!("cargo:rerun-if-changed=src/shaders/*");
+    println!("cargo:rerun-if-changed=src/renderer/glsl/*");
 
     println!("Generating spirv shaders...");
 
