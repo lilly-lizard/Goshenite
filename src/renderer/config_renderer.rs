@@ -16,7 +16,7 @@ pub const FORMAT_PRIMITIVE_ID_BUFFER: vk::Format = vk::Format::R32_UINT;
 /// 1 second
 pub const TIMEOUT_NANOSECS: u64 = 1_000_000_000;
 
-// do not change this!
-pub const MINIMUM_FRAMEBUFFER_COUNT: usize = 2;
+/// Double-buffering
+pub const FRAMEBUFFER_COUNT: usize = 2;
 
 pub const CPU_ACCESS_BUFFER_SIZE: vk::DeviceSize = 1024;
