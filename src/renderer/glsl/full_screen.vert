@@ -4,9 +4,13 @@
 
 layout (location = 0) out vec2 out_uv;
 
+const vec2 uv[3] = vec2[](
+    vec2(-1., -1.),
+    vec2( 3., -1.),
+    vec2(-1.,  3.)
+);
+
 void main() 
 {
-	vec2 uv = vec2((gl_VertexIndex << 1u) & 2u, gl_VertexIndex & 2u);
-	out_uv = uv * 2. - 1.;
-	gl_Position = vec4(out_uv, 0., 1.);
+	gl_Position = vec4(uv[gl_VertexIndex], 0., 1.);
 }

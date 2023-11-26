@@ -7,10 +7,15 @@ FRAG_SRC="../../src/renderer/glsl/*.frag"
 VERT_SRC="../../src/renderer/glsl/*.vert"
 
 for src in $FRAG_SRC; do
-	glslc "$src" -o "$src.spv"
-	spirv-opt -O $src.spv -o "$src.spv"
+	output_file="$(basename $src)"
+	echo "$output_file"
+	glslangValidator -V -o "$output_file.spv" "$src"
+	spirv-opt -O $output_file.spv -o "$output_file.spv"
 done
+
 for src in $VERT_SRC; do
-	glslc "$src" -o "$src.spv"
-	spirv-opt -O "$src.spv" -o "$src.spv"
+	output_file="$(basename $src)"
+	echo "$output_file"
+	glslangValidator -V -o "$output_file.spv" "$src"
+	spirv-opt -O "$output_file.spv" -o "$output_file.spv"
 done
