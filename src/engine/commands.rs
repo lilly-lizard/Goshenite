@@ -13,29 +13,46 @@ pub enum Command {
     UnsetCameraLockOn,
     ResetCamera,
 
-    // objects
+    // object
     SelectObject(ObjectId),
     DeselectObject(),
     RemoveObject(ObjectId),
     RemoveSelectedObject(),
     CreateAndSelectNewDefaultObject(),
 
-    // primtive op
+    // primtive op - selection
     SelectPrimitiveOpId(ObjectId, PrimitiveOpId),
     SelectPrimitiveOpIndex(ObjectId, usize),
     DeselectPrimtiveOp(),
+
+    // primitive op - remove
     RemoveSelectedPrimitiveOp(),
     RemovePrimitiveOpId(ObjectId, PrimitiveOpId),
     RemovePrimitiveOpIndex(ObjectId, usize),
-    ShiftPrimitiveOps {
-        object_id: ObjectId,
-        source_index: usize,
-        target_index: usize,
-    },
+
+    // primitive op - push
     PushOp {
         object_id: ObjectId,
         operation: Operation,
         primitive: Primitive,
+    },
+    PushOpAndSelect {
+        object_id: ObjectId,
+        operation: Operation,
+        primitive: Primitive,
+    },
+
+    // primitive op - modify
+    SetPrimitiveOp {
+        object_id: ObjectId,
+        primitive_op_id: PrimitiveOpId,
+        new_primitive: Primitive,
+        new_operation: Operation,
+    },
+    ShiftPrimitiveOps {
+        object_id: ObjectId,
+        source_index: usize,
+        target_index: usize,
     },
 
     // internal

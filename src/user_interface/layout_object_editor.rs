@@ -22,7 +22,6 @@ use crate::{
             sphere::Sphere,
         },
     },
-    helper::unique_id_gen::UniqueIdType,
 };
 use egui::{ComboBox, DragValue, RichText, TextStyle};
 use egui_dnd::{DragDropResponse, DragableItem};
@@ -55,14 +54,13 @@ pub fn object_editor_layout(
     let new_object_edit_state = object_properties_editor(ui, &mut commands, selected_object);
     object_edit_state = new_object_edit_state.combine(object_edit_state);
 
-    let new_object_edit_state = primitive_op_editor(
+    primitive_op_editor(
         ui,
         &mut commands,
         gui_state,
         selected_object,
         selected_primitive_op_id,
     );
-    object_edit_state = new_object_edit_state.combine(object_edit_state);
 
     primitive_op_list(
         ui,
@@ -152,9 +150,9 @@ pub fn primitive_op_editor(
     gui_state: &mut GuiState,
     selected_object: &mut Object,
     selected_primitive_op_id: Option<PrimitiveOpId>,
-) -> EditState {
+) {
     if let Some(selected_prim_op_id) = selected_primitive_op_id {
-        return existing_primitive_op_editor(
+        existing_primitive_op_editor(
             ui,
             commands,
             gui_state,
@@ -162,7 +160,7 @@ pub fn primitive_op_editor(
             selected_prim_op_id,
         );
     } else {
-        return new_primitive_op_editor(ui, commands, gui_state, selected_object);
+        new_primitive_op_editor(ui, commands, gui_state, selected_object);
     }
 }
 
@@ -170,9 +168,9 @@ fn existing_primitive_op_editor(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
     gui_state: &mut GuiState,
-    selected_object: &mut Object,
+    selected_object: &Object,
     selected_prim_op_id: PrimitiveOpId,
-) -> EditState {
+) {
     let mut prim_op_edit_state = EditState::NoChange;
 
     let selected_object_id = selected_object.id();
@@ -184,7 +182,8 @@ fn existing_primitive_op_editor(
                 debug!("selected object {} dropped", selected_object_id);
                 commands.push(ValidationCommand::SelectedObject().into());
 
-                return new_primitive_op_editor(ui, commands, gui_state, selected_object);
+                new_primitive_op_editor(ui, commands, gui_state, selected_object);
+                return;
             }
         };
 
@@ -235,20 +234,18 @@ fn existing_primitive_op_editor(
         ));
     }
 
-    let object_edit_state = match prim_op_edit_state {
+    match prim_op_edit_state {
         EditState::Modified => {
             // update the primitive op data with what we've been using
-            let _ = selected_object.set_primitive_op(
-                selected_prim_op_id,
-                modified_prim_op.primitive,
-                modified_prim_op.op,
-            );
-            EditState::Modified
+            commands.push(Command::SetPrimitiveOp {
+                object_id: selected_object.id(),
+                primitive_op_id: selected_prim_op_id,
+                new_primitive: modified_prim_op.primitive,
+                new_operation: modified_prim_op.op,
+            });
         }
-        EditState::NoChange => EditState::NoChange,
-    };
-
-    object_edit_state
+        EditState::NoChange => (),
+    }
 }
 
 /// Returns wherever the object has been edited
@@ -294,17 +291,18 @@ fn new_primitive_op_editor(
         clicked_reset = ui_h.button("Reset").clicked();
     });
     if clicked_add {
-        // append primitive op to selected object and mark for updating
-        let new_primitive = gui_state.primitive_fields.clone();
-        let new_primitive_op_id = selected_object
-            .push_op(gui_state.op_field, new_primitive)
-            .expect("todo make command");
-
         if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
-            commands.push(Command::SelectPrimitiveOpId(
-                selected_object.id(),
-                new_primitive_op_id,
-            ))
+            commands.push(Command::PushOpAndSelect {
+                object_id: selected_object.id(),
+                operation: gui_state.op_field,
+                primitive: gui_state.primitive_fields.clone(),
+            });
+        } else {
+            commands.push(Command::PushOp {
+                object_id: selected_object.id(),
+                operation: gui_state.op_field,
+                primitive: gui_state.primitive_fields.clone(),
+            });
         }
     }
     if clicked_reset {

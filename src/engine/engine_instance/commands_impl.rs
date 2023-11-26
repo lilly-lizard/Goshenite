@@ -10,7 +10,7 @@ use crate::{
         primitives::primitive::Primitive,
     },
     helper::list::choose_closest_valid_index,
-    user_interface::{config_ui, gui::Gui},
+    user_interface::gui::Gui,
 };
 use glam::Vec3;
 #[allow(unused_imports)]
@@ -44,13 +44,15 @@ impl EngineInstance {
                     self.create_and_select_new_default_object_via_command(command)
                 }
 
-                // primitive op
+                // primtive op - selection
                 Command::SelectPrimitiveOpId(object_id, primitive_op_id) => {
                     self.select_primitive_op_id_via_command(object_id, primitive_op_id, command)
                 }
                 Command::SelectPrimitiveOpIndex(object_id, primitive_op_index) => self
                     .select_primitive_op_index_via_command(object_id, primitive_op_index, command),
                 Command::DeselectPrimtiveOp() => self.deselect_primitive_op(),
+
+                // primitive op - remove
                 Command::RemoveSelectedPrimitiveOp() => {
                     self.remove_selected_primitive_op_via_command(command);
                 }
@@ -64,6 +66,32 @@ impl EngineInstance {
                         command,
                     );
                 }
+
+                // primitive op - push
+                Command::PushOp {
+                    object_id,
+                    operation,
+                    primitive,
+                } => _ = self.push_op_via_command(object_id, operation, primitive, command),
+                Command::PushOpAndSelect {
+                    object_id,
+                    operation,
+                    primitive,
+                } => self.push_op_and_select_via_command(object_id, operation, primitive, command),
+
+                // primitive op - modify
+                Command::SetPrimitiveOp {
+                    object_id,
+                    primitive_op_id,
+                    new_primitive,
+                    new_operation,
+                } => self.set_primitive_op_via_command(
+                    object_id,
+                    primitive_op_id,
+                    new_primitive,
+                    new_operation,
+                    command,
+                ),
                 Command::ShiftPrimitiveOps {
                     object_id,
                     source_index,
@@ -76,11 +104,6 @@ impl EngineInstance {
                         command,
                     );
                 }
-                Command::PushOp {
-                    object_id,
-                    operation,
-                    primitive,
-                } => self.push_op_via_command(object_id, operation, primitive, command),
 
                 Command::Validate(v_command) => self.execute_validation_command(v_command),
             }
@@ -178,6 +201,94 @@ impl EngineInstance {
 
     // ~~ Primitive Op ~~
 
+    fn select_primitive_op_id_via_command(
+        &mut self,
+        object_id: ObjectId,
+        primitive_op_id: PrimitiveOpId,
+        command: Command,
+    ) {
+        let object = if let Some(object) = self.object_collection.get_object(object_id) {
+            object
+        } else {
+            command_failed_warn(command, "invalid object id");
+            return;
+        };
+
+        let (primitive_op, _index) =
+            if let Some(primitive_op) = object.get_primitive_op(primitive_op_id) {
+                primitive_op.clone()
+            } else {
+                command_failed_warn(command, "invalid primitive op id");
+                return;
+            };
+
+        Self::select_primitive_op_without_self(
+            &mut self.selected_primitive_op_id,
+            &mut self.gui,
+            primitive_op.clone(),
+        );
+        self.select_object_unchecked(object_id, object.origin);
+    }
+
+    pub(super) fn select_object_and_primitive_op_id(
+        &mut self,
+        object_id: ObjectId,
+        primitive_op_id: PrimitiveOpId,
+    ) {
+        let object = if let Some(object) = self.object_collection.get_object(object_id) {
+            object
+        } else {
+            warn!(
+                "attempted to select object id {} that doesn't exist in object collection",
+                object_id
+            );
+            return;
+        };
+
+        let (primitive_op, _index) =
+            if let Some(primitive_op) = object.get_primitive_op(primitive_op_id) {
+                primitive_op.clone()
+            } else {
+                warn!(
+                    "attempted to select primitive op id {} that doesn't exist in object {}",
+                    primitive_op_id, object_id
+                );
+                return;
+            };
+
+        Self::select_primitive_op_without_self(
+            &mut self.selected_primitive_op_id,
+            &mut self.gui,
+            primitive_op.clone(),
+        );
+        self.select_object_unchecked(object_id, object.origin);
+    }
+
+    fn select_primitive_op_index_via_command(
+        &mut self,
+        object_id: ObjectId,
+        primitive_op_index: usize,
+        command: Command,
+    ) {
+        let object = if let Some(object) = self.object_collection.get_object(object_id) {
+            object
+        } else {
+            command_failed_warn(command, "invalid object id");
+            return;
+        };
+
+        let primitive_op = if let Some(primitive_op) = object.primitive_ops.get(primitive_op_index)
+        {
+            primitive_op.clone()
+        } else {
+            command_failed_warn(command, "invalid primitive op index");
+            return;
+        };
+
+        self.select_object_unchecked(object_id, object.origin);
+        self.select_primitive_op_unchecked(primitive_op);
+    }
+
     pub(super) fn select_object_and_primitive_op_index(
         &mut self,
         object_id: ObjectId,
@@ -205,11 +316,11 @@ impl EngineInstance {
         };
 
         self.select_object_unchecked(object_id, object.origin);
-        self.select_primitive_op(primitive_op);
+        self.select_primitive_op_unchecked(primitive_op);
     }
 
     #[inline]
-    pub(super) fn select_primitive_op(&mut self, primitive_op: PrimitiveOp) {
+    pub(super) fn select_primitive_op_unchecked(&mut self, primitive_op: PrimitiveOp) {
         Self::select_primitive_op_without_self(
             &mut self.selected_primitive_op_id,
             &mut self.gui,
@@ -218,7 +329,7 @@ impl EngineInstance {
     }
 
     /// Because E0499 is too fucking conservative with `self`.
-    pub(super) fn select_primitive_op_without_self(
+    pub fn select_primitive_op_without_self(
         selected_primitive_op_id: &mut Option<PrimitiveOpId>,
         gui: &mut Gui,
         primitive_op: PrimitiveOp,
@@ -234,48 +345,13 @@ impl EngineInstance {
         *selected_primitive_op_id = Some(primitive_op.id());
     }
 
-    fn select_primitive_op_id_via_command(
-        &mut self,
-        object_id: ObjectId,
-        primitive_op_id: PrimitiveOpId,
-        command: Command,
-    ) {
-        if let Some(selected_object) = self.object_collection.get_object(object_id) {
-            if let Some((primitive_op, _index)) = selected_object.get_primitive_op(primitive_op_id)
-            {
-                self.select_primitive_op(primitive_op.clone());
-            } else {
-                command_failed_warn(command, "invalid primitive op id");
-            }
-        } else {
-            command_failed_warn(command, "invalid object id");
-        }
-    }
-
-    fn select_primitive_op_index_via_command(
-        &mut self,
-        object_id: ObjectId,
-        primitive_op_index: usize,
-        command: Command,
-    ) {
-        if let Some(selected_object) = self.object_collection.get_object(object_id) {
-            if let Some(primitive_op) = selected_object.primitive_ops.get(primitive_op_index) {
-                self.select_primitive_op(primitive_op.clone());
-            } else {
-                command_failed_warn(command, "invalid primitive op index");
-            }
-        } else {
-            command_failed_warn(command, "invalid object id");
-        }
-    }
-
     pub(super) fn deselect_primitive_op(&mut self) {
         Self::deselect_primitive_op_without_self(&mut self.selected_primitive_op_id);
     }
 
     #[inline]
     /// Because E0499 is too fucking conservative with `self`.
-    pub(super) fn deselect_primitive_op_without_self(
+    pub fn deselect_primitive_op_without_self(
         selected_primitive_op_id: &mut Option<PrimitiveOpId>,
     ) {
         *selected_primitive_op_id = None;
@@ -433,6 +509,86 @@ impl EngineInstance {
         }
     }
 
+    fn push_op_and_select_via_command(
+        &mut self,
+        object_id: ObjectId,
+        operation: Operation,
+        primitive: Primitive,
+        command: Command,
+    ) {
+        let push_op_res = self.push_op_via_command(object_id, operation, primitive, command);
+
+        let new_primitive_op_id = match push_op_res {
+            Some(id) => id,
+            None => return,
+        };
+        self.select_object_and_primitive_op_id(object_id, new_primitive_op_id);
+    }
+
+    /// Returns the primitive op id
+    fn push_op_via_command(
+        &mut self,
+        object_id: ObjectId,
+        operation: Operation,
+        primitive: Primitive,
+        command: Command,
+    ) -> Option<PrimitiveOpId> {
+        let object = if let Some(some_object) = self.object_collection.get_object_mut(object_id) {
+            some_object
+        } else {
+            command_failed_warn(command, "invalid object id");
+            return None;
+        };
+
+        let push_op_res = object.push_op(operation, primitive);
+
+        let new_primitive_op_id = match push_op_res {
+            Err(e) => {
+                let error_msg = e.to_string();
+                command_failed_warn(command, &error_msg);
+                return None;
+            }
+            Ok(id) => id,
+        };
+
+        let _ = self
+            .object_collection
+            .mark_object_for_data_update(object_id);
+
+        Some(new_primitive_op_id)
+    }
+
+    fn set_primitive_op_via_command(
+        &mut self,
+        object_id: ObjectId,
+        primitive_op_id: PrimitiveOpId,
+        new_primitive: Primitive,
+        new_operation: Operation,
+        command: Command,
+    ) {
+        let object_get_res = self.object_collection.get_object_mut(object_id);
+        let object = match object_get_res {
+            Some(object) => object,
+            None => {
+                command_failed_warn(command, "invalid object id");
+                return;
+            }
+        };
+
+        let set_primitive_op_res =
+            object.set_primitive_op(primitive_op_id, new_primitive, new_operation);
+
+        if let Err(e) = set_primitive_op_res {
+            let error_msg = e.to_string();
+            command_failed_warn(command, &error_msg);
+            return;
+        }
+
+        let _ = self
+            .object_collection
+            .mark_object_for_data_update(object_id);
+    }
+
     fn shift_primitive_ops_via_command(
         &mut self,
         object_id: ObjectId,
@@ -450,47 +606,13 @@ impl EngineInstance {
         let shift_res = object.shift_primitive_ops(source_index, target_index);
 
         if let Err(e) = shift_res {
-            let error_msg = format!("{}", e);
+            let error_msg = e.to_string();
             command_failed_warn(command, &error_msg);
         }
 
         let _ = self
             .object_collection
             .mark_object_for_data_update(object_id);
-    }
-
-    fn push_op_via_command(
-        &mut self,
-        object_id: ObjectId,
-        operation: Operation,
-        primitive: Primitive,
-        command: Command,
-    ) {
-        let object = if let Some(some_object) = self.object_collection.get_object_mut(object_id) {
-            some_object
-        } else {
-            command_failed_warn(command, "invalid object id");
-            return;
-        };
-
-        let push_op_res = object.push_op(operation, primitive);
-
-        let new_primitive_op_id = match push_op_res {
-            Err(e) => {
-                let error_msg = format!("{}", e);
-                command_failed_warn(command, &error_msg);
-                return;
-            }
-            Ok(id) => id,
-        };
-
-        let _ = self
-            .object_collection
-            .mark_object_for_data_update(object_id);
-
-        if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
-            self.select_object_and_primitive_op(object_id, new_primitive_op_id);
-        }
     }
 
     // ~~ Internal ~~

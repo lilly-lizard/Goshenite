@@ -3,7 +3,7 @@ use crate::{config::ENGINE_NAME, renderer::config_renderer::ENABLE_VULKAN_VALIDA
 use super::{
     config_renderer::{
         CPU_ACCESS_BUFFER_SIZE, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER,
-        MINIMUM_FRAMEBUFFER_COUNT, VULKAN_VER_MAJ, VULKAN_VER_MIN,
+        FRAMEBUFFER_COUNT, VULKAN_VER_MAJ, VULKAN_VER_MIN,
     },
     shader_interfaces::{
         primitive_op_buffer::PRIMITIVE_ID_INVALID, uniform_buffers::CameraUniformBuffer,
@@ -185,13 +185,18 @@ fn check_physical_device_queue_support(
         .iter()
         // because we want the queue family index
         .enumerate()
-        .position(|(i, q)| {
+        .position(|(queue_family_index, queue_family_properties)| {
             // must support our surface and essential operations
-            q.queue_flags.contains(vk::QueueFlags::GRAPHICS)
-                && q.queue_flags.contains(vk::QueueFlags::TRANSFER)
-                && surface
-                    .get_physical_device_surface_support(&physical_device, i as u32)
-                    .unwrap_or(false)
+            let graphics_support = queue_family_properties
+                .queue_flags
+                .contains(vk::QueueFlags::GRAPHICS);
+            let transfer_support = queue_family_properties
+                .queue_flags
+                .contains(vk::QueueFlags::TRANSFER);
+            let surface_support = surface
+                .get_physical_device_surface_support(&physical_device, queue_family_index as u32)
+                .unwrap_or(false);
+            graphics_support && transfer_support && surface_support
         });
     let render_family = match render_family {
         Some(x) => x as u32,
@@ -224,8 +229,12 @@ fn check_physical_device_queue_support(
         .iter()
         .enumerate()
         // exclude the queue family we've already found and filter by transfer operation support
-        .filter(|(i, q)| {
-            *i as u32 != render_family && q.queue_flags.contains(vk::QueueFlags::TRANSFER)
+        .filter(|&(queue_family_index, queue_family_properties)| {
+            let different_queue_family = queue_family_index as u32 != render_family;
+            let transfer_support = queue_family_properties
+                .queue_flags
+                .contains(vk::QueueFlags::TRANSFER);
+            different_queue_family && transfer_support
         })
         // some drivers expose a queue that only supports transfer operations (for this very purpose) which is preferable
         .max_by_key(|(_, q)| {
@@ -351,7 +360,7 @@ pub fn swapchain_properties(
     surface: &Surface,
     window: &Window,
 ) -> anyhow::Result<SwapchainProperties> {
-    let preferred_image_count = MINIMUM_FRAMEBUFFER_COUNT as u32;
+    let preferred_image_count = FRAMEBUFFER_COUNT as u32;
     let window_dimensions: [u32; 2] = window.inner_size().into();
 
     let surface_capabilities = surface

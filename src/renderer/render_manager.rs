@@ -17,7 +17,7 @@ use crate::{
     engine::object::objects_delta::ObjectsDelta,
     helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
     renderer::{
-        config_renderer::MINIMUM_FRAMEBUFFER_COUNT,
+        config_renderer::FRAMEBUFFER_COUNT,
         vulkan_init::{
             choose_depth_buffer_format, create_command_pool, create_device_and_queue, create_entry,
             create_instance, create_primitive_id_buffers, create_render_command_buffers,
@@ -186,7 +186,7 @@ impl RenderManager {
 
         let mut swapchain_image_views = create_swapchain_image_views(&swapchain)?;
 
-        let framebuffer_count = determine_framebuffer_count(&swapchain_image_views);
+        let framebuffer_count = FRAMEBUFFER_COUNT;
 
         let depth_buffer_format = choose_depth_buffer_format(&physical_device)?;
 
@@ -523,14 +523,6 @@ impl RenderManager {
 
 // Private functions
 
-/// If there is only one swapchain image we create two framebuffers so we can access the previous
-/// render for some images.
-fn determine_framebuffer_count(
-    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
-) -> usize {
-    swapchain_image_views.len().max(MINIMUM_FRAMEBUFFER_COUNT)
-}
-
 impl RenderManager {
     /// Recreates the swapchain, g-buffers and assiciated descriptor sets, then unsets `recreate_swapchain` trigger.
     fn recreate_swapchain(&mut self) -> anyhow::Result<()> {
@@ -559,7 +551,7 @@ impl RenderManager {
             shaders_should_write_linear_color(self.swapchain.properties().surface_format);
         self.swapchain_image_views = create_swapchain_image_views(&self.swapchain)?;
 
-        let framebuffer_count = determine_framebuffer_count(&self.swapchain_image_views);
+        let framebuffer_count = FRAMEBUFFER_COUNT;
 
         let depth_buffer_format = self.depth_buffer.image().properties().format;
 
@@ -706,7 +698,7 @@ impl RenderManager {
         swapchain_index: usize,
     ) -> usize {
         if self.swapchain_image_views.len() == 1 {
-            return (previous_framebuffer_index + 1) % MINIMUM_FRAMEBUFFER_COUNT;
+            return (previous_framebuffer_index + 1) % FRAMEBUFFER_COUNT;
         }
         return swapchain_index;
     }
