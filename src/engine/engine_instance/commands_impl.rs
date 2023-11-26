@@ -240,7 +240,8 @@ impl EngineInstance {
         };
 
         object.origin = origin;
-        self.object_collection
+        let _ = self
+            .object_collection
             .mark_object_for_data_update(object_id);
     }
 

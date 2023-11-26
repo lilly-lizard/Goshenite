@@ -329,11 +329,7 @@ impl EngineInstance {
     }
 
     fn update_camera(&mut self) {
-        if let LookMode::TargetObject {
-            object_id,
-            last_known_origin,
-        } = self.camera.look_mode()
-        {
+        if let LookMode::TargetObject { object_id, .. } = self.camera.look_mode() {
             if let Some(object) = self.object_collection.get_object(object_id) {
                 // update camera target position
                 self.camera

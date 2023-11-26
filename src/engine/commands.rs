@@ -1,9 +1,5 @@
 use super::{
-    object::{
-        object::{Object, ObjectId},
-        operation::Operation,
-        primitive_op::PrimitiveOpId,
-    },
+    object::{object::ObjectId, operation::Operation, primitive_op::PrimitiveOpId},
     primitives::primitive::Primitive,
 };
 use glam::{DVec3, Vec3};
