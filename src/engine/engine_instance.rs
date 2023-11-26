@@ -100,12 +100,6 @@ impl EngineInstance {
 
         let mut object_collection = ObjectCollection::new();
 
-        // TESTING OBJECTS START
-
-        object_testing(&mut object_collection, &mut renderer);
-
-        // TESTING OBJECTS END
-
         // start render thread
         let (render_thread_handle, render_thread_channels) = start_render_thread(renderer);
 
@@ -139,7 +133,12 @@ impl EngineInstance {
             // initialize the window
             Event::NewEvents(StartCause::Init) => {
                 // note: window initialization (and thus swapchain init too) is done here because of certain platform epecific behaviour e.g. https://github.com/rust-windowing/winit/issues/2051
-                // todo init!
+
+                // TESTING OBJECTS START
+
+                object_testing(&mut self.object_collection);
+
+                // TESTING OBJECTS END
             }
 
             // exit the event loop and close application
@@ -466,7 +465,7 @@ fn check_channel_sender_result<T>(
 
 // ~~ Testing ~~
 
-fn object_testing(object_collection: &mut ObjectCollection, renderer: &mut RenderManager) {
+fn object_testing(object_collection: &mut ObjectCollection) {
     let sphere = Sphere::new(Vec3::new(0., 0., 0.), Quat::IDENTITY, 0.5);
     let cube = Cube::new(
         Vec3::new(-0.2, 0.2, 0.),
@@ -489,8 +488,4 @@ fn object_testing(object_collection: &mut ObjectCollection, renderer: &mut Rende
     let _ = another_object.push_op(Operation::Union, Primitive::Sphere(sphere));
     let _ = another_object.push_op(Operation::Union, Primitive::Null(NullPrimitive::new()));
     let _ = object_collection.mark_object_for_data_update(another_object_id);
-
-    let objects_delta = object_collection.get_and_clear_objects_delta();
-    let update_objects_res = renderer.update_objects(objects_delta);
-    anyhow_unwrap(update_objects_res, "update object buffers");
 }
