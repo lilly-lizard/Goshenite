@@ -25,8 +25,11 @@ impl EngineInstance {
         {
             match command {
                 // camera
-                Command::SetCameraLockOn { target_pos } => {
-                    self.camera.set_lock_on_target(target_pos)
+                Command::SetCameraLockOnPos(target_pos) => {
+                    self.camera.set_lock_on_target_pos(target_pos)
+                }
+                Command::SetCameraLockOnObject(object_id) => {
+                    self.set_camera_lock_on_object_via_command(object_id, command)
                 }
                 Command::UnsetCameraLockOn => self.camera.unset_lock_on_target(),
                 Command::ResetCamera => self.camera.reset(),
@@ -43,6 +46,13 @@ impl EngineInstance {
                 Command::CreateAndSelectNewDefaultObject() => {
                     self.create_and_select_new_default_object_via_command(command)
                 }
+                Command::SetObjectOrigin { object_id, origin } => {
+                    self.set_object_origin_via_command(object_id, origin, command)
+                }
+                Command::SetObjectName {
+                    object_id,
+                    ref new_name,
+                } => self.set_object_name_via_command(object_id, new_name.clone(), command),
 
                 // primtive op - selection
                 Command::SelectPrimitiveOpId(object_id, primitive_op_id) => {
@@ -110,6 +120,21 @@ impl EngineInstance {
         }
     }
 
+    // ~~ Camera ~~
+
+    fn set_camera_lock_on_object_via_command(&mut self, object_id: ObjectId, command: Command) {
+        let object = match self.object_collection.get_object(object_id) {
+            Some(object) => object,
+            None => {
+                command_failed_warn(command, "invalid object id");
+                return;
+            }
+        };
+
+        self.camera
+            .set_lock_on_target_object(object_id, object.origin);
+    }
+
     // ~~ Object ~~
 
     pub(super) fn deselect_object(&mut self) {
@@ -139,7 +164,8 @@ impl EngineInstance {
         }
 
         self.selected_object_id = Some(object_id);
-        self.camera.set_lock_on_target(object_origin.as_dvec3());
+        self.camera
+            .set_lock_on_target_object(object_id, object_origin);
 
         if selected_object_changed {
             // if a different object is already selected, deselect the primitive op because it will
@@ -197,6 +223,42 @@ impl EngineInstance {
         let _ = self
             .object_collection
             .mark_object_for_data_update(new_object_id);
+    }
+
+    fn set_object_origin_via_command(
+        &mut self,
+        object_id: ObjectId,
+        origin: Vec3,
+        command: Command,
+    ) {
+        let object = match self.object_collection.get_object_mut(object_id) {
+            Some(object) => object,
+            None => {
+                command_failed_warn(command, "invalid object id");
+                return;
+            }
+        };
+
+        object.origin = origin;
+        self.object_collection
+            .mark_object_for_data_update(object_id);
+    }
+
+    fn set_object_name_via_command(
+        &mut self,
+        object_id: ObjectId,
+        new_name: String,
+        command: Command,
+    ) {
+        let object = match self.object_collection.get_object_mut(object_id) {
+            Some(object) => object,
+            None => {
+                command_failed_warn(command, "invalid object id");
+                return;
+            }
+        };
+
+        object.name = new_name;
     }
 
     // ~~ Primitive Op ~~

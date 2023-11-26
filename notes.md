@@ -8,6 +8,8 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - single primitive function (unbound)
 - blend function (primitive op)
 
+- memory allocation write with bytemuck slice i.e. copy all at once rather than with iter
+
 - get rid of curved egui borders
 - change egui font
 - object/primitive op ids in gui

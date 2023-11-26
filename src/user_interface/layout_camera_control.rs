@@ -20,7 +20,8 @@ pub fn camera_control_layout(ui: &mut Ui, camera: Camera) -> Vec<Command> {
     ui.horizontal(|ui| {
         let target_mode_on = match camera.look_mode() {
             LookMode::Direction(_) => false,
-            LookMode::Target(_) => true,
+            LookMode::TargetPos(_) => true,
+            LookMode::TargetObject { .. } => true,
         };
 
         let unset_res = ui.add_enabled(target_mode_on, |ui_inner: &mut Ui| {
@@ -53,11 +54,22 @@ pub fn camera_control_layout(ui: &mut Ui, camera: Camera) -> Vec<Command> {
             ));
         }
 
-        LookMode::Target(target_pos) => {
-            ui.label("Look mode: Target");
+        LookMode::TargetPos(target_pos) => {
+            ui.label("Look mode: Target position");
             ui.label(format!(
                 "Target position: [{:.2}, {:.2}, {:.2}]",
                 target_pos.x, target_pos.y, target_pos.z
+            ));
+        }
+
+        LookMode::TargetObject {
+            object_id,
+            last_known_origin,
+        } => {
+            ui.label(format!("Look mode: Target object (id = {})", object_id));
+            ui.label(format!(
+                "Target position: [{:.2}, {:.2}, {:.2}]",
+                last_known_origin.x, last_known_origin.y, last_known_origin.z
             ));
         }
     }

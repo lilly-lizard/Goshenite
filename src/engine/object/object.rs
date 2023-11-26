@@ -129,10 +129,10 @@ impl Object {
         shift_slice(source_index, target_index, &mut self.primitive_ops)
     }
 
-    /// Create `ObjectDuplicate` containing the same primitive data as `self`. This is needed because
+    /// Create `ObjectSnapshot` containing the same primitive data as `self`. This is needed because
     /// `Object`s can't be cloned as their `id`s must be unique.
-    pub fn duplicate(&self) -> ObjectDuplicate {
-        ObjectDuplicate {
+    pub fn duplicate(&self) -> ObjectSnapshot {
+        ObjectSnapshot {
             name: self.name.clone(),
             origin: self.origin,
             primitive_ops: self.primitive_ops.clone(),
@@ -192,18 +192,17 @@ impl Object {
     }
 }
 
-// OBJECT DUPLICATE
+// ~~ Object Snapshot ~~
 
-/// Contains the same primitive data as an `Object`. This is needed because `Object`s can't be
-/// cloned as their `id`s must be unique.
+/// Contains the same primitive data as an `Object`.
 #[derive(Clone)]
-pub struct ObjectDuplicate {
+pub struct ObjectSnapshot {
     pub name: String,
     pub origin: Vec3,
     pub primitive_ops: Vec<PrimitiveOp>,
 }
 
-impl ObjectDuplicate {
+impl ObjectSnapshot {
     pub fn encoded_primitive_ops(&self, object_id: ObjectId) -> Vec<PrimitiveOpBufferUnit> {
         // avoiding this case should be the responsibility of the functions adding to `primtive_ops`
         debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);

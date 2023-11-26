@@ -2,7 +2,7 @@ use super::geometry_pass::descriptor;
 use crate::engine::{
     aabb::AABB_VERTEX_COUNT,
     object::{
-        object::{ObjectDuplicate, ObjectId},
+        object::{ObjectId, ObjectSnapshot},
         object_collection::ObjectCollection,
         objects_delta::{ObjectDeltaOperation, ObjectsDelta},
     },
@@ -167,7 +167,7 @@ impl ObjectResourceManager {
     fn update_or_push(
         &mut self,
         object_id: ObjectId,
-        object: ObjectDuplicate,
+        object: ObjectSnapshot,
         transfer_resources: &mut BufferUploadResources,
     ) -> anyhow::Result<()> {
         let primitive_ops_buffer = self
@@ -356,7 +356,7 @@ impl ObjectResourceManager {
     fn upload_bounding_mesh(
         &mut self,
         object_id: ObjectId,
-        object: &ObjectDuplicate,
+        object: &ObjectSnapshot,
         transfer_resources: &mut BufferUploadResources,
     ) -> anyhow::Result<Arc<Buffer>> {
         trace!(
@@ -380,7 +380,7 @@ impl ObjectResourceManager {
     fn upload_primitive_ops(
         &mut self,
         object_id: ObjectId,
-        object: &ObjectDuplicate,
+        object: &ObjectSnapshot,
         transfer_resources: &mut BufferUploadResources,
     ) -> anyhow::Result<Arc<Buffer>> {
         trace!(

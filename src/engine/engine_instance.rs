@@ -14,6 +14,7 @@ use crate::{
     renderer::{element_id_reader::ElementAtPoint, render_manager::RenderManager},
     user_interface::camera::Camera,
     user_interface::{
+        camera::LookMode,
         cursor::{Cursor, CursorEvent, MouseButton},
         gui::Gui,
     },
@@ -328,19 +329,19 @@ impl EngineInstance {
     }
 
     fn update_camera(&mut self) {
-        if let Some(selected_object_id) = self.selected_object_id {
-            if let Some(selected_object) = self.object_collection.get_object(selected_object_id) {
-                // follow selected object
+        if let LookMode::TargetObject {
+            object_id,
+            last_known_origin,
+        } = self.camera.look_mode()
+        {
+            if let Some(object) = self.object_collection.get_object(object_id) {
+                // update camera target position
                 self.camera
-                    .set_lock_on_target(selected_object.origin.as_dvec3());
+                    .set_lock_on_target_object(object_id, object.origin);
             } else {
-                debug!("selected object {} dropped!", selected_object_id);
-                self.deselect_object();
+                // object dropped
                 self.camera.unset_lock_on_target();
             }
-        } else {
-            // if no primitive selected use arcball mode
-            self.camera.unset_lock_on_target();
         }
 
         // left mouse button dragging changes camera orientation

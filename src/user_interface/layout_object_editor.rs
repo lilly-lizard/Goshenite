@@ -32,14 +32,14 @@ use log::{debug, error, info, trace, warn};
 pub fn object_editor_layout(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
-    object_collection: &mut ObjectCollection,
+    object_collection: &ObjectCollection,
     selected_object_id: Option<ObjectId>,
     selected_primitive_op_id: Option<PrimitiveOpId>,
 ) -> Vec<Command> {
     let mut commands = Vec::<Command>::new();
 
     // selected object name
-    let (selected_object_id, selected_object) = match label_and_get_selected_object(
+    let selected_object = match label_and_get_selected_object(
         ui,
         &mut commands,
         object_collection,
@@ -49,10 +49,7 @@ pub fn object_editor_layout(
         None => return commands,
     };
 
-    let mut object_edit_state = EditState::NoChange;
-
-    let new_object_edit_state = object_properties_editor(ui, &mut commands, selected_object);
-    object_edit_state = new_object_edit_state.combine(object_edit_state);
+    object_properties_editor(ui, &mut commands, selected_object);
 
     primitive_op_editor(
         ui,
@@ -70,19 +67,15 @@ pub fn object_editor_layout(
         selected_primitive_op_id,
     );
 
-    if object_edit_state == EditState::Modified {
-        let _ = object_collection.mark_object_for_data_update(selected_object_id);
-    }
-
     commands
 }
 
 fn label_and_get_selected_object<'a>(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
-    object_collection: &'a mut ObjectCollection,
+    object_collection: &'a ObjectCollection,
     selected_object_id: Option<ObjectId>,
-) -> Option<(ObjectId, &'a mut Object)> {
+) -> Option<&'a Object> {
     let no_object_text = RichText::new("No object selected...").italics();
 
     let selected_object_id = match selected_object_id {
@@ -93,7 +86,7 @@ fn label_and_get_selected_object<'a>(
         }
     };
 
-    let selected_object = match object_collection.get_object_mut(selected_object_id) {
+    let selected_object = match object_collection.get_object(selected_object_id) {
         Some(o) => o,
         None => {
             // invalid object id
@@ -105,50 +98,48 @@ fn label_and_get_selected_object<'a>(
         }
     };
 
+    let mut new_name = selected_object.name.clone();
     ui.horizontal(|ui| {
         ui.label("Name:");
-        ui.text_edit_singleline(&mut selected_object.name);
+        ui.text_edit_singleline(&mut new_name);
     });
+    if new_name != selected_object.name {
+        commands.push(Command::SetObjectName {
+            object_id: selected_object_id,
+            new_name,
+        });
+    }
 
-    Some((selected_object_id, selected_object))
+    Some(selected_object)
 }
 
-pub fn object_properties_editor(
-    ui: &mut egui::Ui,
-    commands: &mut Vec<Command>,
-    object: &mut Object,
-) -> EditState {
-    let mut object_edit_state = EditState::NoChange;
-
+pub fn object_properties_editor(ui: &mut egui::Ui, commands: &mut Vec<Command>, object: &Object) {
     ui.separator();
 
     let original_origin = object.origin;
-    let mut origin_mut = original_origin;
+    let mut new_origin = original_origin;
 
     ui.horizontal(|ui| {
         ui.label("Origin:");
-        ui.add(DragValue::new(&mut origin_mut.x).speed(DRAG_INC))
+        ui.add(DragValue::new(&mut new_origin.x).speed(DRAG_INC))
             .changed();
-        ui.add(DragValue::new(&mut origin_mut.y).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut origin_mut.z).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut new_origin.y).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut new_origin.z).speed(DRAG_INC));
     });
 
-    if original_origin != origin_mut {
-        object.origin = origin_mut;
-        commands.push(Command::SetCameraLockOn {
-            target_pos: object.origin.as_dvec3(),
+    if original_origin != new_origin {
+        commands.push(Command::SetObjectOrigin {
+            object_id: object.id(),
+            origin: new_origin,
         });
-        object_edit_state = EditState::Modified;
     }
-
-    object_edit_state
 }
 
 pub fn primitive_op_editor(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
     gui_state: &mut GuiState,
-    selected_object: &mut Object,
+    selected_object: &Object,
     selected_primitive_op_id: Option<PrimitiveOpId>,
 ) {
     if let Some(selected_prim_op_id) = selected_primitive_op_id {

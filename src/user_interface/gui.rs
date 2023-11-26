@@ -109,7 +109,7 @@ impl Gui {
 
     pub fn update_gui(
         &mut self,
-        object_collection: &mut ObjectCollection,
+        object_collection: &ObjectCollection,
         window: &Window,
         camera: Camera,
         selected_object_id: Option<ObjectId>,
@@ -219,7 +219,7 @@ impl Gui {
 
     fn object_editor_window(
         &mut self,
-        object_collection: &mut ObjectCollection,
+        object_collection: &ObjectCollection,
         selected_object_id: Option<ObjectId>,
         selected_primitive_op_id: Option<PrimitiveOpId>,
     ) -> Vec<Command> {

@@ -1,15 +1,18 @@
 use super::{
-    object::{object::ObjectId, operation::Operation, primitive_op::PrimitiveOpId},
+    object::{
+        object::{Object, ObjectId},
+        operation::Operation,
+        primitive_op::PrimitiveOpId,
+    },
     primitives::primitive::Primitive,
 };
-use glam::DVec3;
+use glam::{DVec3, Vec3};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     // camera
-    SetCameraLockOn {
-        target_pos: DVec3,
-    },
+    SetCameraLockOnPos(DVec3),
+    SetCameraLockOnObject(ObjectId),
     UnsetCameraLockOn,
     ResetCamera,
 
@@ -19,6 +22,14 @@ pub enum Command {
     RemoveObject(ObjectId),
     RemoveSelectedObject(),
     CreateAndSelectNewDefaultObject(),
+    SetObjectOrigin {
+        object_id: ObjectId,
+        origin: Vec3,
+    },
+    SetObjectName {
+        object_id: ObjectId,
+        new_name: String,
+    },
 
     // primtive op - selection
     SelectPrimitiveOpId(ObjectId, PrimitiveOpId),
@@ -78,7 +89,7 @@ pub enum CommandSource {
     KeyboardShortcut,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CommandWithSource {
     pub command: Command,
     pub source: CommandSource,
