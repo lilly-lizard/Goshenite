@@ -1,8 +1,4 @@
-use std::{
-    collections::BTreeSet,
-    error, fmt,
-    sync::atomic::{AtomicU16, Ordering},
-};
+use std::{collections::BTreeSet, error, fmt};
 
 // gpu id buffer packed as 16 bits for object and 16 bits for primitive op.
 // 32 bit uint images have guarenteed vulkan support
@@ -12,31 +8,33 @@ pub trait UniqueIdType: From<UniqueId> + Ord {
     fn raw_id(&self) -> UniqueId;
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct UniqueIdGen<T: UniqueIdType> {
-    counter: AtomicU16,
+    counter: UniqueId,
     recycled_ids: BTreeSet<T>,
 }
 
 impl<T: UniqueIdType> UniqueIdGen<T> {
     pub const fn new() -> Self {
         Self {
-            counter: AtomicU16::new(1),
+            counter: 1,
             recycled_ids: BTreeSet::new(),
         }
     }
 
     pub fn new_id(&mut self) -> Result<T, UniqueIdError> {
-        // prefer recycling ids
-        if let Some(new_id) = self.recycled_ids.pop_first() {
-            return Ok(new_id);
-        }
+        if self.counter == UniqueId::MAX {
+            // try recyling (prefer not to do this)
+            if let Some(new_id) = self.recycled_ids.pop_first() {
+                return Ok(new_id);
+            }
 
-        let new_id = self.counter.fetch_add(1, Ordering::Relaxed);
-        if new_id == UniqueId::MAX {
-            // means the fetch_add new id will wrap around making the ids not unique!
             return Err(UniqueIdError::MaxReached);
         }
+
+        let new_id = self.counter;
+        self.counter = self.counter + 1;
+
         Ok(new_id.into())
     }
 
