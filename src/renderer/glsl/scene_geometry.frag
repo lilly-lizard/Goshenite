@@ -80,7 +80,7 @@ SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	);
 
-	float dist = sdf_super_primitive(pos, s, r);
+	float dist = sdf_uber_primitive(pos, s, r);
 
 	SdfResult ret = { dist, op_index };
 	return ret;

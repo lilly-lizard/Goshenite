@@ -20,7 +20,7 @@ use crate::{
                 EncodablePrimitive, Primitive,
             },
             sphere::Sphere,
-            super_primitive::SuperPrimitive,
+            uber_primitive::UberPrimitive,
         },
     },
 };
@@ -208,7 +208,7 @@ fn existing_primitive_op_editor(
     let primitive_edited = match &mut gui_state.primitive_fields {
         Primitive::Sphere(p) => sphere_editor_ui(ui, p),
         Primitive::Cube(p) => cube_editor_ui(ui, p),
-        Primitive::SuperPrimitive(p) => super_primitive_editor_ui(ui, p),
+        Primitive::UberPrimitive(p) => super_primitive_editor_ui(ui, p),
     };
     if primitive_edited {
         // replace primitive with edited one
@@ -267,7 +267,7 @@ fn new_primitive_op_editor(
     match &mut gui_state.primitive_fields {
         Primitive::Sphere(p) => sphere_editor_ui(ui, p),
         Primitive::Cube(p) => cube_editor_ui(ui, p),
-        Primitive::SuperPrimitive(p) => super_primitive_editor_ui(ui, p),
+        Primitive::UberPrimitive(p) => super_primitive_editor_ui(ui, p),
     };
 
     // Add and Reset buttons
@@ -522,12 +522,12 @@ pub fn cube_editor_ui_fields(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &
 /// Same as `cube_editor_ui` but takes a `Cube` as arg.
 /// Returns true if a value was changed.
 #[inline]
-pub fn super_primitive_editor_ui(ui: &mut egui::Ui, super_primitive: &mut SuperPrimitive) -> bool {
+pub fn super_primitive_editor_ui(ui: &mut egui::Ui, super_primitive: &mut UberPrimitive) -> bool {
     super_primitive_editor_ui_fields(
         ui,
         &mut super_primitive.transform.center,
-        &mut super_primitive.s,
-        &mut super_primitive.r,
+        &mut super_primitive.dimensions,
+        &mut super_primitive.corner_radius,
     )
 }
 
@@ -535,8 +535,8 @@ pub fn super_primitive_editor_ui(ui: &mut egui::Ui, super_primitive: &mut SuperP
 pub fn super_primitive_editor_ui_fields(
     ui: &mut egui::Ui,
     center: &mut Vec3,
-    s: &mut Vec4,
-    r: &mut Vec2,
+    dimensions: &mut Vec4,
+    corner_radius: &mut Vec2,
 ) -> bool {
     let mut something_changed: bool = false;
 
@@ -554,17 +554,29 @@ pub fn super_primitive_editor_ui_fields(
     });
 
     ui.horizontal(|ui| {
-        ui.label("S:");
-        something_changed |= ui.add(DragValue::new(&mut s.x).speed(DRAG_INC)).changed();
-        something_changed |= ui.add(DragValue::new(&mut s.y).speed(DRAG_INC)).changed();
-        something_changed |= ui.add(DragValue::new(&mut s.z).speed(DRAG_INC)).changed();
-        something_changed |= ui.add(DragValue::new(&mut s.w).speed(DRAG_INC)).changed();
+        ui.label("Dimensions:");
+        something_changed |= ui
+            .add(DragValue::new(&mut dimensions.x).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut dimensions.y).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut dimensions.z).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut dimensions.w).speed(DRAG_INC))
+            .changed();
     });
 
     ui.horizontal(|ui| {
-        ui.label("R:");
-        something_changed |= ui.add(DragValue::new(&mut r.x).speed(DRAG_INC)).changed();
-        something_changed |= ui.add(DragValue::new(&mut r.y).speed(DRAG_INC)).changed();
+        ui.label("Corner radius:");
+        something_changed |= ui
+            .add(DragValue::new(&mut corner_radius.x).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut corner_radius.y).speed(DRAG_INC))
+            .changed();
     });
 
     something_changed

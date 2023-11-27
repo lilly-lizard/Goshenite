@@ -8,9 +8,10 @@ struct SdfResult {
 };
 
 // ~~~ Signed Distance Fields ~~~
+// https://www.shadertoy.com/view/MsVGWG
 // https://iquilezles.org/articles/distfunctions/
 
-float sdf_super_primitive(vec3 pos, vec4 s, vec2 r)
+float sdf_uber_primitive(vec3 pos, vec4 s, vec2 r)
 {
 	vec3 d = abs(pos) - s.xyz;
 	float q_1 = length(max(d.xy + r.x, 0.));

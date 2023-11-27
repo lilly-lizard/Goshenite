@@ -1,6 +1,6 @@
 use super::{
     cube::Cube, primitive_transform::PrimitiveTransform, sphere::Sphere,
-    super_primitive::SuperPrimitive,
+    uber_primitive::UberPrimitive,
 };
 use crate::{
     engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
@@ -14,21 +14,21 @@ pub const DEFAULT_DIMENSIONS: Vec3 = Vec3::ONE;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Primitive {
-    SuperPrimitive(SuperPrimitive),
+    UberPrimitive(UberPrimitive),
     Sphere(Sphere),
     Cube(Cube),
 }
 
 impl Default for Primitive {
     fn default() -> Self {
-        Self::SuperPrimitive(SuperPrimitive::default())
+        Self::UberPrimitive(UberPrimitive::default())
     }
 }
 
 macro_rules! primitive_fn_match {
     ($self:ident, $primitive_fn:ident) => {
         match $self {
-            Self::SuperPrimitive(p) => p.$primitive_fn(),
+            Self::UberPrimitive(p) => p.$primitive_fn(),
             Self::Sphere(p) => p.$primitive_fn(),
             Self::Cube(p) => p.$primitive_fn(),
         }
@@ -75,20 +75,20 @@ pub trait EncodablePrimitive: Send + Sync {
 
 pub mod primitive_names {
     use super::Primitive;
-    use crate::engine::primitives::{cube::Cube, sphere::Sphere, super_primitive::SuperPrimitive};
+    use crate::engine::primitives::{cube::Cube, sphere::Sphere, uber_primitive::UberPrimitive};
 
     pub const SPHERE: &'static str = "Sphere";
     pub const CUBE: &'static str = "Cube";
-    pub const SUPER_PRIMITIVE: &'static str = "Super Primitive";
+    pub const UBER_PRIMITIVE: &'static str = "Uber Primitive";
 
-    //pub const NAME_LIST: [&'static str; 3] = [SPHERE, CUBE, SUPER_PRIMITIVE];
-    pub const NAME_LIST: [&'static str; 1] = [SUPER_PRIMITIVE];
+    //pub const NAME_LIST: [&'static str; 3] = [SPHERE, CUBE, UBER_PRIMITIVE];
+    pub const NAME_LIST: [&'static str; 1] = [UBER_PRIMITIVE];
 
     pub fn default_primitive_from_type_name(type_name: &'static str) -> Primitive {
         match type_name {
             SPHERE => Primitive::Sphere(Sphere::default()),
             CUBE => Primitive::Cube(Cube::default()),
-            _ => Primitive::SuperPrimitive(SuperPrimitive::default()),
+            _ => Primitive::UberPrimitive(UberPrimitive::default()),
         }
     }
 }

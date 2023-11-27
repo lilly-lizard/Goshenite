@@ -8,42 +8,47 @@ use crate::{
 use glam::{Quat, Vec2, Vec3, Vec4};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct SuperPrimitive {
+pub struct UberPrimitive {
     pub transform: PrimitiveTransform,
-    pub s: Vec4,
-    pub r: Vec2,
+    /// width, depth, height, thickness
+    pub dimensions: Vec4,
+    pub corner_radius: Vec2,
 }
 
-impl SuperPrimitive {
-    pub const fn new(center: Vec3, rotation: Quat, s: Vec4, r: Vec2) -> Self {
+impl UberPrimitive {
+    pub const fn new(center: Vec3, rotation: Quat, dimensions: Vec4, corner_radius: Vec2) -> Self {
         let transform = PrimitiveTransform { center, rotation };
-        Self { transform, s, r }
-    }
-}
-
-impl Default for SuperPrimitive {
-    fn default() -> Self {
         Self {
-            transform: PrimitiveTransform::default(),
-            s: Vec4::ZERO,
-            r: Vec2::ZERO,
+            transform,
+            dimensions,
+            corner_radius,
         }
     }
 }
 
-impl EncodablePrimitive for SuperPrimitive {
+impl Default for UberPrimitive {
+    fn default() -> Self {
+        Self {
+            transform: PrimitiveTransform::default(),
+            dimensions: Vec4::ZERO,
+            corner_radius: Vec2::ZERO,
+        }
+    }
+}
+
+impl EncodablePrimitive for UberPrimitive {
     fn type_name(&self) -> &'static str {
-        primitive_names::SUPER_PRIMITIVE
+        primitive_names::UBER_PRIMITIVE
     }
 
     fn encoded_props(&self) -> PrimitivePropsSlice {
         [
-            self.s.x.to_bits(),
-            self.s.y.to_bits(),
-            self.s.z.to_bits(),
-            self.s.w.to_bits(),
-            self.r.x.to_bits(),
-            self.r.y.to_bits(),
+            self.dimensions.x.to_bits(),
+            self.dimensions.y.to_bits(),
+            self.dimensions.z.to_bits(),
+            self.dimensions.w.to_bits(),
+            self.corner_radius.x.to_bits(),
+            self.corner_radius.y.to_bits(),
         ]
     }
 

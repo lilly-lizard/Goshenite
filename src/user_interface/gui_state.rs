@@ -55,7 +55,7 @@ impl GuiState {
 impl Default for GuiState {
     fn default() -> Self {
         Self {
-            op_field: Operation::NOP,
+            op_field: Default::default(),
             primitive_fields: Default::default(),
             primitive_op_list_drag_state: Default::default(),
         }
