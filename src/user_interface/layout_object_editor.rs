@@ -20,12 +20,13 @@ use crate::{
                 EncodablePrimitive, Primitive,
             },
             sphere::Sphere,
+            super_primitive::SuperPrimitive,
         },
     },
 };
 use egui::{ComboBox, DragValue, RichText, TextStyle};
 use egui_dnd::{DragDropResponse, DragableItem};
-use glam::Vec3;
+use glam::{Vec2, Vec3, Vec4};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 
@@ -207,7 +208,7 @@ fn existing_primitive_op_editor(
     let primitive_edited = match &mut gui_state.primitive_fields {
         Primitive::Sphere(p) => sphere_editor_ui(ui, p),
         Primitive::Cube(p) => cube_editor_ui(ui, p),
-        _ => false,
+        Primitive::SuperPrimitive(p) => super_primitive_editor_ui(ui, p),
     };
     if primitive_edited {
         // replace primitive with edited one
@@ -264,14 +265,10 @@ fn new_primitive_op_editor(
     // primitive editor
 
     match &mut gui_state.primitive_fields {
-        Primitive::Sphere(p) => {
-            sphere_editor_ui(ui, p);
-        }
-        Primitive::Cube(p) => {
-            cube_editor_ui(ui, p);
-        }
-        _ => (),
-    }
+        Primitive::Sphere(p) => sphere_editor_ui(ui, p),
+        Primitive::Cube(p) => cube_editor_ui(ui, p),
+        Primitive::SuperPrimitive(p) => super_primitive_editor_ui(ui, p),
+    };
 
     // Add and Reset buttons
 
@@ -517,6 +514,57 @@ pub fn cube_editor_ui_fields(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &
         something_changed |= ui
             .add(DragValue::new(&mut dimensions.z).speed(DRAG_INC))
             .changed();
+    });
+
+    something_changed
+}
+
+/// Same as `cube_editor_ui` but takes a `Cube` as arg.
+/// Returns true if a value was changed.
+#[inline]
+pub fn super_primitive_editor_ui(ui: &mut egui::Ui, super_primitive: &mut SuperPrimitive) -> bool {
+    super_primitive_editor_ui_fields(
+        ui,
+        &mut super_primitive.transform.center,
+        &mut super_primitive.s,
+        &mut super_primitive.r,
+    )
+}
+
+/// Returns true if a value was changed.
+pub fn super_primitive_editor_ui_fields(
+    ui: &mut egui::Ui,
+    center: &mut Vec3,
+    s: &mut Vec4,
+    r: &mut Vec2,
+) -> bool {
+    let mut something_changed: bool = false;
+
+    ui.horizontal(|ui| {
+        ui.label("Center:");
+        something_changed |= ui
+            .add(DragValue::new(&mut center.x).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut center.y).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut center.z).speed(DRAG_INC))
+            .changed();
+    });
+
+    ui.horizontal(|ui| {
+        ui.label("S:");
+        something_changed |= ui.add(DragValue::new(&mut s.x).speed(DRAG_INC)).changed();
+        something_changed |= ui.add(DragValue::new(&mut s.y).speed(DRAG_INC)).changed();
+        something_changed |= ui.add(DragValue::new(&mut s.z).speed(DRAG_INC)).changed();
+        something_changed |= ui.add(DragValue::new(&mut s.w).speed(DRAG_INC)).changed();
+    });
+
+    ui.horizontal(|ui| {
+        ui.label("R:");
+        something_changed |= ui.add(DragValue::new(&mut r.x).speed(DRAG_INC)).changed();
+        something_changed |= ui.add(DragValue::new(&mut r.y).speed(DRAG_INC)).changed();
     });
 
     something_changed

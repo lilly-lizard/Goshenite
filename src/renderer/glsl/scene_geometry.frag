@@ -37,78 +37,28 @@ layout (set = 1, binding = 0, std430) readonly buffer Object {
 
 // ~~~ Code interpreters ~~~
 
-float sdf_sphere(vec3 pos, float radius)
-{
-	return length(pos) - radius;
-}
-
-float sdf_box(vec3 pos, vec3 dimensions)
-{
-	vec3 d = abs(pos) - dimensions / 2.;
-	float c = min(max(d.x, max(d.y, d.z)), 0.);
-	float l = length(max(d, 0.));
-	return c + l;
-}
-
-float sdf_box_frame(vec3 pos, float dimension_inner, vec3 dimensions_outer)
-{
-	vec3 p = abs(pos)                   - dimensions_outer;
-	vec3 q = abs(pos + dimension_inner) - dimension_inner;
-	float c1 = length(max(vec3(p.x, q.y, q.z), 0.0)) + min(max(p.x, max(q.y, q.z)), 0.0);
-	float c2 = length(max(vec3(q.x, p.y, q.z), 0.0)) + min(max(q.x, max(p.y, q.z)), 0.0);
-	float c3 = length(max(vec3(q.x, q.y, p.z), 0.0)) + min(max(q.x, max(q.y, p.z)), 0.0);
-	return min(min(c1, c2), c3);
-}
-
-// Hole is along z axis
-float sdf_torus(vec3 pos, float radius_inner, float radius_outer)
-{
-	float l = length(pos.xy) - radius_inner;
-	vec2 q = vec2(l, pos.z);
-	return length(q) - radius_outer;
-}
-
-// todo wtf arg? https://www.shadertoy.com/view/tl23RK
-float sdf_capped_torus(vec3 pos, float radius_inner, float radius_outer, vec2 wtf)
-{
-	pos.x = abs(pos.x);
-	bool b = wtf.y * pos.x > wtf.x * pos.y;
-	float k = b ? dot(pos.xy, wtf) : length(pos.xy);
-	float j = radius_inner * radius_inner - 2. * radius_inner * k;
-	return sqrt(j + dot(pos, pos)) - radius_outer;
-}
-
 SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 {
-	uint primitive_type = object.primitive_ops[buffer_index++];
-
-	if (primitive_type == PRIM_NULL) {
-		SdfResult ret = { cam.far, op_index };
-		return ret;
-	}
-
 	// todo perf comparison: load OP_UNIT_LENGTH values at once then decode below
 
-	// decode primitive translation vector
 	vec3 center = vec3(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	);
 
-	// decode primitive rotation matrix
-	mat3 rotation;
-	rotation[0] = vec3(
+	mat3 transform;
+	transform[0] = vec3(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	); // column 1
-	rotation[1] = vec3(
+	transform[1] = vec3(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	); // column 2
-	rotation[2] = vec3(
+	transform[2] = vec3(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
@@ -116,28 +66,21 @@ SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 
 	// apply to position
 	pos = pos - center; // todo before or after transform?
-	pos = pos * rotation;
+	pos = pos * transform;
 
-	float dist;
-	if (primitive_type == PRIM_SPHERE)
-	{
-		float radius = uintBitsToFloat(object.primitive_ops[buffer_index++]);
-		dist = sdf_sphere(pos, radius);
-	}
-	else if (primitive_type == PRIM_BOX)
-	{
-		vec3 dimensions = vec3(
-			uintBitsToFloat(object.primitive_ops[buffer_index++]),
-			uintBitsToFloat(object.primitive_ops[buffer_index++]),
-			uintBitsToFloat(object.primitive_ops[buffer_index++])
-		);
-		dist = sdf_box(pos, dimensions);
-	}
-	else
-	{
-		// else do nothing
-		dist = cam.far;
-	}
+	vec4 s = vec4(
+		uintBitsToFloat(object.primitive_ops[buffer_index++]),
+		uintBitsToFloat(object.primitive_ops[buffer_index++]),
+		uintBitsToFloat(object.primitive_ops[buffer_index++]),
+		uintBitsToFloat(object.primitive_ops[buffer_index++])
+	);
+
+	vec2 r = vec2(
+		uintBitsToFloat(object.primitive_ops[buffer_index++]),
+		uintBitsToFloat(object.primitive_ops[buffer_index++])
+	);
+
+	float dist = sdf_super_primitive(pos, s, r);
 
 	SdfResult ret = { dist, op_index };
 	return ret;

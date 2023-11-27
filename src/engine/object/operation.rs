@@ -13,10 +13,10 @@ pub enum Operation {
 }
 
 static VARIANTS: &[Operation] = &[
-    Operation::NOP,
     Operation::Union,
     Operation::Intersection,
     Operation::Subtraction,
+    Operation::NOP,
 ];
 
 impl Operation {

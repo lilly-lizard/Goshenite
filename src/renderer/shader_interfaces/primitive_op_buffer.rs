@@ -36,13 +36,11 @@ pub type PrimitivePropsSlice = [PrimitiveOpBufferUnit; PRIMITIVE_PROPS_LEN];
 
 pub fn create_primitive_op_packet(
     op_code: PrimitiveOpBufferUnit,
-    primitive_type_code: PrimitiveOpBufferUnit,
     transform: PrimitiveTransformSlice,
     props: PrimitivePropsSlice,
 ) -> PrimitiveOpPacket {
     [
         op_code,
-        primitive_type_code,
         transform[0],
         transform[1],
         transform[2],
@@ -61,13 +59,14 @@ pub fn create_primitive_op_packet(
         props[3],
         props[4],
         props[5],
+        0,
     ]
 }
 
 pub fn nop_primitive_op_packet() -> PrimitiveOpPacket {
     [
         op_codes::NOP,
-        primitive_type_codes::NULL,
+        0,
         0,
         0,
         0,
@@ -87,16 +86,4 @@ pub fn nop_primitive_op_packet() -> PrimitiveOpPacket {
         0,
         0,
     ]
-}
-
-/// Each `PrimitiveDataSlice` begins with a primitive code defining the type of primitive that has been encoded.
-/// The values defined here should match the ones defined in `primitives.glsl`.
-#[rustfmt::skip]
-#[allow(dead_code)]
-pub mod primitive_type_codes {
-    use super::PrimitiveOpBufferUnit;
-    pub const NULL:     PrimitiveOpBufferUnit = 0x00000000;
-    pub const SPHERE:   PrimitiveOpBufferUnit = 0x00000001;
-    pub const CUBE:     PrimitiveOpBufferUnit = 0x00000002;
-    pub const INVALID:  PrimitiveOpBufferUnit = 0xFFFFFFFF;
 }

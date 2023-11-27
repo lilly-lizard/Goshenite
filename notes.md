@@ -4,6 +4,8 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- make primitive_type_drop_down like op_drop_down so we don't need default_primitive_from_type_name
+
 - single primitive sdf function (unbound)
 - primitive rotation
 - blend function (primitive op)

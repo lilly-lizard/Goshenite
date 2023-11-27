@@ -213,12 +213,11 @@ impl ObjectSnapshot {
             let primitive = primitive_op.primitive;
 
             let op_code = primitive_op.op.op_code();
-            let primitive_type_code = primitive.type_code();
 
             let transform = primitive.transform().encoded(self.origin);
             let props = primitive.encoded_props();
 
-            let packet = create_primitive_op_packet(op_code, primitive_type_code, transform, props);
+            let packet = create_primitive_op_packet(op_code, transform, props);
             encoded_primitives.push(packet);
         }
         if self.primitive_ops.len() == 0 {

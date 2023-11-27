@@ -5,7 +5,7 @@ use super::{
         object::ObjectId, object_collection::ObjectCollection, operation::Operation,
         primitive_op::PrimitiveOpId,
     },
-    primitives::{cube::Cube, null_primitive::NullPrimitive, primitive::Primitive, sphere::Sphere},
+    primitives::{cube::Cube, primitive::Primitive, sphere::Sphere},
     render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
 };
 use crate::{
@@ -136,7 +136,7 @@ impl EngineInstance {
 
                 // TESTING OBJECTS START
 
-                object_testing(&mut self.object_collection);
+                //object_testing(&mut self.object_collection);
 
                 // TESTING OBJECTS END
             }
@@ -486,6 +486,5 @@ fn object_testing(object_collection: &mut ObjectCollection) {
         .new_object("Another Bruh".to_string(), Vec3::new(0.2, -0.2, 0.))
         .expect("no where near maxing out unique ids");
     let _ = another_object.push_op(Operation::Union, Primitive::Sphere(sphere));
-    let _ = another_object.push_op(Operation::Union, Primitive::Null(NullPrimitive::new()));
     let _ = object_collection.mark_object_for_data_update(another_object_id);
 }

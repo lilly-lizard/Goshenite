@@ -3,10 +3,7 @@ use super::{
     primitive_transform::PrimitiveTransform,
 };
 use crate::{
-    engine::aabb::Aabb,
-    renderer::shader_interfaces::primitive_op_buffer::{
-        primitive_type_codes, PrimitiveOpBufferUnit, PrimitivePropsSlice,
-    },
+    engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
 use glam::{Quat, Vec3};
 
@@ -36,10 +33,6 @@ impl Default for Cube {
 }
 
 impl EncodablePrimitive for Cube {
-    fn type_code(&self) -> PrimitiveOpBufferUnit {
-        primitive_type_codes::CUBE
-    }
-
     fn type_name(&self) -> &'static str {
         primitive_names::CUBE
     }
@@ -49,10 +42,9 @@ impl EncodablePrimitive for Cube {
             self.dimensions.x.to_bits(),
             self.dimensions.y.to_bits(),
             self.dimensions.z.to_bits(),
-            // padding
-            0,
-            0,
-            0,
+            0_f32.to_bits(),
+            0_f32.to_bits(),
+            0_f32.to_bits(),
         ]
     }
 
