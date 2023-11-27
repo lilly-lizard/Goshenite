@@ -4,8 +4,8 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
-- heat map
-- single primitive function (unbound)
+- single primitive sdf function (unbound)
+- primitive rotation
 - blend function (primitive op)
 
 - memory allocation write with bytemuck slice i.e. copy all at once rather than with iter

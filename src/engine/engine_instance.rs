@@ -98,7 +98,7 @@ impl EngineInstance {
 
         let gui = Gui::new(&event_loop, scale_factor as f32);
 
-        let mut object_collection = ObjectCollection::new();
+        let object_collection = ObjectCollection::new();
 
         // start render thread
         let (render_thread_handle, render_thread_channels) = start_render_thread(renderer);
