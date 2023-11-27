@@ -59,6 +59,6 @@ impl EncodablePrimitive for UberPrimitive {
     fn aabb(&self) -> Aabb {
         // todo calculate only when props/transform changed!
         //todo "dimensions need to be adjusted for rotation!
-        Aabb::new(self.transform.center, Vec3::new(2.0, 2.0, 2.0))
+        Aabb::new(self.transform.center, Vec3::new(10.0, 10.0, 10.0))
     }
 }
