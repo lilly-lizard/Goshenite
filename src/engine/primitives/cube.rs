@@ -5,7 +5,7 @@ use super::{
 use crate::{
     engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
-use glam::{Quat, Vec3};
+use glam::{Quat, Vec2, Vec3};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Cube {
@@ -38,13 +38,18 @@ impl EncodablePrimitive for Cube {
     }
 
     fn encoded_props(&self) -> PrimitivePropsSlice {
+        let width = self.dimensions.x;
+        let depth = self.dimensions.y;
+        let height = self.dimensions.z;
+        let thickness = 1_f32;
+        let corner_radius = Vec2::ZERO;
         [
-            self.dimensions.x.to_bits(),
-            self.dimensions.y.to_bits(),
-            self.dimensions.z.to_bits(),
-            0_f32.to_bits(),
-            0_f32.to_bits(),
-            0_f32.to_bits(),
+            width.to_bits(),
+            depth.to_bits(),
+            height.to_bits(),
+            thickness.to_bits(),
+            corner_radius.x.to_bits(),
+            corner_radius.y.to_bits(),
         ]
     }
 
