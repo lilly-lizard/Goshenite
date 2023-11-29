@@ -38,11 +38,11 @@ impl EncodablePrimitive for Cube {
     }
 
     fn encoded_props(&self) -> PrimitivePropsSlice {
-        let width = self.dimensions.x;
-        let depth = self.dimensions.y;
-        let height = self.dimensions.z;
-        let thickness = 1_f32;
-        let corner_radius = Vec2::ZERO;
+        let width = self.dimensions.x / 2.0;
+        let depth = self.dimensions.y / 2.0;
+        let height = self.dimensions.z / 2.0;
+        let thickness = 0.5_f32;
+        let corner_radius = Vec2::new(-1.0, 0.0);
         [
             width.to_bits(),
             depth.to_bits(),
@@ -60,6 +60,6 @@ impl EncodablePrimitive for Cube {
     fn aabb(&self) -> Aabb {
         // todo calculate only when props/transform changed!
         //todo!("dimensions need to be adjusted for rotation!");
-        Aabb::new(self.transform.center, self.dimensions)
+        Aabb::new(self.transform.center, self.dimensions + Vec3::splat(0.1))
     }
 }

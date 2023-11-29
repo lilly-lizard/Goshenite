@@ -5,7 +5,7 @@ use super::{
 use crate::{
     engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
-use glam::{Quat, Vec2, Vec3, Vec4};
+use glam::{Quat, Vec2, Vec3, Vec4, Vec4Swizzles};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct UberPrimitive {
@@ -57,8 +57,9 @@ impl EncodablePrimitive for UberPrimitive {
     }
 
     fn aabb(&self) -> Aabb {
-        // todo calculate only when props/transform changed!
+        // todo calculate only when props/transform changed?
         //todo "dimensions need to be adjusted for rotation!
-        Aabb::new(self.transform.center, Vec3::new(10.0, 10.0, 10.0))
+        let max_dimensions = Vec3::new(5., 5., 5.);
+        Aabb::new(self.transform.center, max_dimensions)
     }
 }

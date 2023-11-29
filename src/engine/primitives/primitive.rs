@@ -82,7 +82,7 @@ pub mod primitive_names {
     pub const UBER_PRIMITIVE: &'static str = "Uber Primitive";
 
     //pub const NAME_LIST: [&'static str; 3] = [SPHERE, CUBE, UBER_PRIMITIVE];
-    pub const NAME_LIST: [&'static str; 1] = [UBER_PRIMITIVE];
+    pub const NAME_LIST: [&'static str; 2] = [CUBE, UBER_PRIMITIVE];
 
     pub fn default_primitive_from_type_name(type_name: &'static str) -> Primitive {
         match type_name {
