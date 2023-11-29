@@ -10,6 +10,9 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - primitive rotation
 - blend function (primitive op)
 
+- object file format (e.g. gltf)
+- object surface octree cpu code (use file format to have tests/benchmarks)
+
 - memory allocation write with bytemuck slice i.e. copy all at once rather than with iter
 
 - get rid of curved egui borders
