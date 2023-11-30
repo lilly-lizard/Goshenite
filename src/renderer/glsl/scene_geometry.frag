@@ -36,7 +36,6 @@ layout (set = 1, binding = 0, std430) readonly buffer Object {
 
 // ~~~ Signed Distance Fields ~~~
 // https://www.shadertoy.com/view/MsVGWG
-// https://iquilezles.org/articles/distfunctions/
 
 float sdf_uber_primitive(vec3 pos, vec4 s, vec2 r)
 {
