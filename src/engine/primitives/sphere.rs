@@ -1,6 +1,6 @@
 use super::{
     primitive::{primitive_names, EncodablePrimitive, DEFAULT_RADIUS},
-    primitive_transform::PrimitiveTransform,
+    primitive_transform::{default_primitive_transform, PrimitiveTransform},
 };
 use crate::{
     engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
@@ -20,12 +20,17 @@ impl Sphere {
     }
 }
 
+#[inline]
+pub const fn default_sphere() -> Sphere {
+    Sphere {
+        transform: default_primitive_transform(),
+        radius: DEFAULT_RADIUS,
+    }
+}
+
 impl Default for Sphere {
     fn default() -> Self {
-        Self {
-            transform: PrimitiveTransform::default(),
-            radius: DEFAULT_RADIUS,
-        }
+        default_sphere()
     }
 }
 

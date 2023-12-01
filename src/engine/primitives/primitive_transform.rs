@@ -43,11 +43,16 @@ impl PrimitiveTransform {
     }
 }
 
+#[inline]
+pub const fn default_primitive_transform() -> PrimitiveTransform {
+    PrimitiveTransform {
+        center: Vec3::ZERO,
+        rotation: Quat::IDENTITY,
+    }
+}
+
 impl Default for PrimitiveTransform {
     fn default() -> Self {
-        Self {
-            center: Vec3::ZERO,
-            rotation: Quat::IDENTITY,
-        }
+        default_primitive_transform()
     }
 }

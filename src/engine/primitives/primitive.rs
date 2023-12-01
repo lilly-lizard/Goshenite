@@ -1,36 +1,52 @@
 use super::{
-    cube::Cube, primitive_transform::PrimitiveTransform, sphere::Sphere,
-    uber_primitive::UberPrimitive,
+    cube::{default_cube, Cube},
+    primitive_transform::PrimitiveTransform,
+    sphere::{default_sphere, Sphere},
+    uber_primitive::{default_uber_primitive, UberPrimitive},
 };
 use crate::{
     engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
 use glam::Vec3;
 
+// ~~ Constants ~~
+
 pub const DEFAULT_RADIUS: f32 = 0.5;
 pub const DEFAULT_DIMENSIONS: Vec3 = Vec3::ONE;
 
-// PRIMITIVE
+pub mod primitive_names {
+    pub const SPHERE: &'static str = "Sphere";
+    pub const CUBE: &'static str = "Cube";
+    pub const UBER_PRIMITIVE: &'static str = "Uber Primitive";
+}
+
+// ~~ Primitive ~~
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Primitive {
-    UberPrimitive(UberPrimitive),
     Sphere(Sphere),
     Cube(Cube),
+    UberPrimitive(UberPrimitive),
 }
+
+static VARIANTS: &[Primitive] = &[
+    Primitive::Sphere(default_sphere()),
+    Primitive::Cube(default_cube()),
+    Primitive::UberPrimitive(default_uber_primitive()),
+];
 
 impl Default for Primitive {
     fn default() -> Self {
-        Self::UberPrimitive(UberPrimitive::default())
+        Self::UberPrimitive(Default::default())
     }
 }
 
 macro_rules! primitive_fn_match {
     ($self:ident, $primitive_fn:ident) => {
         match $self {
-            Self::UberPrimitive(p) => p.$primitive_fn(),
             Self::Sphere(p) => p.$primitive_fn(),
             Self::Cube(p) => p.$primitive_fn(),
+            Self::UberPrimitive(p) => p.$primitive_fn(),
         }
     };
 }
@@ -50,7 +66,16 @@ impl EncodablePrimitive for Primitive {
     }
 }
 
-// ENCODABLE PRIMITIVE
+impl Primitive {
+    pub fn variant_names() -> Vec<(Self, &'static str)> {
+        VARIANTS
+            .iter()
+            .map(|primitive| (primitive.clone(), primitive.type_name()))
+            .collect()
+    }
+}
+
+// ~~ Encodable Primitive ~~
 
 /// Methods required to encode and process primitive data. Mostly for GPU rendering.
 pub trait EncodablePrimitive: Send + Sync {
@@ -69,25 +94,4 @@ pub trait EncodablePrimitive: Send + Sync {
 
     /// Axis aligned bounding box
     fn aabb(&self) -> Aabb;
-}
-
-// CONSTANTS
-
-pub mod primitive_names {
-    use super::Primitive;
-    use crate::engine::primitives::{cube::Cube, sphere::Sphere, uber_primitive::UberPrimitive};
-
-    pub const SPHERE: &'static str = "Sphere";
-    pub const CUBE: &'static str = "Cube";
-    pub const UBER_PRIMITIVE: &'static str = "Uber Primitive";
-
-    pub const NAME_LIST: [&'static str; 3] = [SPHERE, CUBE, UBER_PRIMITIVE];
-
-    pub fn default_primitive_from_type_name(type_name: &'static str) -> Primitive {
-        match type_name {
-            SPHERE => Primitive::Sphere(Sphere::default()),
-            CUBE => Primitive::Cube(Cube::default()),
-            _ => Primitive::UberPrimitive(UberPrimitive::default()),
-        }
-    }
 }

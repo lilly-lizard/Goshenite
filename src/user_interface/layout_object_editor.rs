@@ -1,3 +1,5 @@
+use std::mem::discriminant;
+
 use super::{
     config_ui,
     gui::EditState,
@@ -15,10 +17,7 @@ use crate::{
         },
         primitives::{
             cube::Cube,
-            primitive::{
-                primitive_names::{self, default_primitive_from_type_name},
-                EncodablePrimitive, Primitive,
-            },
+            primitive::{EncodablePrimitive, Primitive},
             sphere::Sphere,
             uber_primitive::UberPrimitive,
         },
@@ -187,7 +186,7 @@ fn existing_primitive_op_editor(
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        let possible_updated_op = op_drop_down(ui_h, selected_object_id, modified_prim_op.op);
+        let possible_updated_op = op_drop_down(ui_h, modified_prim_op.op, selected_object.id());
         if let Some(updated_op) = possible_updated_op {
             // user edited the op via drop-down menu
             modified_prim_op.op = updated_op;
@@ -198,21 +197,21 @@ fn existing_primitive_op_editor(
         let primitive_type_changed = primitive_type_drop_down(ui_h, gui_state, selected_object_id);
         if primitive_type_changed {
             // replace old primitive according to new type
-            modified_prim_op.primitive = gui_state.primitive_fields.clone();
+            modified_prim_op.primitive = gui_state.primitive_edit_state.clone();
             prim_op_edit_state = EditState::Modified;
         }
     });
 
     // primitive editor
 
-    let primitive_edited = match &mut gui_state.primitive_fields {
+    let primitive_edited = match &mut gui_state.primitive_edit_state {
         Primitive::Sphere(p) => sphere_editor_ui(ui, p),
         Primitive::Cube(p) => cube_editor_ui(ui, p),
         Primitive::UberPrimitive(p) => super_primitive_editor_ui(ui, p),
     };
     if primitive_edited {
         // replace primitive with edited one
-        modified_prim_op.primitive = gui_state.primitive_fields.clone();
+        modified_prim_op.primitive = gui_state.primitive_edit_state.clone();
         prim_op_edit_state = EditState::Modified;
     }
 
@@ -252,10 +251,10 @@ fn new_primitive_op_editor(
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        let possible_updated_op = op_drop_down(ui_h, selected_object.id(), gui_state.op_field);
+        let possible_updated_op = op_drop_down(ui_h, gui_state.op_edit_state, selected_object.id());
         if let Some(updated_op) = possible_updated_op {
             // user edited the op via drop-down menu
-            gui_state.op_field = updated_op;
+            gui_state.op_edit_state = updated_op;
         }
 
         // primitive type drop down menu
@@ -264,7 +263,7 @@ fn new_primitive_op_editor(
 
     // primitive editor
 
-    match &mut gui_state.primitive_fields {
+    match &mut gui_state.primitive_edit_state {
         Primitive::Sphere(p) => sphere_editor_ui(ui, p),
         Primitive::Cube(p) => cube_editor_ui(ui, p),
         Primitive::UberPrimitive(p) => super_primitive_editor_ui(ui, p),
@@ -282,14 +281,14 @@ fn new_primitive_op_editor(
         if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
             commands.push(Command::PushOpAndSelect {
                 object_id: selected_object.id(),
-                operation: gui_state.op_field,
-                primitive: gui_state.primitive_fields.clone(),
+                operation: gui_state.op_edit_state,
+                primitive: gui_state.primitive_edit_state.clone(),
             });
         } else {
             commands.push(Command::PushOp {
                 object_id: selected_object.id(),
-                operation: gui_state.op_field,
-                primitive: gui_state.primitive_fields.clone(),
+                operation: gui_state.op_edit_state,
+                primitive: gui_state.primitive_edit_state.clone(),
             });
         }
     }
@@ -301,8 +300,8 @@ fn new_primitive_op_editor(
 /// Returns a new operation if a different one is selected
 fn op_drop_down(
     ui: &mut egui::Ui,
-    object_id: ObjectId,
     selected_op: Operation,
+    object_id: ObjectId,
 ) -> Option<Operation> {
     let mut new_op = selected_op.clone();
 
@@ -320,31 +319,31 @@ fn op_drop_down(
     None
 }
 
-/// Returns true if the primitive type was changed. If this happens, gui_state.primitive_fields
+/// Returns true if the primitive type was changed. If this happens, gui_state.primitive_edit_state
 /// gets set to the default of the chosen type.
 fn primitive_type_drop_down(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
     selected_object_id: ObjectId,
 ) -> bool {
-    let selected_primitive_type_name: &str = gui_state.primitive_fields.type_name();
+    let selected_primitive_type_name: &str = gui_state.primitive_edit_state.type_name();
     let mut type_has_changed = false;
 
     ComboBox::from_id_source(format!("primitive type drop down {:?}", selected_object_id))
         .selected_text(selected_primitive_type_name)
         .show_ui(ui, |ui_p| {
-            for primitive_type_name in primitive_names::NAME_LIST {
+            for (variant_default_primitive, variant_type_name) in Primitive::variant_names() {
                 // drop-down option for each primitive type
-                let this_is_selected = selected_primitive_type_name == primitive_type_name;
+                let this_is_selected = discriminant(&gui_state.primitive_edit_state)
+                    == discriminant(&variant_default_primitive);
                 let label_clicked = ui_p
-                    .selectable_label(this_is_selected, primitive_type_name)
+                    .selectable_label(this_is_selected, variant_type_name)
                     .clicked();
 
                 if label_clicked & !this_is_selected {
                     // new primitive type was selected
                     type_has_changed = true;
-                    let new_primitive = default_primitive_from_type_name(primitive_type_name);
-                    gui_state.primitive_fields = new_primitive;
+                    gui_state.primitive_edit_state = variant_default_primitive;
                 }
             }
         });

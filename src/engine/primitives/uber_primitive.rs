@@ -1,11 +1,11 @@
 use super::{
     primitive::{primitive_names, EncodablePrimitive},
-    primitive_transform::PrimitiveTransform,
+    primitive_transform::{default_primitive_transform, PrimitiveTransform},
 };
 use crate::{
     engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
-use glam::{Quat, Vec2, Vec3, Vec4, Vec4Swizzles};
+use glam::{Quat, Vec2, Vec3, Vec4};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct UberPrimitive {
@@ -26,13 +26,18 @@ impl UberPrimitive {
     }
 }
 
+#[inline]
+pub const fn default_uber_primitive() -> UberPrimitive {
+    UberPrimitive {
+        transform: default_primitive_transform(),
+        dimensions: Vec4::ZERO,
+        corner_radius: Vec2::ZERO,
+    }
+}
+
 impl Default for UberPrimitive {
     fn default() -> Self {
-        Self {
-            transform: PrimitiveTransform::default(),
-            dimensions: Vec4::ZERO,
-            corner_radius: Vec2::ZERO,
-        }
+        default_uber_primitive()
     }
 }
 

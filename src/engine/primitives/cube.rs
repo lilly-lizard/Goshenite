@@ -1,6 +1,6 @@
 use super::{
     primitive::{primitive_names, EncodablePrimitive, DEFAULT_DIMENSIONS},
-    primitive_transform::PrimitiveTransform,
+    primitive_transform::{default_primitive_transform, PrimitiveTransform},
 };
 use crate::{
     engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
@@ -23,12 +23,17 @@ impl Cube {
     }
 }
 
+#[inline]
+pub const fn default_cube() -> Cube {
+    Cube {
+        transform: default_primitive_transform(),
+        dimensions: DEFAULT_DIMENSIONS,
+    }
+}
+
 impl Default for Cube {
     fn default() -> Self {
-        Self {
-            transform: PrimitiveTransform::default(),
-            dimensions: DEFAULT_DIMENSIONS,
-        }
+        default_cube()
     }
 }
 
