@@ -1,7 +1,4 @@
-use super::{
-    primitive::EncodablePrimitive,
-    primitive_transform::{PrimitiveTransform, DEFAULT_PRIMITIVE_TRANSFORM},
-};
+use super::{primitive::EncodablePrimitive, primitive_transform::PrimitiveTransform};
 use crate::{
     engine::{aabb::Aabb, config_engine::primitive_names},
     renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
@@ -10,7 +7,6 @@ use glam::{Quat, Vec2, Vec3, Vec4};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct UberPrimitive {
-    pub transform: PrimitiveTransform,
     /// width, depth, height, thickness
     pub dimensions: Vec4,
     pub corner_radius: Vec2,
@@ -18,9 +14,7 @@ pub struct UberPrimitive {
 
 impl UberPrimitive {
     pub const fn new(center: Vec3, rotation: Quat, dimensions: Vec4, corner_radius: Vec2) -> Self {
-        let transform = PrimitiveTransform::new(center, rotation);
         Self {
-            transform,
             dimensions,
             corner_radius,
         }
@@ -28,7 +22,6 @@ impl UberPrimitive {
 }
 
 pub const DEFAULT_UBER_PRIMITIVE: UberPrimitive = UberPrimitive {
-    transform: DEFAULT_PRIMITIVE_TRANSFORM,
     dimensions: Vec4::ZERO,
     corner_radius: Vec2::ZERO,
 };
@@ -55,14 +48,10 @@ impl EncodablePrimitive for UberPrimitive {
         ]
     }
 
-    fn transform(&self) -> &PrimitiveTransform {
-        &self.transform
-    }
-
-    fn aabb(&self) -> Aabb {
+    fn aabb(&self, primitive_transform: PrimitiveTransform) -> Aabb {
         // todo calculate only when props/transform changed?
         //todo "dimensions need to be adjusted for rotation!
         let max_dimensions = Vec3::new(5., 5., 5.);
-        Aabb::new(self.transform.center, max_dimensions)
+        Aabb::new(primitive_transform.center, max_dimensions)
     }
 }

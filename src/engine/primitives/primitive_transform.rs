@@ -1,4 +1,7 @@
-use crate::renderer::shader_interfaces::primitive_op_buffer::PrimitiveTransformSlice;
+use crate::{
+    helper::axis::{Axis, CartesianAxis},
+    renderer::shader_interfaces::primitive_op_buffer::PrimitiveTransformSlice,
+};
 use glam::{Mat3, Quat, Vec3};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -7,7 +10,7 @@ pub struct PrimitiveTransform {
     pub center: Vec3,
     /// Edit this make tentative adjustments to the rotation that can easily be undone
     /// e.g. when dragging a UI element.
-    pub rotation_tentative_append: Quat,
+    pub rotation_tentative_append: AxisRotation,
     /// Primitive rotation quaternion
     pub rotation: Quat,
 }
@@ -21,8 +24,23 @@ impl PrimitiveTransform {
         }
     }
 
+    #[inline]
+    pub fn total_rotation(&self) -> Quat {
+        let rotation_tentative_append_quat = Quat::from_axis_angle(
+            self.rotation_tentative_append.axis.as_vec3(),
+            self.rotation_tentative_append.angle,
+        );
+        rotation_tentative_append_quat.mul_quat(self.rotation)
+    }
+
+    pub fn commit_tentative_rotation(&mut self) {
+        self.rotation = self.total_rotation();
+        self.rotation_tentative_append = AxisRotation::default();
+    }
+
+    #[inline]
     pub fn rotation_matrix(&self) -> Mat3 {
-        Mat3::from_quat(self.rotation)
+        Mat3::from_quat(self.total_rotation())
     }
 
     pub fn encoded(&self, parent_origin: Vec3) -> PrimitiveTransformSlice {
@@ -49,7 +67,7 @@ impl PrimitiveTransform {
 
 pub const DEFAULT_PRIMITIVE_TRANSFORM: PrimitiveTransform = PrimitiveTransform {
     center: Vec3::ZERO,
-    rotation_tentative_append: Quat::IDENTITY,
+    rotation_tentative_append: DEFAULT_AXIS_ROTATION,
     rotation: Quat::IDENTITY,
 };
 
@@ -57,4 +75,18 @@ impl Default for PrimitiveTransform {
     fn default() -> Self {
         DEFAULT_PRIMITIVE_TRANSFORM
     }
+}
+
+// ~~ Axis Rotation ~~
+
+pub const DEFAULT_AXIS_ROTATION: AxisRotation = AxisRotation {
+    axis: Axis::Cartesian(CartesianAxis::X),
+    angle: 0_f32,
+};
+
+/// Describes rotation around an axis
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub struct AxisRotation {
+    pub axis: Axis,
+    pub angle: f32,
 }

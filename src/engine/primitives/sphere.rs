@@ -1,7 +1,4 @@
-use super::{
-    primitive::EncodablePrimitive,
-    primitive_transform::{PrimitiveTransform, DEFAULT_PRIMITIVE_TRANSFORM},
-};
+use super::{primitive::EncodablePrimitive, primitive_transform::PrimitiveTransform};
 use crate::{
     engine::{
         aabb::Aabb,
@@ -13,19 +10,16 @@ use glam::{Quat, Vec2, Vec3};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sphere {
-    pub transform: PrimitiveTransform,
     pub radius: f32,
 }
 
 impl Sphere {
     pub const fn new(center: Vec3, rotation: Quat, radius: f32) -> Self {
-        let transform = PrimitiveTransform::new(center, rotation);
-        Self { transform, radius }
+        Self { radius }
     }
 }
 
 pub const DEFAULT_SPHERE: Sphere = Sphere {
-    transform: DEFAULT_PRIMITIVE_TRANSFORM,
     radius: DEFAULT_RADIUS,
 };
 
@@ -56,12 +50,8 @@ impl EncodablePrimitive for Sphere {
         ]
     }
 
-    fn transform(&self) -> &PrimitiveTransform {
-        &self.transform
-    }
-
-    fn aabb(&self) -> Aabb {
+    fn aabb(&self, primitive_transform: PrimitiveTransform) -> Aabb {
         // todo calculate only when props/transform changed? will need to make members private...
-        Aabb::new(self.transform.center, Vec3::splat(2. * self.radius))
+        Aabb::new(primitive_transform.center, Vec3::splat(2. * self.radius))
     }
 }

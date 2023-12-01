@@ -5,7 +5,10 @@ use super::{
 use crate::{
     engine::{
         aabb::Aabb,
-        primitives::primitive::{EncodablePrimitive, Primitive},
+        primitives::{
+            primitive::{EncodablePrimitive, Primitive},
+            primitive_transform::PrimitiveTransform,
+        },
     },
     helper::{
         more_errors::CollectionError,
@@ -116,8 +119,12 @@ impl Object {
     ) -> Result<PrimitiveOpId, UniqueIdError> {
         let primitive_op_id = self.primitive_op_id_gen.new_id()?;
 
-        self.primitive_ops
-            .push(PrimitiveOp::new(primitive_op_id, operation, primitive));
+        self.primitive_ops.push(PrimitiveOp::new(
+            primitive_op_id,
+            operation,
+            primitive,
+            PrimitiveTransform::default(),
+        ));
         Ok(primitive_op_id)
     }
 
@@ -214,7 +221,7 @@ impl ObjectSnapshot {
 
             let op_code = primitive_op.op.op_code();
 
-            let transform = primitive.transform().encoded(self.origin);
+            let transform = primitive_op.primitive_transform.encoded(self.origin);
             let props = primitive.encoded_props();
 
             let packet = create_primitive_op_packet(op_code, transform, props);
@@ -239,7 +246,11 @@ impl ObjectSnapshot {
     pub fn aabb(&self) -> Aabb {
         let mut aabb = Aabb::new_zero();
         for primitive_op in &self.primitive_ops {
-            aabb.union(primitive_op.primitive.aabb());
+            aabb.union(
+                primitive_op
+                    .primitive
+                    .aabb(primitive_op.primitive_transform),
+            );
         }
         aabb.offset(self.origin);
         aabb

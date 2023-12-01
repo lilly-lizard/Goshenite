@@ -1,7 +1,4 @@
-use super::{
-    primitive::EncodablePrimitive,
-    primitive_transform::{PrimitiveTransform, DEFAULT_PRIMITIVE_TRANSFORM},
-};
+use super::{primitive::EncodablePrimitive, primitive_transform::PrimitiveTransform};
 use crate::{
     engine::{
         aabb::Aabb,
@@ -13,22 +10,16 @@ use glam::{Quat, Vec2, Vec3};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Cube {
-    pub transform: PrimitiveTransform,
     pub dimensions: Vec3,
 }
 
 impl Cube {
     pub const fn new(center: Vec3, rotation: Quat, dimensions: Vec3) -> Self {
-        let transform = PrimitiveTransform::new(center, rotation);
-        Self {
-            transform,
-            dimensions,
-        }
+        Self { dimensions }
     }
 }
 
 pub const DEFAULT_CUBE: Cube = Cube {
-    transform: DEFAULT_PRIMITIVE_TRANSFORM,
     dimensions: DEFAULT_DIMENSIONS,
 };
 
@@ -59,13 +50,12 @@ impl EncodablePrimitive for Cube {
         ]
     }
 
-    fn transform(&self) -> &PrimitiveTransform {
-        &self.transform
-    }
-
-    fn aabb(&self) -> Aabb {
+    fn aabb(&self, primitive_transform: PrimitiveTransform) -> Aabb {
         // todo calculate only when props/transform changed!
         //todo!("dimensions need to be adjusted for rotation!");
-        Aabb::new(self.transform.center, self.dimensions + Vec3::splat(0.1))
+        Aabb::new(
+            primitive_transform.center,
+            self.dimensions + Vec3::splat(0.1),
+        )
     }
 }

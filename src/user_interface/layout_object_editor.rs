@@ -18,6 +18,7 @@ use crate::{
         primitives::{
             cube::Cube,
             primitive::{EncodablePrimitive, Primitive},
+            primitive_transform::PrimitiveTransform,
             sphere::Sphere,
             uber_primitive::UberPrimitive,
         },
@@ -113,7 +114,7 @@ fn label_and_get_selected_object<'a>(
     Some(selected_object)
 }
 
-pub fn object_properties_editor(ui: &mut egui::Ui, commands: &mut Vec<Command>, object: &Object) {
+fn object_properties_editor(ui: &mut egui::Ui, commands: &mut Vec<Command>, object: &Object) {
     ui.separator();
 
     let original_origin = object.origin;
@@ -135,7 +136,7 @@ pub fn object_properties_editor(ui: &mut egui::Ui, commands: &mut Vec<Command>, 
     }
 }
 
-pub fn primitive_op_editor(
+fn primitive_op_editor(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
     gui_state: &mut GuiState,
@@ -204,11 +205,7 @@ fn existing_primitive_op_editor(
 
     // primitive editor
 
-    let primitive_edited = match &mut gui_state.primitive_edit_state {
-        Primitive::Sphere(p) => sphere_editor_ui(ui, p),
-        Primitive::Cube(p) => cube_editor_ui(ui, p),
-        Primitive::UberPrimitive(p) => super_primitive_editor_ui(ui, p),
-    };
+    let primitive_edited = primitive_editor_ui(ui, &mut gui_state.primitive_edit_state);
     if primitive_edited {
         // replace primitive with edited one
         modified_prim_op.primitive = gui_state.primitive_edit_state.clone();
@@ -263,11 +260,7 @@ fn new_primitive_op_editor(
 
     // primitive editor
 
-    match &mut gui_state.primitive_edit_state {
-        Primitive::Sphere(p) => sphere_editor_ui(ui, p),
-        Primitive::Cube(p) => cube_editor_ui(ui, p),
-        Primitive::UberPrimitive(p) => super_primitive_editor_ui(ui, p),
-    };
+    primitive_editor_ui(ui, &mut gui_state.primitive_edit_state);
 
     // Add and Reset buttons
 
@@ -353,7 +346,7 @@ fn primitive_type_drop_down(
 
 /// Draw the primitive op list. each list element can be dragged/dropped elsewhere in the list,
 /// or selected with a button for editing.
-pub fn primitive_op_list(
+fn primitive_op_list(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
     gui_state: &mut GuiState,
@@ -440,17 +433,57 @@ pub fn primitive_op_list(
     }
 }
 
-/// Same as `sphere_editor_ui` but takes a `Sphere` as arg.
 /// Returns true if a value was changed.
-#[inline]
-pub fn sphere_editor_ui(ui: &mut egui::Ui, sphere: &mut Sphere) -> bool {
-    sphere_editor_ui_fields(ui, &mut sphere.transform.center, &mut sphere.radius)
+fn primitive_editor_ui(ui: &mut egui::Ui, primitive_edit_state: &mut Primitive) -> bool {
+    match primitive_edit_state {
+        Primitive::Sphere(p) => sphere_editor_ui(ui, p),
+        Primitive::Cube(p) => cube_editor_ui(ui, p),
+        Primitive::UberPrimitive(p) => uber_primitive_editor_ui(ui, p),
+    }
 }
 
 /// Returns true if a value was changed.
-pub fn sphere_editor_ui_fields(ui: &mut egui::Ui, center: &mut Vec3, radius: &mut f32) -> bool {
+fn sphere_editor_ui(ui: &mut egui::Ui, sphere: &mut Sphere) -> bool {
     let mut something_changed: bool = false;
 
+    something_changed |= primitive_transform_editor_ui(ui, &mut sphere.transform);
+    something_changed |= sphere_editor_ui_fields(ui, &mut sphere.radius);
+
+    something_changed
+}
+
+/// Returns true if a value was changed.
+fn cube_editor_ui(ui: &mut egui::Ui, cube: &mut Cube) -> bool {
+    let mut something_changed: bool = false;
+
+    something_changed |= primitive_transform_editor_ui(ui, &mut cube.transform);
+    something_changed |= cube_editor_ui_fields(ui, &mut cube.dimensions);
+
+    something_changed
+}
+
+/// Returns true if a value was changed.
+fn uber_primitive_editor_ui(ui: &mut egui::Ui, uber_primitive: &mut UberPrimitive) -> bool {
+    let mut something_changed: bool = false;
+
+    something_changed |= primitive_transform_editor_ui(ui, &mut uber_primitive.transform);
+    something_changed |= uber_primitive_editor_ui_fields(
+        ui,
+        &mut uber_primitive.dimensions,
+        &mut uber_primitive.corner_radius,
+    );
+
+    something_changed
+}
+
+/// Returns true if a value was changed.
+fn primitive_transform_editor_ui(
+    ui: &mut egui::Ui,
+    primitive_transform: &mut PrimitiveTransform,
+) -> bool {
+    let mut something_changed: bool = false;
+
+    let center = &mut primitive_transform.center;
     ui.horizontal(|ui| {
         ui.label("Center:");
         something_changed |= ui
@@ -463,6 +496,27 @@ pub fn sphere_editor_ui_fields(ui: &mut egui::Ui, center: &mut Vec3, radius: &mu
             .add(DragValue::new(&mut center.z).speed(DRAG_INC))
             .changed();
     });
+
+    let rotation = &mut primitive_transform.rotation_tentative_append;
+    ui.horizontal(|ui| {
+        ui.label("Rotation:");
+        something_changed |= ui
+            .add(DragValue::new(&mut center.x).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut center.y).speed(DRAG_INC))
+            .changed();
+        something_changed |= ui
+            .add(DragValue::new(&mut center.z).speed(DRAG_INC))
+            .changed();
+    });
+
+    something_changed
+}
+
+/// Returns true if a value was changed.
+fn sphere_editor_ui_fields(ui: &mut egui::Ui, radius: &mut f32) -> bool {
+    let mut something_changed: bool = false;
 
     ui.horizontal(|ui| {
         ui.label("Radius:");
@@ -478,29 +532,9 @@ pub fn sphere_editor_ui_fields(ui: &mut egui::Ui, center: &mut Vec3, radius: &mu
     something_changed
 }
 
-/// Same as `cube_editor_ui` but takes a `Cube` as arg.
 /// Returns true if a value was changed.
-#[inline]
-pub fn cube_editor_ui(ui: &mut egui::Ui, cube: &mut Cube) -> bool {
-    cube_editor_ui_fields(ui, &mut cube.transform.center, &mut cube.dimensions)
-}
-
-/// Returns true if a value was changed.
-pub fn cube_editor_ui_fields(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &mut Vec3) -> bool {
+fn cube_editor_ui_fields(ui: &mut egui::Ui, dimensions: &mut Vec3) -> bool {
     let mut something_changed: bool = false;
-
-    ui.horizontal(|ui| {
-        ui.label("Center:");
-        something_changed |= ui
-            .add(DragValue::new(&mut center.x).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut center.y).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut center.z).speed(DRAG_INC))
-            .changed();
-    });
 
     ui.horizontal(|ui| {
         ui.label("Dimensions:");
@@ -518,39 +552,13 @@ pub fn cube_editor_ui_fields(ui: &mut egui::Ui, center: &mut Vec3, dimensions: &
     something_changed
 }
 
-/// Same as `cube_editor_ui` but takes a `Cube` as arg.
 /// Returns true if a value was changed.
-#[inline]
-pub fn super_primitive_editor_ui(ui: &mut egui::Ui, super_primitive: &mut UberPrimitive) -> bool {
-    super_primitive_editor_ui_fields(
-        ui,
-        &mut super_primitive.transform.center,
-        &mut super_primitive.dimensions,
-        &mut super_primitive.corner_radius,
-    )
-}
-
-/// Returns true if a value was changed.
-pub fn super_primitive_editor_ui_fields(
+fn uber_primitive_editor_ui_fields(
     ui: &mut egui::Ui,
-    center: &mut Vec3,
     dimensions: &mut Vec4,
     corner_radius: &mut Vec2,
 ) -> bool {
     let mut something_changed: bool = false;
-
-    ui.horizontal(|ui| {
-        ui.label("Center:");
-        something_changed |= ui
-            .add(DragValue::new(&mut center.x).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut center.y).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut center.z).speed(DRAG_INC))
-            .changed();
-    });
 
     ui.horizontal(|ui| {
         ui.label("Dimensions:");

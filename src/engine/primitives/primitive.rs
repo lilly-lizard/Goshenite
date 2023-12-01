@@ -45,14 +45,17 @@ impl EncodablePrimitive for Primitive {
     fn type_name(&self) -> &'static str {
         primitive_fn_match!(self, type_name)
     }
+
     fn encoded_props(&self) -> PrimitivePropsSlice {
         primitive_fn_match!(self, encoded_props)
     }
-    fn transform(&self) -> &PrimitiveTransform {
-        primitive_fn_match!(self, transform)
-    }
-    fn aabb(&self) -> Aabb {
-        primitive_fn_match!(self, aabb)
+
+    fn aabb(&self, primitive_transform: PrimitiveTransform) -> Aabb {
+        match self {
+            Self::Sphere(p) => p.aabb(primitive_transform),
+            Self::Cube(p) => p.aabb(primitive_transform),
+            Self::UberPrimitive(p) => p.aabb(primitive_transform),
+        }
     }
 }
 
@@ -79,9 +82,6 @@ pub trait EncodablePrimitive: Send + Sync {
     /// _Note: must match the decode process in `scene_geometry.frag`_
     fn encoded_props(&self) -> PrimitivePropsSlice;
 
-    /// Returns a reference to the primitive tranform of this instance
-    fn transform(&self) -> &PrimitiveTransform;
-
     /// Axis aligned bounding box
-    fn aabb(&self) -> Aabb;
+    fn aabb(&self, primitive_transform: PrimitiveTransform) -> Aabb;
 }

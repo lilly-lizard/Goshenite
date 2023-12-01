@@ -1,6 +1,6 @@
 use super::operation::Operation;
 use crate::{
-    engine::primitives::primitive::Primitive,
+    engine::primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
     helper::unique_id_gen::{UniqueId, UniqueIdType},
 };
 
@@ -11,11 +11,22 @@ pub struct PrimitiveOp {
     id: PrimitiveOpId,
     pub op: Operation,
     pub primitive: Primitive,
+    pub primitive_transform: PrimitiveTransform,
 }
 
 impl PrimitiveOp {
-    pub fn new(id: PrimitiveOpId, op: Operation, primitive: Primitive) -> Self {
-        Self { id, op, primitive }
+    pub fn new(
+        id: PrimitiveOpId,
+        op: Operation,
+        primitive: Primitive,
+        primitive_transform: PrimitiveTransform,
+    ) -> Self {
+        Self {
+            id,
+            op,
+            primitive,
+            primitive_transform,
+        }
     }
 
     #[inline]
