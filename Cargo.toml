@@ -62,7 +62,7 @@ ash-molten = { version = "0.16", features = [
 [build-dependencies]
 # used to compile spirv binaries
 # NOTE: if you have shaderc libraries installed on your system, this crate will detect and use them. otherwise shaderc will be compiled.
-shaderc = { version = "0.8", optional = true }
+shaderc = { version = "0.8.3", optional = true, features = ["prefer-static-linking"] }
 
 # use by doing `cargo build --profile=release-with-debug-info`
 [profile.release-with-debug-info]
