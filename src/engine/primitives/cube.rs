@@ -1,9 +1,13 @@
 use super::{
-    primitive::{primitive_names, EncodablePrimitive, DEFAULT_DIMENSIONS},
-    primitive_transform::{default_primitive_transform, PrimitiveTransform},
+    primitive::EncodablePrimitive,
+    primitive_transform::{PrimitiveTransform, DEFAULT_PRIMITIVE_TRANSFORM},
 };
 use crate::{
-    engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
+    engine::{
+        aabb::Aabb,
+        config_engine::{primitive_names, DEFAULT_DIMENSIONS},
+    },
+    renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
 use glam::{Quat, Vec2, Vec3};
 
@@ -15,7 +19,7 @@ pub struct Cube {
 
 impl Cube {
     pub const fn new(center: Vec3, rotation: Quat, dimensions: Vec3) -> Self {
-        let transform = PrimitiveTransform { center, rotation };
+        let transform = PrimitiveTransform::new(center, rotation);
         Self {
             transform,
             dimensions,
@@ -23,17 +27,14 @@ impl Cube {
     }
 }
 
-#[inline]
-pub const fn default_cube() -> Cube {
-    Cube {
-        transform: default_primitive_transform(),
-        dimensions: DEFAULT_DIMENSIONS,
-    }
-}
+pub const DEFAULT_CUBE: Cube = Cube {
+    transform: DEFAULT_PRIMITIVE_TRANSFORM,
+    dimensions: DEFAULT_DIMENSIONS,
+};
 
 impl Default for Cube {
     fn default() -> Self {
-        default_cube()
+        DEFAULT_CUBE
     }
 }
 

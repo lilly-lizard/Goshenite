@@ -1,24 +1,12 @@
 use super::{
-    cube::{default_cube, Cube},
+    cube::{Cube, DEFAULT_CUBE},
     primitive_transform::PrimitiveTransform,
-    sphere::{default_sphere, Sphere},
-    uber_primitive::{default_uber_primitive, UberPrimitive},
+    sphere::{Sphere, DEFAULT_SPHERE},
+    uber_primitive::{UberPrimitive, DEFAULT_UBER_PRIMITIVE},
 };
 use crate::{
     engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
-use glam::Vec3;
-
-// ~~ Constants ~~
-
-pub const DEFAULT_RADIUS: f32 = 0.5;
-pub const DEFAULT_DIMENSIONS: Vec3 = Vec3::ONE;
-
-pub mod primitive_names {
-    pub const SPHERE: &'static str = "Sphere";
-    pub const CUBE: &'static str = "Cube";
-    pub const UBER_PRIMITIVE: &'static str = "Uber Primitive";
-}
 
 // ~~ Primitive ~~
 
@@ -29,15 +17,17 @@ pub enum Primitive {
     UberPrimitive(UberPrimitive),
 }
 
-static VARIANTS: &[Primitive] = &[
-    Primitive::Sphere(default_sphere()),
-    Primitive::Cube(default_cube()),
-    Primitive::UberPrimitive(default_uber_primitive()),
+pub const VARIANTS: &[Primitive] = &[
+    Primitive::Sphere(DEFAULT_SPHERE),
+    Primitive::Cube(DEFAULT_CUBE),
+    Primitive::UberPrimitive(DEFAULT_UBER_PRIMITIVE),
 ];
+
+pub const DEFAULT_PRIMITIVE: Primitive = Primitive::UberPrimitive(DEFAULT_UBER_PRIMITIVE);
 
 impl Default for Primitive {
     fn default() -> Self {
-        Self::UberPrimitive(Default::default())
+        DEFAULT_PRIMITIVE
     }
 }
 

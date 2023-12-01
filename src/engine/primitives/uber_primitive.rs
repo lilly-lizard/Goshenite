@@ -1,9 +1,10 @@
 use super::{
-    primitive::{primitive_names, EncodablePrimitive},
-    primitive_transform::{default_primitive_transform, PrimitiveTransform},
+    primitive::EncodablePrimitive,
+    primitive_transform::{PrimitiveTransform, DEFAULT_PRIMITIVE_TRANSFORM},
 };
 use crate::{
-    engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
+    engine::{aabb::Aabb, config_engine::primitive_names},
+    renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
 use glam::{Quat, Vec2, Vec3, Vec4};
 
@@ -17,7 +18,7 @@ pub struct UberPrimitive {
 
 impl UberPrimitive {
     pub const fn new(center: Vec3, rotation: Quat, dimensions: Vec4, corner_radius: Vec2) -> Self {
-        let transform = PrimitiveTransform { center, rotation };
+        let transform = PrimitiveTransform::new(center, rotation);
         Self {
             transform,
             dimensions,
@@ -26,18 +27,15 @@ impl UberPrimitive {
     }
 }
 
-#[inline]
-pub const fn default_uber_primitive() -> UberPrimitive {
-    UberPrimitive {
-        transform: default_primitive_transform(),
-        dimensions: Vec4::ZERO,
-        corner_radius: Vec2::ZERO,
-    }
-}
+pub const DEFAULT_UBER_PRIMITIVE: UberPrimitive = UberPrimitive {
+    transform: DEFAULT_PRIMITIVE_TRANSFORM,
+    dimensions: Vec4::ZERO,
+    corner_radius: Vec2::ZERO,
+};
 
 impl Default for UberPrimitive {
     fn default() -> Self {
-        default_uber_primitive()
+        DEFAULT_UBER_PRIMITIVE
     }
 }
 

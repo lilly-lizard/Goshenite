@@ -1,9 +1,13 @@
 use super::{
-    primitive::{primitive_names, EncodablePrimitive, DEFAULT_RADIUS},
-    primitive_transform::{default_primitive_transform, PrimitiveTransform},
+    primitive::EncodablePrimitive,
+    primitive_transform::{PrimitiveTransform, DEFAULT_PRIMITIVE_TRANSFORM},
 };
 use crate::{
-    engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
+    engine::{
+        aabb::Aabb,
+        config_engine::{primitive_names, DEFAULT_RADIUS},
+    },
+    renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
 use glam::{Quat, Vec2, Vec3};
 
@@ -15,22 +19,19 @@ pub struct Sphere {
 
 impl Sphere {
     pub const fn new(center: Vec3, rotation: Quat, radius: f32) -> Self {
-        let transform = PrimitiveTransform { center, rotation };
+        let transform = PrimitiveTransform::new(center, rotation);
         Self { transform, radius }
     }
 }
 
-#[inline]
-pub const fn default_sphere() -> Sphere {
-    Sphere {
-        transform: default_primitive_transform(),
-        radius: DEFAULT_RADIUS,
-    }
-}
+pub const DEFAULT_SPHERE: Sphere = Sphere {
+    transform: DEFAULT_PRIMITIVE_TRANSFORM,
+    radius: DEFAULT_RADIUS,
+};
 
 impl Default for Sphere {
     fn default() -> Self {
-        default_sphere()
+        DEFAULT_SPHERE
     }
 }
 

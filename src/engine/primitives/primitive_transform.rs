@@ -5,15 +5,19 @@ use glam::{Mat3, Quat, Vec3};
 pub struct PrimitiveTransform {
     /// Primitive translation relative to object origin
     pub center: Vec3,
+    /// Edit this make tentative adjustments to the rotation that can easily be undone
+    /// e.g. when dragging a UI element.
+    pub rotation_tentative_append: Quat,
     /// Primitive rotation quaternion
     pub rotation: Quat,
 }
 
 impl PrimitiveTransform {
-    pub const fn new_default() -> Self {
+    pub const fn new(center: Vec3, rotation: Quat) -> Self {
         Self {
-            center: Vec3::ZERO,
-            rotation: Quat::IDENTITY,
+            center,
+            rotation,
+            ..DEFAULT_PRIMITIVE_TRANSFORM
         }
     }
 
@@ -43,16 +47,14 @@ impl PrimitiveTransform {
     }
 }
 
-#[inline]
-pub const fn default_primitive_transform() -> PrimitiveTransform {
-    PrimitiveTransform {
-        center: Vec3::ZERO,
-        rotation: Quat::IDENTITY,
-    }
-}
+pub const DEFAULT_PRIMITIVE_TRANSFORM: PrimitiveTransform = PrimitiveTransform {
+    center: Vec3::ZERO,
+    rotation_tentative_append: Quat::IDENTITY,
+    rotation: Quat::IDENTITY,
+};
 
 impl Default for PrimitiveTransform {
     fn default() -> Self {
-        default_primitive_transform()
+        DEFAULT_PRIMITIVE_TRANSFORM
     }
 }
