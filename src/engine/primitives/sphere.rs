@@ -5,7 +5,7 @@ use super::{
 use crate::{
     engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
-use glam::{Quat, Vec3};
+use glam::{Quat, Vec2, Vec3};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sphere {
@@ -35,13 +35,18 @@ impl EncodablePrimitive for Sphere {
     }
 
     fn encoded_props(&self) -> PrimitivePropsSlice {
+        let width = 0_f32;
+        let depth = 0_f32;
+        let height = self.radius;
+        let thickness = self.radius;
+        let corner_radius = Vec2::new(0_f32, self.radius);
         [
-            self.radius.to_bits(),
-            0_f32.to_bits(),
-            0_f32.to_bits(),
-            0_f32.to_bits(),
-            0_f32.to_bits(),
-            0_f32.to_bits(),
+            width.to_bits(),
+            depth.to_bits(),
+            height.to_bits(),
+            thickness.to_bits(),
+            corner_radius.x.to_bits(),
+            corner_radius.y.to_bits(),
         ]
     }
 

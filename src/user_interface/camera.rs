@@ -133,10 +133,16 @@ impl Camera {
     }
 
     pub fn unset_lock_on_target(&mut self) {
-        if let LookMode::TargetPos(target_pos) = self.look_mode {
-            let direction = target_pos - self.position;
-            self.look_mode = LookMode::Direction(direction);
-        }
+        let target_pos = match self.look_mode {
+            LookMode::TargetPos(target_pos) => target_pos,
+            LookMode::TargetObject {
+                last_known_origin, ..
+            } => last_known_origin.as_dvec3(),
+            _ => return,
+        };
+
+        let direction = target_pos - self.position;
+        self.look_mode = LookMode::Direction(direction);
     }
 
     pub fn view_matrix(&self) -> Mat4 {

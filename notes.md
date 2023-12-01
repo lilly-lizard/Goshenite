@@ -10,6 +10,10 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - primitive rotation
 - blend function (primitive op)
 
+- compute dispatch
+- line surface with cube meshes
+- 1 primitive op per instance and use depth test to blend
+
 - object file format (e.g. gltf)
 - object surface octree cpu code (use file format to have tests/benchmarks)
 
