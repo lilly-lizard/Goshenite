@@ -1,34 +1,29 @@
-use std::mem::discriminant;
-
 use super::{
     config_ui,
+    editable_fields::{
+        cube_editor_ui, primitive_transform_editor_ui, sphere_editor_ui, uber_primitive_editor_ui,
+    },
     gui::EditState,
     gui_state::{GuiState, DRAG_INC},
 };
-use crate::{
-    config,
-    engine::{
-        commands::{Command, ValidationCommand},
-        object::{
-            object::{Object, ObjectId},
-            object_collection::ObjectCollection,
-            operation::Operation,
-            primitive_op::{PrimitiveOp, PrimitiveOpId},
-        },
-        primitives::{
-            cube::Cube,
-            primitive::{EncodablePrimitive, Primitive},
-            primitive_transform::PrimitiveTransform,
-            sphere::Sphere,
-            uber_primitive::UberPrimitive,
-        },
+use crate::engine::{
+    commands::{Command, ValidationCommand},
+    object::{
+        object::{Object, ObjectId},
+        object_collection::ObjectCollection,
+        operation::Operation,
+        primitive_op::{PrimitiveOp, PrimitiveOpId},
+    },
+    primitives::{
+        primitive::{EncodablePrimitive, Primitive},
+        primitive_transform::PrimitiveTransform,
     },
 };
 use egui::{ComboBox, DragValue, RichText, TextStyle};
-use egui_dnd::{DragDropResponse, DragableItem};
-use glam::{Vec2, Vec3, Vec4};
+use egui_dnd::DragDropResponse;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use std::mem::discriminant;
 
 pub fn object_editor_layout(
     ui: &mut egui::Ui,
@@ -167,8 +162,8 @@ fn existing_primitive_op_editor(
 
     let selected_object_id = selected_object.id();
     let (mut modified_prim_op, selected_prim_op_index) =
-        match selected_object.get_primitive_op(selected_prim_op_id) {
-            Some((prim_op, index)) => (prim_op.clone(), index),
+        match selected_object.get_primitive_op_with_index(selected_prim_op_id) {
+            Some((primitive_op, index)) => (primitive_op.clone(), index),
             None => {
                 // selected_prim_op_id not in selected_obejct -> invalid id
                 debug!("selected object {} dropped", selected_object_id);
@@ -196,7 +191,7 @@ fn existing_primitive_op_editor(
 
         // primitive type drop down menu
         let primitive_type_changed = primitive_type_drop_down(ui_h, gui_state, selected_object_id);
-        if primitive_type_changed {
+        if let EditState::Modified = primitive_type_changed {
             // replace old primitive according to new type
             modified_prim_op.primitive = gui_state.primitive_edit_state.clone();
             prim_op_edit_state = EditState::Modified;
@@ -205,8 +200,12 @@ fn existing_primitive_op_editor(
 
     // primitive editor
 
-    let primitive_edited = primitive_editor_ui(ui, &mut gui_state.primitive_edit_state);
-    if primitive_edited {
+    let primitive_edit_state = primitive_editor_ui(
+        ui,
+        &mut gui_state.transform_edit_state,
+        &mut gui_state.primitive_edit_state,
+    );
+    if let EditState::Modified = primitive_edit_state {
         // replace primitive with edited one
         modified_prim_op.primitive = gui_state.primitive_edit_state.clone();
         prim_op_edit_state = EditState::Modified;
@@ -229,6 +228,7 @@ fn existing_primitive_op_editor(
                 object_id: selected_object.id(),
                 primitive_op_id: selected_prim_op_id,
                 new_primitive: modified_prim_op.primitive,
+                new_transform: modified_prim_op.primitive_transform,
                 new_operation: modified_prim_op.op,
             });
         }
@@ -260,7 +260,11 @@ fn new_primitive_op_editor(
 
     // primitive editor
 
-    primitive_editor_ui(ui, &mut gui_state.primitive_edit_state);
+    primitive_editor_ui(
+        ui,
+        &mut gui_state.transform_edit_state,
+        &mut gui_state.primitive_edit_state,
+    );
 
     // Add and Reset buttons
 
@@ -318,9 +322,9 @@ fn primitive_type_drop_down(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
     selected_object_id: ObjectId,
-) -> bool {
+) -> EditState {
     let selected_primitive_type_name: &str = gui_state.primitive_edit_state.type_name();
-    let mut type_has_changed = false;
+    let mut type_has_changed = EditState::NoChange;
 
     ComboBox::from_id_source(format!("primitive type drop down {:?}", selected_object_id))
         .selected_text(selected_primitive_type_name)
@@ -335,7 +339,7 @@ fn primitive_type_drop_down(
 
                 if label_clicked & !this_is_selected {
                     // new primitive type was selected
-                    type_has_changed = true;
+                    type_has_changed = EditState::Modified;
                     gui_state.primitive_edit_state = variant_default_primitive;
                 }
             }
@@ -365,9 +369,9 @@ fn primitive_op_list(
     let selected_prim_op = match selected_primitive_op_id {
         Some(selected_prim_op_id) => {
             match selected_object.get_primitive_op(selected_prim_op_id) {
-                Some((found_prim_op, _index)) => Some(found_prim_op),
+                Some(found_prim_op) => Some(found_prim_op),
                 None => {
-                    // selected_prim_op_id not in selected_obejct! invalid id so we set to none
+                    // selected_prim_op_id not in selected_obejct! invalid id so we should deselect
                     debug!("primitive op id not found in selected object!");
                     commands.push(Command::DeselectPrimtiveOp());
                     None
@@ -433,164 +437,18 @@ fn primitive_op_list(
     }
 }
 
-/// Returns true if a value was changed.
-fn primitive_editor_ui(ui: &mut egui::Ui, primitive_edit_state: &mut Primitive) -> bool {
-    match primitive_edit_state {
+fn primitive_editor_ui(
+    ui: &mut egui::Ui,
+    transform_edit_state: &mut PrimitiveTransform,
+    primitive_edit_state: &mut Primitive,
+) -> EditState {
+    let transform_edit_state = primitive_transform_editor_ui(ui, transform_edit_state);
+
+    let primitive_edit_state = match primitive_edit_state {
         Primitive::Sphere(p) => sphere_editor_ui(ui, p),
         Primitive::Cube(p) => cube_editor_ui(ui, p),
         Primitive::UberPrimitive(p) => uber_primitive_editor_ui(ui, p),
-    }
-}
+    };
 
-/// Returns true if a value was changed.
-fn sphere_editor_ui(ui: &mut egui::Ui, sphere: &mut Sphere) -> bool {
-    let mut something_changed: bool = false;
-
-    something_changed |= primitive_transform_editor_ui(ui, &mut sphere.transform);
-    something_changed |= sphere_editor_ui_fields(ui, &mut sphere.radius);
-
-    something_changed
-}
-
-/// Returns true if a value was changed.
-fn cube_editor_ui(ui: &mut egui::Ui, cube: &mut Cube) -> bool {
-    let mut something_changed: bool = false;
-
-    something_changed |= primitive_transform_editor_ui(ui, &mut cube.transform);
-    something_changed |= cube_editor_ui_fields(ui, &mut cube.dimensions);
-
-    something_changed
-}
-
-/// Returns true if a value was changed.
-fn uber_primitive_editor_ui(ui: &mut egui::Ui, uber_primitive: &mut UberPrimitive) -> bool {
-    let mut something_changed: bool = false;
-
-    something_changed |= primitive_transform_editor_ui(ui, &mut uber_primitive.transform);
-    something_changed |= uber_primitive_editor_ui_fields(
-        ui,
-        &mut uber_primitive.dimensions,
-        &mut uber_primitive.corner_radius,
-    );
-
-    something_changed
-}
-
-/// Returns true if a value was changed.
-fn primitive_transform_editor_ui(
-    ui: &mut egui::Ui,
-    primitive_transform: &mut PrimitiveTransform,
-) -> bool {
-    let mut something_changed: bool = false;
-
-    let center = &mut primitive_transform.center;
-    ui.horizontal(|ui| {
-        ui.label("Center:");
-        something_changed |= ui
-            .add(DragValue::new(&mut center.x).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut center.y).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut center.z).speed(DRAG_INC))
-            .changed();
-    });
-
-    let rotation = &mut primitive_transform.rotation_tentative_append;
-    ui.horizontal(|ui| {
-        ui.label("Rotation:");
-        something_changed |= ui
-            .add(DragValue::new(&mut center.x).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut center.y).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut center.z).speed(DRAG_INC))
-            .changed();
-    });
-
-    something_changed
-}
-
-/// Returns true if a value was changed.
-fn sphere_editor_ui_fields(ui: &mut egui::Ui, radius: &mut f32) -> bool {
-    let mut something_changed: bool = false;
-
-    ui.horizontal(|ui| {
-        ui.label("Radius:");
-        something_changed |= ui
-            .add(
-                DragValue::new(radius)
-                    .speed(DRAG_INC)
-                    .clamp_range(0..=config::MAX_SPHERE_RADIUS),
-            )
-            .changed();
-    });
-
-    something_changed
-}
-
-/// Returns true if a value was changed.
-fn cube_editor_ui_fields(ui: &mut egui::Ui, dimensions: &mut Vec3) -> bool {
-    let mut something_changed: bool = false;
-
-    ui.horizontal(|ui| {
-        ui.label("Dimensions:");
-        something_changed |= ui
-            .add(DragValue::new(&mut dimensions.x).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut dimensions.y).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut dimensions.z).speed(DRAG_INC))
-            .changed();
-    });
-
-    something_changed
-}
-
-/// Returns true if a value was changed.
-fn uber_primitive_editor_ui_fields(
-    ui: &mut egui::Ui,
-    dimensions: &mut Vec4,
-    corner_radius: &mut Vec2,
-) -> bool {
-    let mut something_changed: bool = false;
-
-    ui.horizontal(|ui| {
-        ui.label("Dimensions:");
-        something_changed |= ui
-            .add(DragValue::new(&mut dimensions.x).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut dimensions.y).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut dimensions.z).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut dimensions.w).speed(DRAG_INC))
-            .changed();
-    });
-
-    ui.horizontal(|ui| {
-        ui.label("Corner radius:");
-        something_changed |= ui
-            .add(DragValue::new(&mut corner_radius.x).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut corner_radius.y).speed(DRAG_INC))
-            .changed();
-    });
-
-    something_changed
-}
-
-impl DragableItem for PrimitiveOp {
-    fn drag_id(&self) -> egui::Id {
-        egui::Id::new(format!("p-op-drag{}", self.id()))
-    }
+    transform_edit_state.combine(primitive_edit_state)
 }

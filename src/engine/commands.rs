@@ -1,6 +1,6 @@
 use super::{
     object::{object::ObjectId, operation::Operation, primitive_op::PrimitiveOpId},
-    primitives::primitive::Primitive,
+    primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
 };
 use glam::{DVec3, Vec3};
 
@@ -54,6 +54,22 @@ pub enum Command {
         object_id: ObjectId,
         primitive_op_id: PrimitiveOpId,
         new_primitive: Primitive,
+        new_transform: PrimitiveTransform,
+        new_operation: Operation,
+    },
+    SetPrimitive {
+        object_id: ObjectId,
+        primitive_op_id: PrimitiveOpId,
+        new_primitive: Primitive,
+    },
+    SetPrimitiveTransform {
+        object_id: ObjectId,
+        primitive_op_id: PrimitiveOpId,
+        new_transform: PrimitiveTransform,
+    },
+    SetOperation {
+        object_id: ObjectId,
+        primitive_op_id: PrimitiveOpId,
         new_operation: Operation,
     },
     ShiftPrimitiveOps {

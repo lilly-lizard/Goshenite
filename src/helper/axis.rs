@@ -41,16 +41,16 @@ impl Default for CartesianAxis {
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub enum Axis {
     Cartesian(CartesianAxis),
-    /// This value must always be normalized. Recommend using `Self::new_direction` to set this.
+    /// This value should always be normalized. Recommend using `Self::new_direction` to set this.
     Direction(Vec3),
 }
 
 impl Axis {
     /// Normalizes `direction_vec` before returning `Self::Direction`
-    pub fn new_direction(direction_vec: Vec3) -> Result<Self, AxisError> {
-        let normalized_vec = direction_vec
+    pub fn new_direction(direction: Vec3) -> Result<Self, AxisError> {
+        let normalized_vec = direction
             .try_normalize()
-            .ok_or(AxisError::DirectionCantBeNormalized(direction_vec))?;
+            .ok_or(AxisError::DirectionCantBeNormalized(direction))?;
         Ok(Self::Direction(normalized_vec))
     }
 

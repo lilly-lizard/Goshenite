@@ -1,6 +1,6 @@
 use crate::engine::{
     object::{operation::Operation, primitive_op::PrimitiveOp},
-    primitives::primitive::Primitive,
+    primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
 };
 use egui_dnd::DragDropUi;
 
@@ -26,9 +26,11 @@ pub const DRAG_INC: f64 = 0.02;
 
 /// State persisting between frames
 pub struct GuiState {
-    /// Stotes state of the op field in the 'New Primitive Op' editor
+    /// Stotes the state of the op field in the gui editor
     pub op_edit_state: Operation,
-    /// Stotes state of the fields in the 'New Primitive Op' editor
+    /// Stores the state of the primitive transform fields in the gui editor
+    pub transform_edit_state: PrimitiveTransform,
+    /// Stotes the state of the fields in the gui editor
     pub primitive_edit_state: Primitive,
     /// Stores the drag and drop state of the primitive op list of the selected object
     pub primitive_op_list_drag_state: DragDropUi,
@@ -56,6 +58,7 @@ impl Default for GuiState {
     fn default() -> Self {
         Self {
             op_edit_state: Default::default(),
+            transform_edit_state: Default::default(),
             primitive_edit_state: Default::default(),
             primitive_op_list_drag_state: Default::default(),
         }

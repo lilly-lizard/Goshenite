@@ -7,7 +7,7 @@ use crate::{
             operation::Operation,
             primitive_op::{PrimitiveOp, PrimitiveOpId},
         },
-        primitives::primitive::Primitive,
+        primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
     },
     helper::list::choose_closest_valid_index,
     user_interface::gui::Gui,
@@ -23,100 +23,137 @@ impl EngineInstance {
             source: _source,
         }) = self.pending_commands.pop_front()
         {
-            match command {
-                // camera
-                Command::SetCameraLockOnPos(target_pos) => {
-                    self.camera.set_lock_on_target_pos(target_pos)
-                }
-                Command::SetCameraLockOnObject(object_id) => {
-                    self.set_camera_lock_on_object_via_command(object_id, command)
-                }
-                Command::UnsetCameraLockOn => self.camera.unset_lock_on_target(),
-                Command::ResetCamera => self.camera.reset(),
+            self.execute_command(command);
+        }
+    }
 
-                // object
-                Command::SelectObject(object_id) => {
-                    self.select_object_via_command(object_id, command);
-                }
-                Command::DeselectObject() => self.deselect_object(),
-                Command::RemoveObject(object_id) => {
-                    self.remove_object_via_command(object_id, command)
-                }
-                Command::RemoveSelectedObject() => self.remove_selected_object_via_command(command),
-                Command::CreateAndSelectNewDefaultObject() => {
-                    self.create_and_select_new_default_object_via_command(command)
-                }
-                Command::SetObjectOrigin { object_id, origin } => {
-                    self.set_object_origin_via_command(object_id, origin, command)
-                }
-                Command::SetObjectName {
-                    object_id,
-                    ref new_name,
-                } => self.set_object_name_via_command(object_id, new_name.clone(), command),
+    pub(super) fn execute_command(&mut self, command: Command) {
+        match command {
+            // camera
+            Command::SetCameraLockOnPos(target_pos) => {
+                self.camera.set_lock_on_target_pos(target_pos)
+            }
+            Command::SetCameraLockOnObject(object_id) => {
+                self.set_camera_lock_on_object_via_command(object_id, command)
+            }
+            Command::UnsetCameraLockOn => self.camera.unset_lock_on_target(),
+            Command::ResetCamera => self.camera.reset(),
 
-                // primtive op - selection
-                Command::SelectPrimitiveOpId(object_id, primitive_op_id) => {
-                    self.select_primitive_op_id_via_command(object_id, primitive_op_id, command)
-                }
-                Command::SelectPrimitiveOpIndex(object_id, primitive_op_index) => self
-                    .select_primitive_op_index_via_command(object_id, primitive_op_index, command),
-                Command::DeselectPrimtiveOp() => self.deselect_primitive_op(),
+            // object
+            Command::SelectObject(object_id) => {
+                self.select_object_via_command(object_id, command);
+            }
+            Command::DeselectObject() => self.deselect_object(),
+            Command::RemoveObject(object_id) => self.remove_object_via_command(object_id, command),
+            Command::RemoveSelectedObject() => self.remove_selected_object_via_command(command),
+            Command::CreateAndSelectNewDefaultObject() => {
+                self.create_and_select_new_default_object_via_command(command)
+            }
+            Command::SetObjectOrigin { object_id, origin } => {
+                self.set_object_origin_via_command(object_id, origin, command)
+            }
+            Command::SetObjectName {
+                object_id,
+                ref new_name,
+            } => self.set_object_name_via_command(object_id, new_name.clone(), command),
 
-                // primitive op - remove
-                Command::RemoveSelectedPrimitiveOp() => {
-                    self.remove_selected_primitive_op_via_command(command);
-                }
-                Command::RemovePrimitiveOpId(object_id, primitive_op_id) => {
-                    self.remove_primitive_op_id_via_command(object_id, primitive_op_id, command)
-                }
-                Command::RemovePrimitiveOpIndex(object_id, primitive_op_index) => {
-                    self.remove_primitive_op_index_via_command(
-                        object_id,
-                        primitive_op_index,
-                        command,
-                    );
-                }
+            // primtive op - selection
+            Command::SelectPrimitiveOpId(object_id, primitive_op_id) => {
+                self.select_primitive_op_id_via_command(object_id, primitive_op_id, command)
+            }
+            Command::SelectPrimitiveOpIndex(object_id, primitive_op_index) => {
+                self.select_primitive_op_index_via_command(object_id, primitive_op_index, command)
+            }
+            Command::DeselectPrimtiveOp() => self.deselect_primitive_op(),
 
-                // primitive op - push
-                Command::PushOp {
-                    object_id,
-                    operation,
-                    primitive,
-                } => _ = self.push_op_via_command(object_id, operation, primitive, command),
-                Command::PushOpAndSelect {
-                    object_id,
-                    operation,
-                    primitive,
-                } => self.push_op_and_select_via_command(object_id, operation, primitive, command),
+            // primitive op - remove
+            Command::RemoveSelectedPrimitiveOp() => {
+                self.remove_selected_primitive_op_via_command(command);
+            }
+            Command::RemovePrimitiveOpId(object_id, primitive_op_id) => {
+                self.remove_primitive_op_id_via_command(object_id, primitive_op_id, command)
+            }
+            Command::RemovePrimitiveOpIndex(object_id, primitive_op_index) => {
+                self.remove_primitive_op_index_via_command(object_id, primitive_op_index, command);
+            }
 
-                // primitive op - modify
-                Command::SetPrimitiveOp {
-                    object_id,
-                    primitive_op_id,
-                    new_primitive,
-                    new_operation,
-                } => self.set_primitive_op_via_command(
-                    object_id,
-                    primitive_op_id,
-                    new_primitive,
-                    new_operation,
-                    command,
-                ),
-                Command::ShiftPrimitiveOps {
+            // primitive op - push
+            Command::PushOp {
+                object_id,
+                operation,
+                primitive,
+            } => _ = self.push_op_via_command(object_id, operation, primitive, command),
+            Command::PushOpAndSelect {
+                object_id,
+                operation,
+                primitive,
+            } => self.push_op_and_select_via_command(object_id, operation, primitive, command),
+
+            // primitive op - modify
+            Command::SetPrimitiveOp {
+                object_id,
+                primitive_op_id,
+                new_primitive,
+                new_transform,
+                new_operation,
+            } => self.set_primitive_op_via_command(
+                object_id,
+                primitive_op_id,
+                Some(new_primitive),
+                Some(new_transform),
+                Some(new_operation),
+                command,
+            ),
+            Command::SetPrimitive {
+                object_id,
+                primitive_op_id,
+                new_primitive,
+            } => self.set_primitive_op_via_command(
+                object_id,
+                primitive_op_id,
+                Some(new_primitive),
+                None,
+                None,
+                command,
+            ),
+            Command::SetPrimitiveTransform {
+                object_id,
+                primitive_op_id,
+                new_transform,
+            } => self.set_primitive_op_via_command(
+                object_id,
+                primitive_op_id,
+                None,
+                Some(new_transform),
+                None,
+                command,
+            ),
+            Command::SetOperation {
+                object_id,
+                primitive_op_id,
+                new_operation,
+            } => self.set_primitive_op_via_command(
+                object_id,
+                primitive_op_id,
+                None,
+                None,
+                Some(new_operation),
+                command,
+            ),
+            Command::ShiftPrimitiveOps {
+                object_id,
+                source_index,
+                target_index,
+            } => {
+                self.shift_primitive_ops_via_command(
                     object_id,
                     source_index,
                     target_index,
-                } => {
-                    self.shift_primitive_ops_via_command(
-                        object_id,
-                        source_index,
-                        target_index,
-                        command,
-                    );
-                }
-
-                Command::Validate(v_command) => self.execute_validation_command(v_command),
+                    command,
+                );
             }
+
+            Command::Validate(v_command) => self.execute_validation_command(v_command),
         }
     }
 
@@ -277,13 +314,12 @@ impl EngineInstance {
             return;
         };
 
-        let (primitive_op, _index) =
-            if let Some(primitive_op) = object.get_primitive_op(primitive_op_id) {
-                primitive_op.clone()
-            } else {
-                command_failed_warn(command, "invalid primitive op id");
-                return;
-            };
+        let primitive_op = if let Some(primitive_op) = object.get_primitive_op(primitive_op_id) {
+            primitive_op.clone()
+        } else {
+            command_failed_warn(command, "invalid primitive op id");
+            return;
+        };
 
         Self::select_primitive_op_without_self(
             &mut self.selected_primitive_op_id,
@@ -308,16 +344,15 @@ impl EngineInstance {
             return;
         };
 
-        let (primitive_op, _index) =
-            if let Some(primitive_op) = object.get_primitive_op(primitive_op_id) {
-                primitive_op.clone()
-            } else {
-                warn!(
-                    "attempted to select primitive op id {} that doesn't exist in object {}",
-                    primitive_op_id, object_id
-                );
-                return;
-            };
+        let primitive_op = if let Some(primitive_op) = object.get_primitive_op(primitive_op_id) {
+            primitive_op.clone()
+        } else {
+            warn!(
+                "attempted to select primitive op id {} that doesn't exist in object {}",
+                primitive_op_id, object_id
+            );
+            return;
+        };
 
         Self::select_primitive_op_without_self(
             &mut self.selected_primitive_op_id,
@@ -625,8 +660,9 @@ impl EngineInstance {
         &mut self,
         object_id: ObjectId,
         primitive_op_id: PrimitiveOpId,
-        new_primitive: Primitive,
-        new_operation: Operation,
+        new_primitive: Option<Primitive>,
+        new_transform: Option<PrimitiveTransform>,
+        new_operation: Option<Operation>,
         command: Command,
     ) {
         let object_get_res = self.object_collection.get_object_mut(object_id);
@@ -639,7 +675,7 @@ impl EngineInstance {
         };
 
         let set_primitive_op_res =
-            object.set_primitive_op(primitive_op_id, new_primitive, new_operation);
+            object.set_primitive_op(primitive_op_id, new_primitive, new_transform, new_operation);
 
         if let Err(e) = set_primitive_op_res {
             let error_msg = e.to_string();

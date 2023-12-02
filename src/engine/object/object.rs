@@ -152,8 +152,30 @@ impl Object {
         self.id
     }
 
-    /// If found, returns a ref to the primitive op and the vec index
-    pub fn get_primitive_op(
+    pub fn get_primitive_op(&self, primitive_op_id: PrimitiveOpId) -> Option<&PrimitiveOp> {
+        self.primitive_ops.iter().find_map(|primitive_op| {
+            if primitive_op.id() == primitive_op_id {
+                Some(primitive_op)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn get_primitive_op_mut(
+        &mut self,
+        primitive_op_id: PrimitiveOpId,
+    ) -> Option<&mut PrimitiveOp> {
+        self.primitive_ops.iter_mut().find_map(|primitive_op| {
+            if primitive_op.id() == primitive_op_id {
+                Some(primitive_op)
+            } else {
+                None
+            }
+        })
+    }
+
+    pub fn get_primitive_op_with_index(
         &self,
         primitive_op_id: PrimitiveOpId,
     ) -> Option<(&PrimitiveOp, usize)> {
@@ -172,30 +194,31 @@ impl Object {
     pub fn set_primitive_op(
         &mut self,
         primitive_op_id: PrimitiveOpId,
-        new_primitive: Primitive,
-        new_op: Operation,
+        new_primitive: Option<Primitive>,
+        new_transform: Option<PrimitiveTransform>,
+        new_operation: Option<Operation>,
     ) -> Result<(), CollectionError> {
-        let primitive_op_search_res =
-            self.primitive_ops
-                .iter_mut()
-                .enumerate()
-                .find_map(|(_index, primitive_op)| {
-                    if primitive_op.id() == primitive_op_id {
-                        Some(primitive_op)
-                    } else {
-                        None
-                    }
-                });
+        let primitive_op_search_res = self.get_primitive_op_mut(primitive_op_id);
 
-        if let Some(primitive_op_ref) = primitive_op_search_res {
-            primitive_op_ref.primitive = new_primitive;
-            primitive_op_ref.op = new_op;
-            return Ok(());
-        } else {
-            return Err(CollectionError::InvalidId {
-                raw_id: primitive_op_id.raw_id(),
-            });
+        let primitive_op_ref = match primitive_op_search_res {
+            Some(p) => p,
+            None => {
+                return Err(CollectionError::InvalidId {
+                    raw_id: primitive_op_id.raw_id(),
+                })
+            }
+        };
+
+        if let Some(some_new_primitive) = new_primitive {
+            primitive_op_ref.primitive = some_new_primitive;
         }
+        if let Some(some_new_transform) = new_transform {
+            primitive_op_ref.primitive_transform = some_new_transform;
+        }
+        if let Some(some_new_operation) = new_operation {
+            primitive_op_ref.op = some_new_operation;
+        }
+        return Ok(());
     }
 }
 
