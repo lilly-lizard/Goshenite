@@ -1,5 +1,5 @@
 use crate::{
-    helper::axis::{Axis, CartesianAxis},
+    helper::axis::{AxisRotation, DEFAULT_AXIS_ROTATION},
     renderer::shader_interfaces::primitive_op_buffer::PrimitiveTransformSlice,
 };
 use glam::{Mat3, Quat, Vec3};
@@ -26,10 +26,8 @@ impl PrimitiveTransform {
 
     #[inline]
     pub fn total_rotation(&self) -> Quat {
-        let rotation_tentative_append_quat = Quat::from_axis_angle(
-            self.rotation_tentative_append.axis.as_vec3(),
-            self.rotation_tentative_append.angle,
-        );
+        let rotation_tentative_append_quat = self.rotation_tentative_append.to_quat()
+            .expect("Axis::Direction should only be set via the `new_direction()` function to avoid un-normalizable values");
         rotation_tentative_append_quat.mul_quat(self.rotation)
     }
 
@@ -75,18 +73,4 @@ impl Default for PrimitiveTransform {
     fn default() -> Self {
         DEFAULT_PRIMITIVE_TRANSFORM
     }
-}
-
-// ~~ Axis Rotation ~~
-
-pub const DEFAULT_AXIS_ROTATION: AxisRotation = AxisRotation {
-    axis: Axis::Cartesian(CartesianAxis::X),
-    angle: 0_f32,
-};
-
-/// Describes rotation around an axis
-#[derive(Clone, Copy, Default, Debug, PartialEq)]
-pub struct AxisRotation {
-    pub axis: Axis,
-    pub angle: f32,
 }

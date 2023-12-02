@@ -1,5 +1,9 @@
 use core::fmt;
-use glam::{DVec3, Vec3};
+use glam::{DQuat, DVec3, Quat, Vec3};
+
+use super::angle::Angle;
+
+// ~~ Cartesian Axis ~~
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum CartesianAxis {
@@ -44,25 +48,45 @@ pub enum Axis {
 impl Axis {
     /// Normalizes `direction_vec` before returning `Self::Direction`
     pub fn new_direction(direction_vec: Vec3) -> Result<Self, AxisError> {
-        let normalized_vec = match direction_vec.try_normalize() {
-            Some(vec) => vec,
-            None => return Err(AxisError::DirectionCantBeNormalized(direction_vec)),
-        };
+        let normalized_vec = direction_vec
+            .try_normalize()
+            .ok_or(AxisError::DirectionCantBeNormalized(direction_vec))?;
         Ok(Self::Direction(normalized_vec))
     }
 
-    pub fn as_vec3(&self) -> Vec3 {
+    pub fn to_vec3(&self) -> Vec3 {
         match self {
             Self::Cartesian(axis) => axis.as_vec3(),
-            Self::Direction(dir) => *dir,
+            Self::Direction(dir) => dir.normalize_or_zero(),
         }
     }
 
-    pub fn as_dvec3(&self) -> DVec3 {
+    pub fn to_dvec3(&self) -> DVec3 {
         match self {
             Self::Cartesian(axis) => axis.as_dvec3(),
-            Self::Direction(dir) => dir.as_dvec3(),
+            Self::Direction(dir) => dir.as_dvec3().normalize_or_zero(),
         }
+    }
+
+    pub fn to_vec3_normalized(&self) -> Result<Vec3, AxisError> {
+        let vec = match self {
+            Self::Cartesian(axis) => axis.as_vec3(),
+            Self::Direction(dir) => dir
+                .try_normalize()
+                .ok_or(AxisError::DirectionCantBeNormalized(*dir))?,
+        };
+        Ok(vec)
+    }
+
+    pub fn to_dvec3_normalized(&self) -> Result<DVec3, AxisError> {
+        let vec = match self {
+            Self::Cartesian(axis) => axis.as_dvec3(),
+            Self::Direction(dir) => dir
+                .as_dvec3()
+                .try_normalize()
+                .ok_or(AxisError::DirectionCantBeNormalized(*dir))?,
+        };
+        Ok(vec)
     }
 }
 
@@ -71,6 +95,36 @@ impl Default for Axis {
         Self::Cartesian(CartesianAxis::default())
     }
 }
+
+// ~~ Axis Rotation ~~
+
+pub const DEFAULT_AXIS_ROTATION: AxisRotation = AxisRotation {
+    axis: Axis::Cartesian(CartesianAxis::X),
+    angle: Angle::ZERO,
+};
+
+/// Describes rotation around an axis
+#[derive(Clone, Copy, Default, Debug, PartialEq)]
+pub struct AxisRotation {
+    pub axis: Axis,
+    pub angle: Angle,
+}
+
+impl AxisRotation {
+    pub fn to_quat(&self) -> Result<Quat, AxisError> {
+        let axis = self.axis.to_vec3_normalized()?;
+        let angle = self.angle.to_radians() as f32;
+        Ok(Quat::from_axis_angle(axis, angle))
+    }
+
+    pub fn to_dquat(&self) -> Result<DQuat, AxisError> {
+        let axis = self.axis.to_dvec3_normalized()?;
+        let angle = self.angle.to_radians();
+        Ok(DQuat::from_axis_angle(axis, angle))
+    }
+}
+
+// ~~ Axis Error ~~
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AxisError {
@@ -90,3 +144,5 @@ impl std::fmt::Display for AxisError {
         }
     }
 }
+
+impl std::error::Error for AxisError {}
