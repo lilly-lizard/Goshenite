@@ -1,5 +1,5 @@
 use crate::{
-    helper::axis::{AxisRotation, DEFAULT_AXIS_ROTATION},
+    helper::axis::AxisRotation,
     renderer::shader_interfaces::primitive_op_buffer::PrimitiveTransformSlice,
 };
 use glam::{Mat3, Quat, Vec3};
@@ -20,7 +20,7 @@ impl PrimitiveTransform {
         Self {
             center,
             rotation,
-            ..DEFAULT_PRIMITIVE_TRANSFORM
+            ..Self::DEFAULT
         }
     }
 
@@ -61,16 +61,16 @@ impl PrimitiveTransform {
             rotation_cols_array[8].to_bits(),
         ]
     }
-}
 
-pub const DEFAULT_PRIMITIVE_TRANSFORM: PrimitiveTransform = PrimitiveTransform {
-    center: Vec3::ZERO,
-    rotation_tentative_append: DEFAULT_AXIS_ROTATION,
-    rotation: Quat::IDENTITY,
-};
+    pub const DEFAULT: PrimitiveTransform = PrimitiveTransform {
+        center: Vec3::ZERO,
+        rotation_tentative_append: AxisRotation::DEFAULT,
+        rotation: Quat::IDENTITY,
+    };
+}
 
 impl Default for PrimitiveTransform {
     fn default() -> Self {
-        DEFAULT_PRIMITIVE_TRANSFORM
+        Self::DEFAULT
     }
 }

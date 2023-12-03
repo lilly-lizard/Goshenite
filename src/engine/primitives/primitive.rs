@@ -1,8 +1,6 @@
 use super::{
-    cube::{Cube, DEFAULT_CUBE},
-    primitive_transform::PrimitiveTransform,
-    sphere::{Sphere, DEFAULT_SPHERE},
-    uber_primitive::{UberPrimitive, DEFAULT_UBER_PRIMITIVE},
+    cube::Cube, primitive_transform::PrimitiveTransform, sphere::Sphere,
+    uber_primitive::UberPrimitive,
 };
 use crate::{
     engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
@@ -17,17 +15,25 @@ pub enum Primitive {
     UberPrimitive(UberPrimitive),
 }
 
-pub const VARIANTS: &[Primitive] = &[
-    Primitive::Sphere(DEFAULT_SPHERE),
-    Primitive::Cube(DEFAULT_CUBE),
-    Primitive::UberPrimitive(DEFAULT_UBER_PRIMITIVE),
-];
+impl Primitive {
+    pub fn variants_with_names() -> Vec<(Self, &'static str)> {
+        Self::VARIANTS
+            .iter()
+            .map(|primitive| (primitive.clone(), primitive.type_name()))
+            .collect()
+    }
 
-pub const DEFAULT_PRIMITIVE: Primitive = Primitive::UberPrimitive(DEFAULT_UBER_PRIMITIVE);
+    pub const VARIANTS: &[Primitive] = &[
+        Primitive::Sphere(Sphere::DEFAULT),
+        Primitive::Cube(Cube::DEFAULT),
+        Primitive::UberPrimitive(UberPrimitive::DEFAULT),
+    ];
+    pub const DEFAULT: Primitive = Primitive::UberPrimitive(UberPrimitive::DEFAULT);
+}
 
 impl Default for Primitive {
     fn default() -> Self {
-        DEFAULT_PRIMITIVE
+        Self::DEFAULT
     }
 }
 
@@ -56,15 +62,6 @@ impl EncodablePrimitive for Primitive {
             Self::Cube(p) => p.aabb(primitive_transform),
             Self::UberPrimitive(p) => p.aabb(primitive_transform),
         }
-    }
-}
-
-impl Primitive {
-    pub fn variant_names() -> Vec<(Self, &'static str)> {
-        VARIANTS
-            .iter()
-            .map(|primitive| (primitive.clone(), primitive.type_name()))
-            .collect()
     }
 }
 

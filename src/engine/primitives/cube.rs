@@ -6,7 +6,7 @@ use crate::{
     },
     renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
-use glam::{Quat, Vec2, Vec3};
+use glam::{Vec2, Vec3};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Cube {
@@ -14,18 +14,18 @@ pub struct Cube {
 }
 
 impl Cube {
-    pub const fn new(center: Vec3, rotation: Quat, dimensions: Vec3) -> Self {
+    pub const fn new(dimensions: Vec3) -> Self {
         Self { dimensions }
     }
-}
 
-pub const DEFAULT_CUBE: Cube = Cube {
-    dimensions: DEFAULT_DIMENSIONS,
-};
+    pub const DEFAULT: Cube = Cube {
+        dimensions: DEFAULT_DIMENSIONS,
+    };
+}
 
 impl Default for Cube {
     fn default() -> Self {
-        DEFAULT_CUBE
+        Self::DEFAULT
     }
 }
 

@@ -82,12 +82,16 @@ impl EngineInstance {
                 object_id,
                 operation,
                 primitive,
-            } => _ = self.push_op_via_command(object_id, operation, primitive, command),
+                transform,
+            } => _ = self.push_op_via_command(object_id, operation, primitive, transform, command),
             Command::PushOpAndSelect {
                 object_id,
                 operation,
                 primitive,
-            } => self.push_op_and_select_via_command(object_id, operation, primitive, command),
+                transform,
+            } => self.push_op_and_select_via_command(
+                object_id, operation, primitive, transform, command,
+            ),
 
             // primitive op - modify
             Command::SetPrimitiveOp {
@@ -612,9 +616,11 @@ impl EngineInstance {
         object_id: ObjectId,
         operation: Operation,
         primitive: Primitive,
+        transform: PrimitiveTransform,
         command: Command,
     ) {
-        let push_op_res = self.push_op_via_command(object_id, operation, primitive, command);
+        let push_op_res =
+            self.push_op_via_command(object_id, operation, primitive, transform, command);
 
         let new_primitive_op_id = match push_op_res {
             Some(id) => id,
@@ -629,6 +635,7 @@ impl EngineInstance {
         object_id: ObjectId,
         operation: Operation,
         primitive: Primitive,
+        transform: PrimitiveTransform,
         command: Command,
     ) -> Option<PrimitiveOpId> {
         let object = if let Some(some_object) = self.object_collection.get_object_mut(object_id) {
@@ -638,7 +645,7 @@ impl EngineInstance {
             return None;
         };
 
-        let push_op_res = object.push_op(operation, primitive);
+        let push_op_res = object.push_op(operation, primitive, transform);
 
         let new_primitive_op_id = match push_op_res {
             Err(e) => {

@@ -2,30 +2,64 @@ use super::{gui::EditState, gui_state::DRAG_INC};
 use crate::{
     config,
     engine::{
-        object::primitive_op::PrimitiveOp,
+        object::{object::ObjectId, operation::Operation, primitive_op::PrimitiveOp},
         primitives::{
             cube::Cube, primitive_transform::PrimitiveTransform, sphere::Sphere,
             uber_primitive::UberPrimitive,
         },
     },
+    helper::{
+        angle::Angle,
+        axis::{Axis, CartesianAxis},
+    },
 };
-use egui::DragValue;
+use egui::{ComboBox, DragValue};
 use egui_dnd::DragableItem;
 use glam::{Vec2, Vec3, Vec4};
 
+/// Returns a new operation if a different one is selected
+pub fn op_drop_down(
+    ui: &mut egui::Ui,
+    original_op: Operation,
+    object_id: ObjectId,
+) -> Option<Operation> {
+    let mut new_op = original_op.clone();
+
+    ComboBox::from_id_source(format!("op drop down {:?}", object_id))
+        .selected_text(original_op.name())
+        .show_ui(ui, |ui_op| {
+            for (op, op_name) in Operation::variants_with_names() {
+                ui_op.selectable_value(&mut new_op, op, op_name);
+            }
+        });
+
+    if original_op != new_op {
+        return Some(new_op);
+    } else {
+        None
+    }
+}
+
 pub fn sphere_editor_ui(ui: &mut egui::Ui, sphere: &mut Sphere) -> EditState {
-    sphere_editor_ui_fields(ui, &mut sphere.radius)
+    let new_radius = editable_radius_ui(ui, sphere.radius);
+
+    if let Some(some_new_radius) = new_radius {
+        sphere.radius = some_new_radius;
+        EditState::Modified
+    } else {
+        EditState::NoChange
+    }
 }
 
 pub fn cube_editor_ui(ui: &mut egui::Ui, cube: &mut Cube) -> EditState {
-    cube_editor_ui_fields(ui, &mut cube.dimensions)
+    editable_dimensions_ui(ui, &mut cube.dimensions)
 }
 
 pub fn uber_primitive_editor_ui(
     ui: &mut egui::Ui,
     uber_primitive: &mut UberPrimitive,
 ) -> EditState {
-    uber_primitive_editor_ui_fields(
+    editable_uber_parameters_ui(
         ui,
         &mut uber_primitive.dimensions,
         &mut uber_primitive.corner_radius,
@@ -36,66 +70,138 @@ pub fn primitive_transform_editor_ui(
     ui: &mut egui::Ui,
     primitive_transform: &mut PrimitiveTransform,
 ) -> EditState {
-    let mut something_changed: bool = false;
+    let mut edit_state = EditState::NoChange;
 
-    let center = &mut primitive_transform.center;
-    ui.horizontal(|ui| {
-        ui.label("Center:");
-        something_changed |= ui
-            .add(DragValue::new(&mut center.x).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut center.y).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut center.z).speed(DRAG_INC))
-            .changed();
-    });
+    let new_center = editable_center_ui(ui, primitive_transform.center);
+    if let Some(some_new_center) = new_center {
+        primitive_transform.center = some_new_center;
+        edit_state = EditState::Modified;
+    }
 
+    ui.label("Rotation:");
     let rotation = &mut primitive_transform.rotation_tentative_append;
-    todo!();
-    ui.horizontal(|ui| {
-        ui.label("Rotation:");
-        something_changed |= ui
-            .add(DragValue::new(&mut center.x).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut center.y).speed(DRAG_INC))
-            .changed();
-        something_changed |= ui
-            .add(DragValue::new(&mut center.z).speed(DRAG_INC))
-            .changed();
+    let new_axis = editable_axis_ui(ui, rotation.axis);
+    if let Some(some_new_axis) = new_axis {
+        rotation.axis = some_new_axis;
+        edit_state = EditState::Modified;
+    }
+
+    let new_angle = editable_angle_ui(ui, rotation.angle);
+    if let Some(some_new_angle) = new_angle {
+        rotation.angle = some_new_angle;
+        edit_state = EditState::Modified;
+    }
+
+    edit_state
+}
+
+/// Returns `Some` new center if the value was modified by the gui
+pub fn editable_center_ui(ui: &mut egui::Ui, original_center: Vec3) -> Option<Vec3> {
+    let mut new_center = original_center.clone();
+
+    ui.horizontal(|ui_h| {
+        ui_h.label("Center:");
+        ui_h.add(DragValue::new(&mut new_center.x).speed(DRAG_INC));
+        ui_h.add(DragValue::new(&mut new_center.y).speed(DRAG_INC));
+        ui_h.add(DragValue::new(&mut new_center.z).speed(DRAG_INC));
     });
 
-    if something_changed {
-        EditState::Modified
+    if new_center != original_center {
+        Some(new_center)
     } else {
-        EditState::NoChange
+        None
     }
 }
 
-pub fn sphere_editor_ui_fields(ui: &mut egui::Ui, radius: &mut f32) -> EditState {
-    let mut something_changed: bool = false;
+/// Returns `Some` new axis if the value was modified by the gui
+pub fn editable_axis_ui(ui: &mut egui::Ui, original_axis: Axis) -> Option<Axis> {
+    let mut new_axis = original_axis.clone();
+
+    ui.horizontal(|ui_h| {
+        ComboBox::from_label("Axis type")
+            .selected_text(new_axis.type_name())
+            .show_ui(ui_h, |ui_op| {
+                ui_op.selectable_value(
+                    &mut new_axis,
+                    Axis::DEFAULT_CARTESIAN,
+                    Axis::CARTESIAN_VARIANT_NAME,
+                );
+                ui_op.selectable_value(
+                    &mut new_axis,
+                    Axis::DEFAULT_DIRECION,
+                    Axis::DIRECTION_VARIANT_NAME,
+                );
+            });
+    });
+
+    ui.horizontal(|ui_h| match &mut new_axis {
+        Axis::Cartesian(c_axis_mut) => {
+            ComboBox::from_label("Cartesian axis")
+                .selected_text(c_axis_mut.as_str())
+                .show_ui(ui_h, |ui_op| {
+                    for (c_axis_variant, c_axis_name) in CartesianAxis::variants_with_names() {
+                        ui_op.selectable_value(c_axis_mut, c_axis_variant, c_axis_name);
+                    }
+                });
+        }
+        Axis::Direction(direction) => {
+            ui_h.label("Direction:");
+            ui_h.label(format!("X = {}", direction.x));
+            ui_h.label(format!("Y = {}", direction.y));
+            ui_h.label(format!("Z = {}", direction.z));
+        }
+    });
+
+    if new_axis != original_axis {
+        Some(new_axis)
+    } else {
+        None
+    }
+}
+
+/// Returns `Some` new angle if the value was modified by the gui
+pub fn editable_angle_ui(ui: &mut egui::Ui, original_angle: Angle) -> Option<Angle> {
+    let mut new_angle = original_angle;
+
+    ui.horizontal(|ui_h| match &mut new_angle {
+        Angle::Degrees(degrees) => {
+            ui_h.label("Angle (degrees):");
+            ui_h.add(DragValue::new(degrees).speed(DRAG_INC));
+        }
+        Angle::Radians(radians) => {
+            ui_h.label("Angle (radians):");
+            ui_h.add(DragValue::new(radians).speed(DRAG_INC));
+        }
+    });
+
+    if new_angle != original_angle {
+        Some(new_angle)
+    } else {
+        None
+    }
+}
+
+/// Returns `Some` new radius if the value was modified by the gui
+pub fn editable_radius_ui(ui: &mut egui::Ui, original_radius: f32) -> Option<f32> {
+    let mut new_radius = original_radius;
 
     ui.horizontal(|ui| {
         ui.label("Radius:");
-        something_changed |= ui
-            .add(
-                DragValue::new(radius)
-                    .speed(DRAG_INC)
-                    .clamp_range(0..=config::MAX_SPHERE_RADIUS),
-            )
-            .changed();
+        ui.add(
+            DragValue::new(&mut new_radius)
+                .speed(DRAG_INC)
+                .clamp_range(0..=config::MAX_SPHERE_RADIUS),
+        );
     });
 
-    if something_changed {
-        EditState::Modified
+    if new_radius != original_radius {
+        Some(new_radius)
     } else {
-        EditState::NoChange
+        None
     }
 }
 
-pub fn cube_editor_ui_fields(ui: &mut egui::Ui, dimensions: &mut Vec3) -> EditState {
+pub fn editable_dimensions_ui(ui: &mut egui::Ui, dimensions: &mut Vec3) -> EditState {
     let mut something_changed: bool = false;
 
     ui.horizontal(|ui| {
@@ -118,7 +224,7 @@ pub fn cube_editor_ui_fields(ui: &mut egui::Ui, dimensions: &mut Vec3) -> EditSt
     }
 }
 
-pub fn uber_primitive_editor_ui_fields(
+pub fn editable_uber_parameters_ui(
     ui: &mut egui::Ui,
     dimensions: &mut Vec4,
     corner_radius: &mut Vec2,

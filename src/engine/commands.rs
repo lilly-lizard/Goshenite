@@ -42,11 +42,13 @@ pub enum Command {
         object_id: ObjectId,
         operation: Operation,
         primitive: Primitive,
+        transform: PrimitiveTransform,
     },
     PushOpAndSelect {
         object_id: ObjectId,
         operation: Operation,
         primitive: Primitive,
+        transform: PrimitiveTransform,
     },
 
     // primitive op - modify

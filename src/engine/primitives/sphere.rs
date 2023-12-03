@@ -6,7 +6,7 @@ use crate::{
     },
     renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
-use glam::{Quat, Vec2, Vec3};
+use glam::{Vec2, Vec3};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sphere {
@@ -14,18 +14,18 @@ pub struct Sphere {
 }
 
 impl Sphere {
-    pub const fn new(center: Vec3, rotation: Quat, radius: f32) -> Self {
+    pub const fn new(radius: f32) -> Self {
         Self { radius }
     }
-}
 
-pub const DEFAULT_SPHERE: Sphere = Sphere {
-    radius: DEFAULT_RADIUS,
-};
+    pub const DEFAULT: Self = Self {
+        radius: DEFAULT_RADIUS,
+    };
+}
 
 impl Default for Sphere {
     fn default() -> Self {
-        DEFAULT_SPHERE
+        Self::DEFAULT
     }
 }
 

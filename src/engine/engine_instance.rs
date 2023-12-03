@@ -5,7 +5,9 @@ use super::{
         object::ObjectId, object_collection::ObjectCollection, operation::Operation,
         primitive_op::PrimitiveOpId,
     },
-    primitives::{cube::Cube, primitive::Primitive, sphere::Sphere},
+    primitives::{
+        cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform, sphere::Sphere,
+    },
     render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
 };
 use crate::{
@@ -466,25 +468,37 @@ fn check_channel_sender_result<T>(
 // ~~ Testing ~~
 
 fn object_testing(object_collection: &mut ObjectCollection) {
-    let sphere = Sphere::new(Vec3::new(0., 0., 0.), Quat::IDENTITY, 0.5);
-    let cube = Cube::new(
-        Vec3::new(-0.2, 0.2, 0.),
-        Quat::IDENTITY,
-        glam::Vec3::splat(0.8),
-    );
-    let another_sphere = Sphere::new(Vec3::new(0.2, -0.2, 0.), Quat::IDENTITY, 0.83);
+    let sphere = Sphere::new(0.5);
+    let cube = Cube::new(glam::Vec3::splat(0.8));
+    let another_sphere = Sphere::new(0.83);
 
     let (object_id, object) = object_collection
         .new_object("Bruh".to_string(), Vec3::new(-0.2, 0.2, 0.))
         .expect("no where near maxing out unique ids");
-    let _ = object.push_op(Operation::Union, Primitive::Cube(cube));
-    let _ = object.push_op(Operation::Union, Primitive::Sphere(sphere.clone()));
-    let _ = object.push_op(Operation::Intersection, Primitive::Sphere(another_sphere));
+    let _ = object.push_op(
+        Operation::Union,
+        Primitive::Cube(cube),
+        PrimitiveTransform::new(Vec3::new(-0.2, 0.2, 0.), Quat::IDENTITY),
+    );
+    let _ = object.push_op(
+        Operation::Union,
+        Primitive::Sphere(sphere.clone()),
+        PrimitiveTransform::new(Vec3::new(0., 0., 0.), Quat::IDENTITY),
+    );
+    let _ = object.push_op(
+        Operation::Intersection,
+        Primitive::Sphere(another_sphere),
+        PrimitiveTransform::new(Vec3::new(0.2, -0.2, 0.), Quat::IDENTITY),
+    );
     let _ = object_collection.mark_object_for_data_update(object_id);
 
     let (another_object_id, another_object) = object_collection
         .new_object("Another Bruh".to_string(), Vec3::new(0.2, -0.2, 0.))
         .expect("no where near maxing out unique ids");
-    let _ = another_object.push_op(Operation::Union, Primitive::Sphere(sphere));
+    let _ = another_object.push_op(
+        Operation::Union,
+        Primitive::Sphere(sphere),
+        PrimitiveTransform::DEFAULT,
+    );
     let _ = object_collection.mark_object_for_data_update(another_object_id);
 }

@@ -3,7 +3,7 @@ use crate::{
     engine::{aabb::Aabb, config_engine::primitive_names},
     renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
-use glam::{Quat, Vec2, Vec3, Vec4};
+use glam::{Vec2, Vec3, Vec4};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct UberPrimitive {
@@ -13,22 +13,22 @@ pub struct UberPrimitive {
 }
 
 impl UberPrimitive {
-    pub const fn new(center: Vec3, rotation: Quat, dimensions: Vec4, corner_radius: Vec2) -> Self {
+    pub const fn new(dimensions: Vec4, corner_radius: Vec2) -> Self {
         Self {
             dimensions,
             corner_radius,
         }
     }
-}
 
-pub const DEFAULT_UBER_PRIMITIVE: UberPrimitive = UberPrimitive {
-    dimensions: Vec4::ZERO,
-    corner_radius: Vec2::ZERO,
-};
+    pub const DEFAULT: UberPrimitive = UberPrimitive {
+        dimensions: Vec4::ZERO,
+        corner_radius: Vec2::ZERO,
+    };
+}
 
 impl Default for UberPrimitive {
     fn default() -> Self {
-        DEFAULT_UBER_PRIMITIVE
+        Self::DEFAULT
     }
 }
 

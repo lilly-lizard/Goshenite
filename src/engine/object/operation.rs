@@ -12,7 +12,7 @@ pub enum Operation {
     Nop,
 }
 
-static VARIANTS: &[Operation] = &[
+const VARIANTS: &[Operation] = &[
     Operation::Union,
     Operation::Intersection,
     Operation::Subtraction,
@@ -38,7 +38,7 @@ impl Operation {
         }
     }
 
-    pub fn variant_names() -> Vec<(Self, &'static str)> {
+    pub fn variants_with_names() -> Vec<(Self, &'static str)> {
         VARIANTS.iter().map(|op| (*op, op.name())).collect()
     }
 }

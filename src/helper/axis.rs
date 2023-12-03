@@ -28,11 +28,29 @@ impl CartesianAxis {
             Self::Z => DVec3::Z,
         }
     }
+
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::X => "X",
+            Self::Y => "Y",
+            Self::Z => "Z",
+        }
+    }
+
+    pub fn variants_with_names() -> Vec<(Self, &'static str)> {
+        Self::VARIANTS
+            .iter()
+            .map(|axis| (*axis, axis.as_str()))
+            .collect()
+    }
+
+    pub const VARIANTS: &[CartesianAxis] = &[CartesianAxis::X, CartesianAxis::Y, CartesianAxis::Z];
+    pub const DEFAULT: Self = Self::X;
 }
 
 impl Default for CartesianAxis {
     fn default() -> Self {
-        Self::X
+        Self::DEFAULT
     }
 }
 
@@ -88,23 +106,31 @@ impl Axis {
         };
         Ok(vec)
     }
+
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            Self::Cartesian(_) => Self::CARTESIAN_VARIANT_NAME,
+            Self::Direction(_) => Self::DIRECTION_VARIANT_NAME,
+        }
+    }
+
+    pub const CARTESIAN_VARIANT_NAME: &str = "Cartesian Axis";
+    pub const DIRECTION_VARIANT_NAME: &str = "Direction Axis";
+
+    pub const DEFAULT_CARTESIAN: Self = Self::Cartesian(CartesianAxis::DEFAULT);
+    pub const DEFAULT_DIRECION: Self = Self::Direction(Vec3::X);
 }
 
 impl Default for Axis {
     fn default() -> Self {
-        Self::Cartesian(CartesianAxis::default())
+        Self::DEFAULT_CARTESIAN
     }
 }
 
 // ~~ Axis Rotation ~~
 
-pub const DEFAULT_AXIS_ROTATION: AxisRotation = AxisRotation {
-    axis: Axis::Cartesian(CartesianAxis::X),
-    angle: Angle::ZERO,
-};
-
 /// Describes rotation around an axis
-#[derive(Clone, Copy, Default, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AxisRotation {
     pub axis: Axis,
     pub angle: Angle,
@@ -121,6 +147,17 @@ impl AxisRotation {
         let axis = self.axis.to_dvec3_normalized()?;
         let angle = self.angle.to_radians();
         Ok(DQuat::from_axis_angle(axis, angle))
+    }
+
+    pub const DEFAULT: AxisRotation = AxisRotation {
+        axis: Axis::DEFAULT_CARTESIAN,
+        angle: Angle::ZERO,
+    };
+}
+
+impl Default for AxisRotation {
+    fn default() -> Self {
+        Self::DEFAULT
     }
 }
 

@@ -116,6 +116,7 @@ impl Object {
         &mut self,
         operation: Operation,
         primitive: Primitive,
+        transform: PrimitiveTransform,
     ) -> Result<PrimitiveOpId, UniqueIdError> {
         let primitive_op_id = self.primitive_op_id_gen.new_id()?;
 
@@ -123,7 +124,7 @@ impl Object {
             primitive_op_id,
             operation,
             primitive,
-            PrimitiveTransform::default(),
+            transform,
         ));
         Ok(primitive_op_id)
     }

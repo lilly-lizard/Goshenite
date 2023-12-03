@@ -1,7 +1,8 @@
 use super::{
     config_ui,
     editable_fields::{
-        cube_editor_ui, primitive_transform_editor_ui, sphere_editor_ui, uber_primitive_editor_ui,
+        cube_editor_ui, op_drop_down, primitive_transform_editor_ui, sphere_editor_ui,
+        uber_primitive_editor_ui,
     },
     gui::EditState,
     gui_state::{GuiState, DRAG_INC},
@@ -11,7 +12,6 @@ use crate::engine::{
     object::{
         object::{Object, ObjectId},
         object_collection::ObjectCollection,
-        operation::Operation,
         primitive_op::{PrimitiveOp, PrimitiveOpId},
     },
     primitives::{
@@ -280,40 +280,20 @@ fn new_primitive_op_editor(
                 object_id: selected_object.id(),
                 operation: gui_state.op_edit_state,
                 primitive: gui_state.primitive_edit_state.clone(),
+                transform: todo!(),
             });
         } else {
             commands.push(Command::PushOp {
                 object_id: selected_object.id(),
                 operation: gui_state.op_edit_state,
                 primitive: gui_state.primitive_edit_state.clone(),
+                transform: todo!(),
             });
         }
     }
     if clicked_reset {
         gui_state.reset_primitive_op_fields();
     }
-}
-
-/// Returns a new operation if a different one is selected
-fn op_drop_down(
-    ui: &mut egui::Ui,
-    selected_op: Operation,
-    object_id: ObjectId,
-) -> Option<Operation> {
-    let mut new_op = selected_op.clone();
-
-    ComboBox::from_id_source(format!("op drop down {:?}", object_id))
-        .selected_text(selected_op.name())
-        .show_ui(ui, |ui_op| {
-            for (op, op_name) in Operation::variant_names() {
-                ui_op.selectable_value(&mut new_op, op, op_name);
-            }
-        });
-
-    if selected_op != new_op {
-        return Some(new_op);
-    }
-    None
 }
 
 /// Returns true if the primitive type was changed. If this happens, gui_state.primitive_edit_state
@@ -329,7 +309,7 @@ fn primitive_type_drop_down(
     ComboBox::from_id_source(format!("primitive type drop down {:?}", selected_object_id))
         .selected_text(selected_primitive_type_name)
         .show_ui(ui, |ui_p| {
-            for (variant_default_primitive, variant_type_name) in Primitive::variant_names() {
+            for (variant_default_primitive, variant_type_name) in Primitive::variants_with_names() {
                 // drop-down option for each primitive type
                 let this_is_selected = discriminant(&gui_state.primitive_edit_state)
                     == discriminant(&variant_default_primitive);
