@@ -3,7 +3,7 @@ use crate::{config::ENGINE_NAME, renderer::config_renderer::ENABLE_VULKAN_VALIDA
 use super::{
     config_renderer::{
         CPU_ACCESS_BUFFER_SIZE, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER,
-        FRAMEBUFFER_COUNT, VULKAN_VER_MAJ, VULKAN_VER_MIN,
+        MAX_FRAMES_IN_FLIGHT, VULKAN_VER_MAJ, VULKAN_VER_MIN,
     },
     shader_interfaces::{
         primitive_op_buffer::PRIMITIVE_ID_INVALID, uniform_buffers::CameraUniformBuffer,
@@ -319,7 +319,10 @@ pub fn create_device_and_queue(
     };
     let device = Arc::new(device_raw);
 
-    let render_queue = Arc::new(Queue::new(device.clone(), render_queue_family_index, 0));
+    let render_queue = Arc::new(
+        Queue::new(device.clone(), render_queue_family_index, 0)
+            .context("creating render queue")?,
+    );
     debug!(
         "created render queue. family index = {}",
         render_queue_family_index
@@ -330,7 +333,10 @@ pub fn create_device_and_queue(
             "created transfer queue. family index = {}",
             transfer_queue_family_index
         );
-        Arc::new(Queue::new(device.clone(), transfer_queue_family_index, 0))
+        Arc::new(
+            Queue::new(device.clone(), transfer_queue_family_index, 0)
+                .context("creating transfer queue")?,
+        )
     } else {
         debug!(
             "no separate transfer queue family available. transfer queue is same as render queue"
@@ -360,7 +366,7 @@ pub fn swapchain_properties(
     surface: &Surface,
     window: &Window,
 ) -> anyhow::Result<SwapchainProperties> {
-    let preferred_image_count = FRAMEBUFFER_COUNT as u32;
+    let preferred_image_count = MAX_FRAMES_IN_FLIGHT as u32;
     let window_dimensions: [u32; 2] = window.inner_size().into();
 
     let surface_capabilities = surface
@@ -739,21 +745,13 @@ pub fn create_cpu_read_staging_buffer(
 /// * if `swapchain_image_views` contains more than one image, it must contain
 ///   `framebuffer_count` elements.
 pub fn create_framebuffers(
-    framebuffer_count: usize,
     render_pass: &Arc<RenderPass>,
-    swapchain_image_views: &mut Vec<Arc<ImageView<SwapchainImage>>>,
+    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
     normal_buffer: &Arc<ImageView<Image>>,
     primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
     depth_buffer: &Arc<ImageView<Image>>,
 ) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
-    // ensure swapchain_image_views has framebuffer_count elements
-    if swapchain_image_views.len() == 1 {
-        for _ in 1..framebuffer_count {
-            swapchain_image_views.push(swapchain_image_views[0].clone());
-        }
-    }
-
-    (0..framebuffer_count)
+    (0..swapchain_image_views.len())
         .into_iter()
         .map(|i| {
             let mut attachments = Vec::<Arc<dyn ImageViewAccess>>::with_capacity(

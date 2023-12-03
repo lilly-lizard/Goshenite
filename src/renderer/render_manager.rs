@@ -16,13 +16,10 @@ use super::{
 use crate::{
     engine::object::objects_delta::ObjectsDelta,
     helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
-    renderer::{
-        config_renderer::FRAMEBUFFER_COUNT,
-        vulkan_init::{
-            choose_depth_buffer_format, create_command_pool, create_device_and_queue, create_entry,
-            create_instance, create_primitive_id_buffers, create_render_command_buffers,
-            shaders_should_write_linear_color,
-        },
+    renderer::vulkan_init::{
+        choose_depth_buffer_format, create_command_pool, create_device_and_queue, create_entry,
+        create_instance, create_primitive_id_buffers, create_render_command_buffers,
+        shaders_should_write_linear_color,
     },
     user_interface::camera::Camera,
 };
@@ -184,9 +181,8 @@ impl RenderManager {
         let shaders_write_linear_color =
             shaders_should_write_linear_color(swapchain.properties().surface_format);
 
-        let mut swapchain_image_views = create_swapchain_image_views(&swapchain)?;
-
-        let framebuffer_count = FRAMEBUFFER_COUNT;
+        let swapchain_image_views = create_swapchain_image_views(&swapchain)?;
+        let framebuffer_count = swapchain_image_views.len();
 
         let depth_buffer_format = choose_depth_buffer_format(&physical_device)?;
 
@@ -213,9 +209,8 @@ impl RenderManager {
         let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
 
         let framebuffers = create_framebuffers(
-            framebuffer_count,
             &render_pass,
-            &mut swapchain_image_views,
+            &swapchain_image_views,
             &normal_buffer,
             &primitive_id_buffers,
             &depth_buffer,
@@ -550,8 +545,7 @@ impl RenderManager {
         self.shaders_write_linear_color =
             shaders_should_write_linear_color(self.swapchain.properties().surface_format);
         self.swapchain_image_views = create_swapchain_image_views(&self.swapchain)?;
-
-        let framebuffer_count = FRAMEBUFFER_COUNT;
+        let framebuffer_count = self.swapchain_image_views.len();
 
         let depth_buffer_format = self.depth_buffer.image().properties().format;
 
@@ -579,7 +573,6 @@ impl RenderManager {
         )?;
 
         self.framebuffers = create_framebuffers(
-            framebuffer_count,
             &self.render_pass,
             &mut self.swapchain_image_views,
             &self.normal_buffer,
@@ -692,16 +685,13 @@ impl RenderManager {
     }
 
     /// Determines the new framebuffer index
+    #[inline]
     fn current_framebuffer_index(
         &self,
-        previous_framebuffer_index: usize,
+        _previous_framebuffer_index: usize,
         swapchain_index: usize,
     ) -> usize {
-        todo!();
-        if self.swapchain_image_views.len() == 1 {
-            return (previous_framebuffer_index + 1) % FRAMEBUFFER_COUNT;
-        }
-        return swapchain_index;
+        swapchain_index
     }
 }
 
