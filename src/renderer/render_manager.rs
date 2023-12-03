@@ -697,6 +697,7 @@ impl RenderManager {
         previous_framebuffer_index: usize,
         swapchain_index: usize,
     ) -> usize {
+        todo!();
         if self.swapchain_image_views.len() == 1 {
             return (previous_framebuffer_index + 1) % FRAMEBUFFER_COUNT;
         }

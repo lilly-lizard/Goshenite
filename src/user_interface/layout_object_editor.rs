@@ -280,14 +280,14 @@ fn new_primitive_op_editor(
                 object_id: selected_object.id(),
                 operation: gui_state.op_edit_state,
                 primitive: gui_state.primitive_edit_state.clone(),
-                transform: todo!(),
+                transform: gui_state.transform_edit_state,
             });
         } else {
             commands.push(Command::PushOp {
                 object_id: selected_object.id(),
                 operation: gui_state.op_edit_state,
                 primitive: gui_state.primitive_edit_state.clone(),
-                transform: todo!(),
+                transform: gui_state.transform_edit_state,
             });
         }
     }
