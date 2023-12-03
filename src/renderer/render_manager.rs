@@ -183,6 +183,7 @@ impl RenderManager {
 
         let swapchain_image_views = create_swapchain_image_views(&swapchain)?;
         let framebuffer_count = swapchain_image_views.len();
+        debug!("swapchain image count = {}", framebuffer_count);
 
         let depth_buffer_format = choose_depth_buffer_format(&physical_device)?;
 
@@ -546,6 +547,7 @@ impl RenderManager {
             shaders_should_write_linear_color(self.swapchain.properties().surface_format);
         self.swapchain_image_views = create_swapchain_image_views(&self.swapchain)?;
         let framebuffer_count = self.swapchain_image_views.len();
+        trace!("swapchain image count: {}", framebuffer_count);
 
         let depth_buffer_format = self.depth_buffer.image().properties().format;
 
