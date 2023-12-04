@@ -26,6 +26,7 @@ pub fn op_drop_down(
     let mut new_op = original_op.clone();
 
     ComboBox::from_id_source(format!("op drop down {:?}", object_id))
+        .width(0_f32)
         .selected_text(original_op.name())
         .show_ui(ui, |ui_op| {
             for (op, op_name) in Operation::variants_with_names() {
@@ -78,8 +79,8 @@ pub fn primitive_transform_editor_ui(
         edit_state = EditState::Modified;
     }
 
-    ui.label("Rotation:");
     let rotation = &mut primitive_transform.rotation_tentative_append;
+
     let new_axis = editable_axis_ui(ui, rotation.axis);
     if let Some(some_new_axis) = new_axis {
         rotation.axis = some_new_axis;
@@ -118,7 +119,10 @@ pub fn editable_axis_ui(ui: &mut egui::Ui, original_axis: Axis) -> Option<Axis> 
     let mut new_axis = original_axis.clone();
 
     ui.horizontal(|ui_h| {
-        ComboBox::from_label("Axis type")
+        ui_h.label("Rotation axis:");
+
+        ComboBox::new("Axis type", "")
+            .width(0_f32)
             .selected_text(new_axis.type_name())
             .show_ui(ui_h, |ui_op| {
                 ui_op.selectable_value(
@@ -132,23 +136,24 @@ pub fn editable_axis_ui(ui: &mut egui::Ui, original_axis: Axis) -> Option<Axis> 
                     Axis::DIRECTION_VARIANT_NAME,
                 );
             });
-    });
 
-    ui.horizontal(|ui_h| match &mut new_axis {
-        Axis::Cartesian(c_axis_mut) => {
-            ComboBox::from_label("Cartesian axis")
-                .selected_text(c_axis_mut.as_str())
-                .show_ui(ui_h, |ui_op| {
-                    for (c_axis_variant, c_axis_name) in CartesianAxis::variants_with_names() {
-                        ui_op.selectable_value(c_axis_mut, c_axis_variant, c_axis_name);
-                    }
-                });
-        }
-        Axis::Direction(direction) => {
-            ui_h.label("Direction:");
-            ui_h.label(format!("X = {}", direction.x));
-            ui_h.label(format!("Y = {}", direction.y));
-            ui_h.label(format!("Z = {}", direction.z));
+        match &mut new_axis {
+            Axis::Cartesian(c_axis_mut) => {
+                ComboBox::new("Cartesian axis", "")
+                    .width(0_f32)
+                    .selected_text(c_axis_mut.as_str())
+                    .show_ui(ui_h, |ui_op| {
+                        for (c_axis_variant, c_axis_name) in CartesianAxis::variants_with_names() {
+                            ui_op.selectable_value(c_axis_mut, c_axis_variant, c_axis_name);
+                        }
+                    });
+            }
+            Axis::Direction(direction) => {
+                ui_h.label("Direction:");
+                ui_h.label(format!("X = {}", direction.x));
+                ui_h.label(format!("Y = {}", direction.y));
+                ui_h.label(format!("Z = {}", direction.z));
+            }
         }
     });
 

@@ -307,6 +307,7 @@ fn primitive_type_drop_down(
     let mut type_has_changed = EditState::NoChange;
 
     ComboBox::from_id_source(format!("primitive type drop down {:?}", selected_object_id))
+        .width(0_f32)
         .selected_text(selected_primitive_type_name)
         .show_ui(ui, |ui_p| {
             for (variant_default_primitive, variant_type_name) in Primitive::variants_with_names() {
@@ -422,13 +423,13 @@ fn primitive_editor_ui(
     transform_edit_state: &mut PrimitiveTransform,
     primitive_edit_state: &mut Primitive,
 ) -> EditState {
-    let transform_edit_state = primitive_transform_editor_ui(ui, transform_edit_state);
-
     let primitive_edit_state = match primitive_edit_state {
         Primitive::Sphere(p) => sphere_editor_ui(ui, p),
         Primitive::Cube(p) => cube_editor_ui(ui, p),
         Primitive::UberPrimitive(p) => uber_primitive_editor_ui(ui, p),
     };
+
+    let transform_edit_state = primitive_transform_editor_ui(ui, transform_edit_state);
 
     transform_edit_state.combine(primitive_edit_state)
 }

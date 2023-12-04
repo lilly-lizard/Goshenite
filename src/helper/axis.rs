@@ -114,8 +114,8 @@ impl Axis {
         }
     }
 
-    pub const CARTESIAN_VARIANT_NAME: &str = "Cartesian Axis";
-    pub const DIRECTION_VARIANT_NAME: &str = "Direction Axis";
+    pub const CARTESIAN_VARIANT_NAME: &str = "Cartesian";
+    pub const DIRECTION_VARIANT_NAME: &str = "Direction";
 
     pub const DEFAULT_CARTESIAN: Self = Self::Cartesian(CartesianAxis::DEFAULT);
     pub const DEFAULT_DIRECION: Self = Self::Direction(Vec3::X);
