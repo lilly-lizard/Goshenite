@@ -1,5 +1,8 @@
 use crate::{
-    helper::axis::AxisRotation,
+    helper::{
+        angle::Angle,
+        axis::{Axis, AxisRotation},
+    },
     renderer::shader_interfaces::primitive_op_buffer::PrimitiveTransformSlice,
 };
 use glam::{Mat3, Quat, Vec3};
@@ -10,9 +13,9 @@ pub struct PrimitiveTransform {
     pub center: Vec3,
     /// Edit this make tentative adjustments to the rotation that can easily be undone
     /// e.g. when dragging a UI element.
-    pub rotation_tentative_append: AxisRotation,
+    rotation_tentative_append: AxisRotation,
     /// Primitive rotation quaternion
-    pub rotation: Quat,
+    rotation: Quat,
 }
 
 impl PrimitiveTransform {
@@ -29,11 +32,6 @@ impl PrimitiveTransform {
         let rotation_tentative_append_quat = self.rotation_tentative_append.to_quat()
             .expect("Axis::Direction should only be set via the `new_direction()` function to avoid un-normalizable values");
         rotation_tentative_append_quat.mul_quat(self.rotation)
-    }
-
-    pub fn commit_tentative_rotation(&mut self) {
-        self.rotation = self.total_rotation();
-        self.rotation_tentative_append = AxisRotation::default();
     }
 
     #[inline]
@@ -60,6 +58,37 @@ impl PrimitiveTransform {
             rotation_cols_array[7].to_bits(),
             rotation_cols_array[8].to_bits(),
         ]
+    }
+
+    #[inline]
+    pub fn rotation_tentative_append(&self) -> AxisRotation {
+        self.rotation_tentative_append
+    }
+
+    #[inline]
+    pub fn rotation(&self) -> Quat {
+        self.rotation
+    }
+
+    pub fn commit_tentative_rotation(&mut self) {
+        self.rotation = self.total_rotation();
+        self.rotation_tentative_append = AxisRotation::DEFAULT;
+    }
+
+    pub fn set_tentative_rotation(&mut self, new_rotation: AxisRotation) {
+        self.rotation_tentative_append = new_rotation;
+    }
+
+    pub fn set_tentative_rotation_axis(&mut self, new_axis: Axis) {
+        self.rotation_tentative_append.axis = new_axis;
+    }
+
+    pub fn set_tentative_rotation_angle(&mut self, new_angle: Angle) {
+        self.rotation_tentative_append.angle = new_angle;
+    }
+
+    pub fn reset_tentative_rotation(&mut self) {
+        self.rotation_tentative_append = AxisRotation::DEFAULT;
     }
 
     pub const DEFAULT: PrimitiveTransform = PrimitiveTransform {

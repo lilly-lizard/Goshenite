@@ -158,12 +158,12 @@ fn existing_primitive_op_editor(
     selected_object: &Object,
     selected_prim_op_id: PrimitiveOpId,
 ) {
-    let mut prim_op_edit_state = EditState::NoChange;
+    let mut primitive_op_edit_state = EditState::NoChange;
 
     let selected_object_id = selected_object.id();
-    let (mut modified_prim_op, selected_prim_op_index) =
+    let (selected_primitive_op, selected_primitive_op_index) =
         match selected_object.get_primitive_op_with_index(selected_prim_op_id) {
-            Some((primitive_op, index)) => (primitive_op.clone(), index),
+            Some(primitive_op_and_index) => primitive_op_and_index,
             None => {
                 // selected_prim_op_id not in selected_obejct -> invalid id
                 debug!("selected object {} dropped", selected_object_id);
@@ -174,28 +174,28 @@ fn existing_primitive_op_editor(
             }
         };
 
+    gui_state.op_edit_state = selected_primitive_op.op;
+    gui_state.primitive_edit_state = selected_primitive_op.primitive;
+    gui_state.transform_edit_state = selected_primitive_op.primitive_transform;
+
     ui.separator();
 
-    ui.label(format!("Primitive op {}:", selected_prim_op_index));
+    ui.label(format!("Primitive op {}:", selected_primitive_op_index));
 
     // primitive type/op selection
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        let possible_updated_op = op_drop_down(ui_h, modified_prim_op.op, selected_object.id());
+        let possible_updated_op = op_drop_down(ui_h, gui_state.op_edit_state, selected_object.id());
         if let Some(updated_op) = possible_updated_op {
             // user edited the op via drop-down menu
-            modified_prim_op.op = updated_op;
-            prim_op_edit_state = EditState::Modified;
+            gui_state.op_edit_state = updated_op;
+            primitive_op_edit_state = EditState::Modified;
         }
 
         // primitive type drop down menu
         let primitive_type_changed = primitive_type_drop_down(ui_h, gui_state, selected_object_id);
-        if let EditState::Modified = primitive_type_changed {
-            // replace old primitive according to new type
-            modified_prim_op.primitive = gui_state.primitive_edit_state.clone();
-            prim_op_edit_state = EditState::Modified;
-        }
+        primitive_op_edit_state = primitive_op_edit_state.combine(primitive_type_changed);
     });
 
     // primitive editor
@@ -205,11 +205,7 @@ fn existing_primitive_op_editor(
         &mut gui_state.transform_edit_state,
         &mut gui_state.primitive_edit_state,
     );
-    if let EditState::Modified = primitive_edit_state {
-        // replace primitive with edited one
-        modified_prim_op.primitive = gui_state.primitive_edit_state.clone();
-        prim_op_edit_state = EditState::Modified;
-    }
+    primitive_op_edit_state = primitive_op_edit_state.combine(primitive_edit_state);
 
     // delete button
 
@@ -219,17 +215,18 @@ fn existing_primitive_op_editor(
             selected_object.id(),
             selected_prim_op_id,
         ));
+        return;
     }
 
-    match prim_op_edit_state {
+    match primitive_op_edit_state {
         EditState::Modified => {
             // update the primitive op data with what we've been using
             commands.push(Command::SetPrimitiveOp {
                 object_id: selected_object.id(),
                 primitive_op_id: selected_prim_op_id,
-                new_primitive: modified_prim_op.primitive,
-                new_transform: modified_prim_op.primitive_transform,
-                new_operation: modified_prim_op.op,
+                new_primitive: gui_state.primitive_edit_state,
+                new_transform: gui_state.transform_edit_state,
+                new_operation: gui_state.op_edit_state,
             });
         }
         EditState::NoChange => (),

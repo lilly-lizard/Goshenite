@@ -4,6 +4,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- if we change type of rotation then commit, don't worry about dragging.
 - primitive rotation
 - blend function (primitive op)
 
