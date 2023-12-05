@@ -65,11 +65,6 @@ impl PrimitiveTransform {
         self.rotation_tentative_append
     }
 
-    #[inline]
-    pub fn rotation(&self) -> Quat {
-        self.rotation
-    }
-
     pub fn commit_tentative_rotation(&mut self) {
         self.rotation = self.total_rotation();
         self.rotation_tentative_append = AxisRotation::DEFAULT;

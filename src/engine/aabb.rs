@@ -1,4 +1,4 @@
-use super::object::object::ObjectId;
+use super::{config_engine::AABB_EDGE, object::object::ObjectId};
 use crate::renderer::shader_interfaces::vertex_inputs::BoundingBoxVertex;
 use glam::Vec3;
 
@@ -16,7 +16,8 @@ pub struct Aabb {
 impl Aabb {
     /// `dimensions` are the x/y/z lengths of the box.
     pub fn new(center: Vec3, dimensions: Vec3) -> Self {
-        let dimensions_halved = dimensions / 2.;
+        let dimensions_expanded = dimensions + AABB_EDGE;
+        let dimensions_halved = dimensions_expanded / 2.;
         let max = center + dimensions_halved;
         let min = center - dimensions_halved;
 

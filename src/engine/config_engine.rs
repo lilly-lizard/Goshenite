@@ -10,3 +10,5 @@ pub mod primitive_names {
     pub const CUBE: &'static str = "Cube";
     pub const UBER_PRIMITIVE: &'static str = "Uber Primitive";
 }
+
+pub const AABB_EDGE: Vec3 = Vec3::splat(0.1);

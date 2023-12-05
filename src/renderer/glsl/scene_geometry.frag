@@ -89,26 +89,26 @@ SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	);
 
-	mat3 transform;
-	transform[0] = vec3(
+	mat3 rotation;
+	rotation[0] = vec3(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	); // column 1
-	transform[1] = vec3(
+	rotation[1] = vec3(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	); // column 2
-	transform[2] = vec3(
+	rotation[2] = vec3(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	); // column 3
 
 	// apply to position
-	pos = pos - center; // todo before or after transform?
-	pos = pos * transform;
+	pos = pos - center;
+	pos = pos * rotation;
 
 	vec4 s = vec4(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),

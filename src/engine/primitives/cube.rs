@@ -51,11 +51,38 @@ impl EncodablePrimitive for Cube {
     }
 
     fn aabb(&self, primitive_transform: PrimitiveTransform) -> Aabb {
-        // todo calculate only when props/transform changed!
-        //todo!("dimensions need to be adjusted for rotation!");
-        Aabb::new(
-            primitive_transform.center,
-            self.dimensions + Vec3::splat(0.1),
-        )
+        // todo calculate only when props/transform changed? cache result?
+
+        let half_dimensions = self.dimensions / 2_f32;
+        let four_corners = vec![
+            half_dimensions,
+            Vec3 {
+                x: -half_dimensions.x,
+                ..half_dimensions
+            },
+            Vec3 {
+                y: -half_dimensions.y,
+                ..half_dimensions
+            },
+            Vec3 {
+                z: -half_dimensions.z,
+                ..half_dimensions
+            },
+        ];
+
+        let rotation = primitive_transform.total_rotation();
+        let rotated_four_corners_abs = four_corners
+            .into_iter()
+            .map(|corner| rotation.mul_vec3(corner).abs())
+            .collect::<Vec<_>>();
+
+        let mut aabb_dimensions = Vec3::ZERO;
+        for rotated_corner in rotated_four_corners_abs {
+            aabb_dimensions.x = aabb_dimensions.x.max(rotated_corner.x);
+            aabb_dimensions.y = aabb_dimensions.y.max(rotated_corner.y);
+            aabb_dimensions.z = aabb_dimensions.z.max(rotated_corner.z);
+        }
+
+        Aabb::new(primitive_transform.center, aabb_dimensions * 2_f32)
     }
 }
