@@ -1,7 +1,6 @@
 pub mod camera;
 pub mod config_ui;
 pub mod cursor;
-pub mod draggable_value;
 mod editable_fields;
 pub mod gui;
 mod gui_state;

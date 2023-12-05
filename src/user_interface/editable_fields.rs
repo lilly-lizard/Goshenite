@@ -1,4 +1,4 @@
-use super::{draggable_value::CommitableValue, gui::EditState, gui_state::DRAG_INC};
+use super::{gui::EditState, gui_state::DRAG_INC};
 use crate::{
     config,
     engine::{
@@ -88,17 +88,8 @@ pub fn primitive_transform_editor_ui(
     }
 
     let edited_angle = editable_angle_ui(ui, primitive_transform.rotation_tentative_append().angle);
-    match edited_angle {
-        CommitableValue::NotCommitted(new_angle) => {
-            primitive_transform.set_tentative_rotation_angle(new_angle);
-        }
-        CommitableValue::Committed(new_angle) => {
-            primitive_transform.commit_tentative_rotation();
-            primitive_transform.set_tentative_rotation_angle(new_angle);
-        }
-    }
-    if let Some(some_new_angle) = edited_angle {
-        rotation.angle = some_new_angle;
+    if let Some(change_angle) = edited_angle {
+        primitive_transform.set_tentative_rotation_angle(change_angle);
         edit_state = EditState::Modified;
     }
 
@@ -174,33 +165,24 @@ pub fn editable_axis_ui(ui: &mut egui::Ui, original_axis: Axis) -> Option<Axis> 
 }
 
 /// Returns `Some` new angle if the value was modified by the gui
-pub fn editable_angle_ui(ui: &mut egui::Ui, original_angle: Angle) -> CommitableValue<Angle> {
+pub fn editable_angle_ui(ui: &mut egui::Ui, original_angle: Angle) -> Option<Angle> {
     let mut new_angle = original_angle;
 
-    let currently_being_dragged = ui.horizontal(|ui_h| match &mut new_angle {
+    ui.horizontal(|ui_h| match &mut new_angle {
         Angle::Degrees(degrees) => {
             ui_h.label("Angle (degrees):");
-            ui_h.add(DragValue::new(degrees).speed(DRAG_INC))
-                .dragged_by(egui::PointerButton::Primary)
+            ui_h.add(DragValue::new(degrees).speed(DRAG_INC));
         }
         Angle::Radians(radians) => {
             ui_h.label("Angle (radians):");
-            ui_h.add(DragValue::new(radians).speed(DRAG_INC))
-                .dragged_by(egui::PointerButton::Primary)
+            ui_h.add(DragValue::new(radians).speed(DRAG_INC));
         }
     });
 
     if new_angle != original_angle {
-        if currently_being_dragged.inner {
-            // while angle is being dragged, it can be cancelled so that the user can preview
-            // their changes
-            CommitableValue::NotCommitted(new_angle)
-        } else {
-            // only actually set the new angle when it isn't being dragged
-            CommitableValue::Committed(new_angle)
-        }
+        Some(new_angle)
     } else {
-        CommitableValue::NoChange
+        None
     }
 }
 
