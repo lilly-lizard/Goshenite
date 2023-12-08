@@ -89,7 +89,6 @@ pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Resul
         Instance::new(
             entry,
             api_version,
-            ENGINE_NAME,
             window.raw_display_handle(),
             layer_names,
             extension_names,
@@ -98,8 +97,8 @@ pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Resul
     );
 
     info!(
-        "created vulkan instance. api version = {:?}",
-        instance.api_version()
+        "created vulkan instance. max api version = {:?}",
+        instance.max_api_version()
     );
 
     Ok(instance)
@@ -142,7 +141,7 @@ pub fn choose_physical_device_and_queue_families(
     let chosen_device = p_devices
         .into_iter()
         // filter for supported api version
-        .filter(|p| p.supports_api_ver(instance.api_version()))
+        .filter(|p| p.supports_api_ver(instance.max_api_version()))
         // filter for required device extensionssupports_extension
         .filter(|p| p.supports_extensions(required_extensions.into_iter()))
         // filter for queue support
