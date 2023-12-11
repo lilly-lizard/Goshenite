@@ -12,7 +12,7 @@ use super::{
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{
-    allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, ApiVersion, Buffer,
+    allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, Buffer,
     BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback, Device,
     Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageProperties, ImageView,
     ImageViewAccess, ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, Queue,
