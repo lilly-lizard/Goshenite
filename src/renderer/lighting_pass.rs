@@ -96,32 +96,20 @@ impl LightingPass {
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
     ) -> anyhow::Result<()> {
-        let device_ash = self.device.inner();
-        let command_buffer_handle = command_buffer.handle();
-        let descriptor_set_handles = [
-            self.desc_sets_g_buffer[frame_index].handle(),
-            self.desc_set_camera.handle(),
-        ];
-
-        unsafe {
-            device_ash.cmd_bind_pipeline(
-                command_buffer_handle,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline.handle(),
-            );
-            device_ash.cmd_set_viewport(command_buffer_handle, 0, &[viewport]);
-            device_ash.cmd_set_scissor(command_buffer_handle, 0, &[scissor]);
-            device_ash.cmd_bind_descriptor_sets(
-                command_buffer_handle,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline.pipeline_layout().handle(),
-                0,
-                &descriptor_set_handles,
-                &[],
-            );
-            device_ash.cmd_draw(command_buffer_handle, 3, 1, 0, 0);
-        }
-
+        command_buffer.bind_pipeline(self.pipeline.as_ref());
+        command_buffer.set_viewport(0, &[viewport]);
+        command_buffer.set_scissor(0, &[scissor]);
+        command_buffer.bind_descriptor_sets(
+            vk::PipelineBindPoint::GRAPHICS,
+            self.pipeline.pipeline_layout().as_ref(),
+            0,
+            [
+                self.desc_sets_g_buffer[frame_index].as_ref(),
+                self.desc_set_camera.as_ref(),
+            ],
+            &[],
+        );
+        command_buffer.draw(3, 1, 0, 0);
         Ok(())
     }
 }
@@ -181,20 +169,17 @@ fn write_desc_set_camera(
         offset: 0,
         range: mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize,
     };
+    let camera_buffer_infos = [camera_buffer_info];
 
-    let descriptor_writes = [vk::WriteDescriptorSet::builder()
+    let descriptor_write = vk::WriteDescriptorSet::builder()
         .dst_set(desc_set_camera.handle())
         .dst_binding(descriptor::BINDING_CAMERA)
         .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-        .buffer_info(&[camera_buffer_info])
-        .build()];
+        .buffer_info(&camera_buffer_infos);
 
-    unsafe {
-        desc_set_camera
-            .device()
-            .inner()
-            .update_descriptor_sets(&descriptor_writes, &[]);
-    }
+    desc_set_camera
+        .device()
+        .update_descriptor_sets([descriptor_write], []);
 
     Ok(())
 }
@@ -267,34 +252,33 @@ fn write_desc_set_gbuffer(
         image_view: normal_buffer.handle(),
         ..Default::default()
     };
+    let normal_buffer_infos = [normal_buffer_info];
 
     let primitive_id_buffer_info = vk::DescriptorImageInfo {
         image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         image_view: primitive_id_buffer.handle(),
         ..Default::default()
     };
+    let primitive_id_buffer_infos = [primitive_id_buffer_info];
 
-    let descriptor_writes = [
-        vk::WriteDescriptorSet::builder()
-            .dst_set(desc_set_gbuffer.handle())
-            .dst_binding(descriptor::BINDING_NORMAL)
-            .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
-            .image_info(&[normal_buffer_info])
-            .build(),
-        vk::WriteDescriptorSet::builder()
-            .dst_set(desc_set_gbuffer.handle())
-            .dst_binding(descriptor::BINDING_PRIMITIVE_ID)
-            .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
-            .image_info(&[primitive_id_buffer_info])
-            .build(),
-    ];
+    let descriptor_write_normal_buffer = vk::WriteDescriptorSet::builder()
+        .dst_set(desc_set_gbuffer.handle())
+        .dst_binding(descriptor::BINDING_NORMAL)
+        .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
+        .image_info(&normal_buffer_infos);
+    let descriptor_write_primitive_id_buffer = vk::WriteDescriptorSet::builder()
+        .dst_set(desc_set_gbuffer.handle())
+        .dst_binding(descriptor::BINDING_PRIMITIVE_ID)
+        .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
+        .image_info(&primitive_id_buffer_infos);
 
-    unsafe {
-        desc_set_gbuffer
-            .device()
-            .inner()
-            .update_descriptor_sets(&descriptor_writes, &[]);
-    }
+    desc_set_gbuffer.device().update_descriptor_sets(
+        [
+            descriptor_write_normal_buffer,
+            descriptor_write_primitive_id_buffer,
+        ],
+        [],
+    );
 
     Ok(())
 }

@@ -287,7 +287,7 @@ impl GuiPass {
             0,
             push_constant_bytes,
         );
-        command_buffer.set_viewports(0, &[viewport]);
+        command_buffer.set_viewport(0, &[viewport]);
 
         for ClippedPrimitive {
             clip_rect,
@@ -792,7 +792,7 @@ impl GuiPass {
             .context("recording gui render commands")?
             .clone();
 
-        command_buffer.set_scissors(0, &[scissor]);
+        command_buffer.set_scissor(0, &[scissor]);
         command_buffer.bind_descriptor_sets(
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline.pipeline_layout().as_ref(),

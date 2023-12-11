@@ -3,7 +3,7 @@ use crate::renderer::config_renderer::ENABLE_VULKAN_VALIDATION;
 use super::{
     config_renderer::{
         CPU_ACCESS_BUFFER_SIZE, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER,
-        MAX_FRAMES_IN_FLIGHT, VULKAN_VER_MAJ, VULKAN_VER_MIN,
+        MAX_FRAMES_IN_FLIGHT, MAX_VULKAN_VER_MAJ, MAX_VULKAN_VER_MIN,
     },
     shader_interfaces::{
         primitive_op_buffer::PRIMITIVE_ID_INVALID, uniform_buffers::CameraUniformBuffer,
@@ -55,7 +55,7 @@ pub fn required_features_1_2() -> vk::PhysicalDeviceVulkan12Features {
 }
 
 pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Result<Arc<Instance>> {
-    let api_version = ApiVersion::new(VULKAN_VER_MAJ, VULKAN_VER_MIN);
+    let max_api_version = ApiVersion::new(MAX_VULKAN_VER_MAJ, MAX_VULKAN_VER_MIN);
 
     let mut layer_names = Vec::<&str>::new();
 
@@ -88,7 +88,7 @@ pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Resul
     let instance = Arc::new(
         Instance::new(
             entry,
-            api_version,
+            max_api_version,
             window.raw_display_handle(),
             layer_names,
             extension_names,
@@ -164,11 +164,10 @@ pub fn choose_physical_device_and_queue_families(
     chosen_device.with_context(|| {
         format!(
             "could not find a suitable vulkan implimentation (device and driver). requirements:\n
-            \t- must support minimum vulkan version {}.{}\n
             \t- must contain queue family supporting graphics, transfer and surface operations\n
             \t- must support device extensions: {:?}\n
             \t- must support device features: {:?}",
-            VULKAN_VER_MAJ, VULKAN_VER_MIN, required_extensions, required_features
+            required_extensions, required_features
         )
     })
 }

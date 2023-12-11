@@ -1,7 +1,7 @@
 use ash::vk;
 
-pub const VULKAN_VER_MAJ: u32 = 1;
-pub const VULKAN_VER_MIN: u32 = 2; // max currently supported by moltenvk
+pub const MAX_VULKAN_VER_MAJ: u32 = 1;
+pub const MAX_VULKAN_VER_MIN: u32 = 3;
 /// If true, the renderer will attempt to enable khronos valication layer. If VK_LAYER_KHRONOS_validation
 /// is installed on the system, a debug callback will be created to log layer messages.
 pub const ENABLE_VULKAN_VALIDATION: bool = cfg!(debug_assertions);

@@ -119,27 +119,16 @@ impl GeometryPass {
             return Ok(());
         }
 
-        let device_ash = self.device.inner();
-        let command_buffer_handle = command_buffer.handle();
-        let descriptor_set_handles = [self.desc_set_camera.handle()];
-
-        unsafe {
-            device_ash.cmd_bind_pipeline(
-                command_buffer_handle,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline.handle(),
-            );
-            device_ash.cmd_set_viewport(command_buffer_handle, 0, &[viewport]);
-            device_ash.cmd_set_scissor(command_buffer_handle, 0, &[scissor]);
-            device_ash.cmd_bind_descriptor_sets(
-                command_buffer_handle,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline.pipeline_layout().handle(),
-                0,
-                &descriptor_set_handles,
-                &[],
-            );
-        }
+        command_buffer.bind_pipeline(self.pipeline.as_ref());
+        command_buffer.set_viewport(0, &[viewport]);
+        command_buffer.set_scissor(0, &[scissor]);
+        command_buffer.bind_descriptor_sets(
+            vk::PipelineBindPoint::GRAPHICS,
+            self.pipeline.pipeline_layout().as_ref(),
+            0,
+            [self.desc_set_camera.as_ref()],
+            &[],
+        );
 
         self.object_buffer_manager
             .draw_commands(command_buffer, &self.pipeline)?;
@@ -203,20 +192,17 @@ fn write_desc_set_camera(
         offset: 0,
         range: mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize,
     };
+    let camera_buffer_infos = [camera_buffer_info];
 
-    let descriptor_writes = [vk::WriteDescriptorSet::builder()
+    let descriptor_write = vk::WriteDescriptorSet::builder()
         .dst_set(desc_set_camera.handle())
         .dst_binding(descriptor::BINDING_CAMERA)
         .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-        .buffer_info(&[camera_buffer_info])
-        .build()];
+        .buffer_info(&camera_buffer_infos);
 
-    unsafe {
-        desc_set_camera
-            .device()
-            .inner()
-            .update_descriptor_sets(&descriptor_writes, &[]);
-    }
+    desc_set_camera
+        .device()
+        .update_descriptor_sets([descriptor_write], []);
 
     Ok(())
 }
