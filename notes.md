@@ -4,6 +4,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- aabb debug outline option
 - blend function (primitive op)
 
 - undo (ctrl z)
@@ -20,7 +21,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - get rid of curved egui borders
 - change egui font
 - object/primitive op ids in gui
-- debug outline for aabbs
 - gui code that edits engine stuff e.g. camera, objects, primitives -> funcitons that could be called via command interface!
 - json save theme setting
 - surface patterns (natural looking noise stuff)

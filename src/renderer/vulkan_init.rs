@@ -1,4 +1,4 @@
-use crate::{config::ENGINE_NAME, renderer::config_renderer::ENABLE_VULKAN_VALIDATION};
+use crate::renderer::config_renderer::ENABLE_VULKAN_VALIDATION;
 
 use super::{
     config_renderer::{

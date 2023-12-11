@@ -211,34 +211,20 @@ impl ObjectResourceManager {
         command_buffer: &CommandBuffer,
         pipeline: &GraphicsPipeline,
     ) -> anyhow::Result<()> {
-        let device_ash = self.device.inner();
-        let command_buffer_handle = command_buffer.handle();
-
-        // for each object
         for per_object_buffers in self.objects_buffers.iter() {
-            unsafe {
-                device_ash.cmd_bind_descriptor_sets(
-                    command_buffer_handle,
-                    vk::PipelineBindPoint::GRAPHICS,
-                    pipeline.pipeline_layout().handle(),
-                    1,
-                    &[per_object_buffers.primitive_ops_descriptor_set.handle()],
-                    &[],
-                );
-                device_ash.cmd_bind_vertex_buffers(
-                    command_buffer_handle,
-                    0,
-                    &[per_object_buffers.bounding_mesh_buffer.handle()],
-                    &[0],
-                );
-                device_ash.cmd_draw(
-                    command_buffer_handle,
-                    per_object_buffers.bounding_mesh_vertex_count,
-                    1,
-                    0,
-                    0,
-                );
-            }
+            command_buffer.bind_descriptor_sets(
+                vk::PipelineBindPoint::GRAPHICS,
+                &pipeline.pipeline_layout(),
+                1,
+                [per_object_buffers.primitive_ops_descriptor_set.as_ref()],
+                &[],
+            );
+            command_buffer.bind_vertex_buffers(
+                0,
+                [per_object_buffers.bounding_mesh_buffer.as_ref()],
+                &[0],
+            );
+            command_buffer.draw(per_object_buffers.bounding_mesh_vertex_count, 1, 0, 0);
         }
 
         Ok(())
@@ -507,18 +493,17 @@ impl ObjectResourceManager {
             size: upload_data_size,
         };
 
+        transfer_resources.command_buffer_transfer.copy_buffer(
+            &staging_buffer,
+            &new_buffer,
+            &[copy_region],
+        );
+
         unsafe {
-            let command_buffer_handle = transfer_resources.command_buffer_transfer.handle();
-
-            self.device.inner().cmd_copy_buffer(
-                command_buffer_handle,
-                staging_buffer.handle(),
-                new_buffer.handle(),
-                &[copy_region],
+            self.synchronization_2_functions.cmd_pipeline_barrier2(
+                transfer_resources.command_buffer_transfer.handle(),
+                &after_transfer_dependency,
             );
-
-            self.synchronization_2_functions
-                .cmd_pipeline_barrier2(command_buffer_handle, &after_transfer_dependency);
         }
 
         // sync with render queue (if necessary)
@@ -591,20 +576,17 @@ fn write_desc_set_primitive_ops(
         offset: 0,
         range: primitive_op_buffer.properties().size,
     };
+    let buffer_infos = [primitive_ops_buffer_info];
 
-    let descriptor_writes = [vk::WriteDescriptorSet::builder()
+    let descriptor_write = vk::WriteDescriptorSet::builder()
         .dst_set(descriptor_set.handle())
         .dst_binding(descriptor::BINDING_PRIMITIVE_OPS)
         .descriptor_type(vk::DescriptorType::STORAGE_BUFFER)
-        .buffer_info(&[primitive_ops_buffer_info])
-        .build()];
+        .buffer_info(&buffer_infos);
 
-    unsafe {
-        descriptor_set
-            .device()
-            .inner()
-            .update_descriptor_sets(&descriptor_writes, &[]);
-    }
+    descriptor_set
+        .device()
+        .update_descriptor_sets([descriptor_write], []);
 
     Ok(())
 }
@@ -720,7 +702,7 @@ impl BufferUploadResources {
         let transfer_fence = if queue_ownership_transfer_required {
             None // fence signalled by render sync command buffer instead
         } else {
-            Some(self.completion_fence.handle())
+            Some(self.completion_fence.as_ref())
         };
 
         let transfer_command_buffers = [self.command_buffer_transfer.handle()];
@@ -730,7 +712,7 @@ impl BufferUploadResources {
             .signal_semaphores(&sync_semaphores);
 
         transfer_queue
-            .submit(&[transfer_submit_info.build()], transfer_fence)
+            .submit([transfer_submit_info], transfer_fence)
             .context("submitting geometry buffer upload commands")?;
 
         if queue_ownership_transfer_required {
@@ -743,8 +725,8 @@ impl BufferUploadResources {
 
             render_queue
                 .submit(
-                    &[render_sync_submit_info.build()],
-                    Some(self.completion_fence.handle()),
+                    [render_sync_submit_info],
+                    Some(self.completion_fence.as_ref()),
                 )
                 .context("submitting object data upload render sync commands")?;
         }

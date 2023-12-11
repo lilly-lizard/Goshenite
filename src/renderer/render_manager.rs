@@ -15,7 +15,7 @@ use super::{
 };
 use crate::{
     engine::object::objects_delta::ObjectsDelta,
-    helper::anyhow_panic::{log_anyhow_error_and_sources, log_error_sources},
+    helper::anyhow_panic::log_anyhow_error_and_sources,
     renderer::vulkan_init::{
         choose_depth_buffer_format, create_command_pool, create_device_and_queue, create_entry,
         create_instance, create_primitive_id_buffers, create_render_command_buffers,
@@ -433,14 +433,9 @@ impl RenderManager {
             .wait_dst_stage_mask(&wait_stages)
             .signal_semaphores(&signal_semaphores);
 
-        unsafe {
-            self.device.inner().queue_submit(
-                self.render_queue.handle(),
-                &[submit_info.build()],
-                self.previous_render_fence.handle(),
-            )
-        }
-        .context("submitting render commands")?;
+        self.render_queue
+            .submit([submit_info], Some(self.previous_render_fence.as_ref()))
+            .context("submitting render commands")?;
 
         self.framebuffer_index_currently_rendering = swapchain_index;
 
@@ -453,11 +448,9 @@ impl RenderManager {
             .image_indices(&swapchain_present_indices)
             .swapchains(&swapchain_handles);
 
-        let present_res = unsafe {
-            self.swapchain
-                .swapchain_loader()
-                .queue_present(self.render_queue.handle(), &present_info)
-        };
+        let present_res = self
+            .swapchain
+            .queue_present(&self.render_queue, &present_info);
 
         if let Err(present_err) = present_res {
             if present_err == vk::Result::ERROR_OUT_OF_DATE_KHR
@@ -576,7 +569,7 @@ impl RenderManager {
 
         self.framebuffers = create_framebuffers(
             &self.render_pass,
-            &mut self.swapchain_image_views,
+            &self.swapchain_image_views,
             &self.normal_buffer,
             &self.primitive_id_buffers,
             &self.depth_buffer,
@@ -594,25 +587,15 @@ impl RenderManager {
             .context("calling vkQueueWaitIdle for render queue")?;
 
         for command_buffer in &self.render_command_buffers {
-            unsafe {
-                self.device.inner().reset_command_buffer(
-                    command_buffer.handle(),
-                    vk::CommandBufferResetFlags::empty(),
-                )
-            }
-            .context("resetting render command buffers")?;
+            command_buffer
+                .reset(vk::CommandBufferResetFlags::empty())
+                .context("resetting render command buffers")?;
         }
         Ok(())
     }
 
     fn wait_for_previous_frame_fence(&mut self) -> anyhow::Result<()> {
-        let wait_fence_handles = [self.previous_render_fence.handle()];
-
-        let fence_wait_res = unsafe {
-            self.device
-                .inner()
-                .wait_for_fences(&wait_fence_handles, true, TIMEOUT_NANOSECS)
-        };
+        let fence_wait_res = self.previous_render_fence.wait(TIMEOUT_NANOSECS);
 
         if let Err(fence_wait_err) = fence_wait_res {
             if fence_wait_err == vk::Result::TIMEOUT {
@@ -636,15 +619,13 @@ impl RenderManager {
         command_buffer: &CommandBuffer,
         framebuffer_index: usize,
     ) -> anyhow::Result<()> {
-        let command_buffer_handle = command_buffer.handle();
-        let device_ash = self.device.inner();
-
         let viewport = self.framebuffers[framebuffer_index].whole_viewport();
         let rect_2d = self.framebuffers[framebuffer_index].whole_rect();
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-        unsafe { device_ash.begin_command_buffer(command_buffer_handle, &begin_info) }
+        command_buffer
+            .begin(&begin_info)
             .context("beinning render command buffer recording")?;
 
         let render_pass_begin = vk::RenderPassBeginInfo::builder()
@@ -652,18 +633,12 @@ impl RenderManager {
             .framebuffer(self.framebuffers[framebuffer_index].handle())
             .render_area(rect_2d)
             .clear_values(self.clear_values.as_slice());
-        unsafe {
-            device_ash.cmd_begin_render_pass(
-                command_buffer_handle,
-                &render_pass_begin,
-                vk::SubpassContents::INLINE,
-            )
-        };
+        command_buffer.begin_render_pass(&render_pass_begin, vk::SubpassContents::INLINE);
 
         self.geometry_pass
             .record_commands(&command_buffer, viewport, rect_2d)?;
 
-        unsafe { device_ash.cmd_next_subpass(command_buffer_handle, vk::SubpassContents::INLINE) };
+        command_buffer.next_subpass(vk::SubpassContents::INLINE);
 
         self.lighting_pass.record_commands(
             framebuffer_index,
@@ -678,9 +653,10 @@ impl RenderManager {
             [viewport.width, viewport.height],
         )?;
 
-        unsafe { device_ash.cmd_end_render_pass(command_buffer_handle) };
+        command_buffer.end_render_pass();
 
-        unsafe { device_ash.end_command_buffer(command_buffer_handle) }
+        command_buffer
+            .end()
             .context("ending render command buffer recording")?;
 
         Ok(())
@@ -704,26 +680,6 @@ impl Drop for RenderManager {
         let wait_res = self.wait_idle_device();
         if let Err(e) = wait_res {
             log_anyhow_error_and_sources(&e, "renderer clean up");
-        }
-
-        let command_pool_reset_res = unsafe {
-            self.device.inner().reset_command_pool(
-                self.command_pool_transfer.handle(),
-                vk::CommandPoolResetFlags::RELEASE_RESOURCES,
-            )
-        };
-        if let Err(e) = command_pool_reset_res {
-            log_error_sources(&e, 0);
-        }
-
-        let command_pool_reset_res = unsafe {
-            self.device.inner().reset_command_pool(
-                self.command_pool_render.handle(),
-                vk::CommandPoolResetFlags::RELEASE_RESOURCES,
-            )
-        };
-        if let Err(e) = command_pool_reset_res {
-            log_error_sources(&e, 0);
         }
     }
 }

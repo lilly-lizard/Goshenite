@@ -280,24 +280,14 @@ impl GuiPass {
             max_depth: 1.,
         };
 
-        unsafe {
-            let device_ash = self.device.inner();
-            let command_buffer_handle = command_buffer.handle();
-
-            device_ash.cmd_bind_pipeline(
-                command_buffer_handle,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline.handle(),
-            );
-            device_ash.cmd_push_constants(
-                command_buffer_handle,
-                self.pipeline.pipeline_layout().handle(),
-                vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
-                0,
-                push_constant_bytes,
-            );
-            device_ash.cmd_set_viewport(command_buffer_handle, 0, &[viewport]);
-        }
+        command_buffer.bind_pipeline(self.pipeline.as_ref());
+        command_buffer.push_constants(
+            self.pipeline.pipeline_layout().as_ref(),
+            vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
+            0,
+            push_constant_bytes,
+        );
+        command_buffer.set_viewports(0, &[viewport]);
 
         for ClippedPrimitive {
             clip_rect,
@@ -345,15 +335,14 @@ impl Drop for GuiPass {
 
 impl GuiPass {
     fn wait_on_upload_fences(&mut self) -> VkResult<()> {
-        let fence_handles = [
-            self.texture_create_fence.handle(),
-            self.texture_update_fence.handle(),
-        ];
-        unsafe {
-            self.device
-                .inner()
-                .wait_for_fences(&fence_handles, true, TIMEOUT_NANOSECS)
-        }
+        self.device.wait_for_fences(
+            [
+                self.texture_create_fence.as_ref(),
+                self.texture_update_fence.as_ref(),
+            ],
+            true,
+            TIMEOUT_NANOSECS,
+        )
     }
 
     fn submit_texture_creation_commands(
@@ -375,7 +364,7 @@ impl GuiPass {
         let transfer_fence = if queue_ownership_transfer_required {
             None // fence signalled by render sync command buffer instead
         } else {
-            Some(self.texture_create_fence.handle())
+            Some(self.texture_create_fence.as_ref())
         };
 
         let transfer_command_buffers = [self.transfer_command_buffer.handle()];
@@ -384,7 +373,7 @@ impl GuiPass {
             .signal_semaphores(&sync_semaphores);
 
         transfer_queue
-            .submit(&[transfer_submit_info.build()], transfer_fence)
+            .submit([transfer_submit_info], transfer_fence)
             .context("submitting gui texture creation commands")?;
 
         // todo this syncs with ALL fragment shader operations, but we only care about the gui fragment shader!
@@ -398,8 +387,8 @@ impl GuiPass {
 
             render_queue
                 .submit(
-                    &[render_sync_submit_info.build()],
-                    Some(self.texture_create_fence.handle()),
+                    [render_sync_submit_info],
+                    Some(self.texture_create_fence.as_ref()),
                 )
                 .context("submitting texture creation render queue sync commands")?;
         }
@@ -416,14 +405,10 @@ impl GuiPass {
             .context("reseting gui texture update fence")?;
 
         let command_buffers = [self.render_queue_command_buffer.handle()];
-
         let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
 
         render_queue
-            .submit(
-                &[submit_info.build()],
-                Some(self.texture_update_fence.handle()),
-            )
+            .submit([submit_info], Some(self.texture_update_fence.as_ref()))
             .context("submitting gui texture update commands")?;
 
         Ok(())
@@ -682,15 +667,16 @@ impl GuiPass {
                 self.transfer_command_buffer.handle(),
                 &before_transfer_dependency,
             );
+        }
 
-            self.device.inner().cmd_copy_buffer_to_image(
-                self.transfer_command_buffer.handle(),
-                texture_staging_buffer.handle(),
-                new_image.handle(),
-                vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-                &[copy_region],
-            );
+        self.transfer_command_buffer.copy_buffer_to_image(
+            texture_staging_buffer,
+            new_image.as_ref(),
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            &[copy_region],
+        );
 
+        unsafe {
             self.synchronization_2_functions.cmd_pipeline_barrier2(
                 self.transfer_command_buffer.handle(),
                 &after_transfer_dependency,
@@ -806,34 +792,18 @@ impl GuiPass {
             .context("recording gui render commands")?
             .clone();
 
-        unsafe {
-            let device_ash = self.device.inner();
-            let command_buffer_handle = command_buffer.handle();
+        command_buffer.set_scissors(0, &[scissor]);
+        command_buffer.bind_descriptor_sets(
+            vk::PipelineBindPoint::GRAPHICS,
+            self.pipeline.pipeline_layout().as_ref(),
+            0,
+            [desc_set.as_ref()],
+            &[],
+        );
+        command_buffer.bind_vertex_buffers(0, [&vertex_buffer], &[0]);
+        command_buffer.bind_index_buffer(&index_buffer, 0, vk::IndexType::UINT32);
 
-            device_ash.cmd_set_scissor(command_buffer_handle, 0, &[scissor]);
-            device_ash.cmd_bind_descriptor_sets(
-                command_buffer_handle,
-                vk::PipelineBindPoint::GRAPHICS,
-                self.pipeline.pipeline_layout().handle(),
-                0,
-                &[desc_set.handle()],
-                &[],
-            );
-            device_ash.cmd_bind_vertex_buffers(
-                command_buffer_handle,
-                0,
-                &[vertex_buffer.handle()],
-                &[0],
-            );
-            device_ash.cmd_bind_index_buffer(
-                command_buffer_handle,
-                index_buffer.handle(),
-                0,
-                vk::IndexType::UINT32,
-            );
-
-            device_ash.cmd_draw_indexed(command_buffer_handle, index_count, 1, 0, 0, 0);
-        }
+        command_buffer.draw_indexed(index_count, 1, 0, 0, 0);
 
         self.vertex_buffers.push(vertex_buffer);
         self.index_buffers.push(index_buffer);
@@ -965,15 +935,16 @@ fn upload_existing_font_texture(
     unsafe {
         synchronization_2_functions
             .cmd_pipeline_barrier2(command_buffer.handle(), &to_general_dependency);
+    }
 
-        command_buffer.device().inner().cmd_copy_buffer_to_image(
-            command_buffer.handle(),
-            texture_data_buffer.handle(),
-            existing_image_view.image().handle(),
-            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-            &[copy_region],
-        );
+    command_buffer.copy_buffer_to_image(
+        texture_data_buffer,
+        existing_image_view.image().as_ref(),
+        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        &[copy_region],
+    );
 
+    unsafe {
         synchronization_2_functions
             .cmd_pipeline_barrier2(command_buffer.handle(), &to_shader_read_dependency);
     }
@@ -989,20 +960,17 @@ fn write_font_texture_desc_set(
         image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
         sampler: sampler.handle(),
     };
+    let texture_infos = [texture_info];
 
-    let descriptor_writes = [vk::WriteDescriptorSet::builder()
+    let descriptor_write = vk::WriteDescriptorSet::builder()
         .dst_set(desc_set.handle())
         .dst_binding(descriptor::BINDING_FONT_TEXTURE)
         .descriptor_type(vk::DescriptorType::COMBINED_IMAGE_SAMPLER)
-        .image_info(&[texture_info])
-        .build()];
+        .image_info(&texture_infos);
 
-    unsafe {
-        desc_set
-            .device()
-            .inner()
-            .update_descriptor_sets(&descriptor_writes, &[]);
-    }
+    desc_set
+        .device()
+        .update_descriptor_sets([descriptor_write], []);
 
     Ok(())
 }
