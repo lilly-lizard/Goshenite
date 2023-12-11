@@ -3,7 +3,7 @@ use crate::renderer::config_renderer::ENABLE_VULKAN_VALIDATION;
 use super::{
     config_renderer::{
         CPU_ACCESS_BUFFER_SIZE, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER,
-        MAX_FRAMES_IN_FLIGHT, MAX_VULKAN_VER_MAJ, MAX_VULKAN_VER_MIN,
+        MAX_FRAMES_IN_FLIGHT, MAX_VULKAN_VER, MIN_VULKAN_VER,
     },
     shader_interfaces::{
         primitive_op_buffer::PRIMITIVE_ID_INVALID, uniform_buffers::CameraUniformBuffer,
@@ -55,8 +55,6 @@ pub fn required_features_1_2() -> vk::PhysicalDeviceVulkan12Features {
 }
 
 pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Result<Arc<Instance>> {
-    let max_api_version = ApiVersion::new(MAX_VULKAN_VER_MAJ, MAX_VULKAN_VER_MIN);
-
     let mut layer_names = Vec::<&str>::new();
 
     let validation_layer_name = "VK_LAYER_KHRONOS_validation";
@@ -88,7 +86,7 @@ pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Resul
     let instance = Arc::new(
         Instance::new(
             entry,
-            max_api_version,
+            MAX_VULKAN_VER,
             window.raw_display_handle(),
             layer_names,
             extension_names,
@@ -141,7 +139,7 @@ pub fn choose_physical_device_and_queue_families(
     let chosen_device = p_devices
         .into_iter()
         // filter for supported api version
-        .filter(|p| p.supports_api_ver(instance.max_api_version()))
+        .filter(|p| p.supports_api_ver(MIN_VULKAN_VER))
         // filter for required device extensionssupports_extension
         .filter(|p| p.supports_extensions(required_extensions.into_iter()))
         // filter for queue support
@@ -165,9 +163,10 @@ pub fn choose_physical_device_and_queue_families(
         format!(
             "could not find a suitable vulkan implimentation (device and driver). requirements:\n
             \t- must contain queue family supporting graphics, transfer and surface operations\n
+            \t- must minimum api version: {:?}\n
             \t- must support device extensions: {:?}\n
             \t- must support device features: {:?}",
-            required_extensions, required_features
+            MIN_VULKAN_VER, required_extensions, required_features
         )
     })
 }

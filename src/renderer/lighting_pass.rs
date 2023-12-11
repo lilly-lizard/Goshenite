@@ -44,13 +44,14 @@ impl LightingPass {
         normal_buffer: &ImageView<Image>,
         primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
     ) -> anyhow::Result<Self> {
-        let descriptor_pool = create_descriptor_pool(device.clone())?;
+        let framebuffer_count = primitive_id_buffers.len();
+        let descriptor_pool = create_descriptor_pool(device.clone(), framebuffer_count)?;
 
         let desc_set_camera = create_desc_set_camera(descriptor_pool.clone())?;
         write_desc_set_camera(&desc_set_camera, camera_buffer)?;
 
         let desc_sets_g_buffer =
-            create_desc_sets_gbuffer(descriptor_pool.clone(), primitive_id_buffers.len())?;
+            create_desc_sets_gbuffer(descriptor_pool.clone(), framebuffer_count)?;
         write_desc_sets_gbuffer(&desc_sets_g_buffer, normal_buffer, primitive_id_buffers)?;
 
         let pipeline_layout = create_pipeline_layout(
@@ -114,13 +115,16 @@ impl LightingPass {
     }
 }
 
-fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorPool>> {
+fn create_descriptor_pool(
+    device: Arc<Device>,
+    framebuffer_count: usize,
+) -> anyhow::Result<Arc<DescriptorPool>> {
     let descriptor_pool_props = DescriptorPoolProperties {
         max_sets: 8,
         pool_sizes: vec![
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::INPUT_ATTACHMENT,
-                descriptor_count: 2,
+                descriptor_count: 2 * framebuffer_count as u32,
             },
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::UNIFORM_BUFFER,
