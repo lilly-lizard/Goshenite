@@ -3,26 +3,32 @@ use crate::renderer::config_renderer::ENABLE_VULKAN_VALIDATION;
 use super::{
     config_renderer::{
         CPU_ACCESS_BUFFER_SIZE, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER,
-        MAX_FRAMES_IN_FLIGHT, MAX_VULKAN_VER, MIN_VULKAN_VER,
+        MAX_FRAMES_IN_FLIGHT, MAX_VULKAN_VER, MIN_VULKAN_VER, SHADER_ENTRY_POINT,
     },
     shader_interfaces::{
         primitive_op_buffer::PRIMITIVE_ID_INVALID, uniform_buffers::CameraUniformBuffer,
     },
 };
 use anyhow::Context;
-use ash::vk;
+use ash::{prelude::VkResult, vk};
 use bort_vk::{
     allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, Buffer,
-    BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback, Device,
-    Framebuffer, FramebufferProperties, Image, ImageDimensions, ImageProperties, ImageView,
-    ImageViewAccess, ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, Queue,
-    RenderPass, Subpass, Surface, Swapchain, SwapchainImage, SwapchainProperties,
+    BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback,
+    DescriptorPool, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
+    DescriptorSetLayoutProperties, Device, DeviceOwned, Framebuffer, FramebufferProperties, Image,
+    ImageDimensions, ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, Instance,
+    MemoryAllocator, PhysicalDevice, Queue, RenderPass, ShaderError, ShaderModule, ShaderStage,
+    Subpass, Surface, Swapchain, SwapchainImage, SwapchainProperties,
 };
 use bort_vma::AllocationCreateInfo;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use raw_window_handle::HasRawDisplayHandle;
-use std::{ffi::CStr, mem, sync::Arc};
+use std::{
+    ffi::{CStr, CString},
+    mem,
+    sync::Arc,
+};
 use winit::window::Window;
 
 #[cfg(not(any(target_os = "macos", target_os = "ios")))]
@@ -842,4 +848,104 @@ pub fn create_render_command_buffers(
         .map(|cb| Arc::new(cb))
         .collect::<Vec<_>>();
     Ok(command_buffer_arcs)
+}
+
+pub fn create_camera_descriptor_set_with_binding(
+    descriptor_pool: Arc<DescriptorPool>,
+    binding: u32,
+) -> VkResult<Arc<DescriptorSet>> {
+    let desc_set_layout_props =
+        DescriptorSetLayoutProperties::new_default(vec![DescriptorSetLayoutBinding {
+            binding,
+            descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+            descriptor_count: 1,
+            stage_flags: vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
+            ..Default::default()
+        }]);
+
+    let desc_set_layout = Arc::new(DescriptorSetLayout::new(
+        descriptor_pool.device().clone(),
+        desc_set_layout_props,
+    )?);
+
+    let desc_set = descriptor_pool.allocate_descriptor_set(desc_set_layout)?;
+
+    Ok(Arc::new(desc_set))
+}
+
+pub fn write_camera_descriptor_set(
+    desc_set_camera: &DescriptorSet,
+    camera_buffer: &Buffer,
+    binding: u32,
+) {
+    let camera_buffer_info = vk::DescriptorBufferInfo {
+        buffer: camera_buffer.handle(),
+        offset: 0,
+        range: mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize,
+    };
+    let camera_buffer_infos = [camera_buffer_info];
+
+    let descriptor_write = vk::WriteDescriptorSet::builder()
+        .dst_set(desc_set_camera.handle())
+        .dst_binding(binding)
+        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+        .buffer_info(&camera_buffer_infos);
+
+    desc_set_camera
+        .device()
+        .update_descriptor_sets([descriptor_write], []);
+}
+
+pub fn create_shader_stages_from_bytes(
+    device: &Arc<Device>,
+    mut vertex_spv_file: std::io::Cursor<&[u8]>,
+    mut frag_spv_file: std::io::Cursor<&[u8]>,
+) -> Result<(ShaderStage, ShaderStage), ShaderError> {
+    let vert_shader = Arc::new(ShaderModule::new_from_spirv(
+        device.clone(),
+        &mut vertex_spv_file,
+    )?);
+    let frag_shader = Arc::new(ShaderModule::new_from_spirv(
+        device.clone(),
+        &mut frag_spv_file,
+    )?);
+
+    Ok(create_shader_stages_from_modules(vert_shader, frag_shader))
+}
+
+pub fn create_shader_stages_from_path(
+    device: &Arc<Device>,
+    vert_shader_file_path: &str,
+    frag_shader_file_path: &str,
+) -> Result<(ShaderStage, ShaderStage), ShaderError> {
+    let vert_shader = Arc::new(ShaderModule::new_from_file(
+        device.clone(),
+        vert_shader_file_path,
+    )?);
+    let frag_shader = Arc::new(ShaderModule::new_from_file(
+        device.clone(),
+        frag_shader_file_path,
+    )?);
+
+    Ok(create_shader_stages_from_modules(vert_shader, frag_shader))
+}
+
+pub fn create_shader_stages_from_modules(
+    vert_shader: Arc<ShaderModule>,
+    frag_shader: Arc<ShaderModule>,
+) -> (ShaderStage, ShaderStage) {
+    let vert_stage = ShaderStage::new(
+        vk::ShaderStageFlags::VERTEX,
+        vert_shader,
+        CString::new(SHADER_ENTRY_POINT).expect("SHADER_ENTRY_POINT shouldn't contain null byte"),
+        None,
+    );
+    let frag_stage = ShaderStage::new(
+        vk::ShaderStageFlags::FRAGMENT,
+        frag_shader,
+        CString::new(SHADER_ENTRY_POINT).expect("SHADER_ENTRY_POINT shouldn't contain null byte"),
+        None,
+    );
+
+    (vert_stage, frag_stage)
 }

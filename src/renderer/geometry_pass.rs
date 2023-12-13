@@ -1,8 +1,9 @@
 use super::{
-    config_renderer::SHADER_ENTRY_POINT,
     object_resource_manager::ObjectResourceManager,
-    shader_interfaces::{uniform_buffers::CameraUniformBuffer, vertex_inputs::BoundingBoxVertex},
-    vulkan_init::render_pass_indices,
+    shader_interfaces::vertex_inputs::BoundingBoxVertex,
+    vulkan_init::{
+        create_camera_descriptor_set_with_binding, render_pass_indices, write_camera_descriptor_set,
+    },
 };
 use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
 use anyhow::Context;
@@ -12,12 +13,11 @@ use bort_vk::{
     DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
     DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState, GraphicsPipeline,
     GraphicsPipelineProperties, MemoryAllocator, PipelineAccess, PipelineLayout,
-    PipelineLayoutProperties, Queue, RasterizationState, RenderPass, ShaderModule, ShaderStage,
-    ViewportState,
+    PipelineLayoutProperties, Queue, RasterizationState, RenderPass, ShaderStage, ViewportState,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{ffi::CString, mem, sync::Arc};
+use std::sync::Arc;
 
 // descriptor set and binding indices
 pub(super) mod descriptor {
@@ -51,7 +51,7 @@ impl GeometryPass {
         let descriptor_pool = create_descriptor_pool(device.clone())?;
 
         let desc_set_camera: Arc<DescriptorSet> = create_desc_set_camera(descriptor_pool.clone())?;
-        write_desc_set_camera(&desc_set_camera, camera_buffer)?;
+        write_camera_descriptor_set(&desc_set_camera, camera_buffer, descriptor::BINDING_CAMERA);
 
         let primitive_ops_desc_set_layout = create_primitive_ops_desc_set_layout(device.clone())?;
 
@@ -60,7 +60,6 @@ impl GeometryPass {
             desc_set_camera.layout().clone(),
             primitive_ops_desc_set_layout.clone(),
         )?;
-
         let pipeline = create_pipeline(pipeline_layout, render_pass)?;
 
         let object_buffer_manager = ObjectResourceManager::new(
@@ -104,8 +103,12 @@ impl GeometryPass {
             .update_objects(objects_delta, transfer_queue, render_queue)
     }
 
-    pub fn update_camera_descriptor_set(&self, camera_buffer: &Buffer) -> anyhow::Result<()> {
-        write_desc_set_camera(&self.desc_set_camera, camera_buffer)
+    pub fn update_camera_descriptor_set(&self, camera_buffer: &Buffer) {
+        write_camera_descriptor_set(
+            &self.desc_set_camera,
+            camera_buffer,
+            descriptor::BINDING_CAMERA,
+        )
     }
 
     pub fn record_commands(
@@ -155,56 +158,14 @@ fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorP
 
     let descriptor_pool = DescriptorPool::new(device, descriptor_pool_props)
         .context("creating geometry pass descriptor pool")?;
-
     Ok(Arc::new(descriptor_pool))
 }
 
 fn create_desc_set_camera(
     descriptor_pool: Arc<DescriptorPool>,
 ) -> anyhow::Result<Arc<DescriptorSet>> {
-    let desc_set_layout_props =
-        DescriptorSetLayoutProperties::new_default(vec![DescriptorSetLayoutBinding {
-            binding: descriptor::BINDING_CAMERA,
-            descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: 1,
-            stage_flags: vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
-            ..Default::default()
-        }]);
-
-    let desc_set_layout = Arc::new(
-        DescriptorSetLayout::new(descriptor_pool.device().clone(), desc_set_layout_props)
-            .context("creating geometry pass camera descriptor set layout")?,
-    );
-
-    let desc_set = descriptor_pool
-        .allocate_descriptor_set(desc_set_layout)
-        .context("allocating geometry pass camera descriptor set")?;
-
-    Ok(Arc::new(desc_set))
-}
-
-fn write_desc_set_camera(
-    desc_set_camera: &DescriptorSet,
-    camera_buffer: &Buffer,
-) -> anyhow::Result<()> {
-    let camera_buffer_info = vk::DescriptorBufferInfo {
-        buffer: camera_buffer.handle(),
-        offset: 0,
-        range: mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize,
-    };
-    let camera_buffer_infos = [camera_buffer_info];
-
-    let descriptor_write = vk::WriteDescriptorSet::builder()
-        .dst_set(desc_set_camera.handle())
-        .dst_binding(descriptor::BINDING_CAMERA)
-        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-        .buffer_info(&camera_buffer_infos);
-
-    desc_set_camera
-        .device()
-        .update_descriptor_sets([descriptor_write], []);
-
-    Ok(())
+    create_camera_descriptor_set_with_binding(descriptor_pool, descriptor::BINDING_CAMERA)
+        .context("creating geometry pass descriptor set")
 }
 
 fn create_primitive_ops_desc_set_layout(
@@ -294,63 +255,26 @@ fn create_pipeline(
 
 #[cfg(feature = "include-spirv-bytes")]
 fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
-    let mut vertex_spv_file = std::io::Cursor::new(
+    use super::vulkan_init::create_shader_stages_from_bytes;
+
+    let vertex_spv_file = std::io::Cursor::new(
         &include_bytes!("../../assets/shader_binaries/bounding_mesh.vert.spv")[..],
     );
-    let vert_shader = Arc::new(
-        ShaderModule::new_from_spirv(device.clone(), &mut vertex_spv_file)
-            .context("creating lighting pass vertex shader")?,
-    );
-    let vert_stage = ShaderStage::new(
-        vk::ShaderStageFlags::VERTEX,
-        vert_shader,
-        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
-        None,
-    );
-
-    let mut frag_spv_file = std::io::Cursor::new(
+    let frag_spv_file = std::io::Cursor::new(
         &include_bytes!("../../assets/shader_binaries/scene_geometry.frag.spv")[..],
     );
-    let frag_shader = Arc::new(
-        ShaderModule::new_from_spirv(device.clone(), &mut frag_spv_file)
-            .context("creating lighting pass fragment shader")?,
-    );
-    let frag_stage = ShaderStage::new(
-        vk::ShaderStageFlags::FRAGMENT,
-        frag_shader,
-        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
-        None,
-    );
 
-    Ok((vert_stage, frag_stage))
+    create_shader_stages_from_bytes(device, vertex_spv_file, frag_spv_file)
+        .context("creating geoemetry pass shaders")
 }
 
 #[cfg(not(feature = "include-spirv-bytes"))]
 fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
+    use crate::renderer::vulkan_init::create_shader_stages_from_path;
+
     const VERT_SHADER_PATH: &str = "assets/shader_binaries/bounding_mesh.vert.spv";
     const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
 
-    let vert_shader = Arc::new(
-        ShaderModule::new_from_file(device.clone(), VERT_SHADER_PATH)
-            .context("creating lighting pass vertex shader")?,
-    );
-    let vert_stage = ShaderStage::new(
-        vk::ShaderStageFlags::VERTEX,
-        vert_shader,
-        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
-        None,
-    );
-
-    let frag_shader = Arc::new(
-        ShaderModule::new_from_file(device.clone(), FRAG_SHADER_PATH)
-            .context("creating lighting pass fragment shader")?,
-    );
-    let frag_stage = ShaderStage::new(
-        vk::ShaderStageFlags::FRAGMENT,
-        frag_shader,
-        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
-        None,
-    );
-
-    Ok((vert_stage, frag_stage))
+    create_shader_stages_from_path(device, VERT_SHADER_PATH, FRAG_SHADER_PATH)
+        .context("creating geometry pass shaders")
 }
