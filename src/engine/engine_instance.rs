@@ -52,6 +52,7 @@ pub struct EngineInstance {
     pending_commands: VecDeque<CommandWithSource>,
     selected_object_id: Option<ObjectId>,
     selected_primitive_op_id: Option<PrimitiveOpId>,
+    enable_aabb_debug_outlines: bool,
 
     // controllers
     cursor: Cursor,
@@ -114,6 +115,7 @@ impl EngineInstance {
             pending_commands: VecDeque::new(),
             selected_object_id: None,
             selected_primitive_op_id: None,
+            enable_aabb_debug_outlines: true,
 
             cursor,
             camera,
