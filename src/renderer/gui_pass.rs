@@ -10,8 +10,8 @@ use anyhow::Context;
 use ash::{extensions::khr::Synchronization2, prelude::VkResult, vk};
 use bort_vk::{
     allocation_info_cpu_accessible, allocation_info_from_flags, default_subresource_layers,
-    AllocAccess, Buffer, BufferProperties, ColorBlendState, CommandBuffer, CommandPool,
-    DescriptorPool, DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout,
+    AllocationAccess, AllocatorAccess, Buffer, BufferProperties, ColorBlendState, CommandBuffer,
+    CommandPool, DescriptorPool, DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout,
     DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
     Fence, GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
     ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool,

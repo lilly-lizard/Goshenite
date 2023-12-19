@@ -7,8 +7,8 @@ use crate::engine::object::object::ObjectId;
 use anyhow::Context;
 use ash::{extensions::khr::Synchronization2, vk};
 use bort_vk::{
-    Buffer, CommandBuffer, CommandPool, Device, DeviceOwned, Fence, Image, ImageAccess, ImageView,
-    MemoryAllocator, Queue, Semaphore,
+    AllocationAccess, Buffer, CommandBuffer, CommandPool, Device, DeviceOwned, Fence, Image,
+    ImageAccess, ImageView, MemoryAllocator, Queue, Semaphore,
 };
 use std::sync::Arc;
 
@@ -427,7 +427,6 @@ impl ElementIdReader {
 
         let rendered_id = self
             .cpu_read_staging_buffer
-            .memory_allocation_mut()
             .read_struct::<u32>(0)
             .context("reading render id")?;
 

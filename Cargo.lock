@@ -128,17 +128,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ash-window"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b912285a7c29f3a8f87ca6f55afc48768624e5e33ec17dbd2f2075903f5e35ab"
-dependencies = [
- "ash",
- "raw-window-handle",
- "raw-window-metal",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -205,8 +194,6 @@ dependencies = [
 [[package]]
 name = "bort-vk"
 version = "0.2.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "56f635f75684d7977cc8ac1f229696e80cf403ab8eb7d564c892716aab03d59f"
 dependencies = [
  "ash",
  "bort-vma",
@@ -217,8 +204,6 @@ dependencies = [
 [[package]]
 name = "bort-vma"
 version = "0.3.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0fb75e352d944db9b072c5073214854de09c7affb5423bea13328f7f975f77a8"
 dependencies = [
  "ash",
  "bitflags 2.4.0",
@@ -621,7 +606,6 @@ dependencies = [
  "anyhow",
  "ash",
  "ash-molten",
- "ash-window",
  "bort-vk",
  "bort-vma",
  "bytemuck",

@@ -10,10 +10,10 @@ use crate::engine::{
 use anyhow::Context;
 use ash::{extensions::khr::Synchronization2, vk};
 use bort_vk::{
-    allocation_info_from_flags, AllocAccess, Buffer, BufferProperties, CommandBuffer, CommandPool,
-    CommandPoolProperties, DescriptorPool, DescriptorPoolProperties, DescriptorSet,
-    DescriptorSetLayout, Device, DeviceOwned, Fence, GraphicsPipeline, MemoryAllocator,
-    PipelineAccess, Queue, Semaphore,
+    allocation_info_from_flags, AllocationAccess, AllocatorAccess, Buffer, BufferProperties,
+    CommandBuffer, CommandPool, CommandPoolProperties, DescriptorPool, DescriptorPoolProperties,
+    DescriptorSet, DescriptorSetLayout, Device, DeviceOwned, Fence, GraphicsPipeline,
+    MemoryAllocator, PipelineAccess, Queue, Semaphore,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
