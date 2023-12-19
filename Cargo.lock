@@ -197,6 +197,7 @@ version = "0.2.5"
 dependencies = [
  "ash",
  "bort-vma",
+ "bytemuck",
  "raw-window-handle",
  "raw-window-metal",
 ]

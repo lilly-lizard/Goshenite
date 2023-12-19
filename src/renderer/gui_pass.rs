@@ -479,7 +479,7 @@ impl GuiPass {
             std::mem::size_of_val(data.as_slice()) as u64,
         )?;
         texture_staging_buffer
-            .write_iter(data, 0)
+            .write_slice(&data, 0)
             .context("uploading gui texture data to staging buffer")?;
 
         if let Some(update_pos) = delta.pos {
@@ -839,11 +839,11 @@ impl GuiPass {
         // todo can avoid the vec clones here with moves! look at `gui::mesh_primitives` and `free_previous_vertex_and_index_buffers`
 
         vertex_buffer
-            .write_iter(vertices, 0)
+            .write_slice(&vertices, 0)
             .context("uploading gui pass vertices")?;
 
         index_buffer
-            .write_iter(mesh.indices, 0)
+            .write_slice(&mesh.indices, 0)
             .context("uploading gui pass indices")?;
 
         Ok((vertex_buffer, index_buffer))

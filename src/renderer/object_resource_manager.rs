@@ -15,6 +15,7 @@ use bort_vk::{
     DescriptorSet, DescriptorSetLayout, Device, DeviceOwned, Fence, GraphicsPipeline,
     MemoryAllocator, PipelineAccess, Queue, Semaphore,
 };
+use bytemuck::NoUninit;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
@@ -351,12 +352,10 @@ impl ObjectResourceManager {
         );
 
         let data = object.aabb().vertices(object_id);
-        let data_size = std::mem::size_of_val(&data) as vk::DeviceSize;
 
         self.upload_via_staging_buffer(
             transfer_resources,
-            data,
-            data_size,
+            &data,
             vk::BufferUsageFlags::VERTEX_BUFFER,
             vk::PipelineStageFlags2::VERTEX_INPUT,
             vk::AccessFlags2::VERTEX_ATTRIBUTE_READ,
@@ -375,31 +374,29 @@ impl ObjectResourceManager {
         );
 
         let data = object.encoded_primitive_ops(object_id);
-        let data_size = std::mem::size_of_val(data.as_slice()) as vk::DeviceSize;
 
         self.upload_via_staging_buffer(
             transfer_resources,
-            data,
-            data_size,
+            &data,
             vk::BufferUsageFlags::STORAGE_BUFFER,
             vk::PipelineStageFlags2::FRAGMENT_SHADER,
             vk::AccessFlags2::SHADER_READ,
         )
     }
 
-    fn upload_via_staging_buffer<I, T>(
+    fn upload_via_staging_buffer<I>(
         &mut self,
         transfer_resources: &mut BufferUploadResources,
-        upload_data: I,
-        upload_data_size: u64,
+        upload_data: &[I],
         buffer_usage_during_render: vk::BufferUsageFlags,
         render_dst_stage: vk::PipelineStageFlags2,
         render_dst_access_flags: vk::AccessFlags2,
     ) -> anyhow::Result<Arc<Buffer>>
     where
-        I: IntoIterator<Item = T>,
-        I::IntoIter: ExactSizeIterator,
+        I: NoUninit,
     {
+        let upload_data_size = std::mem::size_of_val(upload_data) as vk::DeviceSize;
+
         let new_buffer = {
             let buffer_props = BufferProperties::new_default(
                 upload_data_size,
@@ -429,7 +426,7 @@ impl ObjectResourceManager {
         };
 
         staging_buffer
-            .write_iter(upload_data, 0)
+            .write_slice(upload_data, 0)
             .context("uploading geometry pass object data to staging buffer")?;
 
         self.record_buffer_copy_commands(
@@ -456,7 +453,7 @@ impl ObjectResourceManager {
         transfer_resources: &mut BufferUploadResources,
         new_buffer: &Buffer,
         staging_buffer: &Buffer,
-        upload_data_size: u64,
+        upload_data_size: vk::DeviceSize,
         render_dst_stage: vk::PipelineStageFlags2,
         render_dst_access_flags: vk::AccessFlags2,
     ) {

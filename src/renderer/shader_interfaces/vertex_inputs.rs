@@ -1,6 +1,7 @@
 use crate::{engine::object::object::ObjectId, helper::unique_id_gen::UniqueIdType};
 use ash::vk;
 use bort_vk::VertexInputState;
+use bytemuck::NoUninit;
 use glam::Vec3;
 use memoffset::offset_of;
 
@@ -25,7 +26,7 @@ impl OverlayVertex {
 
 /// Should match vertex definition for `gui.vert` (except color is `[f32; 4]`)
 #[repr(C)]
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, NoUninit)]
 pub struct EguiVertex {
     pub in_position: [f32; 2],
     pub in_tex_coords: [f32; 2],
@@ -93,7 +94,7 @@ impl EguiVertex {
 
 /// Should match inputs in `bounding_mesh.vert`
 #[repr(C)]
-#[derive(Default, Debug, Clone, Copy)]
+#[derive(Default, Debug, Clone, Copy, NoUninit)]
 pub struct BoundingBoxVertex {
     pub in_position: [f32; 4],
     pub in_object_id: u32,
