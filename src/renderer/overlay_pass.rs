@@ -1,5 +1,6 @@
 use super::{
     object_resource_manager::ObjectResourceManager,
+    shader_interfaces::vertex_inputs::BoundingBoxVertex,
     vulkan_init::{create_camera_descriptor_set_with_binding, render_pass_indices},
 };
 use crate::renderer::vulkan_init::write_camera_descriptor_set;
@@ -7,7 +8,7 @@ use anyhow::Context;
 use ash::vk;
 use bort_vk::{
     Buffer, ColorBlendState, CommandBuffer, DescriptorPool, DescriptorPoolProperties,
-    DescriptorSet, DescriptorSetLayout, Device, DynamicState, GraphicsPipeline,
+    DescriptorSet, DescriptorSetLayout, Device, DeviceOwned, DynamicState, GraphicsPipeline,
     GraphicsPipelineProperties, InputAssemblyState, PipelineAccess, PipelineLayout,
     PipelineLayoutProperties, RasterizationState, RenderPass, ShaderStage, ViewportState,
 };
@@ -19,18 +20,14 @@ mod descriptor {
 }
 
 pub struct OverlayPass {
-    device: Arc<Device>,
-
     desc_set_camera: Arc<DescriptorSet>,
     pipeline: Arc<GraphicsPipeline>,
 }
 
 impl OverlayPass {
-    pub fn new(
-        device: Arc<Device>,
-        render_pass: &RenderPass,
-        camera_buffer: &Buffer,
-    ) -> anyhow::Result<Self> {
+    pub fn new(render_pass: &RenderPass, camera_buffer: &Buffer) -> anyhow::Result<Self> {
+        let device = render_pass.device().clone();
+
         let descriptor_pool = create_descriptor_pool(device.clone())?;
         let desc_set_camera = create_descriptor_set_camera(descriptor_pool)?;
         write_camera_descriptor_set(&desc_set_camera, camera_buffer, descriptor::BINDING_CAMERA);
@@ -40,19 +37,9 @@ impl OverlayPass {
         let pipeline = create_pipeline(device.clone(), pipeline_layout.clone(), render_pass)?;
 
         Ok(Self {
-            device,
-
             desc_set_camera,
             pipeline,
         })
-    }
-
-    pub fn update_camera_descriptor_set(&self, camera_buffer: &Buffer) {
-        write_camera_descriptor_set(
-            &self.desc_set_camera,
-            camera_buffer,
-            descriptor::BINDING_CAMERA,
-        )
     }
 
     pub fn record_commands(
@@ -137,17 +124,20 @@ fn create_pipeline(
     };
 
     let input_assembly_state = InputAssemblyState {
-        topology: vk::PrimitiveTopology::LINE_LIST,
+        topology: vk::PrimitiveTopology::TRIANGLE_LIST,
         ..Default::default()
     };
 
+    let vertex_input_state = BoundingBoxVertex::vertex_input_state();
+
     let pipeline_properties = GraphicsPipelineProperties {
-        subpass_index: render_pass_indices::SUBPASS_DEFERRED as u32,
-        dynamic_state,
         color_blend_state,
-        viewport_state,
-        rasterization_state,
+        dynamic_state,
         input_assembly_state,
+        rasterization_state,
+        subpass_index: render_pass_indices::SUBPASS_DEFERRED as u32,
+        vertex_input_state,
+        viewport_state,
         ..Default::default()
     };
 

@@ -81,14 +81,6 @@ impl LightingPass {
         )
     }
 
-    pub fn update_camera_descriptor_set(&self, camera_buffer: &Buffer) {
-        write_camera_descriptor_set(
-            &self.desc_set_camera,
-            camera_buffer,
-            descriptor::BINDING_CAMERA,
-        )
-    }
-
     /// Records draw commands to a command buffer.
     ///
     /// **Assumes that the command buffer is already in a render pass state.**
@@ -277,11 +269,13 @@ fn create_pipeline(
     let color_blend_state =
         ColorBlendState::new_default(vec![ColorBlendState::blend_state_disabled()]);
 
-    let mut pipeline_properties = GraphicsPipelineProperties::default();
-    pipeline_properties.subpass_index = render_pass_indices::SUBPASS_DEFERRED as u32;
-    pipeline_properties.dynamic_state = dynamic_state;
-    pipeline_properties.color_blend_state = color_blend_state;
-    pipeline_properties.viewport_state = viewport_state;
+    let pipeline_properties = GraphicsPipelineProperties {
+        color_blend_state,
+        dynamic_state,
+        subpass_index: render_pass_indices::SUBPASS_DEFERRED as u32,
+        viewport_state,
+        ..Default::default()
+    };
 
     let pipeline = GraphicsPipeline::new(
         pipeline_layout,

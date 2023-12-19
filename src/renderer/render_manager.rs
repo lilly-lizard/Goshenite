@@ -1,10 +1,11 @@
 use super::{
-    config_renderer::{ENABLE_VULKAN_VALIDATION, TIMEOUT_NANOSECS},
+    config_renderer::{RenderOverlayOptions, ENABLE_VULKAN_VALIDATION, TIMEOUT_NANOSECS},
     debug_callback::log_vulkan_debug_callback,
     element_id_reader::{ElementAtPoint, ElementIdReader},
     geometry_pass::GeometryPass,
     gui_pass::GuiPass,
     lighting_pass::LightingPass,
+    overlay_pass::OverlayPass,
     shader_interfaces::uniform_buffers::CameraUniformBuffer,
     vulkan_init::{
         choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
@@ -72,6 +73,7 @@ pub struct RenderManager {
     lighting_pass: LightingPass,
     geometry_pass: GeometryPass,
     gui_pass: GuiPass,
+    overlay_pass: OverlayPass,
 
     object_id_reader: ElementIdReader,
 
@@ -244,6 +246,8 @@ impl RenderManager {
             scale_factor,
         )?;
 
+        let overlay_pass = OverlayPass::new(&render_pass, &camera_ubo)?;
+
         let render_command_buffers = create_render_command_buffers(
             command_pool_render.clone(),
             swapchain_image_views.len() as u32,
@@ -295,6 +299,7 @@ impl RenderManager {
             geometry_pass,
             lighting_pass,
             gui_pass,
+            overlay_pass,
 
             object_id_reader,
 
@@ -366,7 +371,7 @@ impl RenderManager {
     }
 
     /// Submits Vulkan commands for rendering a frame.
-    pub fn render_frame(&mut self) -> anyhow::Result<()> {
+    pub fn render_frame(&mut self, overlay_options: RenderOverlayOptions) -> anyhow::Result<()> {
         // wait for previous frame render/resource upload to finish
 
         self.wait_for_previous_frame_fence()?;
@@ -412,7 +417,7 @@ impl RenderManager {
         // record commands
 
         let command_buffer = self.render_command_buffers[framebuffer_index].clone();
-        self.record_render_commands(&command_buffer, framebuffer_index)?;
+        self.record_render_commands(&command_buffer, framebuffer_index, overlay_options)?;
 
         // submit commands
 
@@ -618,9 +623,10 @@ impl RenderManager {
         &mut self,
         command_buffer: &CommandBuffer,
         framebuffer_index: usize,
+        overlay_options: RenderOverlayOptions,
     ) -> anyhow::Result<()> {
         let viewport = self.framebuffers[framebuffer_index].whole_viewport();
-        let rect_2d = self.framebuffers[framebuffer_index].whole_rect();
+        let render_area = self.framebuffers[framebuffer_index].whole_rect();
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -631,17 +637,30 @@ impl RenderManager {
         let render_pass_begin = vk::RenderPassBeginInfo::builder()
             .render_pass(self.render_pass.handle())
             .framebuffer(self.framebuffers[framebuffer_index].handle())
-            .render_area(rect_2d)
+            .render_area(render_area)
             .clear_values(self.clear_values.as_slice());
         command_buffer.begin_render_pass(&render_pass_begin, vk::SubpassContents::INLINE);
 
         self.geometry_pass
-            .record_commands(&command_buffer, viewport, rect_2d);
+            .record_commands(&command_buffer, viewport, render_area);
 
         command_buffer.next_subpass(vk::SubpassContents::INLINE);
 
-        self.lighting_pass
-            .record_commands(framebuffer_index, &command_buffer, viewport, rect_2d);
+        self.lighting_pass.record_commands(
+            framebuffer_index,
+            &command_buffer,
+            viewport,
+            render_area,
+        );
+
+        if overlay_options.enable_aabb_wire_display {
+            self.overlay_pass.record_commands(
+                command_buffer,
+                self.geometry_pass.object_buffer_manager(),
+                viewport,
+                render_area,
+            );
+        }
 
         self.gui_pass.record_render_commands(
             &command_buffer,

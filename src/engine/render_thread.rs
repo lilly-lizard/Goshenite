@@ -1,6 +1,9 @@
 use crate::{
     helper::anyhow_panic::anyhow_unwrap,
-    renderer::{element_id_reader::ElementAtPoint, render_manager::RenderManager},
+    renderer::{
+        config_renderer::RenderOverlayOptions, element_id_reader::ElementAtPoint,
+        render_manager::RenderManager,
+    },
     user_interface::camera::Camera,
 };
 use egui::{ClippedPrimitive, TexturesDelta};
@@ -19,7 +22,7 @@ use super::object::objects_delta::ObjectsDelta;
 #[derive(Clone, Copy)]
 pub enum RenderThreadCommand {
     DoNothing,
-    Run,
+    Run(RenderOverlayOptions),
     Quit,
 }
 
@@ -79,11 +82,11 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
             // receive and process command from main thread
 
             let render_command = render_command_rx.latest();
-            match render_command {
+            let render_options = match render_command {
                 RenderThreadCommand::Quit => break,
                 RenderThreadCommand::DoNothing => continue,
-                RenderThreadCommand::Run => (),
-            }
+                RenderThreadCommand::Run(options) => *options,
+            };
 
             // check for state updates
 
@@ -152,7 +155,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
 
             // submit frame rendering commands
 
-            let render_frame_res = renderer.render_frame();
+            let render_frame_res = renderer.render_frame(render_options);
             anyhow_unwrap(render_frame_res, "render frame");
 
             // send new frame timestamp

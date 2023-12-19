@@ -1,4 +1,4 @@
-mod config_renderer;
+pub mod config_renderer;
 mod debug_callback;
 pub mod element_id_reader;
 mod geometry_pass;

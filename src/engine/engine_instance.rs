@@ -13,7 +13,10 @@ use super::{
 use crate::{
     config,
     helper::anyhow_panic::anyhow_unwrap,
-    renderer::{element_id_reader::ElementAtPoint, render_manager::RenderManager},
+    renderer::{
+        config_renderer::RenderOverlayOptions, element_id_reader::ElementAtPoint,
+        render_manager::RenderManager,
+    },
     user_interface::camera::Camera,
     user_interface::{
         camera::LookMode,
@@ -236,10 +239,14 @@ impl EngineInstance {
     }
 
     fn per_frame_processing(&mut self) -> Result<(), EngineError> {
+        let render_options = RenderOverlayOptions {
+            enable_aabb_wire_display: true,
+        };
+
         // make sure the render thread is active to receive the upcoming messages
         let thread_send_res = self
             .render_thread_channels
-            .set_render_thread_command(RenderThreadCommand::Run);
+            .set_render_thread_command(RenderThreadCommand::Run(render_options));
         check_channel_updater_result(thread_send_res)?;
 
         // process recieved events for cursor state

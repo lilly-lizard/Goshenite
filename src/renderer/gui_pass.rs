@@ -1093,12 +1093,16 @@ fn create_pipeline(
     };
     let color_blend_state = ColorBlendState::new_default(vec![color_blend_attachment_state]);
 
-    let mut pipeline_properties = GraphicsPipelineProperties::default();
-    pipeline_properties.subpass_index = render_pass_indices::SUBPASS_DEFERRED as u32;
-    pipeline_properties.dynamic_state = dynamic_state;
-    pipeline_properties.color_blend_state = color_blend_state;
-    pipeline_properties.vertex_input_state = EguiVertex::vertex_input_state();
-    pipeline_properties.viewport_state = viewport_state;
+    let vertex_input_state = EguiVertex::vertex_input_state();
+
+    let pipeline_properties = GraphicsPipelineProperties {
+        subpass_index: render_pass_indices::SUBPASS_DEFERRED as u32,
+        dynamic_state,
+        color_blend_state,
+        vertex_input_state,
+        viewport_state,
+        ..Default::default()
+    };
 
     let pipeline = GraphicsPipeline::new(
         pipeline_layout,

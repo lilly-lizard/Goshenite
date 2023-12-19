@@ -103,14 +103,6 @@ impl GeometryPass {
             .update_objects(objects_delta, transfer_queue, render_queue)
     }
 
-    pub fn update_camera_descriptor_set(&self, camera_buffer: &Buffer) {
-        write_camera_descriptor_set(
-            &self.desc_set_camera,
-            camera_buffer,
-            descriptor::BINDING_CAMERA,
-        )
-    }
-
     pub fn record_commands(
         &self,
         command_buffer: &CommandBuffer,
@@ -135,6 +127,11 @@ impl GeometryPass {
 
         self.object_buffer_manager
             .draw_commands(command_buffer, &self.pipeline);
+    }
+
+    #[inline]
+    pub fn object_buffer_manager(&self) -> &ObjectResourceManager {
+        &self.object_buffer_manager
     }
 }
 
@@ -223,21 +220,25 @@ fn create_pipeline(
         ..Default::default()
     };
 
-    let raster_state = RasterizationState {
+    let rasterization_state = RasterizationState {
         // makes sure our fragments are always the far end of the bounding meshes,
         // which allows for a path-tracing miss condition optimization.
         cull_mode: vk::CullModeFlags::FRONT,
         ..Default::default()
     };
 
-    let mut pipeline_properties = GraphicsPipelineProperties::default();
-    pipeline_properties.subpass_index = render_pass_indices::SUBPASS_GBUFFER as u32;
-    pipeline_properties.dynamic_state = dynamic_state;
-    pipeline_properties.color_blend_state = color_blend_state;
-    pipeline_properties.vertex_input_state = BoundingBoxVertex::vertex_input_state();
-    pipeline_properties.viewport_state = viewport_state;
-    pipeline_properties.depth_stencil_state = depth_stencil_state;
-    pipeline_properties.rasterization_state = raster_state;
+    let vertex_input_state = BoundingBoxVertex::vertex_input_state();
+
+    let pipeline_properties = GraphicsPipelineProperties {
+        color_blend_state,
+        depth_stencil_state,
+        dynamic_state,
+        rasterization_state,
+        subpass_index: render_pass_indices::SUBPASS_GBUFFER as u32,
+        vertex_input_state,
+        viewport_state,
+        ..Default::default()
+    };
 
     let pipeline = GraphicsPipeline::new(
         pipeline_layout,

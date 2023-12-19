@@ -49,15 +49,15 @@ pub fn required_device_extensions() -> [&'static str; 2] {
 }
 
 /// Make sure to update `required_features_1_2` too!
-pub fn supports_required_features_1_2(
-    _supported_features: vk::PhysicalDeviceVulkan12Features,
-) -> bool {
-    true
+pub fn supports_required_features_1_0(supported_features: vk::PhysicalDeviceFeatures) -> bool {
+    supported_features.fill_mode_non_solid != vk::FALSE
 }
-
 /// Make sure to update `supports_required_features_1_2` too!
-pub fn required_features_1_2() -> vk::PhysicalDeviceVulkan12Features {
-    vk::PhysicalDeviceVulkan12Features::default()
+pub fn required_features_1_0() -> vk::PhysicalDeviceFeatures {
+    vk::PhysicalDeviceFeatures {
+        fill_mode_non_solid: vk::TRUE,
+        ..Default::default()
+    }
 }
 
 pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Result<Arc<Instance>> {
@@ -132,14 +132,14 @@ pub fn choose_physical_device_and_queue_families(
     }
 
     let required_extensions = required_device_extensions();
-    let required_features = required_features_1_2();
+    let required_features_1_0 = required_features_1_0();
     trace!(
         "required physical device extensions = {:?}",
         required_extensions
     );
     trace!(
         "required physical device features = {:?}",
-        required_features
+        required_features_1_0
     );
 
     let chosen_device = p_devices
@@ -172,7 +172,7 @@ pub fn choose_physical_device_and_queue_families(
             \t- must minimum api version: {:?}\n
             \t- must support device extensions: {:?}\n
             \t- must support device features: {:?}",
-            MIN_VULKAN_VER, required_extensions, required_features
+            MIN_VULKAN_VER, required_extensions, required_features_1_0
         )
     })
 }
@@ -213,14 +213,15 @@ fn check_physical_device_queue_support(
     };
 
     // check requried device features support
-    let supported_features = instance
-        .physical_device_features_1_2(physical_device.handle())
-        .expect("instance should have been created for vulkan 1.2");
-    if !supports_required_features_1_2(supported_features) {
+    let supported_features_1_0 = instance.physical_device_features_1_0(physical_device.handle());
+    if !supports_required_features_1_0(supported_features_1_0) {
         trace!(
-            "physical device {} doesn't support required features. supported features: {:?}",
+            "physical device {} doesn't support required features.\n
+            required features = {:?}\n
+            supported features = {:?}",
             physical_device.name(),
-            supported_features
+            required_features_1_0(),
+            supported_features_1_0
         );
         return None;
     }
@@ -292,9 +293,9 @@ pub fn create_device_and_queue(
         vec![render_and_transfer_queue_info.build()]
     };
 
-    let features_1_0 = vk::PhysicalDeviceFeatures::default();
+    let features_1_0 = required_features_1_0();
     let features_1_1 = vk::PhysicalDeviceVulkan11Features::default();
-    let features_1_2 = required_features_1_2();
+    let features_1_2 = vk::PhysicalDeviceVulkan12Features::default();
     let features_1_3 = vk::PhysicalDeviceVulkan13Features::default();
 
     let extension_names: Vec<String> = required_device_extensions()
