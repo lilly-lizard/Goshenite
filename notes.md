@@ -160,6 +160,8 @@ What are we aiming for? Where is the market opening?
 - https://en.wikipedia.org/wiki/T-spline
 - https://en.wikipedia.org/wiki/Freeform_surface_modelling
 
+- (cube marching)[https://curved-ruler.github.io/webgl-sketches/marching/mc.html]
+
 # Debugging:
 
 ## descriptor indexing

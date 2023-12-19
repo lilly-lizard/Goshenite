@@ -636,16 +636,12 @@ impl RenderManager {
         command_buffer.begin_render_pass(&render_pass_begin, vk::SubpassContents::INLINE);
 
         self.geometry_pass
-            .record_commands(&command_buffer, viewport, rect_2d)?;
+            .record_commands(&command_buffer, viewport, rect_2d);
 
         command_buffer.next_subpass(vk::SubpassContents::INLINE);
 
-        self.lighting_pass.record_commands(
-            framebuffer_index,
-            &command_buffer,
-            viewport,
-            rect_2d,
-        )?;
+        self.lighting_pass
+            .record_commands(framebuffer_index, &command_buffer, viewport, rect_2d);
 
         self.gui_pass.record_render_commands(
             &command_buffer,

@@ -312,7 +312,6 @@ impl GuiPass {
                 Primitive::Callback(_) => continue, // we don't need to support Primitive::Callback
             }
         }
-
         Ok(())
     }
 
@@ -776,7 +775,7 @@ impl GuiPass {
         scale_factor: f32,
         framebuffer_dimensions: [f32; 2],
         clip_rect: Rect,
-    ) -> Result<(), anyhow::Error> {
+    ) -> anyhow::Result<()> {
         let index_count = mesh.indices.len() as u32;
         let texture_id = mesh.texture_id;
 

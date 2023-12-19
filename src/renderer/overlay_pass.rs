@@ -1,12 +1,15 @@
-use super::vulkan_init::{create_camera_descriptor_set_with_binding, render_pass_indices};
+use super::{
+    object_resource_manager::ObjectResourceManager,
+    vulkan_init::{create_camera_descriptor_set_with_binding, render_pass_indices},
+};
 use crate::renderer::vulkan_init::write_camera_descriptor_set;
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{
-    Buffer, ColorBlendState, DescriptorPool, DescriptorPoolProperties, DescriptorSet,
-    DescriptorSetLayout, Device, DynamicState, GraphicsPipeline, GraphicsPipelineProperties,
-    InputAssemblyState, PipelineLayout, PipelineLayoutProperties, RasterizationState, RenderPass,
-    ShaderStage, ViewportState,
+    Buffer, ColorBlendState, CommandBuffer, DescriptorPool, DescriptorPoolProperties,
+    DescriptorSet, DescriptorSetLayout, Device, DynamicState, GraphicsPipeline,
+    GraphicsPipelineProperties, InputAssemblyState, PipelineAccess, PipelineLayout,
+    PipelineLayoutProperties, RasterizationState, RenderPass, ShaderStage, ViewportState,
 };
 use std::sync::Arc;
 
@@ -50,6 +53,31 @@ impl OverlayPass {
             camera_buffer,
             descriptor::BINDING_CAMERA,
         )
+    }
+
+    pub fn record_commands(
+        &self,
+        command_buffer: &CommandBuffer,
+        object_resource_manager: &ObjectResourceManager,
+        viewport: vk::Viewport,
+        scissor: vk::Rect2D,
+    ) {
+        if object_resource_manager.object_count() == 0 {
+            return;
+        }
+
+        command_buffer.bind_pipeline(self.pipeline.as_ref());
+        command_buffer.set_viewport(0, &[viewport]);
+        command_buffer.set_scissor(0, &[scissor]);
+        command_buffer.bind_descriptor_sets(
+            vk::PipelineBindPoint::GRAPHICS,
+            self.pipeline.pipeline_layout().as_ref(),
+            0,
+            [self.desc_set_camera.as_ref()],
+            &[],
+        );
+
+        object_resource_manager.draw_bounding_box_commands(command_buffer);
     }
 }
 

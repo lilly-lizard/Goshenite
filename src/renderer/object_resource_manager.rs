@@ -165,53 +165,7 @@ impl ObjectResourceManager {
         Ok(())
     }
 
-    fn update_or_push(
-        &mut self,
-        object_id: ObjectId,
-        object: ObjectSnapshot,
-        transfer_resources: &mut BufferUploadResources,
-    ) -> anyhow::Result<()> {
-        let primitive_ops_buffer = self
-            .upload_primitive_ops(object_id, &object, transfer_resources)
-            .context("initial upload object to buffer")?;
-
-        if let Some(index) = self.get_index(object_id) {
-            let bounding_mesh_buffer =
-                self.upload_bounding_mesh(object_id, &object, transfer_resources)?;
-
-            write_desc_set_primitive_ops(
-                &self.objects_buffers[index].primitive_ops_descriptor_set,
-                &primitive_ops_buffer,
-            )?;
-
-            self.objects_buffers[index].bounding_mesh_buffer = bounding_mesh_buffer;
-            self.objects_buffers[index].bounding_mesh_vertex_count = AABB_VERTEX_COUNT as u32;
-            self.objects_buffers[index].primitive_ops_buffer = primitive_ops_buffer;
-        } else {
-            let bounding_mesh_buffer =
-                self.upload_bounding_mesh(object_id, &object, transfer_resources)?;
-
-            let primitive_ops_descriptor_set = self.allocate_primitive_ops_descriptor_set()?;
-            write_desc_set_primitive_ops(&primitive_ops_descriptor_set, &primitive_ops_buffer)?;
-
-            let new_object = PerObjectResources {
-                object_id,
-                bounding_mesh_buffer,
-                bounding_mesh_vertex_count: AABB_VERTEX_COUNT as u32,
-                primitive_ops_buffer,
-                primitive_ops_descriptor_set,
-            };
-            self.objects_buffers.push(new_object);
-        }
-
-        Ok(())
-    }
-
-    pub fn draw_commands(
-        &self,
-        command_buffer: &CommandBuffer,
-        pipeline: &GraphicsPipeline,
-    ) -> anyhow::Result<()> {
+    pub fn draw_commands(&self, command_buffer: &CommandBuffer, pipeline: &GraphicsPipeline) {
         for per_object_buffers in self.objects_buffers.iter() {
             command_buffer.bind_descriptor_sets(
                 vk::PipelineBindPoint::GRAPHICS,
@@ -227,8 +181,17 @@ impl ObjectResourceManager {
             );
             command_buffer.draw(per_object_buffers.bounding_mesh_vertex_count, 1, 0, 0);
         }
+    }
 
-        Ok(())
+    pub fn draw_bounding_box_commands(&self, command_buffer: &CommandBuffer) {
+        for per_object_buffers in self.objects_buffers.iter() {
+            command_buffer.bind_vertex_buffers(
+                0,
+                [per_object_buffers.bounding_mesh_buffer.as_ref()],
+                &[0],
+            );
+            command_buffer.draw(per_object_buffers.bounding_mesh_vertex_count, 1, 0, 0);
+        }
     }
 
     /// Returns the vec index if the id was found and removed.
@@ -337,6 +300,48 @@ impl ObjectResourceManager {
 
             self.available_upload_resources.push(command_resources);
         }
+        Ok(())
+    }
+
+    fn update_or_push(
+        &mut self,
+        object_id: ObjectId,
+        object: ObjectSnapshot,
+        transfer_resources: &mut BufferUploadResources,
+    ) -> anyhow::Result<()> {
+        let primitive_ops_buffer = self
+            .upload_primitive_ops(object_id, &object, transfer_resources)
+            .context("initial upload object to buffer")?;
+
+        if let Some(index) = self.get_index(object_id) {
+            let bounding_mesh_buffer =
+                self.upload_bounding_mesh(object_id, &object, transfer_resources)?;
+
+            write_desc_set_primitive_ops(
+                &self.objects_buffers[index].primitive_ops_descriptor_set,
+                &primitive_ops_buffer,
+            )?;
+
+            self.objects_buffers[index].bounding_mesh_buffer = bounding_mesh_buffer;
+            self.objects_buffers[index].bounding_mesh_vertex_count = AABB_VERTEX_COUNT as u32;
+            self.objects_buffers[index].primitive_ops_buffer = primitive_ops_buffer;
+        } else {
+            let bounding_mesh_buffer =
+                self.upload_bounding_mesh(object_id, &object, transfer_resources)?;
+
+            let primitive_ops_descriptor_set = self.allocate_primitive_ops_descriptor_set()?;
+            write_desc_set_primitive_ops(&primitive_ops_descriptor_set, &primitive_ops_buffer)?;
+
+            let new_object = PerObjectResources {
+                object_id,
+                bounding_mesh_buffer,
+                bounding_mesh_vertex_count: AABB_VERTEX_COUNT as u32,
+                primitive_ops_buffer,
+                primitive_ops_descriptor_set,
+            };
+            self.objects_buffers.push(new_object);
+        }
+
         Ok(())
     }
 

@@ -98,7 +98,7 @@ impl LightingPass {
         command_buffer: &CommandBuffer,
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
-    ) -> anyhow::Result<()> {
+    ) {
         command_buffer.bind_pipeline(self.pipeline.as_ref());
         command_buffer.set_viewport(0, &[viewport]);
         command_buffer.set_scissor(0, &[scissor]);
@@ -113,7 +113,6 @@ impl LightingPass {
             &[],
         );
         command_buffer.draw(3, 1, 0, 0);
-        Ok(())
     }
 }
 

@@ -116,10 +116,10 @@ impl GeometryPass {
         command_buffer: &CommandBuffer,
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
-    ) -> anyhow::Result<()> {
+    ) {
         if self.object_buffer_manager.object_count() == 0 {
             trace!("no object buffers found. skipping geometry pass commands...");
-            return Ok(());
+            return;
         }
 
         command_buffer.bind_pipeline(self.pipeline.as_ref());
@@ -134,9 +134,7 @@ impl GeometryPass {
         );
 
         self.object_buffer_manager
-            .draw_commands(command_buffer, &self.pipeline)?;
-
-        Ok(())
+            .draw_commands(command_buffer, &self.pipeline);
     }
 }
 
