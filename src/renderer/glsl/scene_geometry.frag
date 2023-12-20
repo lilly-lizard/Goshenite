@@ -5,7 +5,7 @@
 
 // Maximum number of ray marching steps before confirming a miss
 const uint MAX_STEPS = 100;
-// Distance required to confirm a hit todo make this dynamic with depth
+// Distance required to confirm a hit todo make this dynamic with depth (like LOD)
 const float MIN_MARCH_STEP = 0.001;
 // Offset used for calculating normals.
 const float NORMAL_EPSILON = 0.001;
@@ -14,9 +14,10 @@ const vec2 NORMAL_OFFSET = vec2(NORMAL_EPSILON, -NORMAL_EPSILON);
 // ~~~ IO ~~~
 
 layout (location = 0) in flat uint in_object_id;
+layout (location = 1) in noperspective vec2 in_uv; // clip space position in frame (between -1 and 1)
 
 layout (location = 0) out vec4 out_normal;
-layout (location = 1) out uint out_object_id; // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side??
+layout (location = 1) out uint out_object_id; // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side
 layout (depth_greater) out float gl_FragDepth; // although drivers probably can't optimize with this anyway because we use discard... https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/depth.adoc
 
 layout (set = 0, binding = 0) uniform Camera {
@@ -106,10 +107,6 @@ SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	); // column 3
 
-	// apply to position
-	pos = pos - center;
-	pos = pos * rotation;
-
 	vec4 s = vec4(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
@@ -121,6 +118,9 @@ SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	);
+
+	pos = pos - center;
+	pos = pos * rotation;
 
 	float dist = sdf_uber_primitive(pos, s, r);
 
@@ -222,13 +222,13 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist, out vec3 o_
 
 void main()
 {
-	// clip space position in frame (between -1 and 1)
-	vec2 screen_space = gl_FragCoord.xy + vec2(0.5);
-	vec2 clip_space_uv = screen_space / cam.framebuffer_dims * 2. - 1.;
-	float clip_space_depth = -cam.near / cam.far;
+	// can use clip_space_uv instead of in_uv clip space position in frame (between -1 and 1)
+	//vec2 screen_space = gl_FragCoord.xy + vec2(0.5);
+	//vec2 clip_space_uv = screen_space / cam.framebuffer_dims * 2. - 1.;
 
 	// ray direction in world space
-	vec4 ray_d = cam.proj_view_inverse * vec4(clip_space_uv, clip_space_depth, 1.);
+	float clip_space_depth = -cam.near / cam.far;
+	vec4 ray_d = cam.proj_view_inverse * vec4(in_uv, clip_space_depth, 1.);
 	vec3 ray_d_norm = normalize(ray_d.xyz);
 
 	// render scene

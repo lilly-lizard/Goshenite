@@ -149,6 +149,7 @@ What are we aiming for? Where is the market opening?
 - ray marching intro https://michaelwalczyk.com/blog-ray-marching.html
 - vulkan format types https://stackoverflow.com/questions/59628956/what-is-the-difference-between-normalized-scaled-and-integer-vkformats
 	- format properties https://registry.khronos.org/vulkan/specs/1.3-extensions/html/chap45.html#features-required-format-support
+- [sdfs and op functions](https://iquilezles.org/articles/distfunctions/)
 
 # References
 
