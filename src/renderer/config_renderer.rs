@@ -22,7 +22,7 @@ pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
 
 pub const CPU_ACCESS_BUFFER_SIZE: vk::DeviceSize = 1024;
 
-#[derive(Default, Clone, Copy, Debug)]
-pub struct RenderOverlayOptions {
+#[derive(Default, Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RenderOptions {
     pub enable_aabb_wire_display: bool,
 }

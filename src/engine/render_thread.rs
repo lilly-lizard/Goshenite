@@ -1,7 +1,7 @@
 use crate::{
     helper::anyhow_panic::anyhow_unwrap,
     renderer::{
-        config_renderer::RenderOverlayOptions, element_id_reader::ElementAtPoint,
+        config_renderer::RenderOptions, element_id_reader::ElementAtPoint,
         render_manager::RenderManager,
     },
     user_interface::camera::Camera,
@@ -22,7 +22,7 @@ use super::object::objects_delta::ObjectsDelta;
 #[derive(Clone, Copy)]
 pub enum RenderThreadCommand {
     DoNothing,
-    Run(RenderOverlayOptions),
+    Run(RenderOptions),
     Quit,
 }
 

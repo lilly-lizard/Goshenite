@@ -1,3 +1,5 @@
+use crate::renderer::config_renderer::RenderOptions;
+
 use super::{
     object::{object::ObjectId, operation::Operation, primitive_op::PrimitiveOpId},
     primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
@@ -79,6 +81,9 @@ pub enum Command {
         source_index: usize,
         target_index: usize,
     },
+
+    // renderer
+    SetRenderOptions(RenderOptions),
 
     // internal
     Validate(ValidationCommand),

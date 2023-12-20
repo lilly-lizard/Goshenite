@@ -14,7 +14,7 @@ use crate::{
     config,
     helper::anyhow_panic::anyhow_unwrap,
     renderer::{
-        config_renderer::RenderOverlayOptions, element_id_reader::ElementAtPoint,
+        config_renderer::RenderOptions, element_id_reader::ElementAtPoint,
         render_manager::RenderManager,
     },
     user_interface::camera::Camera,
@@ -55,7 +55,7 @@ pub struct EngineInstance {
     pending_commands: VecDeque<CommandWithSource>,
     selected_object_id: Option<ObjectId>,
     selected_primitive_op_id: Option<PrimitiveOpId>,
-    enable_aabb_debug_outlines: bool,
+    render_options: RenderOptions,
 
     // controllers
     cursor: Cursor,
@@ -118,7 +118,7 @@ impl EngineInstance {
             pending_commands: VecDeque::new(),
             selected_object_id: None,
             selected_primitive_op_id: None,
-            enable_aabb_debug_outlines: true,
+            render_options: RenderOptions::default(),
 
             cursor,
             camera,
@@ -239,14 +239,10 @@ impl EngineInstance {
     }
 
     fn per_frame_processing(&mut self) -> Result<(), EngineError> {
-        let render_options = RenderOverlayOptions {
-            enable_aabb_wire_display: true,
-        };
-
         // make sure the render thread is active to receive the upcoming messages
         let thread_send_res = self
             .render_thread_channels
-            .set_render_thread_command(RenderThreadCommand::Run(render_options));
+            .set_render_thread_command(RenderThreadCommand::Run(self.render_options));
         check_channel_updater_result(thread_send_res)?;
 
         // process recieved events for cursor state
@@ -262,6 +258,7 @@ impl EngineInstance {
             self.camera,
             self.selected_object_id,
             self.selected_primitive_op_id,
+            self.render_options,
         );
         let commands_from_gui = anyhow_unwrap(update_gui_res, "update gui");
         self.pending_commands.extend(commands_from_gui.into_iter());

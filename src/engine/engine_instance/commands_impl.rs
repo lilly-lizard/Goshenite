@@ -10,6 +10,7 @@ use crate::{
         primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
     },
     helper::list::choose_closest_valid_index,
+    renderer::config_renderer::RenderOptions,
     user_interface::gui::Gui,
 };
 use glam::Vec3;
@@ -155,6 +156,10 @@ impl EngineInstance {
                     target_index,
                     command,
                 );
+            }
+
+            Command::SetRenderOptions(new_render_options) => {
+                self.set_render_options(new_render_options);
             }
 
             Command::Validate(v_command) => self.execute_validation_command(v_command),
@@ -719,6 +724,12 @@ impl EngineInstance {
         let _ = self
             .object_collection
             .mark_object_for_data_update(object_id);
+    }
+
+    // ~~ Renderer ~~
+
+    fn set_render_options(&mut self, new_render_options: RenderOptions) {
+        self.render_options = new_render_options;
     }
 
     // ~~ Internal ~~

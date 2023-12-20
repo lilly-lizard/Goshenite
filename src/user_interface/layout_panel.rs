@@ -17,6 +17,8 @@ pub fn bottom_panel_layout(ui: &mut Ui, window_states: &mut WindowStates) {
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             egui::warn_if_debug_build(ui);
+            #[cfg(debug_assertions)]
+            ui.toggle_value(&mut window_states.debug_options, "Debug Options");
         });
     });
 }

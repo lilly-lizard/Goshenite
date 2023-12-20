@@ -1,18 +1,22 @@
 use super::{
     camera::Camera,
     gui_state::{GuiState, WindowStates},
-    layout_camera_control::camera_control_layout,
-    layout_object_editor::object_editor_layout,
-    layout_object_list::object_list_layout,
+    layout_camera_control::layout_camera_control,
+    layout_debug_options::layout_debug_options,
+    layout_object_editor::layout_object_editor,
+    layout_object_list::layout_object_list,
     layout_panel::bottom_panel_layout,
 };
-use crate::engine::{
-    commands::{Command, CommandWithSource},
-    object::{
-        object::ObjectId,
-        object_collection::ObjectCollection,
-        primitive_op::{PrimitiveOp, PrimitiveOpId},
+use crate::{
+    engine::{
+        commands::{Command, CommandWithSource},
+        object::{
+            object::ObjectId,
+            object_collection::ObjectCollection,
+            primitive_op::{PrimitiveOp, PrimitiveOpId},
+        },
     },
+    renderer::config_renderer::RenderOptions,
 };
 use egui::{TexturesDelta, Visuals};
 use egui_winit::EventResponse;
@@ -114,6 +118,7 @@ impl Gui {
         camera: Camera,
         selected_object_id: Option<ObjectId>,
         selected_primitive_op_id: Option<PrimitiveOpId>,
+        render_options: RenderOptions,
     ) -> anyhow::Result<Vec<CommandWithSource>> {
         let mut commands = Vec::<Command>::new();
 
@@ -124,11 +129,11 @@ impl Gui {
         // draw
         self.top_panel();
         if self.window_states.object_list {
-            let mut new_commands = self.object_list_window(object_collection, selected_object_id);
+            let mut new_commands = self.window_object_list(object_collection, selected_object_id);
             commands.append(&mut new_commands);
         }
         if self.window_states.object_editor {
-            let mut new_commands = self.object_editor_window(
+            let mut new_commands = self.window_object_editor(
                 object_collection,
                 selected_object_id,
                 selected_primitive_op_id,
@@ -136,7 +141,11 @@ impl Gui {
             commands.append(&mut new_commands);
         }
         if self.window_states.camera_control {
-            let mut new_commands = self.camera_control_window(camera);
+            let mut new_commands = self.window_camera_control(camera);
+            commands.append(&mut new_commands);
+        }
+        if self.window_states.debug_options {
+            let mut new_commands = self.window_debug_options(render_options);
             commands.append(&mut new_commands);
         }
 
@@ -195,7 +204,7 @@ impl Gui {
         });
     }
 
-    fn object_list_window(
+    fn window_object_list(
         &mut self,
         object_collection: &ObjectCollection,
         selected_object_id: Option<ObjectId>,
@@ -203,8 +212,7 @@ impl Gui {
         let mut commands = Vec::<Command>::new();
 
         let add_contents = |ui: &mut egui::Ui| {
-            let mut new_commands = object_list_layout(ui, selected_object_id, object_collection);
-            commands.append(&mut new_commands);
+            commands = layout_object_list(ui, selected_object_id, object_collection);
         };
 
         egui::Window::new("Objects")
@@ -217,7 +225,7 @@ impl Gui {
         commands
     }
 
-    fn object_editor_window(
+    fn window_object_editor(
         &mut self,
         object_collection: &ObjectCollection,
         selected_object_id: Option<ObjectId>,
@@ -226,14 +234,13 @@ impl Gui {
         let mut commands = Vec::<Command>::new();
 
         let add_contents = |ui: &mut egui::Ui| {
-            let mut new_commands = object_editor_layout(
+            commands = layout_object_editor(
                 ui,
                 &mut self.gui_state,
                 object_collection,
                 selected_object_id,
                 selected_primitive_op_id,
             );
-            commands.append(&mut new_commands);
         };
 
         egui::Window::new("Object Editor")
@@ -246,16 +253,32 @@ impl Gui {
         commands
     }
 
-    fn camera_control_window(&mut self, camera: Camera) -> Vec<Command> {
+    fn window_camera_control(&mut self, camera: Camera) -> Vec<Command> {
         let mut commands = Vec::<Command>::new();
 
         let add_contents = |ui: &mut egui::Ui| {
-            let mut new_commands = camera_control_layout(ui, camera);
-            commands.append(&mut new_commands);
+            commands = layout_camera_control(ui, camera);
         };
 
         egui::Window::new("Camera")
             .open(&mut self.window_states.camera_control)
+            .resizable(true)
+            .vscroll(true)
+            .hscroll(true)
+            .show(&self.context, add_contents);
+
+        commands
+    }
+
+    fn window_debug_options(&mut self, render_options: RenderOptions) -> Vec<Command> {
+        let mut commands = Vec::<Command>::new();
+
+        let add_contents = |ui: &mut egui::Ui| {
+            commands = layout_debug_options(ui, render_options);
+        };
+
+        egui::Window::new("Debug Options")
+            .open(&mut self.window_states.debug_options)
             .resizable(true)
             .vscroll(true)
             .hscroll(true)

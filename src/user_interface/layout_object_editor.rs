@@ -25,7 +25,7 @@ use egui_dnd::DragDropResponse;
 use log::{debug, error, info, trace, warn};
 use std::mem::discriminant;
 
-pub fn object_editor_layout(
+pub fn layout_object_editor(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
     object_collection: &ObjectCollection,

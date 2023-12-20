@@ -1,5 +1,5 @@
 use super::{
-    config_renderer::{RenderOverlayOptions, ENABLE_VULKAN_VALIDATION, TIMEOUT_NANOSECS},
+    config_renderer::{RenderOptions, ENABLE_VULKAN_VALIDATION, TIMEOUT_NANOSECS},
     debug_callback::log_vulkan_debug_callback,
     element_id_reader::{ElementAtPoint, ElementIdReader},
     geometry_pass::GeometryPass,
@@ -371,7 +371,7 @@ impl RenderManager {
     }
 
     /// Submits Vulkan commands for rendering a frame.
-    pub fn render_frame(&mut self, overlay_options: RenderOverlayOptions) -> anyhow::Result<()> {
+    pub fn render_frame(&mut self, overlay_options: RenderOptions) -> anyhow::Result<()> {
         // wait for previous frame render/resource upload to finish
 
         self.wait_for_previous_frame_fence()?;
@@ -623,7 +623,7 @@ impl RenderManager {
         &mut self,
         command_buffer: &CommandBuffer,
         framebuffer_index: usize,
-        overlay_options: RenderOverlayOptions,
+        overlay_options: RenderOptions,
     ) -> anyhow::Result<()> {
         let viewport = self.framebuffers[framebuffer_index].whole_viewport();
         let render_area = self.framebuffers[framebuffer_index].whole_rect();

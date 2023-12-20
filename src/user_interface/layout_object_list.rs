@@ -9,7 +9,7 @@ use egui::{RichText, TextStyle};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 
-pub fn object_list_layout(
+pub fn layout_object_list(
     ui: &mut egui::Ui,
     selected_object_id: Option<ObjectId>,
     object_collection: &ObjectCollection,

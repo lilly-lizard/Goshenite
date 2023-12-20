@@ -10,6 +10,7 @@ pub struct WindowStates {
     pub object_list: bool,
     pub object_editor: bool,
     pub camera_control: bool,
+    pub debug_options: bool,
 }
 impl Default for WindowStates {
     fn default() -> Self {
@@ -17,6 +18,7 @@ impl Default for WindowStates {
             object_list: true,
             object_editor: true,
             camera_control: false,
+            debug_options: false,
         }
     }
 }
