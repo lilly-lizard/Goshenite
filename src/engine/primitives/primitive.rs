@@ -23,7 +23,7 @@ impl Primitive {
             .collect()
     }
 
-    pub const VARIANTS: &[Primitive] = &[
+    pub const VARIANTS: &'static [Primitive] = &[
         Primitive::Sphere(Sphere::DEFAULT),
         Primitive::Cube(Cube::DEFAULT),
         Primitive::UberPrimitive(UberPrimitive::DEFAULT),

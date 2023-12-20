@@ -52,6 +52,7 @@ impl GuiState {
 
     pub fn reset_primitive_op_fields(&mut self) {
         self.op_edit_state = Default::default();
+        self.transform_edit_state = Default::default();
         self.primitive_edit_state = Default::default();
     }
 }

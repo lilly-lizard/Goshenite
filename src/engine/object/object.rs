@@ -243,12 +243,12 @@ impl ObjectSnapshot {
             let primitive_op = primitive_op;
             let primitive = primitive_op.primitive;
 
-            let op_code = primitive_op.op.op_code();
+            let encoded_op_code = primitive_op.op.op_code();
+            let encoded_transform = primitive_op.primitive_transform.gpu_encoded(self.origin);
+            let encoded_props = primitive.encoded_props();
 
-            let transform = primitive_op.primitive_transform.encoded(self.origin);
-            let props = primitive.encoded_props();
-
-            let packet = create_primitive_op_packet(op_code, transform, props);
+            let packet =
+                create_primitive_op_packet(encoded_op_code, encoded_transform, encoded_props);
             encoded_primitives.push(packet);
         }
         if self.primitive_ops.len() == 0 {

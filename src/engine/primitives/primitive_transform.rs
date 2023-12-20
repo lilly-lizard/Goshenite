@@ -27,21 +27,18 @@ impl PrimitiveTransform {
         }
     }
 
-    #[inline]
     pub fn total_rotation(&self) -> Quat {
         let rotation_tentative_append_quat = self.rotation_tentative_append.to_quat()
             .expect("Axis::Direction should only be set via the `new_direction()` function to avoid un-normalizable values");
         rotation_tentative_append_quat.mul_quat(self.rotation)
     }
 
-    #[inline]
     pub fn rotation_matrix(&self) -> Mat3 {
         Mat3::from_quat(self.total_rotation())
     }
 
-    pub fn encoded(&self, parent_origin: Vec3) -> PrimitiveTransformSlice {
-        let inverse_rotation_mat = self.rotation_matrix().inverse();
-        let rotation_cols_array = inverse_rotation_mat.to_cols_array();
+    pub fn gpu_encoded(&self, parent_origin: Vec3) -> PrimitiveTransformSlice {
+        let rotation_cols_array = self.rotation_matrix().to_cols_array();
 
         let center = self.center + parent_origin;
         [
