@@ -27,7 +27,7 @@ impl Default for LookMode {
 }
 
 /// Describes the orientation and properties of a camera that can be used for perspective rendering
-#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Camera {
     position: DVec3,
     look_mode: LookMode,
