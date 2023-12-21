@@ -48,7 +48,7 @@ impl CameraUniformBuffer {
             proj_inverse: _,
             proj_a: _,
             proj_b: _,
-        } = camera.projection_matrices();
+        } = camera.projection_matrix_and_inverse();
 
         let proj_view = proj * camera.view_matrix();
         let proj_view_inverse = Mat4::inverse(&proj_view);

@@ -14,7 +14,7 @@ const vec2 NORMAL_OFFSET = vec2(NORMAL_EPSILON, -NORMAL_EPSILON);
 // ~~~ IO ~~~
 
 layout (location = 0) in flat uint in_object_id;
-layout (location = 1) in noperspective vec2 in_uv; // clip space position in frame (between -1 and 1)
+layout (location = 1) in noperspective vec2 in_clip_space_uv; // clip space position in frame (between -1 and 1)
 
 layout (location = 0) out vec4 out_normal;
 layout (location = 1) out uint out_object_id; // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side
@@ -228,7 +228,7 @@ void main()
 
 	// ray direction in world space
 	float clip_space_depth = -cam.near / cam.far;
-	vec4 ray_d = cam.proj_view_inverse * vec4(in_uv, clip_space_depth, 1.);
+	vec4 ray_d = cam.proj_view_inverse * vec4(in_clip_space_uv, clip_space_depth, 1.);
 	vec3 ray_d_norm = normalize(ray_d.xyz);
 
 	// render scene

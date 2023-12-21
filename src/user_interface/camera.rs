@@ -155,10 +155,9 @@ impl Camera {
         )
     }
 
-    pub fn proj_matrix_glam(&self) -> DMat4 {
+    pub fn projection_matrix(&self) -> DMat4 {
         // don't need to invert y in shaders
         // inverse(proj_view_inverse) works fine
-        // view mat too?
         DMat4::perspective_rh(
             self.fov.radians(),
             self.aspect_ratio as f64,
@@ -169,7 +168,7 @@ impl Camera {
 
     // https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
     /// right handed, reverse z, vulkan coordinates
-    pub fn projection_matrices(&self) -> ProjectionMatrixReturn {
+    pub fn projection_matrix_and_inverse(&self) -> ProjectionMatrixReturn {
         let near = self.near_plane as f32;
         let far = self.far_plane as f32;
 
