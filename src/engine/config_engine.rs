@@ -12,3 +12,6 @@ pub mod primitive_names {
 }
 
 pub const AABB_EDGE: Vec3 = Vec3::splat(0.1);
+
+pub const SAVE_STATE_DIR: &'static str = ".goshenite_save_states";
+pub const SAVE_STATE_FILENAME_CAMERA: &'static str = "camera.gsave";

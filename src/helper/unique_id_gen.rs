@@ -52,7 +52,7 @@ unsafe impl<T: UniqueIdType> Sync for UniqueIdGen<T> {}
 
 // ~~ UniqueId Error ~~
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub enum UniqueIdError {
     /// Means that no more unique ids can be generated from this instance.
     MaxReached,

@@ -139,7 +139,7 @@ impl CommandWithSource {
 
 // ~~ Errors ~~
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub enum CommandError {
     InvalidObjectId(ObjectId),
     InvalidPrimitiveOpId(ObjectId, PrimitiveOpId),

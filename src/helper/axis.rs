@@ -171,7 +171,7 @@ impl Default for AxisRotation {
 
 // ~~ Axis Error ~~
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug)]
 pub enum AxisError {
     DirectionCantBeNormalized(Vec3),
 }

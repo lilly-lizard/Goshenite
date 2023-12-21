@@ -27,7 +27,7 @@ impl Default for LookMode {
 }
 
 /// Describes the orientation and properties of a camera that can be used for perspective rendering
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
 pub struct Camera {
     position: DVec3,
     look_mode: LookMode,
@@ -465,11 +465,12 @@ pub struct ProjectionMatrixReturn {
 
 // Errors
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub enum CameraError {
     /// Camera direction lines up with `WORLD_SPACE_UP` meaning that a normal vector cannot be calculated
     VerticalCameraDirection,
 }
+
 impl std::fmt::Display for CameraError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -482,4 +483,5 @@ impl std::fmt::Display for CameraError {
         }
     }
 }
+
 impl std::error::Error for CameraError {}

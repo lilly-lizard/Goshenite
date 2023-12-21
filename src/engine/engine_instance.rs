@@ -429,7 +429,7 @@ impl EngineInstance {
 
 // ~~ Engine Error ~~
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub enum EngineError {
     RenderThreadClosedPrematurely,
 }
