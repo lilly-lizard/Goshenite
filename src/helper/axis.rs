@@ -147,13 +147,13 @@ pub struct AxisRotation {
 impl AxisRotation {
     pub fn to_quat(&self) -> Result<Quat, AxisError> {
         let axis = self.axis.to_vec3_normalized()?;
-        let angle = self.angle.to_radians() as f32;
+        let angle = self.angle.radians() as f32;
         Ok(Quat::from_axis_angle(axis, angle))
     }
 
     pub fn to_dquat(&self) -> Result<DQuat, AxisError> {
         let axis = self.axis.to_dvec3_normalized()?;
-        let angle = self.angle.to_radians();
+        let angle = self.angle.radians();
         Ok(DQuat::from_axis_angle(axis, angle))
     }
 

@@ -305,7 +305,7 @@ impl EngineInstance {
         // receive clicked element response
         self.receive_and_select_element_id_at_point();
 
-        let latest_render_frame_timestamp = self
+        let _latest_render_frame_timestamp = self
             .render_thread_channels
             .get_latest_render_frame_timestamp();
 

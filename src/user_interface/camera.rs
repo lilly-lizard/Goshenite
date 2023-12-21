@@ -3,8 +3,9 @@ use crate::{config, engine::object::object::ObjectId, helper::angle::Angle};
 use glam::{DMat3, DMat4, DVec2, DVec3, Mat4, Vec3, Vec4};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum LookMode {
     /// Look in a given direction
     Direction(DVec3),
@@ -26,7 +27,7 @@ impl Default for LookMode {
 }
 
 /// Describes the orientation and properties of a camera that can be used for perspective rendering
-#[derive(Clone, Copy, Default, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub struct Camera {
     position: DVec3,
     look_mode: LookMode,
@@ -40,14 +41,9 @@ pub struct Camera {
 
 impl Camera {
     pub fn new(resolution: [f32; 2]) -> anyhow::Result<Self> {
-        let position = config_ui::CAMERA_DEFAULT_POSITION;
         Ok(Camera {
-            position,
-            look_mode: LookMode::default(),
-            fov: config_ui::CAMERA_DEFAULT_FOV,
             aspect_ratio: calc_aspect_ratio(resolution),
-            near_plane: config_ui::CAMERA_NEAR_PLANE,
-            far_plane: config_ui::CAMERA_FAR_PLANE,
+            ..Default::default()
         })
     }
 
@@ -224,6 +220,19 @@ impl Camera {
     #[inline]
     pub fn far_plane(&self) -> f64 {
         self.far_plane
+    }
+}
+
+impl Default for Camera {
+    fn default() -> Self {
+        Self {
+            position: config_ui::CAMERA_DEFAULT_POSITION,
+            look_mode: LookMode::default(),
+            fov: config_ui::CAMERA_DEFAULT_FOV,
+            aspect_ratio: 1_f32,
+            near_plane: config_ui::CAMERA_NEAR_PLANE,
+            far_plane: config_ui::CAMERA_FAR_PLANE,
+        }
     }
 }
 

@@ -21,14 +21,17 @@ use crate::{
 };
 use egui_dnd::utils::{shift_slice, ShiftSliceError};
 use glam::Vec3;
+use serde::{Deserialize, Serialize};
 
 // this is because the shaders store the primitive op index in the lower 16 bits of a u32
 const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
 
 // OBJECT ID
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ObjectId(pub UniqueId);
+#[derive(
+    Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize,
+)]
+pub struct ObjectId(UniqueId);
 
 impl UniqueIdType for ObjectId {
     fn raw_id(&self) -> UniqueId {

@@ -1,4 +1,6 @@
-/// Shout out to cgmath for the idea https://github.com/rustgd/cgmath
+//! Shout out to cgmath for the idea https://github.com/rustgd/cgmath
+
+use serde::{Deserialize, Serialize};
 use std::{
     cmp::Ordering,
     f64::consts::{PI, TAU},
@@ -8,7 +10,7 @@ use std::{
 /// Represents a f64 angle in radians or degrees
 ///
 /// _Note:using an enum allows us to define const values in radians or degrees!_
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, Deserialize, Serialize)]
 pub enum Angle {
     Radians(f64),
     Degrees(f64),
@@ -49,17 +51,19 @@ impl Angle {
         }
     }
 
-    pub fn to_radians(&self) -> f64 {
-        match self {
-            Angle::Radians(r) => *r,
-            Angle::Degrees(d) => degrees_to_radians(*d),
+    pub fn to_radians(self) -> Self {
+        if let Self::Degrees(d) = self {
+            Self::Radians(degrees_to_radians(d))
+        } else {
+            self
         }
     }
 
-    pub fn to_degrees(&self) -> f64 {
-        match self {
-            Angle::Radians(r) => radians_to_degrees(*r),
-            Angle::Degrees(d) => *d,
+    pub fn to_degrees(self) -> Self {
+        if let Self::Radians(r) = self {
+            Self::Degrees(radians_to_degrees(r))
+        } else {
+            self
         }
     }
 
@@ -143,11 +147,11 @@ macro_rules! angle_operator_impl {
             fn $op_fn(self, rhs: Self) -> Self::Output {
                 match self {
                     Self::Radians(r_lhs) => {
-                        let r_rhs = rhs.to_radians();
+                        let r_rhs = rhs.radians();
                         Self::Radians(r_lhs $op r_rhs)
                     }
                     Self::Degrees(d_lhs) => {
-                        let d_rhs = rhs.to_degrees();
+                        let d_rhs = rhs.degrees();
                         Self::Degrees(d_lhs $op d_rhs)
                     }
                 }
