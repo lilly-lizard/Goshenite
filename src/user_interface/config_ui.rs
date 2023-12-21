@@ -15,7 +15,7 @@ pub const CAMERA_NEAR_PLANE: f64 = 0.01;
 pub const CAMERA_FAR_PLANE: f64 = 1000.;
 /// Should be ~= `CAMERA_FAR_PLANE`. Too big causes broken view-proj matrix _note: glam assert catches this in debug_.
 pub const CAMERA_MAX_TARGET_DISTANCE: f64 = 10_000.;
-/// Minumum distance between the camera position and the camera target. Ensures valid results for view matrix etc
+/// Minumum distance between the camera position and the camera target. Ensures valid results for view matrix
 pub const CAMERA_MIN_TARGET_DISTANCE: f64 = 0.001;
 
 /// Sensitivity rotating the camera in [`ViewMode::Direction`](crate::camera::ViewMode::Direction) = angle / pixels
