@@ -24,7 +24,6 @@ use crate::{
         gui::Gui,
     },
 };
-use glam::{Quat, Vec3};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use single_value_channel::NoReceiverError;
@@ -143,7 +142,7 @@ impl EngineInstance {
 
                 // TESTING OBJECTS START
 
-                object_testing(&mut self.object_collection);
+                create_default_cube_object(&mut self.object_collection);
 
                 // TESTING OBJECTS END
             }
@@ -473,13 +472,26 @@ fn check_channel_sender_result<T>(
 
 // ~~ Testing ~~
 
+fn create_default_cube_object(object_collection: &mut ObjectCollection) {
+    use glam::Vec3;
+
+    let (object_id, object) = object_collection
+        .new_object("Cube", Vec3::ZERO)
+        .expect("just made this");
+    let cube = Cube::new(Vec3::splat(1.));
+    let _ = object.push_op(Operation::Union, cube.into(), PrimitiveTransform::default());
+    let _ = object_collection.mark_object_for_data_update(object_id);
+}
+
 fn object_testing(object_collection: &mut ObjectCollection) {
+    use glam::{Quat, Vec3};
+
     let sphere = Sphere::new(0.5);
-    let cube = Cube::new(glam::Vec3::splat(0.8));
+    let cube = Cube::new(Vec3::splat(0.8));
     let another_sphere = Sphere::new(0.83);
 
     let (object_id, object) = object_collection
-        .new_object("Bruh".to_string(), Vec3::new(-0.2, 0.2, 0.))
+        .new_object("Bruh", Vec3::new(-0.2, 0.2, 0.))
         .expect("no where near maxing out unique ids");
     let _ = object.push_op(
         Operation::Union,
@@ -499,7 +511,7 @@ fn object_testing(object_collection: &mut ObjectCollection) {
     let _ = object_collection.mark_object_for_data_update(object_id);
 
     let (another_object_id, another_object) = object_collection
-        .new_object("Another Bruh".to_string(), Vec3::new(0.2, -0.2, 0.))
+        .new_object("Another Bruh", Vec3::new(0.2, -0.2, 0.))
         .expect("no where near maxing out unique ids");
     let _ = another_object.push_op(
         Operation::Union,

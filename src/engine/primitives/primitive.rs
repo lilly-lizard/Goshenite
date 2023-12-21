@@ -3,15 +3,16 @@ use super::{
     uber_primitive::UberPrimitive,
 };
 use crate::{
-    engine::aabb::Aabb, renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
+    engine::aabb::Aabb, helper::from_enum_macro::impl_from_for_enum_variant,
+    renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
 
 // ~~ Primitive ~~
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Primitive {
-    Sphere(Sphere),
     Cube(Cube),
+    Sphere(Sphere),
     UberPrimitive(UberPrimitive),
 }
 
@@ -24,11 +25,11 @@ impl Primitive {
     }
 
     pub const VARIANTS: &'static [Primitive] = &[
-        Primitive::Sphere(Sphere::DEFAULT),
         Primitive::Cube(Cube::DEFAULT),
+        Primitive::Sphere(Sphere::DEFAULT),
         Primitive::UberPrimitive(UberPrimitive::DEFAULT),
     ];
-    pub const DEFAULT: Primitive = Primitive::UberPrimitive(UberPrimitive::DEFAULT);
+    pub const DEFAULT: Primitive = Primitive::Cube(Cube::DEFAULT);
 }
 
 impl Default for Primitive {
@@ -64,6 +65,10 @@ impl EncodablePrimitive for Primitive {
         }
     }
 }
+
+impl_from_for_enum_variant!(Primitive, Cube);
+impl_from_for_enum_variant!(Primitive, Sphere);
+impl_from_for_enum_variant!(Primitive, UberPrimitive);
 
 // ~~ Encodable Primitive ~~
 

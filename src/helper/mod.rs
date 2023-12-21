@@ -2,7 +2,7 @@
 pub mod angle;
 pub mod anyhow_panic;
 pub mod axis;
-pub mod from_enum_impl;
+pub mod from_enum_macro;
 pub mod list;
 pub mod logger;
 #[allow(dead_code)]

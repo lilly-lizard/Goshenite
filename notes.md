@@ -7,6 +7,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - aabb debug outline option
 - blend function (primitive op)
 
+- quick save/load camera, objects etc (for debugging)
 - undo (ctrl z)
 
 - compute dispatch

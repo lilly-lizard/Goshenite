@@ -6,6 +6,30 @@ SdfResult op_shave(SdfResult p, float shave_radius)
 	return res;
 }
 
+// ~~~ Uber Primitive ~~~
+// https://www.shadertoy.com/view/MsVGWG
+
+float sdf_uber_primitive(vec3 pos, vec4 s, vec2 r)
+{
+	vec3 d = abs(pos) - s.xyz;
+	float q_1 = length(max(d.xy + r.x, 0.));
+	float q_2 = min(-r.x, max(d.x, d.y) + s.w);
+	float q = abs(q_1 + q_2) - s.w;
+	vec2 ret_1 = max(vec2(q, d.z) + r.y, 0.);
+	float ret_2 = min(-r.y, max(q, d.z));
+	return length(ret_1) + ret_2;
+}
+
+// cube debugging
+float sdf_uber_primitive(vec3 pos, vec4 s, vec2 r)
+{
+	vec3 dimensions = s.xyz;
+	vec3 d = abs(pos) - dimensions;
+	float c = min(max(d.x, max(d.y, d.z)), 0.);
+	float l = length(max(d, 0.));
+	return c + l;
+}
+
 // ~~~ Signed Distance Fields ~~~
 // https://iquilezles.org/articles/distfunctions/
 

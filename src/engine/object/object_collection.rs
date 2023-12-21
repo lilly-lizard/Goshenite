@@ -31,12 +31,12 @@ impl ObjectCollection {
 
     pub fn new_object(
         &mut self,
-        name: String,
+        name: impl Into<String>,
         origin: Vec3,
     ) -> Result<(ObjectId, &mut Object), UniqueIdError> {
         let object_id = self.unique_id_gen.new_id()?;
 
-        Ok(self.new_object_internal(object_id, name, origin))
+        Ok(self.new_object_internal(object_id, name.into(), origin))
     }
 
     pub fn new_object_default(&mut self) -> Result<(ObjectId, &mut Object), UniqueIdError> {

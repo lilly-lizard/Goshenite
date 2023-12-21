@@ -128,6 +128,13 @@ impl Default for Axis {
     }
 }
 
+impl From<CartesianAxis> for Axis {
+    #[inline]
+    fn from(value: CartesianAxis) -> Self {
+        Self::Cartesian(value)
+    }
+}
+
 // ~~ Axis Rotation ~~
 
 /// Describes rotation around an axis
