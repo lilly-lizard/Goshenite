@@ -8,7 +8,7 @@ use super::{
     gui_state::{GuiState, DRAG_INC},
 };
 use crate::engine::{
-    commands::{Command, ValidationCommand},
+    commands::{Command, TargetPrimitiveOp, ValidationCommand},
     object::{
         object::{Object, ObjectId},
         object_collection::ObjectCollection,
@@ -395,10 +395,9 @@ fn primitive_op_list(
 
                 // primitive op selected
                 if prim_op_res.clicked() {
-                    commands.push(Command::SelectPrimitiveOpId(
-                        selected_object.id(),
-                        primitive_op.id(),
-                    ))
+                    let target_primitive_op =
+                        TargetPrimitiveOp::Id(selected_object.id(), primitive_op.id());
+                    commands.push(Command::SelectPrimitiveOp(target_primitive_op))
                 }
             });
         },

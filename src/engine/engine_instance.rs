@@ -390,7 +390,7 @@ impl EngineInstance {
     }
 
     fn object_clicked(&mut self, object_id: ObjectId, primitive_op_index: usize) {
-        self.select_object_and_primitive_op_index(object_id, primitive_op_index)
+        self.select_primitive_op_index_and_object(object_id, primitive_op_index, None)
     }
 
     fn stop_render_thread(&self) {
