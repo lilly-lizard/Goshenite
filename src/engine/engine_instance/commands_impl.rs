@@ -268,13 +268,14 @@ impl EngineInstance {
         let (new_object_id, new_object) = match new_object_res {
             Ok(object_and_id) => object_and_id,
             Err(e) => {
-                error!(
-                    "the engine has run out of unique ids to assign to new objects.\
-                    this case is not yet handled by goshenite!\
-                    please report this as a bug..."
+                let failed_because = format!(
+                    "The engine has run out of unique ids to assign to new objects.\
+                    This case is not yet handled by goshenite!\
+                    Please report this as a bug...\n
+                    Returned error: {}",
+                    e
                 );
-                error!("command {:?} critially failed with error {}", command, e)
-                todo!()
+                command_failed_error(command, &failed_because);
                 return;
             }
         };
@@ -765,9 +766,12 @@ impl EngineInstance {
 }
 
 fn command_failed_warn(command: Command, failed_because: &str) {
-    warn!("command {:?} failed due to {}", command, failed_because);
+    warn!("command {:?} failed due to: {}", command, failed_because);
 }
 
 fn command_failed_error(command: Command, failed_because: &str) {
-    warn!("command {:?} failed due to {}", command, failed_because);
+    error!(
+        "command {:?} critically failed due to: {}",
+        command, failed_because
+    );
 }
