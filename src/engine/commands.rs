@@ -6,6 +6,8 @@ use super::{
 };
 use glam::{DVec3, Vec3};
 
+// ~~ Commands ~~
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     // ~~ Renderer ~~
@@ -37,14 +39,11 @@ pub enum Command {
     },
 
     // ~~ Primtive Op: Selection ~~
-    SelectPrimitiveOpId(ObjectId, PrimitiveOpId),
-    SelectPrimitiveOpIndex(ObjectId, usize),
+    SelectPrimitiveOp(TargetPrimitiveOp),
     DeselectPrimtiveOp(),
 
     // ~~ Primitive Op: Remove ~~
-    RemoveSelectedPrimitiveOp(),
-    RemovePrimitiveOpId(ObjectId, PrimitiveOpId),
-    RemovePrimitiveOpIndex(ObjectId, usize),
+    RemovePrimitiveOp(TargetPrimitiveOp),
 
     // ~~ Primitive Op: Push ~~
     PushOp {
@@ -62,25 +61,21 @@ pub enum Command {
 
     // ~~ Primitive Op: Modify ~~
     SetPrimitiveOp {
-        object_id: ObjectId,
-        primitive_op_id: PrimitiveOpId,
+        target_primitive_op: TargetPrimitiveOp,
         new_primitive: Primitive,
         new_transform: PrimitiveTransform,
         new_operation: Operation,
     },
     SetPrimitive {
-        object_id: ObjectId,
-        primitive_op_id: PrimitiveOpId,
+        target_primitive_op: TargetPrimitiveOp,
         new_primitive: Primitive,
     },
     SetPrimitiveTransform {
-        object_id: ObjectId,
-        primitive_op_id: PrimitiveOpId,
+        target_primitive_op: TargetPrimitiveOp,
         new_transform: PrimitiveTransform,
     },
     SetOperation {
-        object_id: ObjectId,
-        primitive_op_id: PrimitiveOpId,
+        target_primitive_op: TargetPrimitiveOp,
         new_operation: Operation,
     },
     ShiftPrimitiveOps {
@@ -94,13 +89,6 @@ pub enum Command {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TargetPrimitiveOp {
-    Selected,
-    Id(PrimitiveOpId),
-    Index(usize),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ValidationCommand {
     SelectedObject(),
 }
@@ -109,6 +97,15 @@ impl From<ValidationCommand> for Command {
     fn from(v_command: ValidationCommand) -> Self {
         Self::Validate(v_command)
     }
+}
+
+// ~~ Helper Types ~~
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TargetPrimitiveOp {
+    Selected,
+    Id(ObjectId, PrimitiveOpId),
+    Index(ObjectId, usize),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
