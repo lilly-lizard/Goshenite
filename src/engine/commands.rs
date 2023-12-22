@@ -94,6 +94,13 @@ pub enum Command {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TargetPrimitiveOp {
+    Selected,
+    Id(PrimitiveOpId),
+    Index(usize),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ValidationCommand {
     SelectedObject(),
 }
