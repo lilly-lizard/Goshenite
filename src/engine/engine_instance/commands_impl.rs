@@ -8,6 +8,7 @@ use crate::{
             primitive_op::{PrimitiveOp, PrimitiveOpId},
         },
         primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
+        save_states::{load_state_camera, save_state_camera},
     },
     helper::{list::choose_closest_valid_index, unique_id_gen::UniqueIdError},
     renderer::config_renderer::RenderOptions,
@@ -36,8 +37,8 @@ impl EngineInstance {
             }
 
             // ~~ Save states ~~
-            Command::SaveStateCamera => todo!(),
-            Command::LoadStateCamera => todo!(),
+            Command::SaveStateCamera => self.save_state_camera_via_command(command),
+            Command::LoadStateCamera => self.load_state_camera_via_command(command),
 
             // ~~ Camera ~~
             Command::SetCameraLockOnPos(target_pos) => {
@@ -179,7 +180,26 @@ impl EngineInstance {
 
     // ~~ Save states ~~
 
-    fn save_state_camera_via_command(&self) {}
+    fn save_state_camera_via_command(&self, command: Command) {
+        let save_state_res = save_state_camera(&self.camera);
+        if let Err(e) = save_state_res {
+            let failed_because = format!("error while saving camera state: {}", e);
+            command_failed_warn(command, &failed_because);
+        }
+    }
+
+    fn load_state_camera_via_command(&mut self, command: Command) {
+        let load_state_res = load_state_camera();
+        let new_camera = match load_state_res {
+            Ok(c) => c,
+            Err(e) => {
+                let failed_because = format!("error while loading camera state: {}", e);
+                command_failed_warn(command, &failed_because);
+                return;
+            }
+        };
+        self.camera = new_camera;
+    }
 
     // ~~ Camera ~~
 

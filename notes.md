@@ -4,10 +4,10 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
-- aabb debug outline option
 - blend function (primitive op)
 
-- quick save/load camera, objects etc (for debugging)
+- quick save/load camera, objects etc (for debugging!)
+- command palette (helpful for debugging new commands!)
 - undo (ctrl z)
 
 - compute dispatch
