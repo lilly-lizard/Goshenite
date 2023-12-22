@@ -30,7 +30,16 @@ impl EngineInstance {
 
     pub(super) fn execute_command(&mut self, command: Command) {
         match command {
-            // camera
+            // ~~ Renderer ~~
+            Command::SetRenderOptions(new_render_options) => {
+                self.set_render_options(new_render_options);
+            }
+
+            // ~~ Save states ~~
+            Command::SaveStateCamera => todo!(),
+            Command::LoadStateCamera => todo!(),
+
+            // ~~ Camera ~~
             Command::SetCameraLockOnPos(target_pos) => {
                 self.camera.set_lock_on_target_pos(target_pos)
             }
@@ -40,7 +49,7 @@ impl EngineInstance {
             Command::UnsetCameraLockOn => self.camera.unset_lock_on_target(),
             Command::ResetCamera => self.camera.reset(),
 
-            // object
+            // ~~ Object ~~
             Command::SelectObject(object_id) => {
                 self.select_object_via_command(object_id, command);
             }
@@ -58,7 +67,7 @@ impl EngineInstance {
                 ref new_name,
             } => self.set_object_name_via_command(object_id, new_name.clone(), command),
 
-            // primtive op - selection
+            // ~~ Primtive Op: Selection ~~
             Command::SelectPrimitiveOpId(object_id, primitive_op_id) => {
                 self.select_primitive_op_id_via_command(object_id, primitive_op_id, command)
             }
@@ -67,7 +76,7 @@ impl EngineInstance {
             }
             Command::DeselectPrimtiveOp() => self.deselect_primitive_op(),
 
-            // primitive op - remove
+            // ~~ Primitive Op: Remove ~~
             Command::RemoveSelectedPrimitiveOp() => {
                 self.remove_selected_primitive_op_via_command(command);
             }
@@ -78,7 +87,7 @@ impl EngineInstance {
                 self.remove_primitive_op_index_via_command(object_id, primitive_op_index, command);
             }
 
-            // primitive op - push
+            // ~~ Primitive Op: Push ~~
             Command::PushOp {
                 object_id,
                 operation,
@@ -94,7 +103,7 @@ impl EngineInstance {
                 object_id, operation, primitive, transform, command,
             ),
 
-            // primitive op - modify
+            // ~~ Primitive Op: Modify ~~
             Command::SetPrimitiveOp {
                 object_id,
                 primitive_op_id,
@@ -158,13 +167,19 @@ impl EngineInstance {
                 );
             }
 
-            Command::SetRenderOptions(new_render_options) => {
-                self.set_render_options(new_render_options);
-            }
-
             Command::Validate(v_command) => self.execute_validation_command(v_command),
         }
     }
+
+    // ~~ Renderer ~~
+
+    fn set_render_options(&mut self, new_render_options: RenderOptions) {
+        self.render_options = new_render_options;
+    }
+
+    // ~~ Save states ~~
+
+    fn save_state_camera_via_command(&self) {}
 
     // ~~ Camera ~~
 
@@ -258,7 +273,8 @@ impl EngineInstance {
                     this case is not yet handled by goshenite!\
                     please report this as a bug..."
                 );
-                error!("command {:?} critially failed with error {}", command, e);
+                error!("command {:?} critially failed with error {}", command, e)
+                todo!()
                 return;
             }
         };
@@ -726,12 +742,6 @@ impl EngineInstance {
             .mark_object_for_data_update(object_id);
     }
 
-    // ~~ Renderer ~~
-
-    fn set_render_options(&mut self, new_render_options: RenderOptions) {
-        self.render_options = new_render_options;
-    }
-
     // ~~ Internal ~~
 
     fn execute_validation_command(&mut self, v_command: ValidationCommand) {
@@ -755,5 +765,9 @@ impl EngineInstance {
 }
 
 fn command_failed_warn(command: Command, failed_because: &str) {
+    warn!("command {:?} failed due to {}", command, failed_because);
+}
+
+fn command_failed_error(command: Command, failed_because: &str) {
     warn!("command {:?} failed due to {}", command, failed_because);
 }

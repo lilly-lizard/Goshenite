@@ -43,7 +43,6 @@ use winit::{
 // engine_instance sub-modules (files in engine_instance directory)
 mod commands_impl;
 
-/// Goshenite engine logic
 pub struct EngineInstance {
     window: Arc<Window>,
 
@@ -272,7 +271,7 @@ impl EngineInstance {
             .update_camera(self.camera.clone());
         check_channel_updater_result(thread_send_res)?;
 
-        // update object buffers todo better objects delta
+        // update object buffers
         let objects_delta = self.object_collection.get_and_clear_objects_delta();
         if !objects_delta.is_empty() {
             let thread_send_res = self.render_thread_channels.update_objects(objects_delta);
@@ -386,6 +385,14 @@ impl EngineInstance {
         }
     }
 
+    fn background_clicked(&mut self) {
+        self.deselect_primitive_op();
+    }
+
+    fn object_clicked(&mut self, object_id: ObjectId, primitive_op_index: usize) {
+        self.select_object_and_primitive_op_index(object_id, primitive_op_index)
+    }
+
     fn stop_render_thread(&self) {
         debug!("sending quit command to render thread...");
         let _render_thread_send_res = self
@@ -412,18 +419,6 @@ impl EngineInstance {
                 break;
             }
         }
-    }
-}
-
-// ~~ Misc UI Logic ~~
-
-impl EngineInstance {
-    fn background_clicked(&mut self) {
-        self.deselect_primitive_op();
-    }
-
-    fn object_clicked(&mut self, object_id: ObjectId, primitive_op_index: usize) {
-        self.select_object_and_primitive_op_index(object_id, primitive_op_index)
     }
 }
 

@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 // this is because the shaders store the primitive op index in the lower 16 bits of a u32
 const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
 
-// OBJECT ID
+// ~~ Object Id ~~
 
 #[derive(
     Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Deserialize, Serialize,
@@ -51,7 +51,7 @@ impl std::fmt::Display for ObjectId {
     }
 }
 
-// OBJECT
+// ~~ Object ~~
 
 #[derive(Debug)]
 pub struct Object {

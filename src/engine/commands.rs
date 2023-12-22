@@ -8,13 +8,20 @@ use glam::{DVec3, Vec3};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
-    // camera
+    // ~~ Renderer ~~
+    SetRenderOptions(RenderOptions),
+
+    // ~~ Save states ~~
+    SaveStateCamera,
+    LoadStateCamera,
+
+    // ~~ Camera ~~
     SetCameraLockOnPos(DVec3),
     SetCameraLockOnObject(ObjectId),
     UnsetCameraLockOn,
     ResetCamera,
 
-    // object
+    // ~~ Object ~~
     SelectObject(ObjectId),
     DeselectObject(),
     RemoveObject(ObjectId),
@@ -29,17 +36,17 @@ pub enum Command {
         new_name: String,
     },
 
-    // primtive op - selection
+    // ~~ Primtive Op: Selection ~~
     SelectPrimitiveOpId(ObjectId, PrimitiveOpId),
     SelectPrimitiveOpIndex(ObjectId, usize),
     DeselectPrimtiveOp(),
 
-    // primitive op - remove
+    // ~~ Primitive Op: Remove ~~
     RemoveSelectedPrimitiveOp(),
     RemovePrimitiveOpId(ObjectId, PrimitiveOpId),
     RemovePrimitiveOpIndex(ObjectId, usize),
 
-    // primitive op - push
+    // ~~ Primitive Op: Push ~~
     PushOp {
         object_id: ObjectId,
         operation: Operation,
@@ -53,7 +60,7 @@ pub enum Command {
         transform: PrimitiveTransform,
     },
 
-    // primitive op - modify
+    // ~~ Primitive Op: Modify ~~
     SetPrimitiveOp {
         object_id: ObjectId,
         primitive_op_id: PrimitiveOpId,
@@ -82,10 +89,7 @@ pub enum Command {
         target_index: usize,
     },
 
-    // renderer
-    SetRenderOptions(RenderOptions),
-
-    // internal
+    // ~~ Internal ~~
     Validate(ValidationCommand),
 }
 
