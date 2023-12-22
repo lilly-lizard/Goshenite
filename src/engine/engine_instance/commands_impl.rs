@@ -9,7 +9,7 @@ use crate::{
         },
         primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
     },
-    helper::list::choose_closest_valid_index,
+    helper::{list::choose_closest_valid_index, unique_id_gen::UniqueIdError},
     renderer::config_renderer::RenderOptions,
     user_interface::gui::Gui,
 };
@@ -268,14 +268,7 @@ impl EngineInstance {
         let (new_object_id, new_object) = match new_object_res {
             Ok(object_and_id) => object_and_id,
             Err(e) => {
-                let failed_because = format!(
-                    "The engine has run out of unique ids to assign to new objects.\
-                    This case is not yet handled by goshenite!\
-                    Please report this as a bug...\n
-                    Returned error: {}",
-                    e
-                );
-                command_failed_error(command, &failed_because);
+                command_failed_unique_id_error(e, command);
                 return;
             }
         };
@@ -671,8 +664,7 @@ impl EngineInstance {
 
         let new_primitive_op_id = match push_op_res {
             Err(e) => {
-                let error_msg = e.to_string();
-                command_failed_warn(command, &error_msg);
+                command_failed_unique_id_error(e, command);
                 return None;
             }
             Ok(id) => id,
@@ -765,6 +757,8 @@ impl EngineInstance {
     }
 }
 
+// ~~ Failed Command Handling ~~
+
 fn command_failed_warn(command: Command, failed_because: &str) {
     warn!("command {:?} failed due to: {}", command, failed_because);
 }
@@ -774,4 +768,15 @@ fn command_failed_error(command: Command, failed_because: &str) {
         "command {:?} critically failed due to: {}",
         command, failed_because
     );
+}
+
+fn command_failed_unique_id_error(e: UniqueIdError, command: Command) {
+    let failed_because = format!(
+        "The engine has run out of unique ids to assign to new objects.\
+        This case is not yet handled by goshenite!\
+        Please report this as a bug...\n
+        Returned error: {}",
+        e
+    );
+    command_failed_error(command, &failed_because);
 }
