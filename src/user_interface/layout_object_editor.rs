@@ -211,10 +211,8 @@ fn existing_primitive_op_editor(
 
     let delete_clicked = ui.button("Delete").clicked();
     if delete_clicked {
-        commands.push(Command::RemovePrimitiveOpId(
-            selected_object.id(),
-            selected_prim_op_id,
-        ));
+        let target_primitive_op = TargetPrimitiveOp::Id(selected_object_id, selected_prim_op_id);
+        commands.push(Command::RemovePrimitiveOp(target_primitive_op));
         return;
     }
 

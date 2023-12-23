@@ -1,5 +1,5 @@
 use super::{
-    commands::CommandWithSource,
+    commands::{CommandWithSource, TargetPrimitiveOp},
     config_engine,
     object::{
         object::ObjectId, object_collection::ObjectCollection, operation::Operation,
@@ -390,7 +390,8 @@ impl EngineInstance {
     }
 
     fn object_clicked(&mut self, object_id: ObjectId, primitive_op_index: usize) {
-        self.select_primitive_op_index_and_object(object_id, primitive_op_index, None)
+        let target_primitive_op = TargetPrimitiveOp::Index(object_id, primitive_op_index);
+        self.select_primitive_op_and_object(target_primitive_op, None)
     }
 
     fn stop_render_thread(&self) {
