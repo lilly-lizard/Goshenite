@@ -195,7 +195,7 @@ impl Object {
             })
     }
 
-    pub fn set_primitive_op(
+    pub fn set_primitive_op_id(
         &mut self,
         primitive_op_id: PrimitiveOpId,
         new_primitive: Option<Primitive>,
@@ -204,26 +204,60 @@ impl Object {
     ) -> Result<(), CollectionError> {
         let primitive_op_search_res = self.get_primitive_op_mut(primitive_op_id);
 
-        let primitive_op_ref = match primitive_op_search_res {
-            Some(p) => p,
-            None => {
-                return Err(CollectionError::InvalidId {
-                    raw_id: primitive_op_id.raw_id(),
-                })
-            }
+        let Some(primitive_op_ref) = primitive_op_search_res else {
+            return Err(CollectionError::InvalidId {
+                raw_id: primitive_op_id.raw_id(),
+            });
         };
 
-        if let Some(some_new_primitive) = new_primitive {
-            primitive_op_ref.primitive = some_new_primitive;
-        }
-        if let Some(some_new_transform) = new_transform {
-            primitive_op_ref.primitive_transform = some_new_transform;
-        }
-        if let Some(some_new_operation) = new_operation {
-            primitive_op_ref.op = some_new_operation;
-        }
-        return Ok(());
+        set_primitive_op_internal(
+            primitive_op_ref,
+            new_primitive,
+            new_transform,
+            new_operation,
+        )
     }
+
+    pub fn set_primitive_op_index(
+        &mut self,
+        primitive_op_index: usize,
+        new_primitive: Option<Primitive>,
+        new_transform: Option<PrimitiveTransform>,
+        new_operation: Option<Operation>,
+    ) -> Result<(), CollectionError> {
+        let primitive_op_search_res = self.primitive_ops.get_mut(primitive_op_index);
+        let Some(primitive_op_ref) = primitive_op_search_res else {
+            return Err(CollectionError::OutOfBounds {
+                index: primitive_op_index,
+                size: self.primitive_ops.len(),
+            });
+        };
+
+        set_primitive_op_internal(
+            primitive_op_ref,
+            new_primitive,
+            new_transform,
+            new_operation,
+        )
+    }
+}
+
+fn set_primitive_op_internal(
+    primitive_op_ref: &mut PrimitiveOp,
+    new_primitive: Option<Primitive>,
+    new_transform: Option<PrimitiveTransform>,
+    new_operation: Option<Operation>,
+) -> Result<(), CollectionError> {
+    if let Some(some_new_primitive) = new_primitive {
+        primitive_op_ref.primitive = some_new_primitive;
+    }
+    if let Some(some_new_transform) = new_transform {
+        primitive_op_ref.primitive_transform = some_new_transform;
+    }
+    if let Some(some_new_operation) = new_operation {
+        primitive_op_ref.op = some_new_operation;
+    }
+    return Ok(());
 }
 
 // ~~ Object Snapshot ~~

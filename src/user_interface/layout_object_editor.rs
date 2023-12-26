@@ -219,9 +219,10 @@ fn existing_primitive_op_editor(
     match primitive_op_edit_state {
         EditState::Modified => {
             // update the primitive op data with what we've been using
+            let target_primitive_op =
+                TargetPrimitiveOp::Id(selected_object_id, selected_prim_op_id);
             commands.push(Command::SetPrimitiveOp {
-                object_id: selected_object.id(),
-                primitive_op_id: selected_prim_op_id,
+                target_primitive_op,
                 new_primitive: gui_state.primitive_edit_state,
                 new_transform: gui_state.transform_edit_state,
                 new_operation: gui_state.op_edit_state,

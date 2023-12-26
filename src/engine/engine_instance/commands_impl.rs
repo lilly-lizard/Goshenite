@@ -99,54 +99,46 @@ impl EngineInstance {
 
             // ~~ Primitive Op: Modify ~~
             Command::SetPrimitiveOp {
-                object_id,
-                primitive_op_id,
+                target_primitive_op,
                 new_primitive,
                 new_transform,
                 new_operation,
-            } => self.set_primitive_op_via_command(
-                object_id,
-                primitive_op_id,
+            } => self.set_primitive_op(
+                target_primitive_op,
                 Some(new_primitive),
                 Some(new_transform),
                 Some(new_operation),
-                command,
+                Some(command),
             ),
             Command::SetPrimitive {
-                object_id,
-                primitive_op_id,
+                target_primitive_op,
                 new_primitive,
-            } => self.set_primitive_op_via_command(
-                object_id,
-                primitive_op_id,
+            } => self.set_primitive_op(
+                target_primitive_op,
                 Some(new_primitive),
                 None,
                 None,
-                command,
+                Some(command),
             ),
             Command::SetPrimitiveTransform {
-                object_id,
-                primitive_op_id,
+                target_primitive_op,
                 new_transform,
-            } => self.set_primitive_op_via_command(
-                object_id,
-                primitive_op_id,
+            } => self.set_primitive_op(
+                target_primitive_op,
                 None,
                 Some(new_transform),
                 None,
-                command,
+                Some(command),
             ),
             Command::SetOperation {
-                object_id,
-                primitive_op_id,
+                target_primitive_op,
                 new_operation,
-            } => self.set_primitive_op_via_command(
-                object_id,
-                primitive_op_id,
+            } => self.set_primitive_op(
+                target_primitive_op,
                 None,
                 None,
                 Some(new_operation),
-                command,
+                Some(command),
             ),
             Command::ShiftPrimitiveOps {
                 object_id,
@@ -429,16 +421,10 @@ impl EngineInstance {
         target_primitive_op: TargetPrimitiveOp,
         source_command: Option<Command>,
     ) {
-        let object_id = match target_primitive_op {
-            TargetPrimitiveOp::Id(object_id, _) => object_id,
-            TargetPrimitiveOp::Index(object_id, _) => object_id,
-            TargetPrimitiveOp::Selected => match self.selected_object_id {
-                Some(object_id) => object_id,
-                None => {
-                    failure_warn_no_selected_object(source_command);
-                    return;
-                }
-            },
+        let Some(object_id) =
+            self.object_id_from_target_primitive_op(target_primitive_op, source_command.clone())
+        else {
+            return;
         };
 
         let Some(object) = self.object_collection.get_object_mut(object_id) else {
@@ -480,6 +466,7 @@ impl EngineInstance {
                             primitive_op_id,
                             source_command,
                         );
+                        self.selected_primitive_op_id = None;
                         return;
                     };
                     (primitive_op_id, removed_index)
@@ -603,31 +590,81 @@ impl EngineInstance {
 
     // ~~ Primitive Op: Modify ~~
 
-    fn set_primitive_op_via_command(
+    fn set_primitive_op(
         &mut self,
-        object_id: ObjectId,
-        primitive_op_id: PrimitiveOpId,
+        target_primitive_op: TargetPrimitiveOp,
         new_primitive: Option<Primitive>,
         new_transform: Option<PrimitiveTransform>,
         new_operation: Option<Operation>,
-        command: Command,
+        source_command: Option<Command>,
     ) {
-        let object_get_res = self.object_collection.get_object_mut(object_id);
-        let object = match object_get_res {
-            Some(object) => object,
-            None => {
-                command_failed_warn(command, "invalid object id");
-                return;
-            }
+        let Some(object_id) =
+            self.object_id_from_target_primitive_op(target_primitive_op, source_command.clone())
+        else {
+            return;
         };
 
-        let set_primitive_op_res =
-            object.set_primitive_op(primitive_op_id, new_primitive, new_transform, new_operation);
-
-        if let Err(e) = set_primitive_op_res {
-            let error_msg = e.to_string();
-            command_failed_warn(command, &error_msg);
+        let Some(object) = self.object_collection.get_object_mut(object_id) else {
+            failure_warn_invalid_object_id(object_id, source_command);
             return;
+        };
+
+        match target_primitive_op {
+            TargetPrimitiveOp::Id(_, primitive_op_id) => {
+                let res = object.set_primitive_op_id(
+                    primitive_op_id,
+                    new_primitive,
+                    new_transform,
+                    new_operation,
+                );
+                if let Err(_) = res {
+                    failure_warn_invalid_primitive_op_id(
+                        object_id,
+                        primitive_op_id,
+                        source_command,
+                    );
+                    return;
+                }
+            }
+            TargetPrimitiveOp::Index(_, primitive_op_index) => {
+                let res = object.set_primitive_op_index(
+                    primitive_op_index,
+                    new_primitive,
+                    new_transform,
+                    new_operation,
+                );
+                if let Err(_) = res {
+                    failure_warn_invalid_primitive_op_index(
+                        object_id,
+                        primitive_op_index,
+                        source_command,
+                    );
+                    return;
+                }
+            }
+            TargetPrimitiveOp::Selected => match self.selected_primitive_op_id {
+                Some(primitive_op_id) => {
+                    let res = object.set_primitive_op_id(
+                        primitive_op_id,
+                        new_primitive,
+                        new_transform,
+                        new_operation,
+                    );
+                    if let Err(_) = res {
+                        failure_warn_invalid_primitive_op_id(
+                            object_id,
+                            primitive_op_id,
+                            source_command,
+                        );
+                        self.selected_primitive_op_id = None;
+                        return;
+                    }
+                }
+                None => {
+                    failure_warn_no_selected_primitive_op(source_command);
+                    return;
+                }
+            },
         }
 
         let _ = self
@@ -682,7 +719,26 @@ impl EngineInstance {
         }
     }
 
-    // ~~ Helper Functions ~~
+    // ~~ Misc Helper Functions ~~
+
+    fn object_id_from_target_primitive_op(
+        &mut self,
+        target_primitive_op: TargetPrimitiveOp,
+        source_command: Option<Command>,
+    ) -> Option<ObjectId> {
+        let object_id = match target_primitive_op {
+            TargetPrimitiveOp::Id(object_id, _) => object_id,
+            TargetPrimitiveOp::Index(object_id, _) => object_id,
+            TargetPrimitiveOp::Selected => match self.selected_object_id {
+                Some(object_id) => object_id,
+                None => {
+                    failure_warn_no_selected_object(source_command);
+                    return None;
+                }
+            },
+        };
+        Some(object_id)
+    }
 }
 
 // ~~ Failed Command Handling ~~
