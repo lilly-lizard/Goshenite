@@ -83,27 +83,9 @@ https://www.marshallplan.at/images/All-Papers/MP-2017/Mroz+Michael_746.pdf
 
 - flip to other side of focused object
 
-# previous refactors:
-
-1. objects refactor
-	1. object struct - DONE
-	2. shaders - DONE
-	3. buffer/renderer code
-		1. single object - DONE
-		2. multiple objects - DONE
-	4. gui/engine
-		1. gui
-			- object list - DONE
-			- edit primitives - DONE
-			- add/remove objects/primitives - DONE
-		2. overlay pass
-2. organise shaders directory structure and content
-	- would be nice to structure as per how I conceptualize the code i.e. - DONE
-		1. user interface -> intuitive, fast and clear feedback. ux/gui - DONE
-		2. backend -> optimized. rendering code - DONE
-		3. engine -> abstraction. connecting glue between user interface and backend - DONE
-	- clearly defined design goals for each section of the code - DONE
-3. raster bounding boxes (hard-coded AABB for now) - DONE
+slotmap
+specs: ECS
+rayon: parallelize iterators etc
 
 # Code Guidelines
 

@@ -1,7 +1,16 @@
-use super::gui_state::WindowStates;
+use super::Gui;
+use crate::user_interface::gui_state::SubWindowStates;
 use egui::Ui;
 
-pub fn bottom_panel_layout(ui: &mut Ui, window_states: &mut WindowStates) {
+impl Gui {
+    pub(super) fn draw_bottom_panel(&mut self) {
+        egui::TopBottomPanel::bottom("main top panel").show(&self.context, |ui| {
+            bottom_panel_layout(ui, &mut self.sub_window_states);
+        });
+    }
+}
+
+fn bottom_panel_layout(ui: &mut Ui, window_states: &mut SubWindowStates) {
     ui.horizontal_wrapped(|ui| {
         ui.visuals_mut().button_frame = false; // idk what this does tbh
 

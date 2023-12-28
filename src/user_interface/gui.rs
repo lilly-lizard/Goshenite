@@ -1,11 +1,6 @@
 use super::{
     camera::Camera,
-    gui_state::{GuiState, WindowStates},
-    layout_camera_control::layout_camera_control,
-    layout_debug_options::layout_debug_options,
-    layout_object_editor::layout_object_editor,
-    layout_object_list::layout_object_list,
-    layout_panel::bottom_panel_layout,
+    gui_state::{GuiState, SubWindowStates},
 };
 use crate::{
     engine::{
@@ -23,6 +18,14 @@ use egui_winit::EventResponse;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use winit::{event_loop::EventLoopWindowTarget, window::Window};
+
+// various gui sections
+mod layout_camera_control;
+mod layout_command_palette;
+mod layout_debug_options;
+mod layout_object_editor;
+mod layout_object_list;
+mod layout_panel;
 
 /// Describes how something has been edited/added/removed by a function
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -42,7 +45,7 @@ pub struct Gui {
     context: egui::Context,
     winit_state: egui_winit::State,
     mesh_primitives: Vec<egui::ClippedPrimitive>,
-    window_states: WindowStates,
+    sub_window_states: SubWindowStates,
     gui_state: GuiState,
     textures_delta_accumulation: Vec<TexturesDelta>,
 }
@@ -70,7 +73,7 @@ impl Gui {
             context,
             winit_state,
             mesh_primitives: Default::default(),
-            window_states: Default::default(),
+            sub_window_states: Default::default(),
             gui_state: Default::default(),
             textures_delta_accumulation: Default::default(),
         }
@@ -127,25 +130,36 @@ impl Gui {
         self.context.begin_frame(raw_input);
 
         // draw
-        self.top_panel();
-        if self.window_states.object_list {
-            let mut new_commands = self.window_object_list(object_collection, selected_object_id);
+
+        self.draw_bottom_panel();
+
+        if self.sub_window_states.object_list {
+            let mut new_commands =
+                self.draw_object_list_window(object_collection, selected_object_id);
             commands.append(&mut new_commands);
         }
-        if self.window_states.object_editor {
-            let mut new_commands = self.window_object_editor(
+
+        if self.sub_window_states.object_editor {
+            let mut new_commands = self.draw_object_editor_window(
                 object_collection,
                 selected_object_id,
                 selected_primitive_op_id,
             );
             commands.append(&mut new_commands);
         }
-        if self.window_states.camera_control {
-            let mut new_commands = self.window_camera_control(camera);
+
+        if self.sub_window_states.camera_control {
+            let mut new_commands = self.draw_camera_control_window(camera);
             commands.append(&mut new_commands);
         }
-        if self.window_states.debug_options {
-            let mut new_commands = self.window_debug_options(render_options);
+
+        if self.sub_window_states.command_palette {
+            let mut new_commands = self.draw_command_palette(window);
+            commands.append(&mut new_commands);
+        }
+
+        if self.sub_window_states.debug_options {
+            let mut new_commands = self.draw_debug_options_window(render_options);
             commands.append(&mut new_commands);
         }
 
@@ -193,97 +207,8 @@ impl Gui {
     pub fn set_theme_egui(&self, theme: egui::Visuals) {
         self.context.set_visuals(theme);
     }
-}
 
-// Private functions
-
-impl Gui {
-    fn top_panel(&mut self) {
-        egui::TopBottomPanel::bottom("main top panel").show(&self.context, |ui| {
-            bottom_panel_layout(ui, &mut self.window_states);
-        });
-    }
-
-    fn window_object_list(
-        &mut self,
-        object_collection: &ObjectCollection,
-        selected_object_id: Option<ObjectId>,
-    ) -> Vec<Command> {
-        let mut commands = Vec::<Command>::new();
-
-        let add_contents = |ui: &mut egui::Ui| {
-            commands = layout_object_list(ui, selected_object_id, object_collection);
-        };
-
-        egui::Window::new("Objects")
-            .open(&mut self.window_states.object_list)
-            .resizable(true)
-            .vscroll(true)
-            .hscroll(true)
-            .show(&self.context, add_contents);
-
-        commands
-    }
-
-    fn window_object_editor(
-        &mut self,
-        object_collection: &ObjectCollection,
-        selected_object_id: Option<ObjectId>,
-        selected_primitive_op_id: Option<PrimitiveOpId>,
-    ) -> Vec<Command> {
-        let mut commands = Vec::<Command>::new();
-
-        let add_contents = |ui: &mut egui::Ui| {
-            commands = layout_object_editor(
-                ui,
-                &mut self.gui_state,
-                object_collection,
-                selected_object_id,
-                selected_primitive_op_id,
-            );
-        };
-
-        egui::Window::new("Object Editor")
-            .open(&mut self.window_states.object_editor)
-            .resizable(true)
-            .vscroll(true)
-            .hscroll(true)
-            .show(&self.context, add_contents);
-
-        commands
-    }
-
-    fn window_camera_control(&mut self, camera: Camera) -> Vec<Command> {
-        let mut commands = Vec::<Command>::new();
-
-        let add_contents = |ui: &mut egui::Ui| {
-            commands = layout_camera_control(ui, camera);
-        };
-
-        egui::Window::new("Camera")
-            .open(&mut self.window_states.camera_control)
-            .resizable(true)
-            .vscroll(true)
-            .hscroll(true)
-            .show(&self.context, add_contents);
-
-        commands
-    }
-
-    fn window_debug_options(&mut self, render_options: RenderOptions) -> Vec<Command> {
-        let mut commands = Vec::<Command>::new();
-
-        let add_contents = |ui: &mut egui::Ui| {
-            commands = layout_debug_options(ui, render_options);
-        };
-
-        egui::Window::new("Debug Options")
-            .open(&mut self.window_states.debug_options)
-            .resizable(true)
-            .vscroll(true)
-            .hscroll(true)
-            .show(&self.context, add_contents);
-
-        commands
+    pub fn set_command_palette_visability(&mut self, is_open: bool) {
+        self.sub_window_states.command_palette = is_open;
     }
 }

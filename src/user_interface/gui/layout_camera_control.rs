@@ -1,8 +1,28 @@
-use super::camera::{Camera, LookMode};
-use crate::engine::commands::Command;
-use egui::Ui;
+use super::Gui;
+use crate::{
+    engine::commands::Command,
+    user_interface::camera::{Camera, LookMode},
+};
 
-pub fn layout_camera_control(ui: &mut Ui, camera: Camera) -> Vec<Command> {
+impl Gui {
+    pub(super) fn draw_camera_control_window(&mut self, camera: Camera) -> Vec<Command> {
+        let mut commands = Vec::<Command>::new();
+
+        let add_contents = |ui: &mut egui::Ui| {
+            commands = layout_camera_control(ui, camera);
+        };
+        egui::Window::new("Camera")
+            .open(&mut self.sub_window_states.camera_control)
+            .resizable(true)
+            .vscroll(true)
+            .hscroll(true)
+            .show(&self.context, add_contents);
+
+        commands
+    }
+}
+
+fn layout_camera_control(ui: &mut egui::Ui, camera: Camera) -> Vec<Command> {
     let mut commands = Vec::<Command>::new();
 
     // reset button
@@ -21,7 +41,7 @@ pub fn layout_camera_control(ui: &mut Ui, camera: Camera) -> Vec<Command> {
             LookMode::TargetObject { .. } => true,
         };
 
-        let unset_res = ui.add_enabled(target_mode_on, |ui_inner: &mut Ui| {
+        let unset_res = ui.add_enabled(target_mode_on, |ui_inner: &mut egui::Ui| {
             ui_inner.button("Unset lock-on taget")
         });
 

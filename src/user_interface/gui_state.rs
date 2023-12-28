@@ -6,18 +6,20 @@ use egui_dnd::DragDropUi;
 
 /// Wherver or not different windows are open
 #[derive(Clone)]
-pub struct WindowStates {
+pub struct SubWindowStates {
     pub object_list: bool,
     pub object_editor: bool,
     pub camera_control: bool,
+    pub command_palette: bool,
     pub debug_options: bool,
 }
-impl Default for WindowStates {
+impl Default for SubWindowStates {
     fn default() -> Self {
         Self {
             object_list: true,
             object_editor: true,
             camera_control: false,
+            command_palette: false,
             debug_options: false,
         }
     }

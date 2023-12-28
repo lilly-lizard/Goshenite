@@ -1,22 +1,25 @@
-use super::{
-    config_ui,
-    editable_fields::{
-        cube_editor_ui, op_drop_down, primitive_transform_editor_ui, sphere_editor_ui,
-        uber_primitive_editor_ui,
+use super::Gui;
+use crate::{
+    engine::{
+        commands::{Command, TargetPrimitiveOp, ValidationCommand},
+        object::{
+            object::{Object, ObjectId},
+            object_collection::ObjectCollection,
+            primitive_op::{PrimitiveOp, PrimitiveOpId},
+        },
+        primitives::{
+            primitive::{EncodablePrimitive, Primitive},
+            primitive_transform::PrimitiveTransform,
+        },
     },
-    gui::EditState,
-    gui_state::{GuiState, DRAG_INC},
-};
-use crate::engine::{
-    commands::{Command, TargetPrimitiveOp, ValidationCommand},
-    object::{
-        object::{Object, ObjectId},
-        object_collection::ObjectCollection,
-        primitive_op::{PrimitiveOp, PrimitiveOpId},
-    },
-    primitives::{
-        primitive::{EncodablePrimitive, Primitive},
-        primitive_transform::PrimitiveTransform,
+    user_interface::{
+        config_ui,
+        editable_fields::{
+            cube_editor_ui, op_drop_down, primitive_transform_editor_ui, sphere_editor_ui,
+            uber_primitive_editor_ui,
+        },
+        gui::EditState,
+        gui_state::{GuiState, DRAG_INC},
     },
 };
 use egui::{ComboBox, DragValue, RichText, TextStyle};
@@ -25,7 +28,36 @@ use egui_dnd::DragDropResponse;
 use log::{debug, error, info, trace, warn};
 use std::mem::discriminant;
 
-pub fn layout_object_editor(
+impl Gui {
+    pub(super) fn draw_object_editor_window(
+        &mut self,
+        object_collection: &ObjectCollection,
+        selected_object_id: Option<ObjectId>,
+        selected_primitive_op_id: Option<PrimitiveOpId>,
+    ) -> Vec<Command> {
+        let mut commands = Vec::<Command>::new();
+
+        let add_contents = |ui: &mut egui::Ui| {
+            commands = layout_object_editor(
+                ui,
+                &mut self.gui_state,
+                object_collection,
+                selected_object_id,
+                selected_primitive_op_id,
+            );
+        };
+        egui::Window::new("Object Editor")
+            .open(&mut self.sub_window_states.object_editor)
+            .resizable(true)
+            .vscroll(true)
+            .hscroll(true)
+            .show(&self.context, add_contents);
+
+        commands
+    }
+}
+
+fn layout_object_editor(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
     object_collection: &ObjectCollection,

@@ -35,7 +35,7 @@ use std::{
     time::Instant,
 };
 use winit::{
-    event::{Event, StartCause, WindowEvent},
+    event::{ElementState, Event, KeyboardInput, StartCause, VirtualKeyCode, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
@@ -213,6 +213,9 @@ impl EngineInstance {
             // cursor left window
             WindowEvent::CursorLeft { .. } => self.cursor.set_in_window_state(false),
 
+            // keyboard
+            WindowEvent::KeyboardInput { input, .. } => self.process_keyboard_input(input),
+
             // window resize
             WindowEvent::Resized(new_inner_size) => {
                 self.update_window_inner_size(new_inner_size)?;
@@ -311,6 +314,26 @@ impl EngineInstance {
         self.main_thread_frame_number += 1;
 
         Ok(())
+    }
+
+    fn process_keyboard_input(&mut self, keyboard_input: KeyboardInput) {
+        let Some(key_code) = keyboard_input.virtual_keycode else {
+            return;
+        };
+
+        match key_code {
+            VirtualKeyCode::P => {
+                if let ElementState::Released = keyboard_input.state {
+                    self.gui.set_command_palette_visability(true);
+                }
+            }
+            VirtualKeyCode::Escape => {
+                if let ElementState::Released = keyboard_input.state {
+                    self.gui.set_command_palette_visability(false);
+                }
+            }
+            _ => (),
+        }
     }
 
     fn update_window_inner_size(

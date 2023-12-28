@@ -57,10 +57,6 @@ ash-molten = { version = "0.16", features = [
     "pre-built", # download pre-built release
 ] }
 
-# slotmap
-# specs: ECS
-# rayon: parallelize iterators etc
-
 [build-dependencies]
 # used to compile spirv binaries
 # NOTE: if you have shaderc libraries installed on your system, this crate will detect and use them. otherwise shaderc will be compiled.
