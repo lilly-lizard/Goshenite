@@ -498,8 +498,8 @@ fn create_default_cube_object(object_collection: &mut ObjectCollection) {
         .new_object("Cube", Vec3::ZERO)
         .expect("just made this");
     let cube = Cube::new(Vec3::splat(1.));
-    let _ = object.push_op(Operation::Union, cube.into(), PrimitiveTransform::default());
-    let _ = object_collection.mark_object_for_data_update(object_id);
+    _ = object.push_op(Operation::Union, cube.into(), PrimitiveTransform::default());
+    _ = object_collection.mark_object_for_data_update(object_id);
 }
 
 fn object_testing(object_collection: &mut ObjectCollection) {
@@ -512,30 +512,30 @@ fn object_testing(object_collection: &mut ObjectCollection) {
     let (object_id, object) = object_collection
         .new_object("Bruh", Vec3::new(-0.2, 0.2, 0.))
         .expect("no where near maxing out unique ids");
-    let _ = object.push_op(
+    _ = object.push_op(
         Operation::Union,
         Primitive::Cube(cube),
         PrimitiveTransform::new(Vec3::new(-0.2, 0.2, 0.), Quat::IDENTITY),
     );
-    let _ = object.push_op(
+    _ = object.push_op(
         Operation::Union,
         Primitive::Sphere(sphere.clone()),
         PrimitiveTransform::new(Vec3::new(0., 0., 0.), Quat::IDENTITY),
     );
-    let _ = object.push_op(
+    _ = object.push_op(
         Operation::Intersection,
         Primitive::Sphere(another_sphere),
         PrimitiveTransform::new(Vec3::new(0.2, -0.2, 0.), Quat::IDENTITY),
     );
-    let _ = object_collection.mark_object_for_data_update(object_id);
+    _ = object_collection.mark_object_for_data_update(object_id);
 
     let (another_object_id, another_object) = object_collection
         .new_object("Another Bruh", Vec3::new(0.2, -0.2, 0.))
         .expect("no where near maxing out unique ids");
-    let _ = another_object.push_op(
+    _ = another_object.push_op(
         Operation::Union,
         Primitive::Sphere(sphere),
         PrimitiveTransform::DEFAULT,
     );
-    let _ = object_collection.mark_object_for_data_update(another_object_id);
+    _ = object_collection.mark_object_for_data_update(another_object_id);
 }

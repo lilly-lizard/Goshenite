@@ -282,7 +282,7 @@ impl EngineInstance {
         let new_object_origin = new_object.origin;
         self.select_object_unchecked(new_object_id, new_object_origin);
 
-        let _ = self
+        _ = self
             .object_collection
             .mark_object_for_data_update(new_object_id);
     }
@@ -299,7 +299,7 @@ impl EngineInstance {
         };
 
         object.origin = origin;
-        let _ = self
+        _ = self
             .object_collection
             .mark_object_for_data_update(object_id);
     }
@@ -488,7 +488,7 @@ impl EngineInstance {
             object,
         );
 
-        let _ = self
+        _ = self
             .object_collection
             .mark_object_for_data_update(object_id);
     }
@@ -581,7 +581,7 @@ impl EngineInstance {
             Ok(id) => id,
         };
 
-        let _ = self
+        _ = self
             .object_collection
             .mark_object_for_data_update(object_id);
 
@@ -667,7 +667,7 @@ impl EngineInstance {
             },
         }
 
-        let _ = self
+        _ = self
             .object_collection
             .mark_object_for_data_update(object_id);
     }
@@ -693,7 +693,7 @@ impl EngineInstance {
             command_failed_warn(command, &error_msg);
         }
 
-        let _ = self
+        _ = self
             .object_collection
             .mark_object_for_data_update(object_id);
     }

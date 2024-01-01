@@ -84,7 +84,7 @@ impl Object {
             .iter()
             .position(|primitive_op| primitive_op.id() == primitive_op_id);
 
-        let _ = self.primitive_op_id_gen.recycle_id(primitive_op_id);
+        _ = self.primitive_op_id_gen.recycle_id(primitive_op_id);
 
         if let Some(index) = index_res {
             self.primitive_ops.remove(index);
@@ -110,7 +110,7 @@ impl Object {
 
         let removed_prim_op = self.primitive_ops.remove(index);
 
-        let _ = self.primitive_op_id_gen.recycle_id(removed_prim_op.id());
+        _ = self.primitive_op_id_gen.recycle_id(removed_prim_op.id());
         Ok(removed_prim_op.id())
     }
 

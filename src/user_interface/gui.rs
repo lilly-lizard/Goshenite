@@ -1,3 +1,5 @@
+use self::command_palette::GuiStateCommandPalette;
+
 use super::{
     camera::Camera,
     gui_state::{GuiState, SubWindowStates},
@@ -20,12 +22,12 @@ use log::{debug, error, info, trace, warn};
 use winit::{event_loop::EventLoopWindowTarget, window::Window};
 
 // various gui sections
-mod layout_camera_control;
-mod layout_command_palette;
-mod layout_debug_options;
-mod layout_object_editor;
-mod layout_object_list;
-mod layout_panel;
+mod bottom_panel;
+mod camera_control;
+mod command_palette;
+mod debug_options;
+mod object_editor;
+mod object_list;
 
 /// Describes how something has been edited/added/removed by a function
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -47,6 +49,7 @@ pub struct Gui {
     mesh_primitives: Vec<egui::ClippedPrimitive>,
     sub_window_states: SubWindowStates,
     gui_state: GuiState,
+    command_palette_state: GuiStateCommandPalette,
     textures_delta_accumulation: Vec<TexturesDelta>,
 }
 
@@ -75,6 +78,7 @@ impl Gui {
             mesh_primitives: Default::default(),
             sub_window_states: Default::default(),
             gui_state: Default::default(),
+            command_palette_state: Default::default(),
             textures_delta_accumulation: Default::default(),
         }
     }
@@ -154,8 +158,12 @@ impl Gui {
         }
 
         if self.sub_window_states.command_palette {
-            let mut new_commands = self.draw_command_palette(window);
-            commands.append(&mut new_commands);
+            let new_command = self.draw_command_palette(window);
+            if let Some(some_command) = new_command {
+                commands.push(some_command);
+                // close command palette after command has been selected
+                self.sub_window_states.command_palette = false;
+            }
         }
 
         if self.sub_window_states.debug_options {
