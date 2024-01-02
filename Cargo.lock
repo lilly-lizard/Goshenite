@@ -499,7 +499,6 @@ dependencies = [
 [[package]]
 name = "egui_dnd"
 version = "0.3.0"
-source = "git+https://github.com/lilly-lizard/egui_dnd-fork/#d6d6fccebe41a7387ab9873ffea461f70c3d9725"
 dependencies = [
  "egui",
  "epaint",

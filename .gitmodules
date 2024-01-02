@@ -1,0 +1,3 @@
+[submodule "vendor/egui_dnd-fork"]
+	path = vendor/egui_dnd-fork
+	url = https://github.com/lilly-lizard/egui_dnd-fork/
