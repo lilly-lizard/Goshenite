@@ -3,6 +3,20 @@ use log::LevelFilter;
 
 pub const ENGINE_NAME: &str = "Goshenite";
 
+pub const ENGINE_VERSION_MAJOR: u8 = 0;
+pub const ENGINE_VERSION_MINOR: u8 = 2;
+pub const ENGINE_VERSION_PATCH: u8 = 2;
+
+pub const MAGIC_BYTE: u8 = 0b_1001;
+pub const PRECURSOR_BYTE_COUNT: usize = 4;
+/// Used at the beginning of binary files written by the engine
+pub const PRECURSOR_BYTES: [u8; PRECURSOR_BYTE_COUNT] = [
+    MAGIC_BYTE,
+    ENGINE_VERSION_MAJOR,
+    ENGINE_VERSION_MINOR,
+    ENGINE_VERSION_PATCH,
+];
+
 /// Environment variables that can be used to configure the engine
 #[allow(non_snake_case)]
 pub mod ENV {

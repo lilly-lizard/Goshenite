@@ -1,5 +1,8 @@
-use super::config_engine::{SAVE_STATE_DIR, SAVE_STATE_FILENAME_CAMERA};
-use crate::user_interface::camera::Camera;
+use super::config_engine::{LOCAL_STORAGE_DIR, SAVE_STATE_FILENAME_CAMERA};
+use crate::{
+    config::{PRECURSOR_BYTES, PRECURSOR_BYTE_COUNT},
+    user_interface::camera::Camera,
+};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{fs, io, path::PathBuf};
 
@@ -21,9 +24,13 @@ fn save_state(value: &impl Serialize, file_name: &str) -> Result<(), SaveStateEr
     save_state_bytes(file_name, encoded_bytes)
 }
 
-fn save_state_bytes(file_name: &str, encoded_bytes: Vec<u8>) -> Result<(), SaveStateError> {
+fn save_state_bytes(file_name: &str, mut encoded_bytes: Vec<u8>) -> Result<(), SaveStateError> {
+    // prepend encoded bytes with engine info
+    let mut write_bytes = PRECURSOR_BYTES.to_vec();
+    write_bytes.append(&mut encoded_bytes);
+
     let file_path = validated_file_path(file_name)?;
-    fs::write(file_path.clone(), encoded_bytes).map_err(|e| {
+    fs::write(file_path.clone(), write_bytes).map_err(|e| {
         let file_path_string = file_path.to_str().unwrap_or(file_name).to_string();
         SaveStateError::WriteFileFailed(file_path_string, e)
     })?;
@@ -43,7 +50,12 @@ fn load_state_bytes(file_name: &str) -> Result<Vec<u8>, SaveStateError> {
     let read_res = fs::read(file_path.clone());
 
     let io_error = match read_res {
-        Ok(bytes) => return Ok(bytes),
+        Ok(mut read_bytes) => {
+            // ignore engine info for now
+            let _read_precursor_bytes: Vec<u8> =
+                read_bytes.drain(0..PRECURSOR_BYTE_COUNT).collect();
+            return Ok(read_bytes);
+        }
         Err(io_error) => io_error,
     };
 
@@ -60,10 +72,10 @@ fn load_state_bytes(file_name: &str) -> Result<Vec<u8>, SaveStateError> {
 /// Ensures containing directories exist, but not the actual file
 fn validated_file_path(file_name: &str) -> Result<PathBuf, SaveStateError> {
     // create dir if missing
-    fs::create_dir_all(SAVE_STATE_DIR)
-        .map_err(|e| SaveStateError::CreateSaveDirectoryFailed(SAVE_STATE_DIR.to_string(), e))?;
+    fs::create_dir_all(LOCAL_STORAGE_DIR)
+        .map_err(|e| SaveStateError::CreateSaveDirectoryFailed(LOCAL_STORAGE_DIR.to_string(), e))?;
 
-    let mut file_path = PathBuf::from(SAVE_STATE_DIR);
+    let mut file_path = PathBuf::from(LOCAL_STORAGE_DIR);
     file_path.push(file_name);
     Ok(file_path)
 }
