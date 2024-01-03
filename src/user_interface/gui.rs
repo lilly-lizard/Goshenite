@@ -68,9 +68,9 @@ impl Gui {
             ..Default::default()
         });
 
-        let mut winit_state = egui_winit::State::new(event_loop);
-        // set egui scale factor to platform dpi (by default)
-        winit_state.set_pixels_per_point(scale_factor);
+        // todo max_texture_side?
+        let winit_state =
+            egui_winit::State::new(egui::ViewportId::ROOT, event_loop, Some(scale_factor), None);
 
         Self {
             context,
@@ -91,7 +91,7 @@ impl Gui {
     ///
     /// Note that egui uses `tab` to move focus between elements, so this will always return `true` for tabs.
     pub fn process_event(&mut self, event: &winit::event::WindowEvent<'_>) -> EventResponse {
-        self.winit_state.on_event(&self.context, event)
+        self.winit_state.on_window_event(&self.context, event)
     }
 
     /// Get a reference to the clipped meshes required for rendering
@@ -99,12 +99,12 @@ impl Gui {
         &self.mesh_primitives
     }
 
-    pub fn scale_factor(&self) -> f32 {
-        self.winit_state.pixels_per_point()
+    pub fn scale_factor(&self, window: &Window) -> f32 {
+        egui_winit::pixels_per_point(&self.context, window)
     }
 
     pub fn set_scale_factor(&mut self, scale_factor: f32) {
-        self.winit_state.set_pixels_per_point(scale_factor);
+        self.context.set_pixels_per_point(scale_factor);
     }
 
     /// Call this when the selected object is changed
@@ -174,15 +174,16 @@ impl Gui {
         // end frame
         let egui::FullOutput {
             platform_output,
-            repaint_after: _r,
             textures_delta,
             shapes,
+            pixels_per_point,
+            viewport_output: _,
         } = self.context.end_frame();
         self.winit_state
             .handle_platform_output(window, &self.context, platform_output);
 
         // store clipped primitive data for use by the renderer
-        self.mesh_primitives = self.context.tessellate(shapes);
+        self.mesh_primitives = self.context.tessellate(shapes, pixels_per_point);
 
         // store required texture changes for the renderer to apply updates
         if !textures_delta.is_empty() {
