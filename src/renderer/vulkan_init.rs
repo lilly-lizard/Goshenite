@@ -10,7 +10,10 @@ use super::{
     },
 };
 use anyhow::Context;
-use ash::{prelude::VkResult, vk};
+use ash::{
+    prelude::VkResult,
+    vk::{self, ExtDebugUtilsFn, KhrSwapchainFn, KhrSynchronization2Fn},
+};
 use bort_vk::{
     allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, Buffer,
     BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback,
@@ -44,8 +47,12 @@ pub fn create_entry() -> anyhow::Result<Arc<ash::Entry>> {
     Ok(Arc::new(entry))
 }
 
-pub fn required_device_extensions() -> [&'static str; 2] {
-    ["VK_KHR_swapchain", "VK_KHR_synchronization2"]
+pub fn required_device_extensions() -> [CString; 2] {
+    // VK_KHR_swapchain, VK_KHR_synchronization2
+    [
+        KhrSwapchainFn::name().to_owned(),
+        KhrSynchronization2Fn::name().to_owned(),
+    ]
 }
 
 /// Make sure to update `required_features_1_2` too!
@@ -61,9 +68,10 @@ pub fn required_features_1_0() -> vk::PhysicalDeviceFeatures {
 }
 
 pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Result<Arc<Instance>> {
-    let mut layer_names = Vec::<&str>::new();
+    let mut layer_names = Vec::<CString>::new();
 
-    let validation_layer_name = "VK_LAYER_KHRONOS_validation";
+    let validation_layer_name =
+        unsafe { CStr::from_bytes_with_nul_unchecked(b"VK_LAYER_KHRONOS_validation\0") };
 
     if ENABLE_VULKAN_VALIDATION {
         let layer_properties = entry
@@ -71,26 +79,24 @@ pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Resul
             .context("enumerating instance layer properties")?;
 
         for layer_prop in layer_properties {
-            let layer_name = unsafe { CStr::from_ptr(layer_prop.layer_name.as_ptr()) }
-                .to_str()
-                .context("decoding installed layer names")?;
+            let layer_name = unsafe { CStr::from_ptr(layer_prop.layer_name.as_ptr()) };
 
             if validation_layer_name == layer_name {
                 debug!("enabling vulkan layer: VK_LAYER_KHRONOS_validation");
-                layer_names.push(validation_layer_name);
+                layer_names.push(validation_layer_name.to_owned());
                 break;
             }
         }
     }
 
-    let mut extension_names = Vec::<&str>::new();
+    let mut extension_names = Vec::<CString>::new();
     if ENABLE_VULKAN_VALIDATION {
         debug!("enabling instance extension: VK_EXT_debug_utils");
-        extension_names.push("VK_EXT_debug_utils");
+        extension_names.push(ExtDebugUtilsFn::name().to_owned());
     };
 
     let instance = Arc::new(
-        Instance::new(
+        Instance::new_with_display_extensions(
             entry,
             MAX_VULKAN_VER,
             window.raw_display_handle(),
@@ -147,7 +153,7 @@ pub fn choose_physical_device_and_queue_families(
         // filter for supported api version
         .filter(|p| p.supports_api_ver(MIN_VULKAN_VER))
         // filter for required device extensionssupports_extension
-        .filter(|p| p.supports_extensions(required_extensions.into_iter()))
+        .filter(|p| p.supports_extensions(required_extensions.clone()))
         // filter for queue support
         .filter_map(|p| check_physical_device_queue_support(p, surface, &instance))
         // prefer discrete gpus
@@ -298,10 +304,7 @@ pub fn create_device_and_queue(
     let features_1_2 = vk::PhysicalDeviceVulkan12Features::default();
     let features_1_3 = vk::PhysicalDeviceVulkan13Features::default();
 
-    let extension_names: Vec<String> = required_device_extensions()
-        .into_iter()
-        .map(|s| s.to_string())
-        .collect();
+    let extension_names = required_device_extensions();
 
     // enable synchronization2 feature for vulkan api <= 1.2 (1.3 )
     let synchronization_feature =
