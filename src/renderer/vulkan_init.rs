@@ -9,7 +9,7 @@ use super::{
         primitive_op_buffer::PRIMITIVE_ID_INVALID, uniform_buffers::CameraUniformBuffer,
     },
 };
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use ash::{
     prelude::VkResult,
     vk::{self, ExtDebugUtilsFn, KhrSwapchainFn, KhrSynchronization2Fn},
@@ -137,7 +137,7 @@ pub fn choose_physical_device_and_queue_families(
         debug!("\t{}", pd.name());
     }
 
-    let required_extensions = required_device_extensions();
+    let required_extensions = Vec::from(required_device_extensions());
     let required_features_1_0 = required_features_1_0();
     trace!(
         "required physical device extensions = {:?}",
@@ -148,15 +148,45 @@ pub fn choose_physical_device_and_queue_families(
         required_features_1_0
     );
 
-    let chosen_device = p_devices
+    // filter for supported api version
+    let mut chosen_device_iter = p_devices
         .into_iter()
-        // filter for supported api version
-        .filter(|p| p.supports_api_ver(MIN_VULKAN_VER))
-        // filter for required device extensionssupports_extension
-        .filter(|p| p.supports_extensions(required_extensions.clone()))
-        // filter for queue support
+        .filter(|p| p.supports_min_api_ver(MIN_VULKAN_VER))
+        .peekable();
+    if chosen_device_iter.peek().is_none() {
+        return Err(anyhow!(
+            "could not find a gpu/driver supporting minimum vulkan version of {:?}",
+            MIN_VULKAN_VER
+        ));
+    }
+
+    // filter for required device extensions
+    let mut chosen_device_iter = chosen_device_iter
+        .filter(|p| {
+            // check that all required extensions are supported
+            p.any_unsupported_extensions(required_extensions.clone())
+                .is_empty()
+        })
+        .peekable();
+    if chosen_device_iter.peek().is_none() {
+        return Err(anyhow!(
+            "could not find a gpu/driver that supports the required vulkan extensions: {:?}",
+            required_extensions
+        ));
+    }
+
+    // filter for queue support
+    let mut chosen_device_iter = chosen_device_iter
         .filter_map(|p| check_physical_device_queue_support(p, surface, &instance))
-        // prefer discrete gpus
+        .peekable();
+    if chosen_device_iter.peek().is_none() {
+        return Err(anyhow!(
+            "could not find a gpu/driver that supports graphics, transfer and surface queue operations"
+        ));
+    }
+
+    // prefer discrete gpus
+    let chosen_device = chosen_device_iter
         .max_by_key(
             |ChoosePhysicalDeviceReturn {
                  physical_device, ..
@@ -168,19 +198,9 @@ pub fn choose_physical_device_and_queue_families(
                 vk::PhysicalDeviceType::OTHER => 0,
                 _ne => 0,
             },
-        );
-
-    // converts Option to Result
-    chosen_device.with_context(|| {
-        format!(
-            "could not find a suitable vulkan implimentation (device and driver). requirements:\n
-            \t- must contain queue family supporting graphics, transfer and surface operations\n
-            \t- must minimum api version: {:?}\n
-            \t- must support device extensions: {:?}\n
-            \t- must support device features: {:?}",
-            MIN_VULKAN_VER, required_extensions, required_features_1_0
         )
-    })
+        .expect("already peeked to check that the remaining iterator isn't empty");
+    Ok(chosen_device)
 }
 
 fn check_physical_device_queue_support(
@@ -304,7 +324,7 @@ pub fn create_device_and_queue(
     let features_1_2 = vk::PhysicalDeviceVulkan12Features::default();
     let features_1_3 = vk::PhysicalDeviceVulkan13Features::default();
 
-    let extension_names = required_device_extensions();
+    let extension_names = Vec::from(required_device_extensions());
 
     // enable synchronization2 feature for vulkan api <= 1.2 (1.3 )
     let synchronization_feature =
@@ -319,7 +339,7 @@ pub fn create_device_and_queue(
             features_1_2,
             features_1_3,
             extension_names,
-            [],
+            vec![],
             debug_callback,
             vec![synchronization_feature],
         )?
@@ -636,10 +656,12 @@ pub fn create_render_pass(
     swapchain_properties: &SwapchainProperties,
     depth_buffer_format: vk::Format,
 ) -> anyhow::Result<Arc<RenderPass>> {
-    let attachment_descriptions =
-        attachment_descriptions(swapchain_properties, depth_buffer_format);
-    let subpasses = subpasses();
-    let subpass_dependencies = subpass_dependencies();
+    let attachment_descriptions = Vec::from(attachment_descriptions(
+        swapchain_properties,
+        depth_buffer_format,
+    ));
+    let subpasses = Vec::from(subpasses());
+    let subpass_dependencies = Vec::from(subpass_dependencies());
 
     let render_pass = RenderPass::new(
         device,
