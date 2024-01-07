@@ -3,8 +3,8 @@
 # stop on first error
 set -e
 
-FRAG_SRC="../../src/renderer/glsl/*.frag"
-VERT_SRC="../../src/renderer/glsl/*.vert"
+FRAG_SRC="../../src/renderer/shader_source/*.frag"
+VERT_SRC="../../src/renderer/shader_source/*.vert"
 
 for src in $FRAG_SRC; do
 	output_file="$(basename $src)"

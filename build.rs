@@ -22,7 +22,7 @@ fn get_shader_dir() -> PathBuf {
     let mut shader_dir = std::env::current_dir().expect("cannot access pwd");
     shader_dir.push("src");
     shader_dir.push("renderer");
-    shader_dir.push("glsl");
+    shader_dir.push("shader_source");
     shader_dir
 }
 
@@ -44,7 +44,7 @@ fn get_spirv_dir() -> PathBuf {
 #[cfg(feature = "shader-compile")]
 fn gen_shader_spirv() {
     // rerun when shaders change
-    println!("cargo:rerun-if-changed=src/renderer/glsl/*");
+    println!("cargo:rerun-if-changed=src/renderer/shader_source/*");
 
     println!("Generating spirv shaders...");
 
