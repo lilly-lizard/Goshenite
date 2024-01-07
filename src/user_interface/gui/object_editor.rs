@@ -67,7 +67,7 @@ fn layout_object_editor(
     let mut commands = Vec::<Command>::new();
 
     // selected object name
-    let selected_object = match label_and_get_selected_object(
+    let (selected_object, some_selected_object_id) = match label_and_get_selected_object(
         ui,
         &mut commands,
         object_collection,
@@ -77,13 +77,14 @@ fn layout_object_editor(
         None => return commands,
     };
 
-    object_properties_editor(ui, &mut commands, selected_object);
+    object_properties_editor(ui, &mut commands, selected_object, some_selected_object_id);
 
     primitive_op_editor(
         ui,
         &mut commands,
         gui_state,
         selected_object,
+        some_selected_object_id,
         selected_primitive_op_id,
     );
 
@@ -92,6 +93,7 @@ fn layout_object_editor(
         &mut commands,
         gui_state,
         selected_object,
+        some_selected_object_id,
         selected_primitive_op_id,
     );
 
@@ -103,10 +105,10 @@ fn label_and_get_selected_object<'a>(
     commands: &mut Vec<Command>,
     object_collection: &'a ObjectCollection,
     selected_object_id: Option<ObjectId>,
-) -> Option<&'a Object> {
+) -> Option<(&'a Object, ObjectId)> {
     let no_object_text = RichText::new("No object selected...").italics();
 
-    let selected_object_id = match selected_object_id {
+    let some_selected_object_id = match selected_object_id {
         Some(id) => id,
         None => {
             ui.label(no_object_text);
@@ -114,11 +116,11 @@ fn label_and_get_selected_object<'a>(
         }
     };
 
-    let selected_object = match object_collection.get_object(selected_object_id) {
+    let selected_object = match object_collection.get_object(some_selected_object_id) {
         Some(o) => o,
         None => {
             // invalid object id
-            debug!("selected object {} dropped", selected_object_id);
+            debug!("selected object {} dropped", some_selected_object_id);
             commands.push(ValidationCommand::SelectedObject().into());
 
             ui.label(no_object_text);
@@ -133,15 +135,20 @@ fn label_and_get_selected_object<'a>(
     });
     if new_name != selected_object.name {
         commands.push(Command::SetObjectName {
-            object_id: selected_object_id,
+            object_id: some_selected_object_id,
             new_name,
         });
     }
 
-    Some(selected_object)
+    Some((selected_object, some_selected_object_id))
 }
 
-fn object_properties_editor(ui: &mut egui::Ui, commands: &mut Vec<Command>, object: &Object) {
+fn object_properties_editor(
+    ui: &mut egui::Ui,
+    commands: &mut Vec<Command>,
+    object: &Object,
+    object_id: ObjectId,
+) {
     ui.separator();
 
     let original_origin = object.origin;
@@ -157,7 +164,7 @@ fn object_properties_editor(ui: &mut egui::Ui, commands: &mut Vec<Command>, obje
 
     if original_origin != new_origin {
         commands.push(Command::SetObjectOrigin {
-            object_id: object.id(),
+            object_id: object_id,
             origin: new_origin,
         });
     }
@@ -168,6 +175,7 @@ fn primitive_op_editor(
     commands: &mut Vec<Command>,
     gui_state: &mut GuiState,
     selected_object: &Object,
+    selected_object_id: ObjectId,
     selected_primitive_op_id: Option<PrimitiveOpId>,
 ) {
     if let Some(selected_prim_op_id) = selected_primitive_op_id {
@@ -176,10 +184,11 @@ fn primitive_op_editor(
             commands,
             gui_state,
             selected_object,
+            selected_object_id,
             selected_prim_op_id,
         );
     } else {
-        new_primitive_op_editor(ui, commands, gui_state, selected_object);
+        new_primitive_op_editor(ui, commands, gui_state, selected_object_id);
     }
 }
 
@@ -188,11 +197,12 @@ fn existing_primitive_op_editor(
     commands: &mut Vec<Command>,
     gui_state: &mut GuiState,
     selected_object: &Object,
+    selected_object_id: ObjectId,
     selected_prim_op_id: PrimitiveOpId,
 ) {
     let mut primitive_op_edit_state = EditState::NoChange;
 
-    let selected_object_id = selected_object.id();
+    let selected_object_id = selected_object_id;
     let (selected_primitive_op, selected_primitive_op_index) =
         match selected_object.get_primitive_op_with_index(selected_prim_op_id) {
             Some(primitive_op_and_index) => primitive_op_and_index,
@@ -201,7 +211,7 @@ fn existing_primitive_op_editor(
                 debug!("selected object {} dropped", selected_object_id);
                 commands.push(ValidationCommand::SelectedObject().into());
 
-                new_primitive_op_editor(ui, commands, gui_state, selected_object);
+                new_primitive_op_editor(ui, commands, gui_state, selected_object_id);
                 return;
             }
         };
@@ -218,7 +228,7 @@ fn existing_primitive_op_editor(
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        let possible_updated_op = op_drop_down(ui_h, gui_state.op_edit_state, selected_object.id());
+        let possible_updated_op = op_drop_down(ui_h, gui_state.op_edit_state, selected_object_id);
         if let Some(updated_op) = possible_updated_op {
             // user edited the op via drop-down menu
             gui_state.op_edit_state = updated_op;
@@ -269,21 +279,21 @@ fn new_primitive_op_editor(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
     gui_state: &mut GuiState,
-    selected_object: &Object,
+    selected_object_id: ObjectId,
 ) {
     ui.separator();
     ui.label("New primitive");
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        let possible_updated_op = op_drop_down(ui_h, gui_state.op_edit_state, selected_object.id());
+        let possible_updated_op = op_drop_down(ui_h, gui_state.op_edit_state, selected_object_id);
         if let Some(updated_op) = possible_updated_op {
             // user edited the op via drop-down menu
             gui_state.op_edit_state = updated_op;
         }
 
         // primitive type drop down menu
-        primitive_type_drop_down(ui_h, gui_state, selected_object.id());
+        primitive_type_drop_down(ui_h, gui_state, selected_object_id);
     });
 
     // primitive editor
@@ -305,14 +315,14 @@ fn new_primitive_op_editor(
     if clicked_add {
         if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
             commands.push(Command::PushOpAndSelect {
-                object_id: selected_object.id(),
+                object_id: selected_object_id,
                 operation: gui_state.op_edit_state,
                 primitive: gui_state.primitive_edit_state.clone(),
                 transform: gui_state.transform_edit_state,
             });
         } else {
             commands.push(Command::PushOp {
-                object_id: selected_object.id(),
+                object_id: selected_object_id,
                 operation: gui_state.op_edit_state,
                 primitive: gui_state.primitive_edit_state.clone(),
                 transform: gui_state.transform_edit_state,
@@ -364,6 +374,7 @@ fn primitive_op_list(
     commands: &mut Vec<Command>,
     gui_state: &mut GuiState,
     selected_object: &Object,
+    selected_object_id: ObjectId,
     selected_primitive_op_id: Option<PrimitiveOpId>,
 ) {
     ui.separator();
@@ -427,7 +438,7 @@ fn primitive_op_list(
                 // primitive op selected
                 if prim_op_res.clicked() {
                     let target_primitive_op =
-                        TargetPrimitiveOp::Id(selected_object.id(), primitive_op.id());
+                        TargetPrimitiveOp::Id(selected_object_id, primitive_op.id());
                     commands.push(Command::SelectPrimitiveOp(target_primitive_op))
                 }
             });
@@ -438,7 +449,7 @@ fn primitive_op_list(
     // if an item has been dropped after being dragged, re-arrange the primtive ops list
     if let DragDropResponse::Completed(drag_indices) = drag_drop_response {
         commands.push(Command::ShiftPrimitiveOps {
-            object_id: selected_object.id(),
+            object_id: selected_object_id,
             source_index: drag_indices.source,
             target_index: drag_indices.target,
         });

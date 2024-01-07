@@ -6,8 +6,9 @@ use crate::{
     renderer::shader_interfaces::primitive_op_buffer::PrimitiveTransformSlice,
 };
 use glam::{Mat3, Quat, Vec3};
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PrimitiveTransform {
     /// Primitive translation relative to object origin
     pub center: Vec3,

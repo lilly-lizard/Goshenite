@@ -1,4 +1,7 @@
-use super::config_engine::{LOCAL_STORAGE_DIR, SAVE_STATE_FILENAME_CAMERA};
+use super::{
+    config_engine::{LOCAL_STORAGE_DIR, SAVE_STATE_FILENAME_CAMERA},
+    object::{object::Object, object_collection::ObjectCollection},
+};
 use crate::{
     config::{PRECURSOR_BYTES, PRECURSOR_BYTE_COUNT},
     user_interface::camera::Camera,
@@ -14,6 +17,11 @@ pub fn save_state_camera(camera: &Camera) -> Result<(), SaveStateError> {
 
 pub fn load_state_camera() -> Result<Camera, SaveStateError> {
     load_state::<Camera>(SAVE_STATE_FILENAME_CAMERA)
+}
+
+pub fn save_all_object(object_collection: &ObjectCollection) {
+    let object_list: Vec<Object> = object_collection.objects().values().cloned().collect();
+    todo!()
 }
 
 // ~~ Private ~~

@@ -16,6 +16,8 @@ pub enum Command {
     // ~~ Save states ~~
     SaveStateCamera,
     LoadStateCamera,
+    // SaveAllObjects,
+    // LoadAndReplaceAllObjects,
 
     // ~~ Camera ~~
     SetCameraLockOnPos(DVec3),
@@ -155,7 +157,7 @@ pub enum CommandError {
 
 impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match *self {
+        match self {
             Self::InvalidObjectId(object_id) => write!(f, "invalid object id {}", object_id),
             Self::InvalidPrimitiveOpId(object_id, primitive_op_id) => {
                 write!(

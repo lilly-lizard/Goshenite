@@ -53,9 +53,8 @@ impl std::fmt::Display for ObjectId {
 
 // ~~ Object ~~
 
-#[derive(Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Object {
-    id: ObjectId,
     pub name: String,
     pub origin: Vec3,
     pub primitive_ops: Vec<PrimitiveOp>,
@@ -64,12 +63,11 @@ pub struct Object {
 }
 
 impl Object {
-    pub fn new(id: ObjectId, name: String, origin: Vec3) -> Self {
+    pub fn new(name: String, origin: Vec3) -> Self {
         Self {
-            id,
             name,
             origin,
-            primitive_ops: vec![],
+            primitive_ops: Vec::new(),
             primitive_op_id_gen: UniqueIdGen::new(),
         }
     }
@@ -77,21 +75,21 @@ impl Object {
     /// Returns the index of the removed primitive op
     pub fn remove_primitive_op_id(
         &mut self,
-        primitive_op_id: PrimitiveOpId,
+        remove_primitive_op_id: PrimitiveOpId,
     ) -> Result<usize, CollectionError> {
         let index_res = self
             .primitive_ops
             .iter()
-            .position(|primitive_op| primitive_op.id() == primitive_op_id);
+            .position(|check_primitive_op| check_primitive_op.id() == remove_primitive_op_id);
 
-        _ = self.primitive_op_id_gen.recycle_id(primitive_op_id);
+        _ = self.primitive_op_id_gen.recycle_id(remove_primitive_op_id);
 
         if let Some(index) = index_res {
             self.primitive_ops.remove(index);
             return Ok(index);
         } else {
             return Err(CollectionError::InvalidId {
-                raw_id: primitive_op_id.raw_id(),
+                raw_id: remove_primitive_op_id.raw_id(),
             });
         }
     }
@@ -140,26 +138,12 @@ impl Object {
         shift_slice(source_index, target_index, &mut self.primitive_ops)
     }
 
-    /// Create `ObjectSnapshot` containing the same primitive data as `self`. This is needed because
-    /// `Object`s can't be cloned as their `id`s must be unique.
-    pub fn duplicate(&self) -> ObjectSnapshot {
-        ObjectSnapshot {
-            name: self.name.clone(),
-            origin: self.origin,
-            primitive_ops: self.primitive_ops.clone(),
-        }
-    }
-
     // Getters
 
-    pub fn id(&self) -> ObjectId {
-        self.id
-    }
-
-    pub fn get_primitive_op(&self, primitive_op_id: PrimitiveOpId) -> Option<&PrimitiveOp> {
-        self.primitive_ops.iter().find_map(|primitive_op| {
-            if primitive_op.id() == primitive_op_id {
-                Some(primitive_op)
+    pub fn get_primitive_op(&self, get_primitive_op_id: PrimitiveOpId) -> Option<&PrimitiveOp> {
+        self.primitive_ops.iter().find_map(|check_primitive_op| {
+            if check_primitive_op.id() == get_primitive_op_id {
+                Some(check_primitive_op)
             } else {
                 None
             }
@@ -168,27 +152,29 @@ impl Object {
 
     pub fn get_primitive_op_mut(
         &mut self,
-        primitive_op_id: PrimitiveOpId,
+        get_primitive_op_id: PrimitiveOpId,
     ) -> Option<&mut PrimitiveOp> {
-        self.primitive_ops.iter_mut().find_map(|primitive_op| {
-            if primitive_op.id() == primitive_op_id {
-                Some(primitive_op)
-            } else {
-                None
-            }
-        })
+        self.primitive_ops
+            .iter_mut()
+            .find_map(|check_primitive_op| {
+                if check_primitive_op.id() == get_primitive_op_id {
+                    Some(check_primitive_op)
+                } else {
+                    None
+                }
+            })
     }
 
     pub fn get_primitive_op_with_index(
         &self,
-        primitive_op_id: PrimitiveOpId,
+        get_primitive_op_id: PrimitiveOpId,
     ) -> Option<(&PrimitiveOp, usize)> {
         self.primitive_ops
             .iter()
             .enumerate()
-            .find_map(|(index, primitive_op)| {
-                if primitive_op.id() == primitive_op_id {
-                    Some((primitive_op, index))
+            .find_map(|(index, check_primitive_op)| {
+                if check_primitive_op.id() == get_primitive_op_id {
+                    Some((check_primitive_op, index))
                 } else {
                     None
                 }
@@ -240,37 +226,7 @@ impl Object {
             new_operation,
         )
     }
-}
 
-fn set_primitive_op_internal(
-    primitive_op_ref: &mut PrimitiveOp,
-    new_primitive: Option<Primitive>,
-    new_transform: Option<PrimitiveTransform>,
-    new_operation: Option<Operation>,
-) -> Result<(), CollectionError> {
-    if let Some(some_new_primitive) = new_primitive {
-        primitive_op_ref.primitive = some_new_primitive;
-    }
-    if let Some(some_new_transform) = new_transform {
-        primitive_op_ref.primitive_transform = some_new_transform;
-    }
-    if let Some(some_new_operation) = new_operation {
-        primitive_op_ref.op = some_new_operation;
-    }
-    return Ok(());
-}
-
-// ~~ Object Snapshot ~~
-
-/// Contains the same primitive data as an `Object`.
-#[derive(Clone)]
-pub struct ObjectSnapshot {
-    pub name: String,
-    pub origin: Vec3,
-    pub primitive_ops: Vec<PrimitiveOp>,
-}
-
-impl ObjectSnapshot {
     pub fn encoded_primitive_ops(&self, object_id: ObjectId) -> Vec<PrimitiveOpBufferUnit> {
         // avoiding this case should be the responsibility of the functions adding to `primtive_ops`
         debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);
@@ -316,4 +272,22 @@ impl ObjectSnapshot {
         aabb.offset(self.origin);
         aabb
     }
+}
+
+fn set_primitive_op_internal(
+    primitive_op_ref: &mut PrimitiveOp,
+    new_primitive: Option<Primitive>,
+    new_transform: Option<PrimitiveTransform>,
+    new_operation: Option<Operation>,
+) -> Result<(), CollectionError> {
+    if let Some(some_new_primitive) = new_primitive {
+        primitive_op_ref.primitive = some_new_primitive;
+    }
+    if let Some(some_new_transform) = new_transform {
+        primitive_op_ref.primitive_transform = some_new_transform;
+    }
+    if let Some(some_new_operation) = new_operation {
+        primitive_op_ref.op = some_new_operation;
+    }
+    return Ok(());
 }

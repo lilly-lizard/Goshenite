@@ -190,16 +190,24 @@ impl EngineInstance {
         self.camera = new_camera;
     }
 
+    fn save_all_obejcts_via_command(&self, command: Command) {
+        todo!()
+    }
+
     // ~~ Camera ~~
 
-    fn set_camera_lock_on_object_via_command(&mut self, object_id: ObjectId, command: Command) {
-        let Some(object) = self.object_collection.get_object(object_id) else {
+    fn set_camera_lock_on_object_via_command(
+        &mut self,
+        target_object_id: ObjectId,
+        command: Command,
+    ) {
+        let Some(object) = self.object_collection.get_object(target_object_id) else {
             command_failed_warn(command, "invalid object id");
             return;
         };
 
         self.camera
-            .set_lock_on_target_object(object_id, object.origin);
+            .set_lock_on_target_object(target_object_id, object.origin);
     }
 
     // ~~ Object ~~
@@ -212,9 +220,9 @@ impl EngineInstance {
         self.selected_primitive_op_id = None;
     }
 
-    fn select_object_via_command(&mut self, object_id: ObjectId, command: Command) {
-        if let Some(object) = self.object_collection.get_object(object_id) {
-            self.select_object_unchecked(object.id(), object.origin);
+    fn select_object_via_command(&mut self, object_id_to_select: ObjectId, command: Command) {
+        if let Some(object) = self.object_collection.get_object(object_id_to_select) {
+            self.select_object_unchecked(object_id_to_select, object.origin);
         } else {
             command_failed_warn(command, "invalid object id");
         }
@@ -222,17 +230,17 @@ impl EngineInstance {
 
     /// Doesn't check validity of `object_id`. Ideally we'd pass a reference to the object here
     /// to account for this, but the borrow checker doesn't like that...
-    fn select_object_unchecked(&mut self, object_id: ObjectId, object_origin: Vec3) {
+    fn select_object_unchecked(&mut self, object_id_to_select: ObjectId, object_origin: Vec3) {
         let mut selected_object_changed = true;
         if let Some(previously_selected_object_id) = self.selected_object_id {
-            if previously_selected_object_id == object_id {
+            if previously_selected_object_id == object_id_to_select {
                 selected_object_changed = false;
             }
         }
 
-        self.selected_object_id = Some(object_id);
+        self.selected_object_id = Some(object_id_to_select);
         self.camera
-            .set_lock_on_target_object(object_id, object_origin);
+            .set_lock_on_target_object(object_id_to_select, object_origin);
 
         if selected_object_changed {
             // if a different object is already selected, deselect the primitive op because it will
@@ -242,14 +250,14 @@ impl EngineInstance {
         }
     }
 
-    fn remove_object_via_command(&mut self, object_id: ObjectId, command: Command) {
-        let res = self.object_collection.remove_object(object_id);
+    fn remove_object_via_command(&mut self, object_id_to_remove: ObjectId, command: Command) {
+        let res = self.object_collection.remove_object(object_id_to_remove);
         if let Err(_e) = res {
             command_failed_warn(command, "invalid object id");
         }
 
         if let Some(previously_selected_object_id) = self.selected_object_id {
-            if previously_selected_object_id == object_id {
+            if previously_selected_object_id == object_id_to_remove {
                 self.deselect_object();
             }
         }
@@ -377,11 +385,11 @@ impl EngineInstance {
 
     #[inline]
     /// Convenience fn for `select_primitive_op_without_self``
-    fn select_primitive_op_unchecked(&mut self, primitive_op: PrimitiveOp) {
+    fn select_primitive_op_unchecked(&mut self, primitive_op_to_select: PrimitiveOp) {
         Self::select_primitive_op_without_self(
             &mut self.selected_primitive_op_id,
             &mut self.gui,
-            primitive_op,
+            primitive_op_to_select,
         );
     }
 
@@ -389,17 +397,17 @@ impl EngineInstance {
     fn select_primitive_op_without_self(
         selected_primitive_op_id: &mut Option<PrimitiveOpId>,
         gui: &mut Gui,
-        primitive_op: PrimitiveOp,
+        primitive_op_to_select: PrimitiveOp,
     ) {
         if let Some(selected_primitive_op_id) = *selected_primitive_op_id {
-            if selected_primitive_op_id == primitive_op.id() {
+            if selected_primitive_op_id == primitive_op_to_select.id() {
                 // don't want to unnecessarily reset the saved gui state
                 return;
             }
         }
 
-        gui.primitive_op_selected(&primitive_op);
-        *selected_primitive_op_id = Some(primitive_op.id());
+        gui.primitive_op_selected(&primitive_op_to_select);
+        *selected_primitive_op_id = Some(primitive_op_to_select.id());
     }
 
     pub(super) fn deselect_primitive_op(&mut self) {
@@ -519,13 +527,13 @@ impl EngineInstance {
     fn select_primitive_op_with_closest_index(
         selected_primitive_op_id: &mut Option<PrimitiveOpId>,
         gui: &mut Gui,
-        primitive_ops: &Vec<PrimitiveOp>,
+        primitive_op_list: &Vec<PrimitiveOp>,
         target_prim_op_index: usize,
     ) {
         if let Some(select_index) =
-            choose_closest_valid_index(primitive_ops.len(), target_prim_op_index)
+            choose_closest_valid_index(primitive_op_list.len(), target_prim_op_index)
         {
-            let primitive_op = primitive_ops[select_index].clone();
+            let primitive_op = primitive_op_list[select_index].clone();
             Self::select_primitive_op_without_self(selected_primitive_op_id, gui, primitive_op);
         } else {
             Self::deselect_primitive_op_without_self(selected_primitive_op_id);

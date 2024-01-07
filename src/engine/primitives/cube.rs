@@ -7,8 +7,9 @@ use crate::{
     renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
 use glam::{Vec2, Vec3};
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Cube {
     pub dimensions: Vec3,
 }

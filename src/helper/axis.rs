@@ -1,11 +1,11 @@
+use super::angle::Angle;
 use core::fmt;
 use glam::{DQuat, DVec3, Quat, Vec3};
-
-use super::angle::Angle;
+use serde::{Deserialize, Serialize};
 
 // ~~ Cartesian Axis ~~
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Deserialize, Serialize)]
 pub enum CartesianAxis {
     X,
     Y,
@@ -57,7 +57,7 @@ impl Default for CartesianAxis {
 
 // ~~ Axis ~~
 
-#[derive(Clone, Copy, PartialEq, Debug)]
+#[derive(Clone, Copy, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Axis {
     Cartesian(CartesianAxis),
     /// This value should always be normalized. Recommend using `Self::new_direction` to set this.
@@ -138,7 +138,7 @@ impl From<CartesianAxis> for Axis {
 // ~~ Axis Rotation ~~
 
 /// Describes rotation around an axis
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AxisRotation {
     pub axis: Axis,
     pub angle: Angle,

@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, error, fmt};
 
 // gpu id buffer packed as 16 bits for object and 16 bits for primitive op.
@@ -8,7 +9,7 @@ pub trait UniqueIdType: From<UniqueId> + Ord {
     fn raw_id(&self) -> UniqueId;
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UniqueIdGen<T: UniqueIdType> {
     counter: UniqueId,
     recycled_ids: BTreeSet<T>,

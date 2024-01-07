@@ -74,16 +74,15 @@ impl ObjectCollection {
         &mut self,
         object_id: ObjectId,
     ) -> Result<(), CollectionError> {
-        let object_duplicate = if let Some(updated_object) = self.objects.get(&object_id) {
-            updated_object.duplicate()
+        let cloned_object = if let Some(updated_object) = self.objects.get(&object_id) {
+            updated_object.clone()
         } else {
             return Err(CollectionError::InvalidId {
                 raw_id: object_id.raw_id(),
             });
         };
 
-        self.insert_object_delta(object_id, ObjectDeltaOperation::Update(object_duplicate));
-
+        self.insert_object_delta(object_id, ObjectDeltaOperation::Update(cloned_object));
         Ok(())
     }
 
@@ -135,12 +134,12 @@ impl ObjectCollection {
         name: String,
         origin: Vec3,
     ) -> (ObjectId, &mut Object) {
-        let object = Object::new(object_id, name, origin);
-        let object_duplicate = object.duplicate();
+        let object = Object::new(name, origin);
+        let cloned_object = object.clone();
         self.objects.insert(object_id, object);
 
         // record changed data
-        self.insert_object_delta(object_id, ObjectDeltaOperation::Add(object_duplicate));
+        self.insert_object_delta(object_id, ObjectDeltaOperation::Add(cloned_object));
 
         let object_ref = self
             .objects

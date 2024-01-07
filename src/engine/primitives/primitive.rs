@@ -6,10 +6,11 @@ use crate::{
     engine::aabb::Aabb, helper::from_enum_macro::impl_from_for_enum_variant,
     renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
+use serde::{Deserialize, Serialize};
 
 // ~~ Primitive ~~
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum Primitive {
     Cube(Cube),
     Sphere(Sphere),
@@ -73,7 +74,7 @@ impl_from_for_enum_variant!(Primitive, UberPrimitive);
 // ~~ Encodable Primitive ~~
 
 /// Methods required to encode and process primitive data. Mostly for GPU rendering.
-pub trait EncodablePrimitive: Send + Sync {
+pub trait EncodablePrimitive: Send + Sync + Serialize {
     /// Returns the primitive type as a str
     fn type_name(&self) -> &'static str;
 

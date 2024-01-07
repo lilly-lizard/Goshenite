@@ -2,7 +2,7 @@ use super::geometry_pass::descriptor;
 use crate::engine::{
     aabb::AABB_VERTEX_COUNT,
     object::{
-        object::{ObjectId, ObjectSnapshot},
+        object::{Object, ObjectId},
         object_collection::ObjectCollection,
         objects_delta::{ObjectDeltaOperation, ObjectsDelta},
     },
@@ -95,11 +95,7 @@ impl ObjectResourceManager {
 
         for (&object_id, object) in objects {
             trace!("uploading object id = {:?} to gpu buffer", object_id);
-            self.update_or_push(
-                object_id,
-                object.duplicate(),
-                &mut transfer_operation_resources,
-            )?;
+            self.update_or_push(object_id, object, &mut transfer_operation_resources)?;
         }
 
         transfer_operation_resources.end_command_buffers()?;
@@ -125,21 +121,13 @@ impl ObjectResourceManager {
 
         for (object_id, object_delta) in objects_delta {
             match object_delta {
-                ObjectDeltaOperation::Add(object_duplicate) => {
+                ObjectDeltaOperation::Add(object) => {
                     trace!("adding object id = {:?} to gpu buffer", object_id);
-                    self.update_or_push(
-                        object_id,
-                        object_duplicate,
-                        &mut transfer_operation_resources,
-                    )?;
+                    self.update_or_push(object_id, &object, &mut transfer_operation_resources)?;
                 }
-                ObjectDeltaOperation::Update(object_duplicate) => {
+                ObjectDeltaOperation::Update(object) => {
                     trace!("updating object id = {:?} in gpu buffer", object_id);
-                    self.update_or_push(
-                        object_id,
-                        object_duplicate,
-                        &mut transfer_operation_resources,
-                    )?;
+                    self.update_or_push(object_id, &object, &mut transfer_operation_resources)?;
                 }
                 ObjectDeltaOperation::Remove => {
                     if let Some(_removed_index) = self.remove(object_id) {
@@ -306,7 +294,7 @@ impl ObjectResourceManager {
     fn update_or_push(
         &mut self,
         object_id: ObjectId,
-        object: ObjectSnapshot,
+        object: &Object,
         transfer_resources: &mut BufferUploadResources,
     ) -> anyhow::Result<()> {
         let primitive_ops_buffer = self
@@ -348,7 +336,7 @@ impl ObjectResourceManager {
     fn upload_bounding_mesh(
         &mut self,
         object_id: ObjectId,
-        object: &ObjectSnapshot,
+        object: &Object,
         transfer_resources: &mut BufferUploadResources,
     ) -> anyhow::Result<Arc<Buffer>> {
         trace!(
@@ -370,7 +358,7 @@ impl ObjectResourceManager {
     fn upload_primitive_ops(
         &mut self,
         object_id: ObjectId,
-        object: &ObjectSnapshot,
+        object: &Object,
         transfer_resources: &mut BufferUploadResources,
     ) -> anyhow::Result<Arc<Buffer>> {
         trace!(

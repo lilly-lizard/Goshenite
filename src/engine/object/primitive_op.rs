@@ -3,10 +3,11 @@ use crate::{
     engine::primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
     helper::unique_id_gen::{UniqueId, UniqueIdType},
 };
+use serde::{Deserialize, Serialize};
 
 // PRIMITIVE OP
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PrimitiveOp {
     id: PrimitiveOpId,
     pub op: Operation,
@@ -37,7 +38,9 @@ impl PrimitiveOp {
 
 // PRIMITIVE OP ID
 
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct PrimitiveOpId(pub UniqueId);
 
 impl UniqueIdType for PrimitiveOpId {

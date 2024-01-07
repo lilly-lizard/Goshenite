@@ -1,7 +1,7 @@
 use super::Gui;
 use crate::{
     engine::{
-        commands::{Command, ValidationCommand},
+        commands::Command,
         object::{object::ObjectId, object_collection::ObjectCollection},
     },
     helper::unique_id_gen::UniqueIdType,
@@ -69,13 +69,7 @@ fn layout_object_list(
                 .text_style(TextStyle::Monospace);
 
         let is_selected = if let Some(some_selected_object_id) = selected_object_id {
-            if let Some(selected_object) = object_collection.get_object(some_selected_object_id) {
-                selected_object.id() == current_object.id()
-            } else {
-                debug!("selected object {} dropped", some_selected_object_id);
-                commands.push(ValidationCommand::SelectedObject().into());
-                false
-            }
+            some_selected_object_id == current_id
         } else {
             false
         };
