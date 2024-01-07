@@ -1,6 +1,5 @@
 use super::{
-    config_renderer::{RenderOptions, ENABLE_VULKAN_VALIDATION, TIMEOUT_NANOSECS},
-    debug_callback::log_vulkan_debug_callback,
+    config_renderer::{RenderOptions, TIMEOUT_NANOSECS},
     element_id_reader::{ElementAtPoint, ElementIdReader},
     geometry_pass::GeometryPass,
     gui_pass::GuiPass,
@@ -18,18 +17,18 @@ use crate::{
     engine::object::objects_delta::ObjectsDelta,
     helper::anyhow_panic::log_anyhow_error_and_sources,
     renderer::vulkan_init::{
-        choose_depth_buffer_format, create_command_pool, create_device_and_queue, create_entry,
-        create_instance, create_primitive_id_buffers, create_render_command_buffers,
-        shaders_should_write_linear_color,
+        choose_depth_buffer_format, create_command_pool, create_debug_callback,
+        create_device_and_queue, create_entry, create_instance, create_primitive_id_buffers,
+        create_render_command_buffers, shaders_should_write_linear_color,
     },
     user_interface::camera::Camera,
 };
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{
-    AllocationAccess, Buffer, CommandBuffer, CommandPool, DebugCallback, DebugCallbackProperties,
-    Device, Fence, Framebuffer, Image, ImageView, Instance, MemoryAllocator, Queue, RenderPass,
-    Semaphore, Surface, Swapchain, SwapchainImage,
+    AllocationAccess, Buffer, CommandBuffer, CommandPool, DebugCallback, Device, Fence,
+    Framebuffer, Image, ImageView, Instance, MemoryAllocator, Queue, RenderPass, Semaphore,
+    Surface, Swapchain, SwapchainImage,
 };
 use egui::{ClippedPrimitive, TexturesDelta};
 #[allow(unused_imports)]
@@ -99,30 +98,8 @@ impl RenderManager {
     pub fn new(window: Arc<Window>, scale_factor: f32) -> anyhow::Result<Self> {
         let entry = create_entry()?;
 
-        // create vulkan instance
         let instance = create_instance(entry.clone(), &window)?;
-
-        // setup validation layer debug callback
-        let debug_callback_properties = DebugCallbackProperties::default();
-        let debug_callback = if ENABLE_VULKAN_VALIDATION {
-            match DebugCallback::new(
-                instance.clone(),
-                Some(log_vulkan_debug_callback),
-                debug_callback_properties,
-            ) {
-                Ok(x) => {
-                    info!("enabling vulkan validation layers and debug callback");
-                    Some(Arc::new(x))
-                }
-                Err(e) => {
-                    warn!("validation layer debug callback requested but cannot be setup due to: {:?}", e);
-                    None
-                }
-            }
-        } else {
-            debug!("vulkan validation layers disabled");
-            None
-        };
+        let debug_callback = create_debug_callback(&instance);
 
         let surface = Arc::new(
             Surface::new(
@@ -140,16 +117,6 @@ impl RenderManager {
             transfer_queue_family_index,
         } = choose_physical_device_and_queue_families(instance.clone(), &surface)?;
         let physical_device = Arc::new(physical_device);
-        info!(
-            "using vulkan physical device: {} (type: {:?})",
-            physical_device.name(),
-            physical_device.properties().device_type,
-        );
-        debug!("render queue family index = {}", render_queue_family_index);
-        debug!(
-            "transfer queue family index = {}",
-            transfer_queue_family_index
-        );
 
         let CreateDeviceAndQueuesReturn {
             device,
@@ -168,18 +135,6 @@ impl RenderManager {
         let command_pool_transfer = create_command_pool(device.clone(), &transfer_queue)?;
 
         let swapchain = create_swapchain(device.clone(), surface.clone(), &window)?;
-        debug!(
-            "swapchain surface format = {:?}",
-            swapchain.properties().surface_format
-        );
-        debug!(
-            "swapchain present mode = {:?}",
-            swapchain.properties().present_mode
-        );
-        debug!(
-            "swapchain composite alpha = {:?}",
-            swapchain.properties().composite_alpha
-        );
         let shaders_write_linear_color =
             shaders_should_write_linear_color(swapchain.properties().surface_format);
 

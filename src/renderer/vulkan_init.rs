@@ -5,6 +5,7 @@ use super::{
         CPU_ACCESS_BUFFER_SIZE, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER,
         MAX_FRAMES_IN_FLIGHT, MAX_VULKAN_VER, MIN_VULKAN_VER, SHADER_ENTRY_POINT,
     },
+    debug_callback::log_vulkan_debug_callback,
     shader_interfaces::{
         primitive_op_buffer::PRIMITIVE_ID_INVALID, uniform_buffers::CameraUniformBuffer,
     },
@@ -17,11 +18,11 @@ use ash::{
 use bort_vk::{
     allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, Buffer,
     BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback,
-    DescriptorPool, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
-    DescriptorSetLayoutProperties, Device, DeviceOwned, Framebuffer, FramebufferProperties, Image,
-    ImageDimensions, ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, Instance,
-    MemoryAllocator, PhysicalDevice, Queue, RenderPass, ShaderError, ShaderModule, ShaderStage,
-    Subpass, Surface, Swapchain, SwapchainImage, SwapchainProperties,
+    DebugCallbackProperties, DescriptorPool, DescriptorSet, DescriptorSetLayout,
+    DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, Framebuffer,
+    FramebufferProperties, Image, ImageDimensions, ImageProperties, ImageView, ImageViewAccess,
+    ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, Queue, RenderPass, ShaderError,
+    ShaderModule, ShaderStage, Subpass, Surface, Swapchain, SwapchainImage, SwapchainProperties,
 };
 use bort_vma::AllocationCreateInfo;
 #[allow(unused_imports)]
@@ -114,6 +115,33 @@ pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Resul
     Ok(instance)
 }
 
+pub fn create_debug_callback(instance: &Arc<Instance>) -> Option<Arc<DebugCallback>> {
+    let debug_callback_properties = DebugCallbackProperties::default();
+    let debug_callback = if ENABLE_VULKAN_VALIDATION {
+        match DebugCallback::new(
+            instance.clone(),
+            Some(log_vulkan_debug_callback),
+            debug_callback_properties,
+        ) {
+            Ok(x) => {
+                info!("enabling vulkan validation layers and debug callback");
+                Some(Arc::new(x))
+            }
+            Err(e) => {
+                warn!(
+                    "validation layer debug callback requested but cannot be setup due to: {:?}",
+                    e
+                );
+                None
+            }
+        }
+    } else {
+        debug!("vulkan validation layers disabled");
+        None
+    };
+    debug_callback
+}
+
 pub struct ChoosePhysicalDeviceReturn {
     pub physical_device: PhysicalDevice,
     pub render_queue_family_index: u32,
@@ -200,6 +228,21 @@ pub fn choose_physical_device_and_queue_families(
             },
         )
         .expect("already peeked to check that the remaining iterator isn't empty");
+
+    info!(
+        "using vulkan physical device: {} (type: {:?})",
+        chosen_device.physical_device.name(),
+        chosen_device.physical_device.properties().device_type,
+    );
+    debug!(
+        "render queue family index = {}",
+        chosen_device.render_queue_family_index
+    );
+    debug!(
+        "transfer queue family index = {}",
+        chosen_device.transfer_queue_family_index
+    );
+
     Ok(chosen_device)
 }
 
@@ -435,6 +478,20 @@ pub fn create_swapchain(
 
     let swapchain =
         Swapchain::new(device, surface, swapchain_properties).context("creating swapchain")?;
+
+    debug!(
+        "swapchain surface format = {:?}",
+        swapchain.properties().surface_format
+    );
+    debug!(
+        "swapchain present mode = {:?}",
+        swapchain.properties().present_mode
+    );
+    debug!(
+        "swapchain composite alpha = {:?}",
+        swapchain.properties().composite_alpha
+    );
+
     Ok(Arc::new(swapchain))
 }
 
