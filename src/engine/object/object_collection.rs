@@ -35,17 +35,37 @@ impl ObjectCollection {
         origin: Vec3,
     ) -> Result<(ObjectId, &mut Object), UniqueIdError> {
         let object_id = self.unique_id_gen.new_id()?;
-
         Ok(self.new_object_internal(object_id, name.into(), origin))
     }
 
     pub fn new_object_default(&mut self) -> Result<(ObjectId, &mut Object), UniqueIdError> {
         let object_id = self.unique_id_gen.new_id()?;
-
         let name = format!("New Object {}", object_id.raw_id());
         let origin = DEFAULT_ORIGIN;
-
         Ok(self.new_object_internal(object_id, name, origin))
+    }
+
+    pub fn insert_object_and_mark_for_update(
+        &mut self,
+        new_object: Object,
+    ) -> Result<ObjectId, UniqueIdError> {
+        let new_object_id = self.unique_id_gen.new_id()?;
+        self.objects.insert(new_object_id, new_object);
+        self.mark_object_for_data_update(new_object_id)
+            .expect("new object just created");
+        Ok(new_object_id)
+    }
+
+    pub fn insert_objects_and_mark_for_update(
+        &mut self,
+        new_objects: impl IntoIterator<Item = Object>,
+    ) -> Result<Vec<ObjectId>, UniqueIdError> {
+        let mut new_object_ids: Vec<ObjectId> = Vec::new();
+        for new_object in new_objects {
+            let new_object_id = self.insert_object_and_mark_for_update(new_object)?;
+            new_object_ids.push(new_object_id);
+        }
+        Ok(new_object_ids)
     }
 
     pub fn remove_object(&mut self, object_id: ObjectId) -> Result<Object, CollectionError> {
@@ -54,10 +74,10 @@ impl ObjectCollection {
         if let Some(removed_object) = removed_object_option {
             // tell object id generator it can reuse the old object id now
             if let Err(e) = self.unique_id_gen.recycle_id(object_id) {
-                warn!("{}", e); // todo should probably handle this somehow...
+                info!("{}", e);
             }
 
-            // record changed data
+            // record changed data to update the gpu
             self.insert_object_delta(object_id, ObjectDeltaOperation::Remove);
 
             return Ok(removed_object);
@@ -104,7 +124,7 @@ impl ObjectCollection {
     }
 }
 
-// private functions
+// ~~ Private Functions ~~
 
 impl ObjectCollection {
     /// Use this instead of directly inserting to perform some operation specific checks

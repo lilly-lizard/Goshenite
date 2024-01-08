@@ -1,5 +1,5 @@
 use super::{
-    config_engine::{LOCAL_STORAGE_DIR, SAVE_STATE_FILENAME_CAMERA},
+    config_engine::{LOCAL_STORAGE_DIR, SAVE_STATE_FILENAME_CAMERA, SAVE_STATE_FILENAME_OBJECTS},
     object::{object::Object, object_collection::ObjectCollection},
 };
 use crate::{
@@ -19,16 +19,20 @@ pub fn load_state_camera() -> Result<Camera, SaveStateError> {
     load_state::<Camera>(SAVE_STATE_FILENAME_CAMERA)
 }
 
-pub fn save_all_object(object_collection: &ObjectCollection) {
+pub fn save_all_objects(object_collection: &ObjectCollection) -> Result<(), SaveStateError> {
     let object_list: Vec<Object> = object_collection.objects().values().cloned().collect();
-    todo!()
+    save_state(&object_list, SAVE_STATE_FILENAME_OBJECTS)
+}
+
+pub fn load_objects() -> Result<Vec<Object>, SaveStateError> {
+    load_state::<Vec<Object>>(SAVE_STATE_FILENAME_OBJECTS)
 }
 
 // ~~ Private ~~
 
-fn save_state(value: &impl Serialize, file_name: &str) -> Result<(), SaveStateError> {
+fn save_state(to_serialize: &impl Serialize, file_name: &str) -> Result<(), SaveStateError> {
     let encoded_bytes =
-        bincode::serialize(value).map_err(|e| SaveStateError::SerializeFailed(e))?;
+        bincode::serialize(to_serialize).map_err(|e| SaveStateError::SerializeFailed(e))?;
     save_state_bytes(file_name, encoded_bytes)
 }
 

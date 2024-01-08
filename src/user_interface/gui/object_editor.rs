@@ -129,9 +129,11 @@ fn label_and_get_selected_object<'a>(
     };
 
     let mut new_name = selected_object.name.clone();
-    ui.horizontal(|ui| {
-        ui.label("Name:");
-        ui.text_edit_singleline(&mut new_name);
+    ui.horizontal(|ui_h| {
+        ui_h.label("Name:");
+        ui_h.text_edit_singleline(&mut new_name);
+        let id_label = format!("id: {}", some_selected_object_id);
+        ui_h.label(&id_label);
     });
     if new_name != selected_object.name {
         commands.push(Command::SetObjectName {

@@ -9,7 +9,7 @@ pub trait UniqueIdType: From<UniqueId> + Ord {
     fn raw_id(&self) -> UniqueId;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UniqueIdGen<T: UniqueIdType> {
     counter: UniqueId,
     recycled_ids: BTreeSet<T>,
@@ -25,12 +25,12 @@ impl<T: UniqueIdType> UniqueIdGen<T> {
 
     pub fn new_id(&mut self) -> Result<T, UniqueIdError> {
         if self.counter == UniqueId::MAX {
-            // try recyling (prefer not to do this)
+            // try recyling. prefer not to do this in case removed ids are mistakenly lingering around...
             if let Some(new_id) = self.recycled_ids.pop_first() {
                 return Ok(new_id);
+            } else {
+                return Err(UniqueIdError::MaxReached);
             }
-
-            return Err(UniqueIdError::MaxReached);
         }
 
         let new_id = self.counter;

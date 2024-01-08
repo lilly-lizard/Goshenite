@@ -16,8 +16,8 @@ pub enum Command {
     // ~~ Save states ~~
     SaveStateCamera,
     LoadStateCamera,
-    // SaveAllObjects,
-    // LoadAndReplaceAllObjects,
+    SaveAllObjects,
+    LoadObjects,
 
     // ~~ Camera ~~
     SetCameraLockOnPos(DVec3),

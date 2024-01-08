@@ -15,3 +15,4 @@ pub const AABB_EDGE: Vec3 = Vec3::splat(0.1);
 
 pub const LOCAL_STORAGE_DIR: &'static str = ".goshenite";
 pub const SAVE_STATE_FILENAME_CAMERA: &'static str = "camera.gsave";
+pub const SAVE_STATE_FILENAME_OBJECTS: &'static str = "objects.gsave";

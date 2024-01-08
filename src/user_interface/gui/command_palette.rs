@@ -1,3 +1,4 @@
+//! Also contains the list of commands available via the command palette.
 use super::Gui;
 use crate::{
     engine::{commands::Command, object::object::ObjectId},
@@ -6,24 +7,68 @@ use crate::{
 use egui::{Key, TextEdit};
 use winit::window::Window;
 
-// ~~ Command Field Gui State ~~
+// ~~ Available Commands ~~
 
-#[derive(Debug, Clone, Default)]
-pub struct GuiStateCommandPalette {
-    pub highlighted_command_index: IndexInList,
-    pub current_parameter_gui_fn:
-        Option<fn(&mut egui::Ui, &mut GuiStateCommandPalette) -> Option<Command>>,
-
-    // command parameter gui state
-    pub user_input_text: String,
+#[derive(Debug, Clone)]
+struct CommandPaletteEntry {
+    name: &'static str,
+    command_source: CommandPaletteSource,
 }
 
-impl GuiStateCommandPalette {
-    pub fn reset(&mut self) {
-        self.highlighted_command_index = Default::default();
-        self.current_parameter_gui_fn = None;
-        self.user_input_text = Default::default();
+/// Describes how to get the final command when a command palette entry is selected
+#[derive(Debug, Clone)]
+enum CommandPaletteSource {
+    /// When this command entry is selected, this command is returned.
+    SingleCommand(Command),
+    /// When this command entry is selected, a gui is brought up where the user has to enter
+    /// additional parameters.
+    ParameterGuiFn(fn(&mut egui::Ui, &mut GuiStateCommandPalette) -> Option<Command>),
+}
+
+const AVAILABLE_PALETTE_COMMANDS: [CommandPaletteEntry; 5] = [
+    CommandPaletteEntry {
+        name: "Save Camera State",
+        command_source: CommandPaletteSource::SingleCommand(Command::SaveStateCamera),
+    },
+    CommandPaletteEntry {
+        name: "Load Camera State",
+        command_source: CommandPaletteSource::SingleCommand(Command::LoadStateCamera),
+    },
+    CommandPaletteEntry {
+        name: "Save All Objects",
+        command_source: CommandPaletteSource::SingleCommand(Command::SaveAllObjects),
+    },
+    CommandPaletteEntry {
+        name: "Load Objects",
+        command_source: CommandPaletteSource::SingleCommand(Command::LoadObjects),
+    },
+    CommandPaletteEntry {
+        name: "Select Object",
+        command_source: CommandPaletteSource::ParameterGuiFn(parameters_gui_select_object),
+    },
+];
+
+// ~~ Command Field Gui Functions ~~
+
+fn parameters_gui_select_object(
+    ui: &mut egui::Ui,
+    gui_state: &mut GuiStateCommandPalette,
+) -> Option<Command> {
+    let user_input_widget =
+        TextEdit::singleline(&mut gui_state.user_input_text).hint_text("Object ID");
+    let response = ui.add(user_input_widget);
+
+    // if enter key pressed while the text field was focused
+    if response.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+        let possible_id = gui_state.user_input_text.parse::<UniqueId>();
+        let Ok(raw_id) = possible_id else {
+            // todo error message or just make textbox red
+            return None;
+        };
+        let object_id: ObjectId = raw_id.into();
+        return Some(Command::SelectObject(object_id));
     }
+    return None;
 }
 
 // ~~ Drawing fns ~~
@@ -97,58 +142,22 @@ pub fn layout_command_palette(
     None
 }
 
-// ~~ Available Commands ~~
+// ~~ Command Field Gui State ~~
 
-#[derive(Debug, Clone)]
-struct CommandPaletteEntry {
-    name: &'static str,
-    command_source: CommandPaletteSource,
+#[derive(Debug, Clone, Default)]
+pub struct GuiStateCommandPalette {
+    pub highlighted_command_index: IndexInList,
+    pub current_parameter_gui_fn:
+        Option<fn(&mut egui::Ui, &mut GuiStateCommandPalette) -> Option<Command>>,
+
+    // command parameter gui state
+    pub user_input_text: String,
 }
 
-/// Describes how to get the final command when a command palette entry is selected
-#[derive(Debug, Clone)]
-enum CommandPaletteSource {
-    /// When this command entry is selected, this command is returned.
-    SingleCommand(Command),
-    /// When this command entry is selected, a gui is brought up where the user has to enter
-    /// additional parameters.
-    ParameterGuiFn(fn(&mut egui::Ui, &mut GuiStateCommandPalette) -> Option<Command>),
-}
-
-const AVAILABLE_PALETTE_COMMANDS: [CommandPaletteEntry; 3] = [
-    CommandPaletteEntry {
-        name: "Save Camera State",
-        command_source: CommandPaletteSource::SingleCommand(Command::SaveStateCamera),
-    },
-    CommandPaletteEntry {
-        name: "Load Camera State",
-        command_source: CommandPaletteSource::SingleCommand(Command::LoadStateCamera),
-    },
-    CommandPaletteEntry {
-        name: "Select Object",
-        command_source: CommandPaletteSource::ParameterGuiFn(parameters_gui_select_object),
-    },
-];
-
-// ~~ Command Field Gui Functions ~~
-
-fn parameters_gui_select_object(
-    ui: &mut egui::Ui,
-    gui_state: &mut GuiStateCommandPalette,
-) -> Option<Command> {
-    let user_input_widget =
-        TextEdit::singleline(&mut gui_state.user_input_text).hint_text("Object ID");
-    let response = ui.add(user_input_widget);
-
-    // if enter key pressed while the text field was focused
-    if response.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-        let possible_id = gui_state.user_input_text.parse::<UniqueId>();
-        let Ok(raw_id) = possible_id else {
-            // todo error message or just make textbox red
-            return None;
-        };
-        let object_id: ObjectId = raw_id.into();
-        return Some(Command::SelectObject(object_id));
+impl GuiStateCommandPalette {
+    pub fn reset(&mut self) {
+        self.highlighted_command_index = Default::default();
+        self.current_parameter_gui_fn = None;
+        self.user_input_text = Default::default();
     }
-    return None;
 }

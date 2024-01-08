@@ -53,7 +53,7 @@ impl std::fmt::Display for ObjectId {
 
 // ~~ Object ~~
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Object {
     pub name: String,
     pub origin: Vec3,
