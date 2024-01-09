@@ -29,7 +29,7 @@ impl CartesianAxis {
         }
     }
 
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(&self) -> &str {
         match self {
             Self::X => "X",
             Self::Y => "Y",

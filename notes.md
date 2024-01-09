@@ -6,9 +6,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - blend function (primitive op)
 
-- quick save/load camera, objects etc (for debugging!)
-- command palette (helpful for debugging new commands!)
-- command refactor for extendability
 - undo (ctrl z)
 
 - compute dispatch

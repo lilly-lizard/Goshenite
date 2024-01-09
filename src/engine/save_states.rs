@@ -153,7 +153,7 @@ mod tests {
     #[allow(unused_imports)]
     use super::*;
 
-    const TEST_FILE_NAME: &'static str = "_testing.gsave";
+    const TEST_FILE_NAME: &str = "_testing.gsave";
 
     #[test]
     fn camera_store() {

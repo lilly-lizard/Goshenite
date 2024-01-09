@@ -254,7 +254,7 @@ impl EngineInstance {
 
         // process gui inputs and update layout
         let update_gui_res = self.gui.update_gui(
-            &mut self.object_collection,
+            &self.object_collection,
             &self.window,
             self.camera,
             self.selected_object_id,

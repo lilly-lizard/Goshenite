@@ -30,7 +30,7 @@ impl Operation {
         }
     }
 
-    pub fn name(&self) -> &'static str {
+    pub fn name(&self) -> &str {
         match *self {
             Self::Union => "Union",
             Self::Intersection => "Intersection",
