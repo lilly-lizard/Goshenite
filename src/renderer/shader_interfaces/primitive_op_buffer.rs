@@ -1,5 +1,7 @@
 pub type PrimitiveOpBufferUnit = u32;
 
+/// Set in areas where primitives are being blended together
+pub const PRIMITIVE_ID_BLEND: PrimitiveOpBufferUnit = 0xFFFFFFFE;
 /// Inicates an unset primitive id
 pub const PRIMITIVE_ID_INVALID: PrimitiveOpBufferUnit = 0xFFFFFFFF;
 
@@ -36,11 +38,12 @@ pub type PrimitivePropsSlice = [PrimitiveOpBufferUnit; PRIMITIVE_PROPS_LEN];
 
 pub fn create_primitive_op_packet(
     op_code: PrimitiveOpBufferUnit,
+    // blend_units: f32,
     transform: PrimitiveTransformSlice,
     props: PrimitivePropsSlice,
 ) -> PrimitiveOpPacket {
+    let blend_units: f32 = 0.1;
     [
-        op_code,
         transform[0],
         transform[1],
         transform[2],
@@ -59,7 +62,8 @@ pub fn create_primitive_op_packet(
         props[3],
         props[4],
         props[5],
-        0,
+        op_code,
+        blend_units.to_bits(),
     ]
 }
 

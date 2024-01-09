@@ -8,6 +8,7 @@ const uint OP_UNIT_LENGTH = 20;
 
 /// Inicates an unset primitive id
 const uint ID_INVALID = 0xFFFFFFFFu;
+const uint ID_BLEND = 0xFFFFFFFEu;
 
 /// The codes for different ops to execute
 const uint OP_NULL 			= 0x00000000u;

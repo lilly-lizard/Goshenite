@@ -60,29 +60,37 @@ struct SdfResult {
 };
 
 // Results in the union (min) of 2 primitives
-SdfResult op_union(SdfResult p1, SdfResult p2)
+SdfResult op_union(SdfResult p1, SdfResult p2, float blend)
 {
-	return p1.d < p2.d ? p1 : p2;
+	float d_delta = p2.d - p1.d;
+	if (abs(d_delta) >= blend) {
+		return p1.d < p2.d ? p1 : p2;
+	}
+	float h = clamp(0.5 + 0.5 * d_delta / blend, 0., 1.);
+	float d_ret = mix(p2.d, p1.d, h) - blend * h * (1. - h);
+	SdfResult ret = { d_ret, ID_BLEND };
+	return ret;
 }
 
 // Results in the intersection (max) of 2 primitives
-SdfResult op_intersection(SdfResult p1, SdfResult p2)
+SdfResult op_intersection(SdfResult p1, SdfResult p2, float blend)
 {
 	return p1.d > p2.d ? p1 : p2;
 }
 
 // Subtracts the volume of primitive 2 (max) from primitive 1 (max inverted)
-SdfResult op_subtraction(SdfResult p1, SdfResult p2)
+SdfResult op_subtraction(SdfResult p1, SdfResult p2, float blend)
 {
 	SdfResult p2_neg = { -p2.d, p2.op_index };
-	return op_intersection(p1, p2_neg);
+	return op_intersection(p1, p2_neg, blend);
 }
 
-// ~~~ Code interpreters ~~~
+// ~~~ Primitive-Op Processing ~~~
 
-SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
+SdfResult process_primitive(uint op_index, vec3 pos)
 {
 	// todo perf comparison: load OP_UNIT_LENGTH values at once then decode below
+	uint buffer_index = op_index * OP_UNIT_LENGTH;
 
 	vec3 center = vec3(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
@@ -128,15 +136,15 @@ SdfResult process_primitive(uint buffer_index, uint op_index, vec3 pos)
 	return ret;
 }
 
-SdfResult process_op(uint op, SdfResult lhs, SdfResult rhs)
+SdfResult process_op(uint op, float blend, SdfResult lhs, SdfResult rhs)
 {
 	SdfResult res;
 	
 	switch(op)
 	{
-	case OP_UNION: 			res = op_union(lhs, rhs); break;
-	case OP_INTERSECTION: 	res = op_intersection(lhs, rhs); break;
-	case OP_SUBTRACTION: 	res = op_subtraction(lhs, rhs); break;
+	case OP_UNION: 			res = op_union(lhs, rhs, blend); break;
+	case OP_INTERSECTION: 	res = op_intersection(lhs, rhs, blend); break;
+	case OP_SUBTRACTION: 	res = op_subtraction(lhs, rhs, blend); break;
 	default:				res = lhs; // else do nothing e.g. OP_NULL
 	}
 
@@ -153,12 +161,14 @@ SdfResult map(vec3 pos)
 
 	// loop through the primitive operations
 	for (uint op_index = 0; op_index < object.op_count; op_index++) {
+		
+		SdfResult primitive_res = process_primitive(op_index, pos);
 
-		uint buffer_index = op_index * OP_UNIT_LENGTH;
+		uint buffer_index = op_index * OP_UNIT_LENGTH + 18;
 		uint op = object.primitive_ops[buffer_index++];
+		float blend = uintBitsToFloat(object.primitive_ops[buffer_index++]);
 
-		SdfResult primitive_res = process_primitive(buffer_index, op_index, pos);
-		closest_res = process_op(op, closest_res, primitive_res);
+		closest_res = process_op(op, blend, closest_res, primitive_res);
 	}
 
 	return closest_res;

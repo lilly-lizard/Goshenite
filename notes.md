@@ -5,6 +5,8 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 # todo
 
 - blend function (primitive op)
+	- only blend with previous result
+	- each primitive op has a blend parameter
 
 - undo (ctrl z)
 

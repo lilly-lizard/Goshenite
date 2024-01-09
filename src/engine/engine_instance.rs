@@ -404,6 +404,7 @@ impl EngineInstance {
                     object_id,
                     primitive_op_index,
                 } => self.object_clicked(object_id, primitive_op_index),
+                ElementAtPoint::BlendArea => (), // a region where 2 primitives are blended together
             }
         }
     }
