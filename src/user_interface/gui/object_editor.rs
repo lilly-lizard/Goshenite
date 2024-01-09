@@ -220,7 +220,7 @@ fn existing_primitive_op_editor(
 
     gui_state.op_edit_state = selected_primitive_op.op;
     gui_state.primitive_edit_state = selected_primitive_op.primitive;
-    gui_state.transform_edit_state = selected_primitive_op.primitive_transform;
+    gui_state.transform_edit_state = selected_primitive_op.transform;
 
     ui.separator();
 
@@ -460,6 +460,7 @@ fn primitive_op_list(
 
 fn primitive_editor_ui(
     ui: &mut egui::Ui,
+    blend_edit_state: &mut f32,
     transform_edit_state: &mut PrimitiveTransform,
     primitive_edit_state: &mut Primitive,
 ) -> EditState {

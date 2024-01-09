@@ -1,6 +1,6 @@
 use super::{
     config_renderer::TIMEOUT_NANOSECS,
-    shader_interfaces::primitive_op_buffer::{PRIMITIVE_ID_BLEND, PRIMITIVE_ID_INVALID},
+    shader_interfaces::primitive_op_buffer::{PRIMITIVE_ID_BACKGROUND, PRIMITIVE_ID_BLEND},
     vulkan_init::create_cpu_read_staging_buffer,
 };
 use crate::engine::object::object::ObjectId;
@@ -26,7 +26,7 @@ pub enum ElementAtPoint {
 impl ElementAtPoint {
     pub fn from_rendered_id(rendered_id: u32) -> Self {
         match rendered_id {
-            PRIMITIVE_ID_INVALID => Self::Background,
+            PRIMITIVE_ID_BACKGROUND => Self::Background,
             PRIMITIVE_ID_BLEND => Self::BlendArea,
             encoded_id => {
                 let object_id_u32 = encoded_id >> 16;

@@ -48,17 +48,19 @@ pub enum Command {
     RemovePrimitiveOp(TargetPrimitiveOp),
 
     // ~~ Primitive Op: Push ~~
-    PushOp {
+    PushPrimitiveOp {
         object_id: ObjectId,
-        operation: Operation,
         primitive: Primitive,
         transform: PrimitiveTransform,
+        operation: Operation,
+        blend: f32,
     },
-    PushOpAndSelect {
+    PushPrimitiveOpAndSelect {
         object_id: ObjectId,
-        operation: Operation,
         primitive: Primitive,
         transform: PrimitiveTransform,
+        operation: Operation,
+        blend: f32,
     },
 
     // ~~ Primitive Op: Modify ~~

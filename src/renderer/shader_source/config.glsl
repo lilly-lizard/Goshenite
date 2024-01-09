@@ -6,9 +6,10 @@ const vec3 WORLD_SPACE_UP = vec3(0., 0., 1.);
 /// Note: this is half of typical amd/nvidia cache line (128 bytes)
 const uint OP_UNIT_LENGTH = 20;
 
-/// Inicates an unset primitive id
-const uint ID_INVALID = 0xFFFFFFFFu;
-const uint ID_BLEND = 0xFFFFFFFEu;
+/// Inicates an unset primitive/object id
+const uint ID_BACKGROUND = 0xFFFFFFFFu;
+/// Blend area between 2 primitive ops
+const uint ID_BLEND = 0xFFFEu;
 
 /// The codes for different ops to execute
 const uint OP_NULL 			= 0x00000000u;

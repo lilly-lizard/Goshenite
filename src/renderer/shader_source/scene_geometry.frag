@@ -157,7 +157,7 @@ SdfResult process_op(uint op, float blend, SdfResult lhs, SdfResult rhs)
 SdfResult map(vec3 pos)
 {
 	// the closest primitve and distance to pos p
-	SdfResult closest_res = { cam.far, ID_INVALID };
+	SdfResult closest_res = { cam.far, ID_BACKGROUND };
 
 	// loop through the primitive operations
 	for (uint op_index = 0; op_index < object.op_count; op_index++) {

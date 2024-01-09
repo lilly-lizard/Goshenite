@@ -113,19 +113,20 @@ impl Object {
     }
 
     /// Returns the id of the newly created primitive op
-    pub fn push_op(
+    pub fn push_primitive_op(
         &mut self,
-        operation: Operation,
         primitive: Primitive,
         transform: PrimitiveTransform,
+        op: Operation,
+        blend: f32,
     ) -> Result<PrimitiveOpId, UniqueIdError> {
         let primitive_op_id = self.primitive_op_id_gen.new_id()?;
-
         self.primitive_ops.push(PrimitiveOp::new(
             primitive_op_id,
-            operation,
             primitive,
             transform,
+            op,
+            blend,
         ));
         Ok(primitive_op_id)
     }
@@ -233,15 +234,7 @@ impl Object {
 
         let mut encoded_primitives = Vec::<PrimitiveOpPacket>::new();
         for primitive_op in &self.primitive_ops {
-            let primitive_op = primitive_op;
-            let primitive = primitive_op.primitive;
-
-            let encoded_op_code = primitive_op.op.op_code();
-            let encoded_transform = primitive_op.primitive_transform.gpu_encoded(self.origin);
-            let encoded_props = primitive.encoded_props();
-
-            let packet =
-                create_primitive_op_packet(encoded_op_code, encoded_transform, encoded_props);
+            let packet = create_primitive_op_packet(primitive_op, self.origin);
             encoded_primitives.push(packet);
         }
         if self.primitive_ops.len() == 0 {
@@ -254,8 +247,8 @@ impl Object {
             object_id.raw_id() as PrimitiveOpBufferUnit,
             self.primitive_ops.len() as PrimitiveOpBufferUnit,
         ];
-        let encoded_primitives_flattened =
-            encoded_primitives.into_iter().flatten().collect::<Vec<_>>();
+        let encoded_primitives_flattened: Vec<u32> =
+            encoded_primitives.into_iter().flatten().collect();
         encoded_object.extend_from_slice(&encoded_primitives_flattened);
         encoded_object
     }
@@ -263,11 +256,7 @@ impl Object {
     pub fn aabb(&self) -> Aabb {
         let mut aabb = Aabb::new_zero();
         for primitive_op in &self.primitive_ops {
-            aabb.union(
-                primitive_op
-                    .primitive
-                    .aabb(primitive_op.primitive_transform),
-            );
+            aabb.union(primitive_op.primitive.aabb(primitive_op.transform));
         }
         aabb.offset(self.origin);
         aabb
@@ -284,7 +273,7 @@ fn set_primitive_op_internal(
         primitive_op_ref.primitive = some_new_primitive;
     }
     if let Some(some_new_transform) = new_transform {
-        primitive_op_ref.primitive_transform = some_new_transform;
+        primitive_op_ref.transform = some_new_transform;
     }
     if let Some(some_new_operation) = new_operation {
         primitive_op_ref.op = some_new_operation;

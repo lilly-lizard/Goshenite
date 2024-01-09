@@ -7,6 +7,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - blend function (primitive op)
 	- only blend with previous result
 	- each primitive op has a blend parameter
+- fix wonky perspective on screen edges (rays?)
 
 - undo (ctrl z)
 

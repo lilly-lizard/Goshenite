@@ -10,23 +10,27 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PrimitiveOp {
     id: PrimitiveOpId,
-    pub op: Operation,
     pub primitive: Primitive,
-    pub primitive_transform: PrimitiveTransform,
+    pub transform: PrimitiveTransform,
+    pub op: Operation,
+    /// Amount of blending between this primitive op and the previous ops in world-space units.
+    pub blend: f32,
 }
 
 impl PrimitiveOp {
     pub fn new(
         id: PrimitiveOpId,
-        op: Operation,
         primitive: Primitive,
-        primitive_transform: PrimitiveTransform,
+        transform: PrimitiveTransform,
+        op: Operation,
+        blend: f32,
     ) -> Self {
         Self {
             id,
-            op,
             primitive,
-            primitive_transform,
+            transform,
+            op,
+            blend,
         }
     }
 

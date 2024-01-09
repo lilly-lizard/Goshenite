@@ -84,19 +84,24 @@ impl EngineInstance {
             }
 
             // ~~ Primitive Op: Push ~~
-            Command::PushOp {
+            Command::PushPrimitiveOp {
                 object_id,
-                operation,
                 primitive,
                 transform,
-            } => _ = self.push_op_via_command(object_id, operation, primitive, transform, command),
-            Command::PushOpAndSelect {
-                object_id,
                 operation,
+                blend,
+            } => {
+                _ = self
+                    .push_op_via_command(object_id, primitive, transform, operation, blend, command)
+            }
+            Command::PushPrimitiveOpAndSelect {
+                object_id,
                 primitive,
                 transform,
+                operation,
+                blend,
             } => self.push_op_and_select_via_command(
-                object_id, operation, primitive, transform, command,
+                object_id, primitive, transform, operation, blend, command,
             ),
 
             // ~~ Primitive Op: Modify ~~
@@ -571,13 +576,20 @@ impl EngineInstance {
     fn push_op_and_select_via_command(
         &mut self,
         object_id: ObjectId,
-        operation: Operation,
         primitive: Primitive,
         transform: PrimitiveTransform,
+        operation: Operation,
+        blend: f32,
         command: Command,
     ) {
-        let push_op_res =
-            self.push_op_via_command(object_id, operation, primitive, transform, command.clone());
+        let push_op_res = self.push_op_via_command(
+            object_id,
+            primitive,
+            transform,
+            operation,
+            blend,
+            command.clone(),
+        );
 
         let new_primitive_op_id = match push_op_res {
             Some(id) => id,
@@ -593,9 +605,10 @@ impl EngineInstance {
     fn push_op_via_command(
         &mut self,
         object_id: ObjectId,
-        operation: Operation,
         primitive: Primitive,
         transform: PrimitiveTransform,
+        operation: Operation,
+        blend: f32,
         command: Command,
     ) -> Option<PrimitiveOpId> {
         let object = if let Some(some_object) = self.object_collection.get_object_mut(object_id) {
@@ -605,7 +618,7 @@ impl EngineInstance {
             return None;
         };
 
-        let push_op_res = object.push_op(operation, primitive, transform);
+        let push_op_res = object.push_primitive_op(primitive, transform, operation, blend);
 
         let new_primitive_op_id = match push_op_res {
             Err(e) => {

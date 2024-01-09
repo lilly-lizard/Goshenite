@@ -34,7 +34,7 @@ void main()
 	vec3 normal = subpassLoad(in_normal).xyz;
 	uint primitive_id = subpassLoad(in_prmitive_id).x;
 	
-	if (primitive_id == ID_INVALID) {
+	if (primitive_id == ID_BACKGROUND) {
 		// ray miss: draw background
 
 		// clip space position in frame (between -1 and 1)

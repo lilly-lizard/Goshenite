@@ -7,7 +7,7 @@ use super::{
     },
     debug_callback::log_vulkan_debug_callback,
     shader_interfaces::{
-        primitive_op_buffer::PRIMITIVE_ID_INVALID, uniform_buffers::CameraUniformBuffer,
+        primitive_op_buffer::PRIMITIVE_ID_BACKGROUND, uniform_buffers::CameraUniformBuffer,
     },
 };
 use anyhow::{anyhow, Context};
@@ -892,7 +892,7 @@ pub fn create_clear_values() -> Vec<vk::ClearValue> {
         render_pass_indices::ATTACHMENT_PRIMITIVE_ID,
         vk::ClearValue {
             color: vk::ClearColorValue {
-                uint32: [PRIMITIVE_ID_INVALID; 4],
+                uint32: [PRIMITIVE_ID_BACKGROUND; 4],
             },
         },
     );

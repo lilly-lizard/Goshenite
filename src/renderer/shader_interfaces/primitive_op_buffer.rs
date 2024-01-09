@@ -1,9 +1,13 @@
+use glam::Vec3;
+
+use crate::engine::{object::primitive_op::PrimitiveOp, primitives::primitive::EncodablePrimitive};
+
 pub type PrimitiveOpBufferUnit = u32;
 
 /// Set in areas where primitives are being blended together
 pub const PRIMITIVE_ID_BLEND: PrimitiveOpBufferUnit = 0xFFFFFFFE;
 /// Inicates an unset primitive id
-pub const PRIMITIVE_ID_INVALID: PrimitiveOpBufferUnit = 0xFFFFFFFF;
+pub const PRIMITIVE_ID_BACKGROUND: PrimitiveOpBufferUnit = 0xFFFFFFFF;
 
 #[rustfmt::skip]
 #[allow(dead_code)]
@@ -37,33 +41,34 @@ pub type PrimitiveTransformSlice = [PrimitiveOpBufferUnit; PRIMITIVE_TRANSFORM_L
 pub type PrimitivePropsSlice = [PrimitiveOpBufferUnit; PRIMITIVE_PROPS_LEN];
 
 pub fn create_primitive_op_packet(
-    op_code: PrimitiveOpBufferUnit,
-    // blend_units: f32,
-    transform: PrimitiveTransformSlice,
-    props: PrimitivePropsSlice,
+    primitive_op: &PrimitiveOp,
+    object_origin: Vec3,
 ) -> PrimitiveOpPacket {
-    let blend_units: f32 = 0.1;
+    let encoded_op_code = primitive_op.op.op_code();
+    let encoded_transform = primitive_op.transform.gpu_encoded(object_origin);
+    let encoded_props = primitive_op.primitive.encoded_props();
+    let encoded_blend = primitive_op.blend.to_bits();
     [
-        transform[0],
-        transform[1],
-        transform[2],
-        transform[3],
-        transform[4],
-        transform[5],
-        transform[6],
-        transform[7],
-        transform[8],
-        transform[9],
-        transform[10],
-        transform[11],
-        props[0],
-        props[1],
-        props[2],
-        props[3],
-        props[4],
-        props[5],
-        op_code,
-        blend_units.to_bits(),
+        encoded_transform[0],
+        encoded_transform[1],
+        encoded_transform[2],
+        encoded_transform[3],
+        encoded_transform[4],
+        encoded_transform[5],
+        encoded_transform[6],
+        encoded_transform[7],
+        encoded_transform[8],
+        encoded_transform[9],
+        encoded_transform[10],
+        encoded_transform[11],
+        encoded_props[0],
+        encoded_props[1],
+        encoded_props[2],
+        encoded_props[3],
+        encoded_props[4],
+        encoded_props[5],
+        encoded_op_code,
+        encoded_blend,
     ]
 }
 

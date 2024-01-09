@@ -32,6 +32,8 @@ pub const DRAG_INC: f64 = 0.02;
 pub struct GuiState {
     /// Stotes the state of the op field in the gui editor
     pub op_edit_state: Operation,
+    /// Stores the state of the blend field in the gui editor
+    pub blend_edit_state: f32,
     /// Stores the state of the primitive transform fields in the gui editor
     pub transform_edit_state: PrimitiveTransform,
     /// Stotes the state of the fields in the gui editor
@@ -63,6 +65,7 @@ impl Default for GuiState {
     fn default() -> Self {
         Self {
             op_edit_state: Default::default(),
+            blend_edit_state: 0.,
             transform_edit_state: Default::default(),
             primitive_edit_state: Default::default(),
             primitive_op_list_drag_state: Default::default(),
