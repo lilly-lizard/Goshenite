@@ -18,7 +18,8 @@ use std::sync::Arc;
 mod descriptor {
     pub const SET_G_BUFFERS: usize = 0;
     pub const BINDING_NORMAL: u32 = 0;
-    pub const BINDING_PRIMITIVE_ID: u32 = 1;
+    pub const BINDING_ALBEDO: u32 = 1;
+    pub const BINDING_PRIMITIVE_ID: u32 = 2;
 
     pub const SET_CAMERA: usize = 1;
     pub const BINDING_CAMERA: u32 = 0;
@@ -41,6 +42,7 @@ impl LightingPass {
         render_pass: &RenderPass,
         camera_buffer: &Buffer,
         normal_buffer: &ImageView<Image>,
+        albedo_buffer: &ImageView<Image>,
         primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
     ) -> anyhow::Result<Self> {
         let framebuffer_count = primitive_id_buffers.len();
@@ -51,7 +53,12 @@ impl LightingPass {
 
         let desc_sets_g_buffer =
             create_desc_sets_gbuffer(descriptor_pool.clone(), framebuffer_count)?;
-        write_desc_sets_gbuffer(&desc_sets_g_buffer, normal_buffer, primitive_id_buffers)?;
+        write_desc_sets_gbuffer(
+            &desc_sets_g_buffer,
+            normal_buffer,
+            albedo_buffer,
+            primitive_id_buffers,
+        )?;
 
         let pipeline_layout = create_pipeline_layout(
             device.clone(),
@@ -72,11 +79,13 @@ impl LightingPass {
     pub fn update_g_buffers(
         &mut self,
         normal_buffer: &ImageView<Image>,
+        albedo_buffer: &ImageView<Image>,
         primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
     ) -> anyhow::Result<()> {
         write_desc_sets_gbuffer(
             &self.desc_sets_g_buffer,
             normal_buffer,
+            albedo_buffer,
             primitive_id_buffers,
         )
     }
@@ -162,6 +171,13 @@ fn create_desc_set_gbuffer(
             ..Default::default()
         },
         DescriptorSetLayoutBinding {
+            binding: descriptor::BINDING_ALBEDO,
+            descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
+            descriptor_count: 1,
+            stage_flags: vk::ShaderStageFlags::FRAGMENT,
+            ..Default::default()
+        },
+        DescriptorSetLayoutBinding {
             binding: descriptor::BINDING_PRIMITIVE_ID,
             descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
             descriptor_count: 1,
@@ -185,12 +201,14 @@ fn create_desc_set_gbuffer(
 fn write_desc_sets_gbuffer(
     desc_sets_gbuffer: &Vec<Arc<DescriptorSet>>,
     normal_buffer: &ImageView<Image>,
+    albedo_buffer: &ImageView<Image>,
     primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
 ) -> anyhow::Result<()> {
     for i in 0..desc_sets_gbuffer.len() {
         write_desc_set_gbuffer(
             desc_sets_gbuffer[i].as_ref(),
             normal_buffer,
+            albedo_buffer,
             primitive_id_buffers[i].as_ref(),
         )?;
     }
@@ -200,6 +218,7 @@ fn write_desc_sets_gbuffer(
 fn write_desc_set_gbuffer(
     desc_set_gbuffer: &DescriptorSet,
     normal_buffer: &impl ImageViewAccess,
+    albedo_buffer: &impl ImageViewAccess,
     primitive_id_buffer: &impl ImageViewAccess,
 ) -> anyhow::Result<()> {
     let normal_buffer_info = vk::DescriptorImageInfo {
@@ -208,6 +227,13 @@ fn write_desc_set_gbuffer(
         ..Default::default()
     };
     let normal_buffer_infos = [normal_buffer_info];
+
+    let albedo_buffer_info = vk::DescriptorImageInfo {
+        image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        image_view: albedo_buffer.handle(),
+        ..Default::default()
+    };
+    let albedo_buffer_infos = [albedo_buffer_info];
 
     let primitive_id_buffer_info = vk::DescriptorImageInfo {
         image_layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
@@ -221,6 +247,11 @@ fn write_desc_set_gbuffer(
         .dst_binding(descriptor::BINDING_NORMAL)
         .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
         .image_info(&normal_buffer_infos);
+    let descriptor_write_albedo_buffer = vk::WriteDescriptorSet::builder()
+        .dst_set(desc_set_gbuffer.handle())
+        .dst_binding(descriptor::BINDING_ALBEDO)
+        .descriptor_type(vk::DescriptorType::INPUT_ATTACHMENT)
+        .image_info(&albedo_buffer_infos);
     let descriptor_write_primitive_id_buffer = vk::WriteDescriptorSet::builder()
         .dst_set(desc_set_gbuffer.handle())
         .dst_binding(descriptor::BINDING_PRIMITIVE_ID)
@@ -230,6 +261,7 @@ fn write_desc_set_gbuffer(
     desc_set_gbuffer.device().update_descriptor_sets(
         [
             descriptor_write_normal_buffer,
+            descriptor_write_albedo_buffer,
             descriptor_write_primitive_id_buffer,
         ],
         [],

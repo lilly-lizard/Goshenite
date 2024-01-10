@@ -579,7 +579,6 @@ fn attachment_descriptions(
     let mut attachment_descriptions =
         [vk::AttachmentDescription::default(); render_pass_indices::NUM_ATTACHMENTS];
 
-    // swapchain
     attachment_descriptions[render_pass_indices::ATTACHMENT_SWAPCHAIN] =
         vk::AttachmentDescription::builder()
             .format(swapchain_properties.surface_format.format)
@@ -590,7 +589,6 @@ fn attachment_descriptions(
             .final_layout(vk::ImageLayout::PRESENT_SRC_KHR)
             .build();
 
-    // normal buffer
     attachment_descriptions[render_pass_indices::ATTACHMENT_NORMAL] =
         vk::AttachmentDescription::builder()
             .format(FORMAT_NORMAL_BUFFER)
@@ -601,7 +599,16 @@ fn attachment_descriptions(
             .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) // what it will transition to at the end of the render pass
             .build();
 
-    // primitive id buffer
+    attachment_descriptions[render_pass_indices::ATTACHMENT_ALBEDO] =
+        vk::AttachmentDescription::builder()
+            .format(FORMAT_ALBEDO_BUFFER)
+            .samples(vk::SampleCountFlags::TYPE_1)
+            .load_op(vk::AttachmentLoadOp::CLEAR)
+            .store_op(vk::AttachmentStoreOp::DONT_CARE)
+            .initial_layout(vk::ImageLayout::UNDEFINED) // what it will be in at the beginning of the render pass
+            .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) // what it will transition to at the end of the render pass
+            .build();
+
     attachment_descriptions[render_pass_indices::ATTACHMENT_PRIMITIVE_ID] =
         vk::AttachmentDescription::builder()
             .format(FORMAT_PRIMITIVE_ID_BUFFER)
@@ -612,7 +619,6 @@ fn attachment_descriptions(
             .final_layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL) // what it will transition to at the end of the render pass
             .build();
 
-    // depth buffer
     attachment_descriptions[render_pass_indices::ATTACHMENT_DEPTH_BUFFER] =
         vk::AttachmentDescription::builder()
             .format(depth_buffer_format)
@@ -635,6 +641,10 @@ fn subpasses() -> [Subpass; render_pass_indices::NUM_SUBPASSES] {
     let g_buffer_color_attachments = [
         vk::AttachmentReference::builder()
             .attachment(render_pass_indices::ATTACHMENT_NORMAL as u32)
+            .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
+            .build(),
+        vk::AttachmentReference::builder()
+            .attachment(render_pass_indices::ATTACHMENT_ALBEDO as u32)
             .layout(vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL)
             .build(),
         vk::AttachmentReference::builder()
@@ -664,6 +674,10 @@ fn subpasses() -> [Subpass; render_pass_indices::NUM_SUBPASSES] {
     let deferred_input_attachments = [
         vk::AttachmentReference::builder()
             .attachment(render_pass_indices::ATTACHMENT_NORMAL as u32)
+            .layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .build(),
+        vk::AttachmentReference::builder()
+            .attachment(render_pass_indices::ATTACHMENT_ALBEDO as u32)
             .layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
             .build(),
         vk::AttachmentReference::builder()
@@ -910,6 +924,12 @@ pub fn create_clear_values() -> Vec<vk::ClearValue> {
     );
     clear_values.insert(
         render_pass_indices::ATTACHMENT_NORMAL,
+        vk::ClearValue {
+            color: vk::ClearColorValue { float32: [0.; 4] },
+        },
+    );
+    clear_values.insert(
+        render_pass_indices::ATTACHMENT_ALBEDO,
         vk::ClearValue {
             color: vk::ClearColorValue { float32: [0.; 4] },
         },

@@ -189,7 +189,8 @@ impl RenderManager {
             device.clone(),
             &render_pass,
             &camera_ubo,
-            normal_buffer.as_ref(),
+            &normal_buffer,
+            &albedo_buffer,
             &primitive_id_buffers,
         )?;
 
@@ -537,8 +538,11 @@ impl RenderManager {
             self.depth_buffer.clone(),
         )?;
 
-        self.lighting_pass
-            .update_g_buffers(&self.normal_buffer, &self.primitive_id_buffers)?;
+        self.lighting_pass.update_g_buffers(
+            &self.normal_buffer,
+            &self.albedo_buffer,
+            &self.primitive_id_buffers,
+        )?;
 
         Ok(())
     }
