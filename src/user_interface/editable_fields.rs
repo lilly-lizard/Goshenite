@@ -70,8 +70,8 @@ pub fn uber_primitive_editor_ui(
 pub fn blend_editor_ui(ui: &mut egui::Ui, blend: &mut f32) -> EditState {
     let original_blend = *blend;
     ui.horizontal(|ui_h| {
-        ui.label("Blend:");
-        ui.add(DragValue::new(blend).speed(DRAG_INC));
+        ui_h.label("Blend:");
+        ui_h.add(DragValue::new(blend).speed(DRAG_INC));
     });
     if original_blend == *blend {
         EditState::NoChange

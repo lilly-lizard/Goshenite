@@ -16,15 +16,12 @@ use crate::{
     },
     renderer::shader_interfaces::primitive_op_buffer::{
         create_primitive_op_packet, nop_primitive_op_packet, PrimitiveOpBufferUnit,
-        PrimitiveOpPacket,
+        PrimitiveOpPacket, MAX_PRIMITIVE_OP_COUNT,
     },
 };
 use egui_dnd::utils::{shift_slice, ShiftSliceError};
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
-
-// this is because the shaders store the primitive op index in the lower 16 bits of a u32
-const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
 
 // ~~ Object Id ~~
 
@@ -188,20 +185,20 @@ impl Object {
         new_primitive: Option<Primitive>,
         new_transform: Option<PrimitiveTransform>,
         new_operation: Option<Operation>,
+        new_blend: Option<f32>,
     ) -> Result<(), CollectionError> {
         let primitive_op_search_res = self.get_primitive_op_mut(primitive_op_id);
-
         let Some(primitive_op_ref) = primitive_op_search_res else {
             return Err(CollectionError::InvalidId {
                 raw_id: primitive_op_id.raw_id(),
             });
         };
-
         set_primitive_op_internal(
             primitive_op_ref,
             new_primitive,
             new_transform,
             new_operation,
+            new_blend,
         )
     }
 
@@ -211,6 +208,7 @@ impl Object {
         new_primitive: Option<Primitive>,
         new_transform: Option<PrimitiveTransform>,
         new_operation: Option<Operation>,
+        new_blend: Option<f32>,
     ) -> Result<(), CollectionError> {
         let primitive_op_search_res = self.primitive_ops.get_mut(primitive_op_index);
         let Some(primitive_op_ref) = primitive_op_search_res else {
@@ -219,12 +217,12 @@ impl Object {
                 size: self.primitive_ops.len(),
             });
         };
-
         set_primitive_op_internal(
             primitive_op_ref,
             new_primitive,
             new_transform,
             new_operation,
+            new_blend,
         )
     }
 
@@ -268,6 +266,7 @@ fn set_primitive_op_internal(
     new_primitive: Option<Primitive>,
     new_transform: Option<PrimitiveTransform>,
     new_operation: Option<Operation>,
+    new_blend: Option<f32>,
 ) -> Result<(), CollectionError> {
     if let Some(some_new_primitive) = new_primitive {
         primitive_op_ref.primitive = some_new_primitive;
@@ -277,6 +276,9 @@ fn set_primitive_op_internal(
     }
     if let Some(some_new_operation) = new_operation {
         primitive_op_ref.op = some_new_operation;
+    }
+    if let Some(some_new_blend) = new_blend {
+        primitive_op_ref.blend = some_new_blend;
     }
     return Ok(());
 }

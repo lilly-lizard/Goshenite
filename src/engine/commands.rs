@@ -69,6 +69,7 @@ pub enum Command {
         new_primitive: Primitive,
         new_transform: PrimitiveTransform,
         new_operation: Operation,
+        new_blend: f32,
     },
     SetPrimitive {
         target_primitive_op: TargetPrimitiveOp,
@@ -81,6 +82,10 @@ pub enum Command {
     SetOperation {
         target_primitive_op: TargetPrimitiveOp,
         new_operation: Operation,
+    },
+    SetBlend {
+        target_primitive_op: TargetPrimitiveOp,
+        new_blend: f32,
     },
     ShiftPrimitiveOps {
         object_id: ObjectId,

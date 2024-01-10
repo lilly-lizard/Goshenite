@@ -15,8 +15,8 @@ use crate::{
     user_interface::{
         config_ui,
         editable_fields::{
-            cube_editor_ui, op_drop_down, primitive_transform_editor_ui, sphere_editor_ui,
-            uber_primitive_editor_ui,
+            blend_editor_ui, cube_editor_ui, op_drop_down, primitive_transform_editor_ui,
+            sphere_editor_ui, uber_primitive_editor_ui,
         },
         gui::EditState,
         gui_state::{GuiState, DRAG_INC},
@@ -218,9 +218,7 @@ fn existing_primitive_op_editor(
             }
         };
 
-    gui_state.op_edit_state = selected_primitive_op.op;
-    gui_state.primitive_edit_state = selected_primitive_op.primitive;
-    gui_state.transform_edit_state = selected_primitive_op.transform;
+    gui_state.set_primitive_op_edit_state(selected_primitive_op);
 
     ui.separator();
 
@@ -230,10 +228,10 @@ fn existing_primitive_op_editor(
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        let possible_updated_op = op_drop_down(ui_h, gui_state.op_edit_state, selected_object_id);
+        let possible_updated_op = op_drop_down(ui_h, gui_state.op_edit, selected_object_id);
         if let Some(updated_op) = possible_updated_op {
             // user edited the op via drop-down menu
-            gui_state.op_edit_state = updated_op;
+            gui_state.op_edit = updated_op;
             primitive_op_edit_state = EditState::Modified;
         }
 
@@ -246,8 +244,9 @@ fn existing_primitive_op_editor(
 
     let primitive_edit_state = primitive_editor_ui(
         ui,
-        &mut gui_state.transform_edit_state,
-        &mut gui_state.primitive_edit_state,
+        &mut gui_state.primitive_edit,
+        &mut gui_state.transform_edit,
+        &mut gui_state.blend_edit,
     );
     primitive_op_edit_state = primitive_op_edit_state.combine(primitive_edit_state);
 
@@ -267,9 +266,10 @@ fn existing_primitive_op_editor(
                 TargetPrimitiveOp::Id(selected_object_id, selected_prim_op_id);
             commands.push(Command::SetPrimitiveOp {
                 target_primitive_op,
-                new_primitive: gui_state.primitive_edit_state,
-                new_transform: gui_state.transform_edit_state,
-                new_operation: gui_state.op_edit_state,
+                new_primitive: gui_state.primitive_edit,
+                new_transform: gui_state.transform_edit,
+                new_operation: gui_state.op_edit,
+                new_blend: gui_state.blend_edit,
             });
         }
         EditState::NoChange => (),
@@ -288,10 +288,10 @@ fn new_primitive_op_editor(
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        let possible_updated_op = op_drop_down(ui_h, gui_state.op_edit_state, selected_object_id);
+        let possible_updated_op = op_drop_down(ui_h, gui_state.op_edit, selected_object_id);
         if let Some(updated_op) = possible_updated_op {
             // user edited the op via drop-down menu
-            gui_state.op_edit_state = updated_op;
+            gui_state.op_edit = updated_op;
         }
 
         // primitive type drop down menu
@@ -302,8 +302,9 @@ fn new_primitive_op_editor(
 
     primitive_editor_ui(
         ui,
-        &mut gui_state.transform_edit_state,
-        &mut gui_state.primitive_edit_state,
+        &mut gui_state.primitive_edit,
+        &mut gui_state.transform_edit,
+        &mut gui_state.blend_edit,
     );
 
     // Add and Reset buttons
@@ -316,18 +317,20 @@ fn new_primitive_op_editor(
     });
     if clicked_add {
         if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
-            commands.push(Command::PushOpAndSelect {
+            commands.push(Command::PushPrimitiveOpAndSelect {
                 object_id: selected_object_id,
-                operation: gui_state.op_edit_state,
-                primitive: gui_state.primitive_edit_state.clone(),
-                transform: gui_state.transform_edit_state,
+                primitive: gui_state.primitive_edit.clone(),
+                transform: gui_state.transform_edit,
+                operation: gui_state.op_edit,
+                blend: gui_state.blend_edit,
             });
         } else {
-            commands.push(Command::PushOp {
+            commands.push(Command::PushPrimitiveOp {
                 object_id: selected_object_id,
-                operation: gui_state.op_edit_state,
-                primitive: gui_state.primitive_edit_state.clone(),
-                transform: gui_state.transform_edit_state,
+                primitive: gui_state.primitive_edit.clone(),
+                transform: gui_state.transform_edit,
+                operation: gui_state.op_edit,
+                blend: gui_state.blend_edit,
             });
         }
     }
@@ -343,7 +346,7 @@ fn primitive_type_drop_down(
     gui_state: &mut GuiState,
     selected_object_id: ObjectId,
 ) -> EditState {
-    let selected_primitive_type_name: &str = gui_state.primitive_edit_state.type_name();
+    let selected_primitive_type_name: &str = gui_state.primitive_edit.type_name();
     let mut type_has_changed = EditState::NoChange;
 
     ComboBox::from_id_source(format!("primitive type drop down {:?}", selected_object_id))
@@ -352,7 +355,7 @@ fn primitive_type_drop_down(
         .show_ui(ui, |ui_p| {
             for (variant_default_primitive, variant_type_name) in Primitive::variants_with_names() {
                 // drop-down option for each primitive type
-                let this_is_selected = discriminant(&gui_state.primitive_edit_state)
+                let this_is_selected = discriminant(&gui_state.primitive_edit)
                     == discriminant(&variant_default_primitive);
                 let label_clicked = ui_p
                     .selectable_label(this_is_selected, variant_type_name)
@@ -361,7 +364,7 @@ fn primitive_type_drop_down(
                 if label_clicked & !this_is_selected {
                     // new primitive type was selected
                     type_has_changed = EditState::Modified;
-                    gui_state.primitive_edit_state = variant_default_primitive;
+                    gui_state.primitive_edit = variant_default_primitive;
                 }
             }
         });
@@ -404,7 +407,7 @@ fn primitive_op_list(
     };
 
     // draw each item in the primitive op list
-    let mut primitive_op_list_drag_state = gui_state.primitive_op_list_drag_state.clone();
+    let mut primitive_op_list_drag_state = gui_state.primitive_op_list_drag.clone();
     let drag_drop_response = primitive_op_list_drag_state.list_ui::<PrimitiveOp>(
         ui,
         selected_object.primitive_ops.iter(),
@@ -446,7 +449,7 @@ fn primitive_op_list(
             });
         },
     );
-    gui_state.primitive_op_list_drag_state = primitive_op_list_drag_state;
+    gui_state.primitive_op_list_drag = primitive_op_list_drag_state;
 
     // if an item has been dropped after being dragged, re-arrange the primtive ops list
     if let DragDropResponse::Completed(drag_indices) = drag_drop_response {
@@ -460,17 +463,19 @@ fn primitive_op_list(
 
 fn primitive_editor_ui(
     ui: &mut egui::Ui,
-    blend_edit_state: &mut f32,
-    transform_edit_state: &mut PrimitiveTransform,
-    primitive_edit_state: &mut Primitive,
+    primitive_edit: &mut Primitive,
+    transform_edit: &mut PrimitiveTransform,
+    blend_edit: &mut f32,
 ) -> EditState {
-    let primitive_edit_state = match primitive_edit_state {
+    let primitive_edit_state = match primitive_edit {
         Primitive::Sphere(p) => sphere_editor_ui(ui, p),
         Primitive::Cube(p) => cube_editor_ui(ui, p),
         Primitive::UberPrimitive(p) => uber_primitive_editor_ui(ui, p),
     };
+    let transform_edit_state = primitive_transform_editor_ui(ui, transform_edit);
+    let blend_edit_state = blend_editor_ui(ui, blend_edit);
 
-    let transform_edit_state = primitive_transform_editor_ui(ui, transform_edit_state);
-
-    transform_edit_state.combine(primitive_edit_state)
+    transform_edit_state
+        .combine(primitive_edit_state)
+        .combine(blend_edit_state)
 }

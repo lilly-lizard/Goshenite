@@ -109,7 +109,7 @@ impl Gui {
 
     /// Call this when the selected object is changed
     pub fn selected_object_changed(&mut self) {
-        self.gui_state.primitive_op_list_drag_state = Default::default();
+        self.gui_state.primitive_op_list_drag = Default::default();
     }
 
     /// Call this when a primitive op is selected

@@ -110,11 +110,13 @@ impl EngineInstance {
                 new_primitive,
                 new_transform,
                 new_operation,
+                new_blend,
             } => self.set_primitive_op(
                 target_primitive_op,
                 Some(new_primitive),
                 Some(new_transform),
                 Some(new_operation),
+                Some(new_blend),
                 Some(command),
             ),
             Command::SetPrimitive {
@@ -123,6 +125,7 @@ impl EngineInstance {
             } => self.set_primitive_op(
                 target_primitive_op,
                 Some(new_primitive),
+                None,
                 None,
                 None,
                 Some(command),
@@ -135,6 +138,7 @@ impl EngineInstance {
                 None,
                 Some(new_transform),
                 None,
+                None,
                 Some(command),
             ),
             Command::SetOperation {
@@ -145,6 +149,18 @@ impl EngineInstance {
                 None,
                 None,
                 Some(new_operation),
+                None,
+                Some(command),
+            ),
+            Command::SetBlend {
+                target_primitive_op,
+                new_blend,
+            } => self.set_primitive_op(
+                target_primitive_op,
+                None,
+                None,
+                None,
+                Some(new_blend),
                 Some(command),
             ),
             Command::ShiftPrimitiveOps {
@@ -643,6 +659,7 @@ impl EngineInstance {
         new_primitive: Option<Primitive>,
         new_transform: Option<PrimitiveTransform>,
         new_operation: Option<Operation>,
+        new_blend: Option<f32>,
         source_command: Option<Command>,
     ) {
         let Some(object_id) =
@@ -663,6 +680,7 @@ impl EngineInstance {
                     new_primitive,
                     new_transform,
                     new_operation,
+                    new_blend,
                 );
                 if let Err(_) = res {
                     failure_warn_invalid_primitive_op_id(
@@ -679,6 +697,7 @@ impl EngineInstance {
                     new_primitive,
                     new_transform,
                     new_operation,
+                    new_blend,
                 );
                 if let Err(_) = res {
                     failure_warn_invalid_primitive_op_index(
@@ -696,6 +715,7 @@ impl EngineInstance {
                         new_primitive,
                         new_transform,
                         new_operation,
+                        new_blend,
                     );
                     if let Err(_) = res {
                         failure_warn_invalid_primitive_op_id(

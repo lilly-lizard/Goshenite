@@ -1,8 +1,10 @@
+use crate::engine::{object::primitive_op::PrimitiveOp, primitives::primitive::EncodablePrimitive};
 use glam::Vec3;
 
-use crate::engine::{object::primitive_op::PrimitiveOp, primitives::primitive::EncodablePrimitive};
-
 pub type PrimitiveOpBufferUnit = u32;
+
+// this is because the shaders store the primitive op index in the lower 16 bits of a u32
+pub const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
 
 /// Set in areas where primitives are being blended together
 pub const PRIMITIVE_ID_BLEND: PrimitiveOpBufferUnit = 0xFFFFFFFE;
