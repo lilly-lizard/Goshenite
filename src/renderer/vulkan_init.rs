@@ -2,8 +2,9 @@ use crate::renderer::config_renderer::ENABLE_VULKAN_VALIDATION;
 
 use super::{
     config_renderer::{
-        CPU_ACCESS_BUFFER_SIZE, FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER,
-        MAX_FRAMES_IN_FLIGHT, MAX_VULKAN_VER, MIN_VULKAN_VER, SHADER_ENTRY_POINT,
+        CPU_ACCESS_BUFFER_SIZE, FORMAT_ALBEDO_BUFFER, FORMAT_NORMAL_BUFFER,
+        FORMAT_PRIMITIVE_ID_BUFFER, MAX_FRAMES_IN_FLIGHT, MAX_VULKAN_VER, MIN_VULKAN_VER,
+        SHADER_ENTRY_POINT,
     },
     debug_callback::log_vulkan_debug_callback,
     shader_interfaces::{
@@ -561,9 +562,10 @@ pub fn choose_depth_buffer_format(physical_device: &PhysicalDevice) -> anyhow::R
 pub mod render_pass_indices {
     pub const ATTACHMENT_SWAPCHAIN: usize = 0;
     pub const ATTACHMENT_NORMAL: usize = 1;
-    pub const ATTACHMENT_PRIMITIVE_ID: usize = 2;
-    pub const ATTACHMENT_DEPTH_BUFFER: usize = 3;
-    pub const NUM_ATTACHMENTS: usize = 4;
+    pub const ATTACHMENT_ALBEDO: usize = 2;
+    pub const ATTACHMENT_PRIMITIVE_ID: usize = 3;
+    pub const ATTACHMENT_DEPTH_BUFFER: usize = 4;
+    pub const NUM_ATTACHMENTS: usize = 5;
 
     pub const SUBPASS_GBUFFER: usize = 0;
     pub const SUBPASS_DEFERRED: usize = 1;
@@ -769,6 +771,25 @@ pub fn create_normal_buffer(
     Ok(Arc::new(image_view))
 }
 
+pub fn create_albedo_buffer(
+    memory_allocator: Arc<MemoryAllocator>,
+    dimensions: ImageDimensions,
+) -> anyhow::Result<Arc<ImageView<Image>>> {
+    let image = Image::new_tranient(
+        memory_allocator,
+        dimensions,
+        FORMAT_ALBEDO_BUFFER,
+        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::INPUT_ATTACHMENT,
+    )
+    .context("creating albedo buffer image")?;
+
+    let image_view_properties =
+        ImageViewProperties::from_image_properties_default(image.properties());
+    let image_view = ImageView::new(Arc::new(image), image_view_properties)
+        .context("creating albedo buffer image view")?;
+    Ok(Arc::new(image_view))
+}
+
 /// Creates `framebuffer_count` number of primitive id buffer image views
 pub fn create_primitive_id_buffers(
     framebuffer_count: usize,
@@ -831,11 +852,12 @@ pub fn create_cpu_read_staging_buffer(
 /// * if `swapchain_image_views` contains more than one image, it must contain
 ///   `framebuffer_count` elements.
 pub fn create_framebuffers(
-    render_pass: &Arc<RenderPass>,
-    swapchain_image_views: &Vec<Arc<ImageView<SwapchainImage>>>,
-    normal_buffer: &Arc<ImageView<Image>>,
-    primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
-    depth_buffer: &Arc<ImageView<Image>>,
+    render_pass: Arc<RenderPass>,
+    swapchain_image_views: &[Arc<ImageView<SwapchainImage>>],
+    normal_buffer: Arc<ImageView<Image>>,
+    albedo_buffer: Arc<ImageView<Image>>,
+    primitive_id_buffers: &[Arc<ImageView<Image>>],
+    depth_buffer: Arc<ImageView<Image>>,
 ) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
     (0..swapchain_image_views.len())
         .into_iter()
@@ -850,6 +872,10 @@ pub fn create_framebuffers(
             attachments.insert(
                 render_pass_indices::ATTACHMENT_NORMAL,
                 normal_buffer.clone(),
+            );
+            attachments.insert(
+                render_pass_indices::ATTACHMENT_ALBEDO,
+                albedo_buffer.clone(),
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_PRIMITIVE_ID,

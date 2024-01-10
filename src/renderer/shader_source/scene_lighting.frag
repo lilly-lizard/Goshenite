@@ -5,7 +5,9 @@
 
 // g-buffer input attachments
 layout (set = 0, binding = 0, input_attachment_index = 0) uniform subpassInput in_normal;
-layout (set = 0, binding = 1, input_attachment_index = 1) uniform usubpassInput in_prmitive_id;
+layout (set = 0, binding = 0, input_attachment_index = 1) uniform subpassInput in_albedo;
+layout (set = 0, binding = 1, input_attachment_index = 2) uniform usubpassInput in_prmitive_id;
+
 // input UV from full_screen.vert
 layout (location = 0) in vec2 in_uv;
 
@@ -31,7 +33,6 @@ vec3 background(const vec3 ray_d)
 void main() 
 {
 	// decode g-buffer
-	vec3 normal = subpassLoad(in_normal).xyz;
 	uint primitive_id = subpassLoad(in_prmitive_id).x;
 	
 	if (primitive_id == ID_BACKGROUND) {
@@ -46,7 +47,10 @@ void main()
 		out_color = vec4(background(ray_d), 1.);
 	} else {
 		// ray hit: just output normal as color for now
-		out_color = vec4(normal, 1.);
+		vec3 normal = subpassLoad(in_normal).xyz;
+		vec4 albedo = subpassLoad(in_albedo);
+		//out_color = vec4(normal, 1.);
+		out_color = albedo;
 	}
 
     if (cam.write_linear_color == 1) {

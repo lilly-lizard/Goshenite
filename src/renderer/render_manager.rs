@@ -17,9 +17,10 @@ use crate::{
     engine::object::objects_delta::ObjectsDelta,
     helper::anyhow_panic::log_anyhow_error_and_sources,
     renderer::vulkan_init::{
-        choose_depth_buffer_format, create_command_pool, create_debug_callback,
-        create_device_and_queue, create_entry, create_instance, create_primitive_id_buffers,
-        create_render_command_buffers, shaders_should_write_linear_color,
+        choose_depth_buffer_format, create_albedo_buffer, create_command_pool,
+        create_debug_callback, create_device_and_queue, create_entry, create_instance,
+        create_primitive_id_buffers, create_render_command_buffers,
+        shaders_should_write_linear_color,
     },
     user_interface::camera::Camera,
 };
@@ -65,6 +66,7 @@ pub struct RenderManager {
 
     depth_buffer: Arc<ImageView<Image>>,
     normal_buffer: Arc<ImageView<Image>>,
+    albedo_buffer: Arc<ImageView<Image>>,
     /// One per framebuffer
     primitive_id_buffers: Vec<Arc<ImageView<Image>>>,
     camera_ubo: Arc<Buffer>,
@@ -147,31 +149,29 @@ impl RenderManager {
         let render_pass =
             create_render_pass(device.clone(), swapchain.properties(), depth_buffer_format)?;
 
+        let framebuffer_dimensions = swapchain.properties().dimensions();
         let depth_buffer = create_depth_buffer(
             memory_allocator.clone(),
-            swapchain.properties().dimensions(),
+            framebuffer_dimensions,
             depth_buffer_format,
         )?;
-
-        let normal_buffer = create_normal_buffer(
-            memory_allocator.clone(),
-            swapchain.properties().dimensions(),
-        )?;
-
+        let normal_buffer = create_normal_buffer(memory_allocator.clone(), framebuffer_dimensions)?;
+        let albedo_buffer = create_albedo_buffer(memory_allocator.clone(), framebuffer_dimensions)?;
         let primitive_id_buffers = create_primitive_id_buffers(
             framebuffer_count,
             memory_allocator.clone(),
-            swapchain.properties().dimensions(),
+            framebuffer_dimensions,
         )?;
 
         let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
 
         let framebuffers = create_framebuffers(
-            &render_pass,
+            render_pass.clone(),
             &swapchain_image_views,
-            &normal_buffer,
+            normal_buffer.clone(),
+            albedo_buffer.clone(),
             &primitive_id_buffers,
-            &depth_buffer,
+            depth_buffer.clone(),
         )?;
 
         let clear_values = create_clear_values();
@@ -248,6 +248,7 @@ impl RenderManager {
 
             depth_buffer,
             normal_buffer,
+            albedo_buffer,
             primitive_id_buffers,
             camera_ubo,
 
@@ -528,11 +529,12 @@ impl RenderManager {
         )?;
 
         self.framebuffers = create_framebuffers(
-            &self.render_pass,
+            self.render_pass.clone(),
             &self.swapchain_image_views,
-            &self.normal_buffer,
+            self.normal_buffer.clone(),
+            self.albedo_buffer.clone(),
             &self.primitive_id_buffers,
-            &self.depth_buffer,
+            self.depth_buffer.clone(),
         )?;
 
         self.lighting_pass

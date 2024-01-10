@@ -12,6 +12,7 @@ pub const SHADER_ENTRY_POINT: &str = "main";
 
 /// G-buffer formats. Note that the combined bit total of these should be under 128bits to fit in tile storage on many tile-based architectures.
 pub const FORMAT_NORMAL_BUFFER: vk::Format = vk::Format::R8G8B8A8_UNORM;
+pub const FORMAT_ALBEDO_BUFFER: vk::Format = vk::Format::R8G8B8A8_UNORM;
 pub const FORMAT_PRIMITIVE_ID_BUFFER: vk::Format = vk::Format::R32_UINT;
 
 /// 1 second
