@@ -56,7 +56,7 @@ impl EngineInstance {
 
             // ~~ Object ~~
             Command::SelectObject(object_id) => {
-                self.select_object_via_command(object_id, command);
+                self.select_object(object_id, Some(command));
             }
             Command::DeselectObject() => self.deselect_object(),
             Command::RemoveObject(object_id) => self.remove_object_via_command(object_id, command),
@@ -267,11 +267,15 @@ impl EngineInstance {
         self.selected_primitive_op_id = None;
     }
 
-    fn select_object_via_command(&mut self, object_id_to_select: ObjectId, command: Command) {
+    pub(super) fn select_object(
+        &mut self,
+        object_id_to_select: ObjectId,
+        command: Option<Command>,
+    ) {
         if let Some(object) = self.object_collection.get_object(object_id_to_select) {
             self.select_object_unchecked(object_id_to_select, object.origin);
         } else {
-            command_failed_warn(command, "invalid object id");
+            failure_warn_invalid_object_id(object_id_to_select, command);
         }
     }
 

@@ -7,7 +7,7 @@ pub type PrimitiveOpBufferUnit = u32;
 pub const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
 
 /// Set in areas where primitives are being blended together
-pub const PRIMITIVE_ID_BLEND: PrimitiveOpBufferUnit = 0xFFFFFFFE;
+pub const PRIMITIVE_ID_BLEND: PrimitiveOpBufferUnit = 0xFFFE;
 /// Inicates an unset primitive id
 pub const PRIMITIVE_ID_BACKGROUND: PrimitiveOpBufferUnit = 0xFFFFFFFF;
 

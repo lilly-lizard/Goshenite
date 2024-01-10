@@ -214,7 +214,7 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist, out vec3 o_
 		// ray hit
 		if (closest_primitive.d < MIN_MARCH_STEP) {
 			o_normal = calcNormal(current_pos) / 2. + .5;
-			o_object_id = closest_primitive.op_index | (in_object_id << 16);
+			o_object_id = (closest_primitive.op_index & 0xFFFF) | (in_object_id << 16);
 			o_dist = dist;
 			return;
 		}

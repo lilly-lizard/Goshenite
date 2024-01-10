@@ -403,8 +403,8 @@ impl EngineInstance {
                 ElementAtPoint::Object {
                     object_id,
                     primitive_op_index,
-                } => self.object_clicked(object_id, primitive_op_index),
-                ElementAtPoint::BlendArea => (), // a region where 2 primitives are blended together
+                } => self.object_clicked(object_id, Some(primitive_op_index)),
+                ElementAtPoint::BlendArea { object_id } => self.object_clicked(object_id, None),
             }
         }
     }
@@ -413,9 +413,13 @@ impl EngineInstance {
         self.deselect_primitive_op();
     }
 
-    fn object_clicked(&mut self, object_id: ObjectId, primitive_op_index: usize) {
-        let target_primitive_op = TargetPrimitiveOp::Index(object_id, primitive_op_index);
-        self.select_primitive_op_and_object(target_primitive_op, None)
+    fn object_clicked(&mut self, object_id: ObjectId, primitive_op_index: Option<usize>) {
+        if let Some(some_primitive_op_index) = primitive_op_index {
+            let target_primitive_op = TargetPrimitiveOp::Index(object_id, some_primitive_op_index);
+            self.select_primitive_op_and_object(target_primitive_op, None)
+        } else {
+            self.select_object(object_id, None);
+        }
     }
 
     fn stop_render_thread(&self) {
