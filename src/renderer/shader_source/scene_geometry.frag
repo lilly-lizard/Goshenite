@@ -252,7 +252,7 @@ void main()
 	ray_march(cam.position.xyz, ray_d_norm, z, normal, albedo, object_id);
 
 	gl_FragDepth = dist_to_depth(z, cam.near, cam.far);
-	out_normal = vec4(normal, 0.);
+	out_normal = vec4(normal / 2. + 0.5, 0.); // fit [-1, 1] in unorm range
 	out_albedo = albedo;
 	out_object_id = object_id;
 }
