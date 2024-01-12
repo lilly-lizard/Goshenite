@@ -46,11 +46,23 @@ void main()
 		vec3 ray_d = normalize((cam.proj_view_inverse * pos_uv).xyz);
 		out_color = vec4(background(ray_d), 1.);
 	} else {
-		// ray hit: just output normal as color for now
-		vec3 normal = subpassLoad(in_normal).xyz;
+		// ray hit: calculate color (https://learnopengl.com/Lighting/Basic-Lighting)
+		vec3 normal = (subpassLoad(in_normal).xyz - 0.5) * 2.;
 		vec4 albedo = subpassLoad(in_albedo);
-		//out_color = vec4(normal, 1.);
-		out_color = albedo;
+		
+		const vec3 SUN_DIR = vec3(0.57735, 0.57735, 0.57735); // normalized
+		const vec3 SUN_COLOR = vec3(1., 1., 0.8);
+		const float AMBIENT_STRENGTH = 0.15;
+
+		float in_specular = 0.5; // hard-coded for now
+
+		vec3 ambient = AMBIENT_STRENGTH * SUN_COLOR;
+		
+		float diffuse_factor = max(dot(normal, -SUN_DIR), 0.);
+		vec3 diffuse = diffuse_factor * SUN_COLOR;
+
+		vec4 ambient_diffuse = vec4(ambient + diffuse, 1.);
+		out_color = albedo * ambient_diffuse;
 	}
 
     if (cam.write_linear_color == 1) {
