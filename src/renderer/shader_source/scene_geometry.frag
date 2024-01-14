@@ -233,18 +233,20 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist,
 
 // ~~~ Main ~~~
 
-void main()
-{
+/// Normalized ray direction in world space
+vec3 ray_direction() {
 	// can use clip_space_uv instead of in_uv clip space position in frame (between -1 and 1)
 	//vec2 screen_space = gl_FragCoord.xy + vec2(0.5);
 	//vec2 clip_space_uv = screen_space / cam.framebuffer_dims * 2. - 1.;
-
-	// ray direction in world space
 	float clip_space_depth = -cam.near / cam.far;
 	vec4 ray_d = cam.proj_view_inverse * vec4(in_clip_space_uv, clip_space_depth, 1.);
-	vec3 ray_d_norm = normalize(ray_d.xyz);
+	return normalize(ray_d.xyz);
+}
 
-	// render scene
+void main()
+{
+	vec3 ray_d_norm = ray_direction();
+	
 	float z;
 	vec3 normal;
 	vec4 albedo;

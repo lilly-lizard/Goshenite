@@ -17,7 +17,7 @@ layout (location = 0) out vec4 out_color;
 layout (set = 1, binding = 0) uniform Camera {
 	mat4 proj_view_inverse;
 	vec4 _position;
-	vec2 _framebuffer_dims;
+	vec2 framebuffer_dims;
 	float near;
 	float far;
     uint write_linear_color;
@@ -28,6 +28,15 @@ layout (set = 1, binding = 0) uniform Camera {
 vec3 background(const vec3 ray_d)
 {
 	return vec3(0.45, 0.55, 0.7) + 0.3 * dot(ray_d, WORLD_SPACE_UP);
+}
+
+/// Normalized ray direction in world space
+vec3 ray_direction() {
+	vec2 screen_space = gl_FragCoord.xy + vec2(0.5);
+	vec2 clip_space_uv = screen_space / cam.framebuffer_dims * 2. - 1.;
+	float clip_space_depth = -cam.near / cam.far;
+	vec4 ray_d = cam.proj_view_inverse * vec4(clip_space_uv, clip_space_depth, 1.);
+	return normalize(ray_d.xyz);
 }
 
 void main() 
@@ -47,14 +56,14 @@ void main()
 		out_color = vec4(background(ray_d), 1.);
 	} else {
 		// ray hit: calculate color (https://learnopengl.com/Lighting/Basic-Lighting)
-		vec3 normal = (subpassLoad(in_normal).xyz - 0.5) * 2.;
-		vec4 albedo = subpassLoad(in_albedo);
-		
+
 		const vec3 SUN_DIR = vec3(-0.57735, -0.57735, -0.57735); // normalized
 		const vec3 SUN_COLOR = vec3(1., 1., 0.8);
 		const float AMBIENT_STRENGTH = 0.18;
 
-		float in_specular = 0.5; // hard-coded for now
+		vec3 normal = (subpassLoad(in_normal).xyz - 0.5) * 2.;
+		vec4 albedo = subpassLoad(in_albedo);
+		float specular = 0.5; // hard-coded for now
 
 		vec3 ambient = AMBIENT_STRENGTH * SUN_COLOR;
 		
