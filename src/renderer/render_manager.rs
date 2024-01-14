@@ -512,20 +512,19 @@ impl RenderManager {
             depth_buffer_format,
         )?;
 
-        self.normal_buffer = create_normal_buffer(
-            self.memory_allocator.clone(),
-            self.swapchain.properties().dimensions(),
-        )?;
-
+        let framebuffer_dimensions = self.swapchain.properties().dimensions();
+        self.normal_buffer =
+            create_normal_buffer(self.memory_allocator.clone(), framebuffer_dimensions)?;
+        self.albedo_buffer =
+            create_albedo_buffer(self.memory_allocator.clone(), framebuffer_dimensions)?;
         self.primitive_id_buffers = create_primitive_id_buffers(
             framebuffer_count,
             self.memory_allocator.clone(),
-            self.swapchain.properties().dimensions(),
+            framebuffer_dimensions,
         )?;
-
         self.depth_buffer = create_depth_buffer(
             self.memory_allocator.clone(),
-            self.swapchain.properties().dimensions(),
+            framebuffer_dimensions,
             depth_buffer_format,
         )?;
 

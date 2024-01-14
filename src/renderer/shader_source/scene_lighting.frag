@@ -50,9 +50,9 @@ void main()
 		vec3 normal = (subpassLoad(in_normal).xyz - 0.5) * 2.;
 		vec4 albedo = subpassLoad(in_albedo);
 		
-		const vec3 SUN_DIR = vec3(0.57735, 0.57735, 0.57735); // normalized
+		const vec3 SUN_DIR = vec3(-0.57735, -0.57735, -0.57735); // normalized
 		const vec3 SUN_COLOR = vec3(1., 1., 0.8);
-		const float AMBIENT_STRENGTH = 0.15;
+		const float AMBIENT_STRENGTH = 0.18;
 
 		float in_specular = 0.5; // hard-coded for now
 

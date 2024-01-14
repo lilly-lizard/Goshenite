@@ -1,5 +1,3 @@
-use crate::renderer::config_renderer::ENABLE_VULKAN_VALIDATION;
-
 use super::{
     config_renderer::{
         CPU_ACCESS_BUFFER_SIZE, FORMAT_ALBEDO_BUFFER, FORMAT_NORMAL_BUFFER,
@@ -11,6 +9,7 @@ use super::{
         primitive_op_buffer::PRIMITIVE_ID_BACKGROUND, uniform_buffers::CameraUniformBuffer,
     },
 };
+use crate::renderer::config_renderer::ENABLE_VULKAN_VALIDATION;
 use anyhow::{anyhow, Context};
 use ash::{
     prelude::VkResult,
