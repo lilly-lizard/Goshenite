@@ -9,7 +9,7 @@ layout (set = 0, binding = 1, input_attachment_index = 1) uniform subpassInput i
 layout (set = 0, binding = 2, input_attachment_index = 2) uniform usubpassInput in_prmitive_id;
 
 // input UV from full_screen.vert
-layout (location = 0) in vec2 in_uv;
+layout (location = 0) in vec2 in_uv; // clip space position [-1, 1]
 
 // output color to swapchain image
 layout (location = 0) out vec4 out_color;
@@ -32,10 +32,8 @@ vec3 background(const vec3 ray_d)
 
 /// Normalized ray direction in world space
 vec3 ray_direction() {
-	vec2 screen_space = gl_FragCoord.xy + vec2(0.5);
-	vec2 clip_space_uv = screen_space / cam.framebuffer_dims * 2. - 1.;
-	float clip_space_depth = -cam.near / cam.far;
-	vec4 ray_d = cam.proj_view_inverse * vec4(clip_space_uv, clip_space_depth, 1.);
+	float clip_space_depth = -cam.near / cam.far; // results in z = 1 after multiplying my the proj matrix
+	vec4 ray_d = cam.proj_view_inverse * vec4(in_uv, clip_space_depth, 1.);
 	return normalize(ray_d.xyz);
 }
 
@@ -43,16 +41,11 @@ void main()
 {
 	// decode g-buffer
 	uint primitive_id = subpassLoad(in_prmitive_id).x;
+
+	vec3 ray_d = ray_direction();
 	
 	if (primitive_id == ID_BACKGROUND) {
 		// ray miss: draw background
-
-		// clip space position in frame (between -1 and 1)
-		float clip_space_depth = -cam.near / cam.far;
-		vec4 pos_uv = vec4(in_uv.xy, clip_space_depth, 1.);
-		
-		// ray direction in world space
-		vec3 ray_d = normalize((cam.proj_view_inverse * pos_uv).xyz);
 		out_color = vec4(background(ray_d), 1.);
 	} else {
 		// ray hit: calculate color (https://learnopengl.com/Lighting/Basic-Lighting)
@@ -63,15 +56,19 @@ void main()
 
 		vec3 normal = (subpassLoad(in_normal).xyz - 0.5) * 2.;
 		vec4 albedo = subpassLoad(in_albedo);
-		float specular = 0.5; // hard-coded for now
+		float specular_strength = 0.5; // hard-coded for now
 
 		vec3 ambient = AMBIENT_STRENGTH * SUN_COLOR;
 		
 		float diffuse_factor = max(dot(normal, -SUN_DIR), 0.);
 		vec3 diffuse = diffuse_factor * SUN_COLOR;
 
-		vec4 ambient_diffuse = vec4(ambient + diffuse, 1.);
-		out_color = albedo * ambient_diffuse;
+		vec3 reflect_d = reflect(-SUN_DIR, normal);
+		float specular_factor = pow(max(dot(ray_d, reflect_d), 0.), 32);
+		vec3 specular = specular_strength * specular_factor * SUN_COLOR;
+
+		vec4 ambient_diffuse_specular = vec4(ambient + diffuse + specular, 1.);
+		out_color = albedo * ambient_diffuse_specular;
 	}
 
     if (cam.write_linear_color == 1) {

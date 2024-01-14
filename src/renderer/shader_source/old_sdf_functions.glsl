@@ -102,3 +102,13 @@ float sdf_capped_torus(vec3 pos, float radius_inner, float radius_outer, vec2 wt
 	float j = radius_inner * radius_inner - 2. * radius_inner * k;
 	return sqrt(j + dot(pos, pos)) - radius_outer;
 }
+
+/// Normalized ray direction in world space
+vec3 ray_direction() {
+	// can use clip_space_uv instead of in_uv clip space position in frame (between -1 and 1)
+	//vec2 screen_space = gl_FragCoord.xy + vec2(0.5);
+	//vec2 clip_space_uv = screen_space / cam.framebuffer_dims * 2. - 1.;
+	float clip_space_depth = -cam.near / cam.far;
+	vec4 ray_d = cam.proj_view_inverse * vec4(in_clip_space_uv, clip_space_depth, 1.);
+	return normalize(ray_d.xyz);
+}

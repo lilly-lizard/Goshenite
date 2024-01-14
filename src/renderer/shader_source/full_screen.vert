@@ -1,7 +1,7 @@
 // renders a full screen triangle
 #version 450
 
-layout (location = 0) out vec2 out_uv;
+layout (location = 0) out vec2 out_uv; // clip space position [-1, 1]
 
 const vec2 uv[3] = vec2[](
     vec2(-1., -1.),
