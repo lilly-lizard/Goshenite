@@ -17,8 +17,8 @@ layout (location = 0) in flat uint in_object_id;
 layout (location = 1) in noperspective vec2 in_clip_space_uv; // clip space position [-1, 1]
 
 layout (location = 0) out vec4 out_normal;
-layout (location = 1) out vec4 out_albedo;
-layout (location = 2) out uint out_object_id; // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side
+layout (location = 1) out vec4 out_albedo_specular;
+layout (location = 2) out uint out_object_op_id; // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side
 layout (depth_greater) out float gl_FragDepth; // although drivers probably can't optimize with this anyway because we use discard... https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/depth.adoc
 
 layout (set = 0, binding = 0) uniform Camera {
@@ -212,7 +212,7 @@ float depth_to_dist(float depth, float near, float far) {
 // When the ray misses, calls discard. Otherwise writes depth of a hit primitive.
 // https://michaelwalczyk.com/blog-ray-marching.html
 void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist,
-			   out vec3 o_normal, out vec4 o_albedo, out uint o_object_id)
+			   out vec3 o_normal, out vec3 o_albedo, out float o_specular, out uint o_object_op_id)
 {
 	// total distance traveled. start at the frag depth
 	float dist = cam.near;
@@ -227,8 +227,9 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist,
 		// ray hit
 		if (closest_primitive.d < MIN_MARCH_STEP) {
 			o_normal = calcNormal(current_pos);
-			o_object_id = (closest_primitive.op_index & 0xFFFF) | (in_object_id << 16);
-			o_albedo = vec4(0.8, 0.2, 0.1, 1.0);
+			o_object_op_id = (closest_primitive.op_index & 0xFFFF) | (in_object_id << 16);
+			o_albedo = closest_primitive.albedo;
+			o_specular = closest_primitive.specular;
 			o_dist = dist;
 			return;
 		}
@@ -257,12 +258,13 @@ void main()
 	
 	float z;
 	vec3 normal;
-	vec4 albedo;
-	uint object_id;
-	ray_march(cam.position.xyz, ray_d_norm, z, normal, albedo, object_id);
+	vec3 albedo;
+	float specular;
+	uint object_op_id;
+	ray_march(cam.position.xyz, ray_d_norm, z, normal, albedo, specular, object_op_id);
 
 	gl_FragDepth = dist_to_depth(z, cam.near, cam.far);
 	out_normal = vec4(normal / 2. + 0.5, 0.); // fit [-1, 1] in unorm range
-	out_albedo = albedo;
-	out_object_id = object_id;
+	out_albedo_specular = vec4(albedo, specular);
+	out_object_op_id = object_op_id;
 }

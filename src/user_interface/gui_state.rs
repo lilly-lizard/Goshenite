@@ -52,6 +52,8 @@ impl GuiState {
     pub fn set_selected_primitive_op(&mut self, selected_primitive_op: &PrimitiveOp) {
         self.primitive_edit = selected_primitive_op.primitive;
         self.op_edit = selected_primitive_op.op;
+        self.albedo_edit = selected_primitive_op.albedo;
+        self.specular_edit = selected_primitive_op.specular;
     }
 
     /// Call this if no object is selected

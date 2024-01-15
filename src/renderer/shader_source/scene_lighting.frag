@@ -5,8 +5,8 @@
 
 // g-buffer input attachments
 layout (set = 0, binding = 0, input_attachment_index = 0) uniform subpassInput in_normal;
-layout (set = 0, binding = 1, input_attachment_index = 1) uniform subpassInput in_albedo;
-layout (set = 0, binding = 2, input_attachment_index = 2) uniform usubpassInput in_prmitive_id;
+layout (set = 0, binding = 1, input_attachment_index = 1) uniform subpassInput in_albedo_specular;
+layout (set = 0, binding = 2, input_attachment_index = 2) uniform usubpassInput in_object_op_id;
 
 // input UV from full_screen.vert
 layout (location = 0) in vec2 in_uv; // clip space position [-1, 1]
@@ -40,11 +40,11 @@ vec3 ray_direction() {
 void main() 
 {
 	// decode g-buffer
-	uint primitive_id = subpassLoad(in_prmitive_id).x;
+	uint object_op_id = subpassLoad(in_object_op_id).x;
 
 	vec3 ray_d = ray_direction();
 	
-	if (primitive_id == ID_BACKGROUND) {
+	if (object_op_id == ID_BACKGROUND) {
 		// ray miss: draw background
 		out_color = vec4(background(ray_d), 1.);
 	} else {
@@ -55,8 +55,9 @@ void main()
 		const float AMBIENT_STRENGTH = 0.18;
 
 		vec3 normal = (subpassLoad(in_normal).xyz - 0.5) * 2.;
-		vec4 albedo = subpassLoad(in_albedo);
-		float specular_strength = 0.5; // hard-coded for now
+		vec4 albedo_specular = subpassLoad(in_albedo_specular);
+		vec3 albedo = albedo_specular.xyz;
+		float specular_strength = albedo_specular.w;
 
 		vec3 ambient = AMBIENT_STRENGTH * SUN_COLOR;
 		
@@ -67,8 +68,7 @@ void main()
 		float specular_factor = pow(max(dot(ray_d, reflect_d), 0.), 32);
 		vec3 specular = specular_strength * specular_factor * SUN_COLOR;
 
-		vec4 ambient_diffuse_specular = vec4(ambient + diffuse + specular, 1.);
-		out_color = albedo * ambient_diffuse_specular;
+		out_color = vec4(albedo * (ambient + diffuse + specular), 1.);
 	}
 
     if (cam.write_linear_color == 1) {
