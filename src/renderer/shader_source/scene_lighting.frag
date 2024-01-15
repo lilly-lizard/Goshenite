@@ -37,7 +37,7 @@ vec3 ray_direction() {
 	return normalize(ray_d.xyz);
 }
 
-void main() 
+void main()
 {
 	// decode g-buffer
 	uint object_op_id = subpassLoad(in_object_op_id).x;
