@@ -116,6 +116,8 @@ impl Object {
         transform: PrimitiveTransform,
         op: Operation,
         blend: f32,
+        albedo: Vec3,
+        specular: f32,
     ) -> Result<PrimitiveOpId, UniqueIdError> {
         let primitive_op_id = self.primitive_op_id_gen.new_id()?;
         self.primitive_ops.push(PrimitiveOp::new(
@@ -124,6 +126,8 @@ impl Object {
             transform,
             op,
             blend,
+            albedo,
+            specular,
         ));
         Ok(primitive_op_id)
     }
@@ -186,6 +190,8 @@ impl Object {
         new_transform: Option<PrimitiveTransform>,
         new_operation: Option<Operation>,
         new_blend: Option<f32>,
+        new_albedo: Option<Vec3>,
+        new_specular: Option<f32>,
     ) -> Result<(), CollectionError> {
         let primitive_op_search_res = self.get_primitive_op_mut(primitive_op_id);
         let Some(primitive_op_ref) = primitive_op_search_res else {
@@ -199,6 +205,8 @@ impl Object {
             new_transform,
             new_operation,
             new_blend,
+            new_albedo,
+            new_specular,
         )
     }
 
@@ -209,6 +217,8 @@ impl Object {
         new_transform: Option<PrimitiveTransform>,
         new_operation: Option<Operation>,
         new_blend: Option<f32>,
+        new_albedo: Option<Vec3>,
+        new_specular: Option<f32>,
     ) -> Result<(), CollectionError> {
         let primitive_op_search_res = self.primitive_ops.get_mut(primitive_op_index);
         let Some(primitive_op_ref) = primitive_op_search_res else {
@@ -223,6 +233,8 @@ impl Object {
             new_transform,
             new_operation,
             new_blend,
+            new_albedo,
+            new_specular,
         )
     }
 
@@ -267,6 +279,8 @@ fn set_primitive_op_internal(
     new_transform: Option<PrimitiveTransform>,
     new_operation: Option<Operation>,
     new_blend: Option<f32>,
+    new_albedo: Option<Vec3>,
+    new_specular: Option<f32>,
 ) -> Result<(), CollectionError> {
     if let Some(some_new_primitive) = new_primitive {
         primitive_op_ref.primitive = some_new_primitive;
@@ -279,6 +293,12 @@ fn set_primitive_op_internal(
     }
     if let Some(some_new_blend) = new_blend {
         primitive_op_ref.blend = some_new_blend;
+    }
+    if let Some(some_new_albedo) = new_albedo {
+        primitive_op_ref.albedo = some_new_albedo;
+    }
+    if let Some(some_new_specular) = new_specular {
+        primitive_op_ref.specular = some_new_specular;
     }
     return Ok(());
 }

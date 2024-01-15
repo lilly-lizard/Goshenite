@@ -508,6 +508,8 @@ fn create_default_cube_object(object_collection: &mut ObjectCollection) {
         PrimitiveTransform::default(),
         Operation::Union,
         0.1,
+        Vec3::new(0.8, 0.3, 0.1),
+        0.5,
     );
     _ = object_collection.mark_object_for_data_update(object_id);
 }
@@ -527,18 +529,24 @@ fn object_testing(object_collection: &mut ObjectCollection) {
         PrimitiveTransform::new(Vec3::new(-0.2, 0.2, 0.), Quat::IDENTITY),
         Operation::Union,
         0.1,
+        Vec3::new(0.1, 0.6, 0.7),
+        0.5,
     );
     _ = object.push_primitive_op(
         Primitive::Sphere(sphere.clone()),
         PrimitiveTransform::new(Vec3::new(0., 0., 0.), Quat::IDENTITY),
         Operation::Union,
         0.1,
+        Vec3::new(0.7, 0.2, 0.6),
+        0.5,
     );
     _ = object.push_primitive_op(
         Primitive::Sphere(another_sphere),
         PrimitiveTransform::new(Vec3::new(0.2, -0.2, 0.), Quat::IDENTITY),
         Operation::Intersection,
         0.1,
+        Vec3::new(0.8, 0.5, 0.1),
+        0.5,
     );
     _ = object_collection.mark_object_for_data_update(object_id);
 
@@ -550,6 +558,8 @@ fn object_testing(object_collection: &mut ObjectCollection) {
         PrimitiveTransform::DEFAULT,
         Operation::Union,
         0.1,
+        Vec3::new(0.8, 0.8, 0.8),
+        0.5,
     );
     _ = object_collection.mark_object_for_data_update(another_object_id);
 }

@@ -1,8 +1,10 @@
 use crate::engine::{
+    config_engine::{DEFAULT_ALBEDO, DEFAULT_SPECULAR},
     object::{operation::Operation, primitive_op::PrimitiveOp},
     primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
 };
 use egui_dnd::DragDropUi;
+use glam::Vec3;
 
 /// Wherver or not different windows are open
 #[derive(Clone)]
@@ -40,6 +42,9 @@ pub struct GuiState {
     pub blend_edit: f32,
     /// Stores the drag and drop state of the primitive op list of the selected object
     pub primitive_op_list_drag: DragDropUi,
+
+    pub albedo_edit: Vec3,
+    pub specular_edit: f32,
 }
 
 // Setters
@@ -75,6 +80,8 @@ impl Default for GuiState {
             blend_edit: 0.,
             transform_edit: Default::default(),
             primitive_edit: Default::default(),
+            albedo_edit: DEFAULT_ALBEDO,
+            specular_edit: DEFAULT_SPECULAR,
             primitive_op_list_drag: Default::default(),
         }
     }

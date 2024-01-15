@@ -26,7 +26,7 @@ pub mod op_codes {
 /// to 1 + `TRANSFORM_DATA_LEN` + `PRIMITIVE_DATA_LEN` for the total primitive data packet.
 ///
 /// _Must match value defined in `confg.glsl`_
-pub const PRIMITIVE_PACKET_LEN: usize = 20;
+pub const PRIMITIVE_PACKET_LEN: usize = 24;
 /// Each primitive has a 3x3 matrix associated with it for transformations. This defines that size.
 pub const PRIMITIVE_TRANSFORM_LEN: usize = 12;
 /// Each primitive type has unique properties encoded into an array of this length.
@@ -50,6 +50,12 @@ pub fn create_primitive_op_packet(
     let encoded_transform = primitive_op.transform.gpu_encoded(object_origin);
     let encoded_props = primitive_op.primitive.encoded_props();
     let encoded_blend = primitive_op.blend.to_bits();
+    let encoded_albedo = [
+        primitive_op.albedo.x.to_bits(),
+        primitive_op.albedo.y.to_bits(),
+        primitive_op.albedo.z.to_bits(),
+    ];
+    let encoded_specular = primitive_op.specular.to_bits();
     [
         encoded_transform[0],
         encoded_transform[1],
@@ -69,6 +75,10 @@ pub fn create_primitive_op_packet(
         encoded_props[3],
         encoded_props[4],
         encoded_props[5],
+        encoded_albedo[0],
+        encoded_albedo[1],
+        encoded_albedo[2],
+        encoded_specular,
         encoded_op_code,
         encoded_blend,
     ]
@@ -77,6 +87,10 @@ pub fn create_primitive_op_packet(
 pub fn nop_primitive_op_packet() -> PrimitiveOpPacket {
     [
         op_codes::NOP,
+        0,
+        0,
+        0,
+        0,
         0,
         0,
         0,

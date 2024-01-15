@@ -54,6 +54,8 @@ pub enum Command {
         transform: PrimitiveTransform,
         operation: Operation,
         blend: f32,
+        albedo: Vec3,
+        specular: f32,
     },
     PushPrimitiveOpAndSelect {
         object_id: ObjectId,
@@ -61,6 +63,8 @@ pub enum Command {
         transform: PrimitiveTransform,
         operation: Operation,
         blend: f32,
+        albedo: Vec3,
+        specular: f32,
     },
 
     // ~~ Primitive Op: Modify ~~
@@ -70,6 +74,8 @@ pub enum Command {
         new_transform: PrimitiveTransform,
         new_operation: Operation,
         new_blend: f32,
+        new_albedo: Vec3,
+        new_specular: f32,
     },
     SetPrimitive {
         target_primitive_op: TargetPrimitiveOp,
@@ -86,6 +92,14 @@ pub enum Command {
     SetBlend {
         target_primitive_op: TargetPrimitiveOp,
         new_blend: f32,
+    },
+    SetAlbedo {
+        target_primitive_op: TargetPrimitiveOp,
+        new_albedo: Vec3,
+    },
+    SetSpecular {
+        target_primitive_op: TargetPrimitiveOp,
+        new_specular: f32,
     },
     ShiftPrimitiveOps {
         object_id: ObjectId,

@@ -32,7 +32,7 @@ vec3 background(const vec3 ray_d)
 
 /// Normalized ray direction in world space
 vec3 ray_direction() {
-	float clip_space_depth = -cam.near / cam.far; // results in z = 1 after multiplying my the proj matrix
+	float clip_space_depth = -cam.near / cam.far; // results in z = 1 after multiplying by the proj matrix
 	vec4 ray_d = cam.proj_view_inverse * vec4(in_uv, clip_space_depth, 1.);
 	return normalize(ray_d.xyz);
 }

@@ -54,10 +54,10 @@ float sdf_uber_primitive(vec3 pos, vec4 s, vec2 r)
 
 // Represents a signed distance field result
 struct SdfResult {
-	// Distance from pos to primitive
 	float d;
-	// operation index
 	uint op_index;
+	vec3 albedo;
+	float specular;
 };
 
 // Results in the union (min) of 2 primitives
@@ -67,9 +67,13 @@ SdfResult op_union(SdfResult p1, SdfResult p2, float blend)
 	if (abs(d_delta) >= blend) {
 		return p1.d < p2.d ? p1 : p2;
 	}
-	float h = clamp(0.5 + 0.5 * d_delta / blend, 0., 1.);
-	float d_ret = mix(p2.d, p1.d, h) - blend * h * (1. - h);
-	SdfResult ret = { d_ret, ID_BLEND };
+	float h = 0.5 + 0.5 * d_delta / blend; // don't need to clamp between [0, 1] because of the previous if statement
+	float d = mix(p2.d, p1.d, h) - blend * h * (1. - h);
+
+	vec3 albedo = mix(p2.albedo, p1.albedo, h);
+	float specular = mix(p2.specular, p1.specular, h);
+	
+	SdfResult ret = { d, ID_BLEND, albedo, specular };
 	return ret;
 }
 
@@ -82,7 +86,7 @@ SdfResult op_intersection(SdfResult p1, SdfResult p2, float blend)
 // Subtracts the volume of primitive 2 (max) from primitive 1 (max inverted)
 SdfResult op_subtraction(SdfResult p1, SdfResult p2, float blend)
 {
-	SdfResult p2_neg = { -p2.d, p2.op_index };
+	SdfResult p2_neg = { -p2.d, p2.op_index, p2.albedo, p2.specular };
 	return op_intersection(p1, p2_neg, blend);
 }
 
@@ -128,12 +132,19 @@ SdfResult process_primitive(uint op_index, vec3 pos)
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	);
 
+	vec3 albedo = vec3(
+		uintBitsToFloat(object.primitive_ops[buffer_index++]),
+		uintBitsToFloat(object.primitive_ops[buffer_index++]),
+		uintBitsToFloat(object.primitive_ops[buffer_index++])
+	);
+	float specular = uintBitsToFloat(object.primitive_ops[buffer_index++]);
+
 	pos = pos - center;
 	pos = pos * rotation;
 
 	float dist = sdf_uber_primitive(pos, s, r);
 
-	SdfResult ret = { dist, op_index };
+	SdfResult ret = { dist, op_index, albedo, specular };
 	return ret;
 }
 
@@ -158,14 +169,14 @@ SdfResult process_op(uint op, float blend, SdfResult lhs, SdfResult rhs)
 SdfResult map(vec3 pos)
 {
 	// the closest primitve and distance to pos p
-	SdfResult closest_res = { cam.far, ID_BACKGROUND };
+	SdfResult closest_res = { cam.far, ID_BACKGROUND, vec3(0.), 0. };
 
 	// loop through the primitive operations
 	for (uint op_index = 0; op_index < object.op_count; op_index++) {
 		
 		SdfResult primitive_res = process_primitive(op_index, pos);
 
-		uint buffer_index = op_index * OP_UNIT_LENGTH + 18;
+		uint buffer_index = op_index * OP_UNIT_LENGTH + 22;
 		uint op = object.primitive_ops[buffer_index++];
 		float blend = uintBitsToFloat(object.primitive_ops[buffer_index++]);
 
@@ -235,7 +246,7 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist,
 
 /// Normalized ray direction in world space
 vec3 ray_direction() {
-	float clip_space_depth = -cam.near / cam.far; // results in z = 1 after multiplying my the proj matrix
+	float clip_space_depth = -cam.near / cam.far; // results in z = 1 after multiplying by the proj matrix
 	vec4 ray_d = cam.proj_view_inverse * vec4(in_clip_space_uv, clip_space_depth, 1.);
 	return normalize(ray_d.xyz);
 }

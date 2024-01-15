@@ -90,9 +90,12 @@ impl EngineInstance {
                 transform,
                 operation,
                 blend,
+                albedo,
+                specular,
             } => {
-                _ = self
-                    .push_op_via_command(object_id, primitive, transform, operation, blend, command)
+                _ = self.push_op_via_command(
+                    object_id, primitive, transform, operation, blend, albedo, specular, command,
+                )
             }
             Command::PushPrimitiveOpAndSelect {
                 object_id,
@@ -100,8 +103,10 @@ impl EngineInstance {
                 transform,
                 operation,
                 blend,
+                albedo,
+                specular,
             } => self.push_op_and_select_via_command(
-                object_id, primitive, transform, operation, blend, command,
+                object_id, primitive, transform, operation, blend, albedo, specular, command,
             ),
 
             // ~~ Primitive Op: Modify ~~
@@ -111,12 +116,16 @@ impl EngineInstance {
                 new_transform,
                 new_operation,
                 new_blend,
+                new_albedo,
+                new_specular,
             } => self.set_primitive_op(
                 target_primitive_op,
                 Some(new_primitive),
                 Some(new_transform),
                 Some(new_operation),
                 Some(new_blend),
+                Some(new_albedo),
+                Some(new_specular),
                 Some(command),
             ),
             Command::SetPrimitive {
@@ -125,6 +134,8 @@ impl EngineInstance {
             } => self.set_primitive_op(
                 target_primitive_op,
                 Some(new_primitive),
+                None,
+                None,
                 None,
                 None,
                 None,
@@ -139,6 +150,8 @@ impl EngineInstance {
                 Some(new_transform),
                 None,
                 None,
+                None,
+                None,
                 Some(command),
             ),
             Command::SetOperation {
@@ -149,6 +162,8 @@ impl EngineInstance {
                 None,
                 None,
                 Some(new_operation),
+                None,
+                None,
                 None,
                 Some(command),
             ),
@@ -161,6 +176,34 @@ impl EngineInstance {
                 None,
                 None,
                 Some(new_blend),
+                None,
+                None,
+                Some(command),
+            ),
+            Command::SetAlbedo {
+                target_primitive_op,
+                new_albedo,
+            } => self.set_primitive_op(
+                target_primitive_op,
+                None,
+                None,
+                None,
+                None,
+                Some(new_albedo),
+                None,
+                Some(command),
+            ),
+            Command::SetSpecular {
+                target_primitive_op,
+                new_specular,
+            } => self.set_primitive_op(
+                target_primitive_op,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(new_specular),
                 Some(command),
             ),
             Command::ShiftPrimitiveOps {
@@ -600,6 +643,8 @@ impl EngineInstance {
         transform: PrimitiveTransform,
         operation: Operation,
         blend: f32,
+        albedo: Vec3,
+        specular: f32,
         command: Command,
     ) {
         let push_op_res = self.push_op_via_command(
@@ -608,6 +653,8 @@ impl EngineInstance {
             transform,
             operation,
             blend,
+            albedo,
+            specular,
             command.clone(),
         );
 
@@ -629,6 +676,8 @@ impl EngineInstance {
         transform: PrimitiveTransform,
         operation: Operation,
         blend: f32,
+        albedo: Vec3,
+        specular: f32,
         command: Command,
     ) -> Option<PrimitiveOpId> {
         let object = if let Some(some_object) = self.object_collection.get_object_mut(object_id) {
@@ -638,7 +687,8 @@ impl EngineInstance {
             return None;
         };
 
-        let push_op_res = object.push_primitive_op(primitive, transform, operation, blend);
+        let push_op_res =
+            object.push_primitive_op(primitive, transform, operation, blend, albedo, specular);
 
         let new_primitive_op_id = match push_op_res {
             Err(e) => {
@@ -664,6 +714,8 @@ impl EngineInstance {
         new_transform: Option<PrimitiveTransform>,
         new_operation: Option<Operation>,
         new_blend: Option<f32>,
+        new_albedo: Option<Vec3>,
+        new_specular: Option<f32>,
         source_command: Option<Command>,
     ) {
         let Some(object_id) =
@@ -685,6 +737,8 @@ impl EngineInstance {
                     new_transform,
                     new_operation,
                     new_blend,
+                    new_albedo,
+                    new_specular,
                 );
                 if let Err(_) = res {
                     failure_warn_invalid_primitive_op_id(
@@ -702,6 +756,8 @@ impl EngineInstance {
                     new_transform,
                     new_operation,
                     new_blend,
+                    new_albedo,
+                    new_specular,
                 );
                 if let Err(_) = res {
                     failure_warn_invalid_primitive_op_index(
@@ -720,6 +776,8 @@ impl EngineInstance {
                         new_transform,
                         new_operation,
                         new_blend,
+                        new_albedo,
+                        new_specular,
                     );
                     if let Err(_) = res {
                         failure_warn_invalid_primitive_op_id(

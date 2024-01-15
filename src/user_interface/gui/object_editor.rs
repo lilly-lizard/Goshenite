@@ -270,6 +270,8 @@ fn existing_primitive_op_editor(
                 new_transform: gui_state.transform_edit,
                 new_operation: gui_state.op_edit,
                 new_blend: gui_state.blend_edit,
+                new_albedo: gui_state.albedo_edit,
+                new_specular: gui_state.specular_edit,
             });
         }
         EditState::NoChange => (),
@@ -323,6 +325,8 @@ fn new_primitive_op_editor(
                 transform: gui_state.transform_edit,
                 operation: gui_state.op_edit,
                 blend: gui_state.blend_edit,
+                albedo: gui_state.albedo_edit,
+                specular: gui_state.specular_edit,
             });
         } else {
             commands.push(Command::PushPrimitiveOp {
@@ -331,6 +335,8 @@ fn new_primitive_op_editor(
                 transform: gui_state.transform_edit,
                 operation: gui_state.op_edit,
                 blend: gui_state.blend_edit,
+                albedo: gui_state.albedo_edit,
+                specular: gui_state.specular_edit,
             });
         }
     }
