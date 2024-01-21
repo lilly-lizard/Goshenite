@@ -145,8 +145,7 @@ SdfResult process_primitive(uint op_index, vec3 pos)
 
 	float dist = sdf_uber_primitive(pos, s, r);
 
-	SdfResult ret = { dist, op_index, albedo, specular };
-	return ret;
+	return SdfResult(dist, op_index, albedo, specular);
 }
 
 SdfResult process_op(uint op, float blend, SdfResult lhs, SdfResult rhs)
@@ -209,11 +208,18 @@ float depth_to_dist(float depth, float near, float far) {
 	return a / (depth + b);
 }
 
+struct RayMarchHit {
+	float dist;
+	vec3 normal;
+	vec3 albedo;
+	float specular;
+	uint object_op_id;
+};
+
 // Render the scene with sphere tracing and write the normal and object id.
 // When the ray misses, calls discard. Otherwise writes depth of a hit primitive.
 // https://michaelwalczyk.com/blog-ray-marching.html
-void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist,
-			   out vec3 o_normal, out vec3 o_albedo, out float o_specular, out uint o_object_op_id)
+RayMarchHit ray_march(const vec3 ray_o, const vec3 ray_d)
 {
 	// total distance traveled. start at the frag depth
 	float dist = cam.near;
@@ -227,12 +233,15 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist,
 
 		// ray hit
 		if (closest_primitive.d < MIN_MARCH_STEP) {
-			o_normal = calcNormal(current_pos);
-			o_object_op_id = (closest_primitive.op_index & 0xFFFF) | (in_object_id << 16);
-			o_albedo = closest_primitive.albedo;
-			o_specular = closest_primitive.specular;
-			o_dist = dist;
-			return;
+			vec3 normal = calcNormal(current_pos);
+			uint object_op_id = (closest_primitive.op_index & 0xFFFF) | (in_object_id << 16);
+			return RayMarchHit (
+				dist,
+				normal,
+				closest_primitive.albedo,
+				closest_primitive.specular,
+				object_op_id
+			);
 		}
 
 		// incriment the distance travelled by the distance to the closest primitive
@@ -257,16 +266,10 @@ vec3 ray_direction() {
 void main()
 {
 	vec3 ray_d_norm = ray_direction();
-	
-	float z;
-	vec3 normal;
-	vec3 albedo;
-	float specular;
-	uint object_op_id;
-	ray_march(cam.position.xyz, ray_d_norm, z, normal, albedo, specular, object_op_id);
+	RayMarchHit hit = ray_march(cam.position.xyz, ray_d_norm);
 
-	gl_FragDepth = dist_to_depth(z, cam.near, cam.far);
-	out_normal = vec4(normal / 2. + 0.5, 0); // fit [-1, 1] in unorm range
-	out_albedo_specular = vec4(albedo, specular);
-	out_object_op_id = object_op_id;
+	gl_FragDepth = dist_to_depth(hit.dist, cam.near, cam.far);
+	out_normal = vec4(hit.normal / 2. + 0.5, 0.); // fit [-1, 1] in unorm range
+	out_albedo_specular = vec4(hit.albedo, hit.specular);
+	out_object_op_id = hit.object_op_id;
 }

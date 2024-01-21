@@ -39,7 +39,7 @@ vec3 ray_direction() {
 	return normalize(direction.xyz); // todo what changes when normalize is removed here?
 }
 
-void main() 
+void main()
 {
 	// decode g-buffer
 	uint object_op_id = subpassLoad(in_object_op_id).x;

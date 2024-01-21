@@ -1,75 +1,36 @@
 //! Also contains the list of commands available via the command palette.
 use super::Gui;
-use crate::{
-    engine::{commands::Command, object::object::ObjectId},
-    helper::{index_in_list::IndexInList, unique_id_gen::UniqueId},
-};
-use egui::{Key, TextEdit};
+use crate::{engine::commands::Command, helper::index_in_list::IndexInList};
 use winit::window::Window;
 
 // ~~ Available Commands ~~
 
+/// Note: only make entries for commands that have no arguments/members because the user can only
+/// select the command and cannot supply any arguments.
 #[derive(Debug, Clone)]
 struct CommandPaletteEntry {
     name: &'static str,
-    command_source: CommandPaletteSource,
+    command: Command,
 }
 
-/// Describes how to get the final command when a command palette entry is selected
-#[derive(Debug, Clone)]
-enum CommandPaletteSource {
-    /// When this command entry is selected, this command is returned.
-    SingleCommand(Command),
-    /// When this command entry is selected, a gui is brought up where the user has to enter
-    /// additional parameters.
-    ParameterGuiFn(fn(&mut egui::Ui, &mut GuiStateCommandPalette) -> Option<Command>),
-}
-
-const AVAILABLE_PALETTE_COMMANDS: [CommandPaletteEntry; 5] = [
+const AVAILABLE_PALETTE_COMMANDS: [CommandPaletteEntry; 4] = [
     CommandPaletteEntry {
         name: "Save Camera State",
-        command_source: CommandPaletteSource::SingleCommand(Command::SaveStateCamera),
+        command: Command::SaveStateCamera,
     },
     CommandPaletteEntry {
         name: "Load Camera State",
-        command_source: CommandPaletteSource::SingleCommand(Command::LoadStateCamera),
+        command: Command::LoadStateCamera,
     },
     CommandPaletteEntry {
         name: "Save All Objects",
-        command_source: CommandPaletteSource::SingleCommand(Command::SaveAllObjects),
+        command: Command::SaveAllObjects,
     },
     CommandPaletteEntry {
         name: "Load Objects",
-        command_source: CommandPaletteSource::SingleCommand(Command::LoadObjects),
-    },
-    CommandPaletteEntry {
-        name: "Select Object",
-        command_source: CommandPaletteSource::ParameterGuiFn(parameters_gui_select_object),
+        command: Command::LoadObjects,
     },
 ];
-
-// ~~ Command Field Gui Functions ~~
-
-fn parameters_gui_select_object(
-    ui: &mut egui::Ui,
-    gui_state: &mut GuiStateCommandPalette,
-) -> Option<Command> {
-    let user_input_widget =
-        TextEdit::singleline(&mut gui_state.user_input_text).hint_text("Object ID");
-    let response = ui.add(user_input_widget);
-
-    // if enter key pressed while the text field was focused
-    if response.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
-        let possible_id = gui_state.user_input_text.parse::<UniqueId>();
-        let Ok(raw_id) = possible_id else {
-            // todo error message or just make textbox red
-            return None;
-        };
-        let object_id: ObjectId = raw_id.into();
-        return Some(Command::SelectObject(object_id));
-    }
-    return None;
-}
 
 // ~~ Drawing fns ~~
 
@@ -100,43 +61,24 @@ impl Gui {
     }
 }
 
+#[allow(unused_parens)]
 pub fn layout_command_palette(
     ui: &mut egui::Ui,
     gui_state: &mut GuiStateCommandPalette,
 ) -> Option<Command> {
-    // user enters parameters for previously selected command
-    if let Some(parameter_gui_fn) = gui_state.current_parameter_gui_fn {
-        let parameter_gui_fn_res = parameter_gui_fn(ui, gui_state);
-        if parameter_gui_fn_res.is_some() {
-            // command palette will be closed after returning Some(command)
-            gui_state.reset();
-        }
-        return parameter_gui_fn_res;
-    }
-
     // command list
     for (command_index, palette_command) in AVAILABLE_PALETTE_COMMANDS.iter().enumerate() {
-        let highlighted = if let Some(selected_index) = gui_state.highlighted_command_index.index()
-        {
-            selected_index == command_index
-        } else {
-            false
-        };
-        let ui_res = ui.selectable_label(highlighted, palette_command.name);
+        let mut highlighted = false;
+        if let Some(selected_index) = gui_state.highlighted_command_index.index() {
+            highlighted = (selected_index == command_index);
+        }
 
+        let ui_res = ui.selectable_label(highlighted, palette_command.name);
         let selected = ui_res.clicked();
         if selected {
-            match &palette_command.command_source {
-                CommandPaletteSource::SingleCommand(selected_command) => {
-                    // command palette will be closed after returning Some(command)
-                    gui_state.reset();
-                    return Some(selected_command.clone());
-                }
-                CommandPaletteSource::ParameterGuiFn(paramter_gui_fn) => {
-                    // can't return command just yet, user will have to enter parameters next frame
-                    gui_state.current_parameter_gui_fn = Some(*paramter_gui_fn)
-                }
-            }
+            gui_state.reset();
+            let selected_command = AVAILABLE_PALETTE_COMMANDS[command_index].command.clone();
+            return Some(selected_command);
         }
     }
     None
@@ -147,17 +89,12 @@ pub fn layout_command_palette(
 #[derive(Debug, Clone, Default)]
 pub struct GuiStateCommandPalette {
     pub highlighted_command_index: IndexInList,
-    pub current_parameter_gui_fn:
-        Option<fn(&mut egui::Ui, &mut GuiStateCommandPalette) -> Option<Command>>,
-
-    // command parameter gui state
     pub user_input_text: String,
 }
 
 impl GuiStateCommandPalette {
     pub fn reset(&mut self) {
         self.highlighted_command_index = Default::default();
-        self.current_parameter_gui_fn = None;
         self.user_input_text = Default::default();
     }
 }

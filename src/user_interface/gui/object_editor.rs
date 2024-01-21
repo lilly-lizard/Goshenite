@@ -7,16 +7,13 @@ use crate::{
             object_collection::ObjectCollection,
             primitive_op::{PrimitiveOp, PrimitiveOpId},
         },
-        primitives::{
-            primitive::{EncodablePrimitive, Primitive},
-            primitive_transform::PrimitiveTransform,
-        },
+        primitives::primitive::{EncodablePrimitive, Primitive},
     },
     user_interface::{
         config_ui,
         editable_fields::{
-            blend_editor_ui, cube_editor_ui, op_drop_down, primitive_transform_editor_ui,
-            sphere_editor_ui, uber_primitive_editor_ui,
+            blend_editor_ui, color_specular_editor_ui, cube_editor_ui, op_drop_down,
+            primitive_transform_editor_ui, sphere_editor_ui, uber_primitive_editor_ui,
         },
         gui::EditState,
         gui_state::{GuiState, DRAG_INC},
@@ -242,12 +239,7 @@ fn existing_primitive_op_editor(
 
     // primitive editor
 
-    let primitive_edit_state = primitive_editor_ui(
-        ui,
-        &mut gui_state.primitive_edit,
-        &mut gui_state.transform_edit,
-        &mut gui_state.blend_edit,
-    );
+    let primitive_edit_state = primitive_editor_ui(ui, gui_state);
     primitive_op_edit_state = primitive_op_edit_state.combine(primitive_edit_state);
 
     // delete button
@@ -302,12 +294,7 @@ fn new_primitive_op_editor(
 
     // primitive editor
 
-    primitive_editor_ui(
-        ui,
-        &mut gui_state.primitive_edit,
-        &mut gui_state.transform_edit,
-        &mut gui_state.blend_edit,
-    );
+    primitive_editor_ui(ui, gui_state);
 
     // Add and Reset buttons
 
@@ -467,21 +454,19 @@ fn primitive_op_list(
     }
 }
 
-fn primitive_editor_ui(
-    ui: &mut egui::Ui,
-    primitive_edit: &mut Primitive,
-    transform_edit: &mut PrimitiveTransform,
-    blend_edit: &mut f32,
-) -> EditState {
-    let primitive_edit_state = match primitive_edit {
+fn primitive_editor_ui(ui: &mut egui::Ui, gui_state: &mut GuiState) -> EditState {
+    let primitive_edit_state = match &mut gui_state.primitive_edit {
         Primitive::Sphere(p) => sphere_editor_ui(ui, p),
         Primitive::Cube(p) => cube_editor_ui(ui, p),
         Primitive::UberPrimitive(p) => uber_primitive_editor_ui(ui, p),
     };
-    let transform_edit_state = primitive_transform_editor_ui(ui, transform_edit);
-    let blend_edit_state = blend_editor_ui(ui, blend_edit);
+    let transform_edit_state = primitive_transform_editor_ui(ui, &mut gui_state.transform_edit);
+    let blend_edit_state = blend_editor_ui(ui, &mut gui_state.blend_edit);
+    let color_specular_edit_state =
+        color_specular_editor_ui(ui, &mut gui_state.albedo_edit, &mut gui_state.specular_edit);
 
     transform_edit_state
         .combine(primitive_edit_state)
         .combine(blend_edit_state)
+        .combine(color_specular_edit_state)
 }

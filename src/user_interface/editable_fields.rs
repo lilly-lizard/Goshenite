@@ -73,10 +73,45 @@ pub fn blend_editor_ui(ui: &mut egui::Ui, blend: &mut f32) -> EditState {
         ui_h.label("Blend:");
         ui_h.add(DragValue::new(blend).speed(DRAG_INC));
     });
-    if original_blend == *blend {
-        EditState::NoChange
-    } else {
+    if original_blend != *blend {
         EditState::Modified
+    } else {
+        EditState::NoChange
+    }
+}
+
+pub fn color_specular_editor_ui(
+    ui: &mut egui::Ui,
+    color: &mut Vec3,
+    specular: &mut f32,
+) -> EditState {
+    let original_color = *color;
+    let original_specular = *specular;
+    ui.horizontal(|ui_h| {
+        ui_h.label("Color:");
+        ui_h.add(
+            DragValue::new(&mut color.x)
+                .speed(DRAG_INC)
+                .clamp_range(0..=1),
+        );
+        ui_h.add(
+            DragValue::new(&mut color.y)
+                .speed(DRAG_INC)
+                .clamp_range(0..=1),
+        );
+        ui_h.add(
+            DragValue::new(&mut color.z)
+                .speed(DRAG_INC)
+                .clamp_range(0..=1),
+        );
+
+        ui_h.label("Specular:");
+        ui_h.add(DragValue::new(specular).speed(DRAG_INC).clamp_range(0..=1));
+    });
+    if original_color != *color || original_specular != *specular {
+        EditState::Modified
+    } else {
+        EditState::NoChange
     }
 }
 
