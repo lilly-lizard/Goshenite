@@ -9,17 +9,18 @@ layout (set = 0, binding = 1, input_attachment_index = 1) uniform subpassInput i
 layout (set = 0, binding = 2, input_attachment_index = 2) uniform usubpassInput in_object_op_id;
 
 // input UV from full_screen.vert
-layout (location = 0) in vec2 in_uv; // clip space position [-1, 1]
+layout (location = 0) in vec2 in_clip_space_uv; // clip space position [-1, 1]
 
 // output color to swapchain image
 layout (location = 0) out vec4 out_color;
 
 layout (set = 1, binding = 0) uniform Camera {
-	mat4 proj_view_inverse;
+	mat4 view_inverse;
+	mat4 proj_inverse;
 	vec4 _position;
 	vec2 framebuffer_dims;
-	float near;
-	float far;
+	float _near;
+	float _far;
     uint write_linear_color;
 } cam;
 
@@ -32,9 +33,10 @@ vec3 background(const vec3 ray_d)
 
 /// Normalized ray direction in world space
 vec3 ray_direction() {
-	float clip_space_depth = -cam.near / cam.far; // results in z = 1 after multiplying by the proj matrix
-	vec4 ray_d = cam.proj_view_inverse * vec4(in_uv, clip_space_depth, 1.);
-	return normalize(ray_d.xyz);
+	vec4 origin = cam.view_inverse * vec4(0, 0, 0, 1);
+	vec4 target = cam.proj_inverse * vec4(in_clip_space_uv, 1, 1);
+	vec4 direction = cam.view_inverse * vec4(normalize(target.xyz / target.w), 0);
+	return normalize(direction.xyz); // todo what changes when normalize is removed here?
 }
 
 void main() 

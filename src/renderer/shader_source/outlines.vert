@@ -4,7 +4,8 @@ layout (location = 0) in vec4 in_position;
 layout (location = 1) in uint in_object_id;
 
 layout (set = 0, binding = 0) uniform Camera {
-	mat4 proj_view_inverse;
+	mat4 view_inverse;
+	mat4 proj_inverse;
 	vec4 _position;
 	vec2 _framebuffer_dims;
 	float _near;
@@ -14,5 +15,5 @@ layout (set = 0, binding = 0) uniform Camera {
 
 void main()
 {
-	gl_Position = inverse(cam.proj_view_inverse) * in_position;
+	gl_Position = inverse(cam.proj_inverse) * inverse(cam.view_inverse) * in_position;
 }

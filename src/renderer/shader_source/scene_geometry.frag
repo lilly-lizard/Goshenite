@@ -22,7 +22,8 @@ layout (location = 2) out uint out_object_op_id; // upper 16 bits = object index
 layout (depth_greater) out float gl_FragDepth; // although drivers probably can't optimize with this anyway because we use discard... https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/depth.adoc
 
 layout (set = 0, binding = 0) uniform Camera {
-	mat4 proj_view_inverse;
+	mat4 view_inverse;
+	mat4 proj_inverse;
 	vec4 position;
 	vec2 framebuffer_dims;
 	float near;
@@ -42,10 +43,10 @@ layout (set = 1, binding = 0, std430) readonly buffer Object {
 float sdf_uber_primitive(vec3 pos, vec4 s, vec2 r)
 {
 	vec3 d = abs(pos) - s.xyz;
-	float q_1 = length(max(d.xy + r.x, 0.));
+	float q_1 = length(max(d.xy + r.x, 0));
 	float q_2 = min(-r.x, max(d.x, d.y) + s.w);
 	float q = abs(q_1 + q_2) - s.w;
-	vec2 ret_1 = max(vec2(q, d.z) + r.y, 0.);
+	vec2 ret_1 = max(vec2(q, d.z) + r.y, 0);
 	float ret_2 = min(-r.y, max(q, d.z));
 	return length(ret_1) + ret_2;
 }
@@ -169,7 +170,7 @@ SdfResult process_op(uint op, float blend, SdfResult lhs, SdfResult rhs)
 SdfResult map(vec3 pos)
 {
 	// the closest primitve and distance to pos p
-	SdfResult closest_res = { cam.far, ID_BACKGROUND, vec3(0.), 0. };
+	SdfResult closest_res = { cam.far, ID_BACKGROUND, vec3(0), 0 };
 
 	// loop through the primitive operations
 	for (uint op_index = 0; op_index < object.op_count; op_index++) {
@@ -247,9 +248,10 @@ void ray_march(const vec3 ray_o, const vec3 ray_d, out float o_dist,
 
 /// Normalized ray direction in world space
 vec3 ray_direction() {
-	float clip_space_depth = -cam.near / cam.far; // results in z = 1 after multiplying by the proj matrix
-	vec4 ray_d = cam.proj_view_inverse * vec4(in_clip_space_uv, clip_space_depth, 1.);
-	return normalize(ray_d.xyz);
+	vec4 origin = cam.view_inverse * vec4(0, 0, 0, 1);
+	vec4 target = cam.proj_inverse * vec4(in_clip_space_uv, 1, 1);
+	vec4 direction = cam.view_inverse * vec4(normalize(target.xyz / target.w), 0);
+	return normalize(direction.xyz); // todo what changes when normalize is removed here?
 }
 
 void main()
@@ -264,7 +266,7 @@ void main()
 	ray_march(cam.position.xyz, ray_d_norm, z, normal, albedo, specular, object_op_id);
 
 	gl_FragDepth = dist_to_depth(z, cam.near, cam.far);
-	out_normal = vec4(normal / 2. + 0.5, 0.); // fit [-1, 1] in unorm range
+	out_normal = vec4(normal / 2. + 0.5, 0); // fit [-1, 1] in unorm range
 	out_albedo_specular = vec4(albedo, specular);
 	out_object_op_id = object_op_id;
 }

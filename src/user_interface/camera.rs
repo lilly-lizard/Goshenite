@@ -1,6 +1,6 @@
 use super::config_ui;
 use crate::{config, engine::object::object::ObjectId, helper::angle::Angle};
-use glam::{DMat3, DMat4, DVec2, DVec3, Mat4, Vec3, Vec4};
+use glam::{DMat3, DVec2, DVec3, Mat4, Vec3, Vec4};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
@@ -151,20 +151,32 @@ impl Camera {
         )
     }
 
-    pub fn projection_matrix(&self) -> DMat4 {
-        // don't need to invert y in shaders
-        // inverse(proj_view_inverse) works fine
-        DMat4::perspective_rh(
-            self.fov.radians(),
-            self.aspect_ratio as f64,
-            self.near_plane,
-            self.far_plane,
+    /// right handed, reverse z, vulkan coordinates
+    pub fn projection_matrix(&self) -> Mat4 {
+        let (w, h, a, b) = self.projection_matrix_components();
+        Mat4::from_cols(
+            Vec4::new(w, 0., 0., 0.),
+            Vec4::new(0., h, 0., 0.),
+            Vec4::new(0., 0., a, -1.),
+            Vec4::new(0., 0., b, 0.),
+        )
+    }
+
+    /// right handed, reverse z, vulkan coordinates
+    pub fn projection_matrix_inverse(&self) -> Mat4 {
+        let (w, h, a, b) = self.projection_matrix_components();
+        Mat4::from_cols(
+            Vec4::new(1. / w, 0., 0., 0.),
+            Vec4::new(0., 1. / h, 0., 0.),
+            Vec4::new(0., 0., 0., 1. / b),
+            Vec4::new(0., 0., -1., a / b),
         )
     }
 
     // https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
-    /// right handed, reverse z, vulkan coordinates
-    pub fn projection_matrix_and_inverse(&self) -> ProjectionMatrixReturn {
+    // note that glam::DMat4::perspective_rh renders everything upside down
+    /// Returns (w, h, a, b)
+    fn projection_matrix_components(&self) -> (f32, f32, f32, f32) {
         let near = self.near_plane as f32;
         let far = self.far_plane as f32;
 
@@ -176,27 +188,7 @@ impl Camera {
 
         let a = near / (far - near);
         let b = far * a;
-
-        let proj = Mat4::from_cols(
-            Vec4::new(w, 0., 0., 0.),
-            Vec4::new(0., h, 0., 0.),
-            Vec4::new(0., 0., a, -1.),
-            Vec4::new(0., 0., b, 0.),
-        );
-
-        let proj_inverse = Mat4::from_cols(
-            Vec4::new(1. / w, 0., 0., 0.),
-            Vec4::new(0., 1. / h, 0., 0.),
-            Vec4::new(0., 0., 0., 1. / b),
-            Vec4::new(0., 0., -1., a / b),
-        );
-
-        ProjectionMatrixReturn {
-            proj,
-            proj_inverse,
-            proj_a: a,
-            proj_b: b,
-        }
+        (w, h, a, b)
     }
 
     // Getters
@@ -453,14 +445,6 @@ fn calc_aspect_ratio(resolution: [f32; 2]) -> f32 {
 /// Gradient is 1 at x = 0. Inspired by tanh but with lighter gradient falloff.
 fn dual_asymptote(x: f64) -> f64 {
     (2_f64.powf(x) - 1.) / (2_f64.powf(x) + 1.)
-}
-
-#[derive(Clone)]
-pub struct ProjectionMatrixReturn {
-    pub proj: Mat4,
-    pub proj_inverse: Mat4,
-    pub proj_a: f32,
-    pub proj_b: f32,
 }
 
 // Errors
