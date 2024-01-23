@@ -4,9 +4,10 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- put all mark for update calls inside object collection and remove mutable reference returns
+- call "mark all for update" fn every frame for debugging
+- change ray-marching cut-off params and see if makes a difference
 - infinite far plane https://developer.nvidia.com/content/depth-precision-visualized https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
-- debug slider for AABB_EDGE
-	- make mut debug params struct that is passed to gui so stuff like this can optionally/temporarily be added without commands
 
 - undo (ctrl z)
 

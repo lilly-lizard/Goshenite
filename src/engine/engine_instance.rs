@@ -1,6 +1,6 @@
 use super::{
     commands::{CommandWithSource, TargetPrimitiveOp},
-    config_engine,
+    config_engine::{self},
     object::{
         object::ObjectId, object_collection::ObjectCollection, operation::Operation,
         primitive_op::PrimitiveOpId,
@@ -24,12 +24,14 @@ use crate::{
         gui::Gui,
     },
 };
+use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use single_value_channel::NoReceiverError;
 use std::{
     collections::VecDeque,
     env,
+    fmt::Debug,
     sync::{mpsc::SendError, Arc},
     thread::JoinHandle,
     time::Instant,
@@ -497,8 +499,6 @@ fn check_channel_sender_result<T>(
 // ~~ Testing ~~
 
 fn create_default_cube_object(object_collection: &mut ObjectCollection) {
-    use glam::Vec3;
-
     let (object_id, object) = object_collection
         .new_object("Cube", Vec3::ZERO)
         .expect("just made this");
@@ -515,7 +515,7 @@ fn create_default_cube_object(object_collection: &mut ObjectCollection) {
 }
 
 fn object_testing(object_collection: &mut ObjectCollection) {
-    use glam::{Quat, Vec3};
+    use glam::Quat;
 
     let sphere = Sphere::new(0.5);
     let cube = Cube::new(Vec3::splat(0.8));
