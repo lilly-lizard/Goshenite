@@ -175,7 +175,8 @@ impl Camera {
 
     // https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
     // note that glam::DMat4::perspective_rh renders everything upside down
-    /// Returns (w, h, a, b)
+    /// Right handed, reverse z, vulkan coordinates.
+    /// Returns `(w, h, a, b)`
     fn projection_matrix_components(&self) -> (f32, f32, f32, f32) {
         let near = self.near_plane as f32;
         let far = self.far_plane as f32;

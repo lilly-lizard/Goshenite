@@ -19,7 +19,7 @@ layout (location = 1) in noperspective vec2 in_clip_space_uv; // clip space posi
 layout (location = 0) out vec4 out_normal;
 layout (location = 1) out vec4 out_albedo_specular;
 layout (location = 2) out uint out_object_op_id; // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side
-layout (depth_greater) out float gl_FragDepth; // although drivers probably can't optimize with this anyway because we use discard... https://github.com/KhronosGroup/Vulkan-Guide/blob/main/chapters/depth.adoc
+layout (depth_greater) out float gl_FragDepth; // https://docs.vulkan.org/guide/latest/depth.html#conservative-depth
 
 layout (set = 0, binding = 0) uniform Camera {
 	mat4 view_inverse;
@@ -196,12 +196,14 @@ vec3 calcNormal(vec3 pos)
 					 e.xxx * map(pos + e.xxx).d);
 }
 
+/// `dist` is world-space distance from camera (or view z), `depth` is reverse depth (in depth buffer)
 float dist_to_depth(float dist, float near, float far) {
 	float b = near / (far - near);
 	float a = far * b;
-	return a / dist - b;
+	return (a / dist) - b;
 }
 
+/// `dist` is world-space distance from camera (or view z), `depth` is reverse depth (in depth buffer)
 float depth_to_dist(float depth, float near, float far) {
 	float b = near / (far - near);
 	float a = far * b;

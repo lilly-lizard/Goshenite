@@ -141,7 +141,7 @@ impl EngineInstance {
 
                 // TESTING OBJECTS START
 
-                object_testing(&mut self.object_collection);
+                //object_testing(&mut self.object_collection);
 
                 // TESTING OBJECTS END
             }

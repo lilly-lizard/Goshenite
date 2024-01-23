@@ -13,7 +13,7 @@ pub mod primitive_names {
     pub const UBER_PRIMITIVE: &str = "Uber Primitive";
 }
 
-pub const AABB_EDGE: Vec3 = Vec3::splat(1.);
+pub const AABB_EDGE: Vec3 = Vec3::splat(0.5);
 
 pub const LOCAL_STORAGE_DIR: &str = ".goshenite";
 pub const SAVE_STATE_FILENAME_CAMERA: &str = "camera.gsave";

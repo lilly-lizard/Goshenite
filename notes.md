@@ -4,9 +4,9 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
-- blend function (primitive op)
-	- only blend with previous result
-	- each primitive op has a blend parameter
+- infinite far plane https://developer.nvidia.com/content/depth-precision-visualized https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
+- debug slider for AABB_EDGE
+	- make mut debug params struct that is passed to gui so stuff like this can optionally/temporarily be added without commands
 - fix wonky perspective on screen edges (rays?)
 
 - undo (ctrl z)
