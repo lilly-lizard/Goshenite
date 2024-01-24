@@ -519,7 +519,7 @@ fn create_default_cube_object(object_collection: &mut ObjectCollection) {
         0.5,
     );
     _ = object_collection
-        .insert_object(object)
+        .push_object(object)
         .expect("no where near maxing out unique ids");
 }
 
@@ -556,7 +556,7 @@ fn object_testing(object_collection: &mut ObjectCollection) {
         0.5,
     );
     _ = object_collection
-        .insert_object(object)
+        .push_object(object)
         .expect("no where near maxing out unique ids");
 
     let mut another_object = Object::new(String::from("Another Bruh"), Vec3::new(0.2, -0.2, 0.));
@@ -568,5 +568,5 @@ fn object_testing(object_collection: &mut ObjectCollection) {
         Vec3::new(0.8, 0.8, 0.8),
         0.5,
     );
-    _ = object_collection.insert_object(another_object);
+    _ = object_collection.push_object(another_object);
 }

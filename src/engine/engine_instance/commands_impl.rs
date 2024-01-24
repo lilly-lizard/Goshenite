@@ -278,7 +278,7 @@ impl EngineInstance {
             }
         };
 
-        let insert_objects_res = self.object_collection.insert_objects(loaded_objects);
+        let insert_objects_res = self.object_collection.push_objects(loaded_objects);
         if let Err(e) = insert_objects_res {
             let failed_because = format!("error while inserting loaded objects: {}", e);
             command_failed_warn(command, &failed_because);
@@ -395,7 +395,7 @@ impl EngineInstance {
         let update_res = self
             .object_collection
             .set_object_origin(object_id, new_origin);
-        if let Err(e) = update_res {
+        if let Err(_) = update_res {
             failure_warn_invalid_object_id(object_id, Some(command));
         }
     }
@@ -407,7 +407,7 @@ impl EngineInstance {
         command: Command,
     ) {
         let update_res = self.object_collection.set_object_name(object_id, new_name);
-        if let Err(e) = update_res {
+        if let Err(_) = update_res {
             failure_warn_invalid_object_id(object_id, Some(command));
         }
     }
@@ -721,17 +721,21 @@ impl EngineInstance {
         let Some(object_id) =
             self.object_id_from_target_primitive_op(target_primitive_op, source_command.clone())
         else {
+            failure_warn_no_selected_object(source_command);
             return;
         };
 
-        let Some(object) = self.object_collection.get_object_mut(object_id) else {
+        // check early to ensure if `remove_primitive_op_id_from_object` or `failure_warn_invalid_primitive_op_index`
+        // fails it is because of invalid primitive op id/index
+        if let None = self.object_collection.get_object(object_id) {
             failure_warn_invalid_object_id(object_id, source_command);
             return;
         };
 
         match target_primitive_op {
             TargetPrimitiveOp::Id(_, primitive_op_id) => {
-                let res = object.set_primitive_op_id(
+                let set_res = self.object_collection.set_primitive_op_id_in_object(
+                    object_id,
                     primitive_op_id,
                     new_primitive,
                     new_transform,
@@ -740,17 +744,17 @@ impl EngineInstance {
                     new_albedo,
                     new_specular,
                 );
-                if let Err(_) = res {
+                if let Err(_) = set_res {
                     failure_warn_invalid_primitive_op_id(
                         object_id,
                         primitive_op_id,
                         source_command,
                     );
-                    return;
                 }
             }
             TargetPrimitiveOp::Index(_, primitive_op_index) => {
-                let res = object.set_primitive_op_index(
+                let set_res = self.object_collection.set_primitive_op_index_in_object(
+                    object_id,
                     primitive_op_index,
                     new_primitive,
                     new_transform,
@@ -759,18 +763,18 @@ impl EngineInstance {
                     new_albedo,
                     new_specular,
                 );
-                if let Err(_) = res {
+                if let Err(_) = set_res {
                     failure_warn_invalid_primitive_op_index(
                         object_id,
                         primitive_op_index,
                         source_command,
                     );
-                    return;
                 }
             }
             TargetPrimitiveOp::Selected => match self.selected_primitive_op_id {
                 Some(primitive_op_id) => {
-                    let res = object.set_primitive_op_id(
+                    let set_res = self.object_collection.set_primitive_op_id_in_object(
+                        object_id,
                         primitive_op_id,
                         new_primitive,
                         new_transform,
@@ -779,19 +783,17 @@ impl EngineInstance {
                         new_albedo,
                         new_specular,
                     );
-                    if let Err(_) = res {
+                    if let Err(_) = set_res {
                         failure_warn_invalid_primitive_op_id(
                             object_id,
                             primitive_op_id,
                             source_command,
                         );
                         self.selected_primitive_op_id = None;
-                        return;
                     }
                 }
                 None => {
                     failure_warn_no_selected_primitive_op(source_command);
-                    return;
                 }
             },
         }
@@ -804,15 +806,17 @@ impl EngineInstance {
         target_index: usize,
         command: Command,
     ) {
-        let object = if let Some(some_object) = self.object_collection.get_object_mut(object_id) {
-            some_object
-        } else {
+        // check early to ensure that later failure is because of invalid primitive op indices
+        if let None = self.object_collection.get_object(object_id) {
             failure_warn_invalid_object_id(object_id, Some(command));
             return;
         };
 
-        let shift_res = object.shift_primitive_ops(source_index, target_index);
-
+        let shift_res = self.object_collection.shift_primitive_ops_in_object(
+            object_id,
+            source_index,
+            target_index,
+        );
         if let Err(e) = shift_res {
             let error_msg = e.to_string();
             command_failed_warn(command, &error_msg);

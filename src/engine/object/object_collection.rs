@@ -51,7 +51,7 @@ impl ObjectCollection {
         Ok(self.new_object_internal(object_id, name, origin))
     }
 
-    pub fn insert_object(&mut self, new_object: Object) -> Result<ObjectId, UniqueIdError> {
+    pub fn push_object(&mut self, new_object: Object) -> Result<ObjectId, UniqueIdError> {
         let new_object_id = self.unique_id_gen.new_id()?;
         self.objects.insert(new_object_id, new_object);
         self.mark_object_for_data_update(new_object_id)
@@ -59,13 +59,13 @@ impl ObjectCollection {
         Ok(new_object_id)
     }
 
-    pub fn insert_objects(
+    pub fn push_objects(
         &mut self,
         new_objects: impl IntoIterator<Item = Object>,
     ) -> Result<Vec<ObjectId>, UniqueIdError> {
         let mut new_object_ids: Vec<ObjectId> = Vec::new();
         for new_object in new_objects {
-            let new_object_id = self.insert_object(new_object)?;
+            let new_object_id = self.push_object(new_object)?;
             new_object_ids.push(new_object_id);
         }
         Ok(new_object_ids)
@@ -115,8 +115,67 @@ impl ObjectCollection {
         let object_mut_ref = self.get_object_mut(object_id)?;
         let primitive_op_id =
             object_mut_ref.push_primitive_op(primitive, transform, op, blend, albedo, specular)?;
-        self.mark_object_for_data_update(object_id);
+        _ = self.mark_object_for_data_update(object_id);
         Ok(primitive_op_id)
+    }
+
+    pub fn set_primitive_op_id_in_object(
+        &mut self,
+        object_id: ObjectId,
+        primitive_op_id: PrimitiveOpId,
+        new_primitive: Option<Primitive>,
+        new_transform: Option<PrimitiveTransform>,
+        new_operation: Option<Operation>,
+        new_blend: Option<f32>,
+        new_albedo: Option<Vec3>,
+        new_specular: Option<f32>,
+    ) -> Result<(), CollectionError> {
+        let object_mut_ref = self.get_object_mut(object_id)?;
+        object_mut_ref.set_primitive_op_id(
+            primitive_op_id,
+            new_primitive,
+            new_transform,
+            new_operation,
+            new_blend,
+            new_albedo,
+            new_specular,
+        )?;
+        self.mark_object_for_data_update(object_id)
+    }
+
+    pub fn set_primitive_op_index_in_object(
+        &mut self,
+        object_id: ObjectId,
+        primitive_op_index: usize,
+        new_primitive: Option<Primitive>,
+        new_transform: Option<PrimitiveTransform>,
+        new_operation: Option<Operation>,
+        new_blend: Option<f32>,
+        new_albedo: Option<Vec3>,
+        new_specular: Option<f32>,
+    ) -> Result<(), CollectionError> {
+        let object_mut_ref = self.get_object_mut(object_id)?;
+        object_mut_ref.set_primitive_op_index(
+            primitive_op_index,
+            new_primitive,
+            new_transform,
+            new_operation,
+            new_blend,
+            new_albedo,
+            new_specular,
+        )?;
+        self.mark_object_for_data_update(object_id)
+    }
+
+    pub fn shift_primitive_ops_in_object(
+        &mut self,
+        object_id: ObjectId,
+        source_index: usize,
+        target_index: usize,
+    ) -> Result<(), CollectionError> {
+        let object_mut_ref = self.get_object_mut(object_id)?;
+        object_mut_ref.shift_primitive_ops(source_index, target_index)?;
+        self.mark_object_for_data_update(object_id)
     }
 
     pub fn remove_primitive_op_id_from_object(

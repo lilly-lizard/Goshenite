@@ -167,7 +167,7 @@ impl Object {
             })
     }
 
-    pub fn get_primitive_op_with_index(
+    pub fn get_primitive_op_and_index(
         &self,
         get_primitive_op_id: PrimitiveOpId,
     ) -> Option<(&PrimitiveOp, usize)> {

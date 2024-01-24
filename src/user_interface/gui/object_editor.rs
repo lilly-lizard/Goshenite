@@ -203,7 +203,7 @@ fn existing_primitive_op_editor(
 
     let selected_object_id = selected_object_id;
     let (selected_primitive_op, selected_primitive_op_index) =
-        match selected_object.get_primitive_op_with_index(selected_prim_op_id) {
+        match selected_object.get_primitive_op_and_index(selected_prim_op_id) {
             Some(primitive_op_and_index) => primitive_op_and_index,
             None => {
                 // selected_prim_op_id not in selected_obejct -> invalid id
