@@ -2,16 +2,17 @@ use super::{
     object::{Object, ObjectId},
     objects_delta::{ObjectDeltaOperation, ObjectsDelta},
 };
-use crate::helper::{
-    more_errors::CollectionError,
-    unique_id_gen::{UniqueIdError, UniqueIdGen, UniqueIdType},
+use crate::{
+    engine::config_engine::DEFAULT_ORIGIN,
+    helper::{
+        more_errors::CollectionError,
+        unique_id_gen::{UniqueIdError, UniqueIdGen, UniqueIdType},
+    },
 };
 use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::collections::BTreeMap;
-
-pub const DEFAULT_ORIGIN: Vec3 = Vec3::ZERO;
 
 /// Should only be one per engine instance.
 pub struct ObjectCollection {
@@ -33,22 +34,19 @@ impl ObjectCollection {
         &mut self,
         name: impl Into<String>,
         origin: Vec3,
-    ) -> Result<(ObjectId, &mut Object), UniqueIdError> {
+    ) -> Result<(ObjectId, Object), UniqueIdError> {
         let object_id = self.unique_id_gen.new_id()?;
         Ok(self.new_object_internal(object_id, name.into(), origin))
     }
 
-    pub fn new_object_default(&mut self) -> Result<(ObjectId, &mut Object), UniqueIdError> {
+    pub fn new_object_default(&mut self) -> Result<(ObjectId, Object), UniqueIdError> {
         let object_id = self.unique_id_gen.new_id()?;
         let name = format!("New Object {}", object_id.raw_id());
         let origin = DEFAULT_ORIGIN;
         Ok(self.new_object_internal(object_id, name, origin))
     }
 
-    pub fn insert_object_and_mark_for_update(
-        &mut self,
-        new_object: Object,
-    ) -> Result<ObjectId, UniqueIdError> {
+    pub fn insert_object(&mut self, new_object: Object) -> Result<ObjectId, UniqueIdError> {
         let new_object_id = self.unique_id_gen.new_id()?;
         self.objects.insert(new_object_id, new_object);
         self.mark_object_for_data_update(new_object_id)
@@ -56,16 +54,38 @@ impl ObjectCollection {
         Ok(new_object_id)
     }
 
-    pub fn insert_objects_and_mark_for_update(
+    pub fn insert_objects(
         &mut self,
         new_objects: impl IntoIterator<Item = Object>,
     ) -> Result<Vec<ObjectId>, UniqueIdError> {
         let mut new_object_ids: Vec<ObjectId> = Vec::new();
         for new_object in new_objects {
-            let new_object_id = self.insert_object_and_mark_for_update(new_object)?;
+            let new_object_id = self.insert_object(new_object)?;
             new_object_ids.push(new_object_id);
         }
         Ok(new_object_ids)
+    }
+
+    pub fn set_object(
+        &mut self,
+        object_id: ObjectId,
+        updated_object: Object,
+    ) -> Result<(), CollectionError> {
+        let mut object_mut_ref = self.get_object_mut(object_id)?;
+        *object_mut_ref = updated_object;
+        _ = self.mark_object_for_data_update(object_id);
+        Ok(())
+    }
+
+    pub fn set_object_name(
+        &mut self,
+        object_id: ObjectId,
+        updated_name: String,
+    ) -> Result<(), CollectionError> {
+        let mut object_mut_ref = self.get_object_mut(object_id)?;
+        object_mut_ref.name = updated_name;
+        // don't need to mark for update becuase name isn't sent to gpu
+        Ok(())
     }
 
     pub fn remove_object(&mut self, object_id: ObjectId) -> Result<Object, CollectionError> {
@@ -88,24 +108,6 @@ impl ObjectCollection {
         }
     }
 
-    /// Call this whenever an object is modified via [`get_object_mut`] so that the updated data
-    /// can be sent to the GPU.
-    pub fn mark_object_for_data_update(
-        &mut self,
-        object_id: ObjectId,
-    ) -> Result<(), CollectionError> {
-        let cloned_object = if let Some(updated_object) = self.objects.get(&object_id) {
-            updated_object.clone()
-        } else {
-            return Err(CollectionError::InvalidId {
-                raw_id: object_id.raw_id(),
-            });
-        };
-
-        self.insert_object_delta(object_id, ObjectDeltaOperation::Update(cloned_object));
-        Ok(())
-    }
-
     /// Returns a description of the changes to objects since last call to this function.
     pub fn get_and_clear_objects_delta(&mut self) -> ObjectsDelta {
         std::mem::take(&mut self.objects_delta_accumulation)
@@ -118,15 +120,26 @@ impl ObjectCollection {
     pub fn get_object(&self, object_id: ObjectId) -> Option<&Object> {
         self.objects.get(&object_id)
     }
-
-    pub fn get_object_mut(&mut self, object_id: ObjectId) -> Option<&mut Object> {
-        self.objects.get_mut(&object_id)
-    }
 }
 
 // ~~ Private Functions ~~
 
 impl ObjectCollection {
+    /// Call this whenever an object is modified via [`get_object_mut`] so that the updated data
+    /// can be sent to the GPU.
+    fn mark_object_for_data_update(&mut self, object_id: ObjectId) -> Result<(), CollectionError> {
+        let cloned_object = if let Some(updated_object) = self.objects.get(&object_id) {
+            updated_object.clone()
+        } else {
+            return Err(CollectionError::InvalidId {
+                raw_id: object_id.raw_id(),
+            });
+        };
+
+        self.insert_object_delta(object_id, ObjectDeltaOperation::Update(cloned_object));
+        Ok(())
+    }
+
     /// Use this instead of directly inserting to perform some operation specific checks
     fn insert_object_delta(
         &mut self,
@@ -153,18 +166,21 @@ impl ObjectCollection {
         object_id: ObjectId,
         name: String,
         origin: Vec3,
-    ) -> (ObjectId, &mut Object) {
+    ) -> (ObjectId, Object) {
         let object = Object::new(name, origin);
-        let cloned_object = object.clone();
-        self.objects.insert(object_id, object);
+        self.objects.insert(object_id, object.clone());
 
         // record changed data
-        self.insert_object_delta(object_id, ObjectDeltaOperation::Add(cloned_object));
+        self.insert_object_delta(object_id, ObjectDeltaOperation::Add(object.clone()));
 
-        let object_ref = self
-            .objects
+        (object_id, object)
+    }
+
+    fn get_object_mut(&mut self, object_id: ObjectId) -> Result<&mut Object, CollectionError> {
+        self.objects
             .get_mut(&object_id)
-            .expect("literally just inserted this");
-        (object_id, object_ref)
+            .ok_or(CollectionError::InvalidId {
+                raw_id: object_id.raw_id(),
+            })
     }
 }

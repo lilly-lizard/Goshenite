@@ -275,9 +275,7 @@ impl EngineInstance {
             }
         };
 
-        let insert_objects_res = self
-            .object_collection
-            .insert_objects_and_mark_for_update(loaded_objects);
+        let insert_objects_res = self.object_collection.insert_objects(loaded_objects);
         if let Err(e) = insert_objects_res {
             let failed_because = format!("error while inserting loaded objects: {}", e);
             command_failed_warn(command, &failed_because);
@@ -383,10 +381,6 @@ impl EngineInstance {
 
         let new_object_origin = new_object.origin;
         self.select_object_unchecked(new_object_id, new_object_origin);
-
-        _ = self
-            .object_collection
-            .mark_object_for_data_update(new_object_id);
     }
 
     fn set_object_origin_via_command(

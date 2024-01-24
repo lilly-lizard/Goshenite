@@ -12,6 +12,7 @@ use super::{
 };
 use crate::{
     config,
+    engine::object::object::Object,
     helper::anyhow_panic::anyhow_unwrap,
     renderer::{
         config_renderer::RenderOptions, element_id_reader::ElementAtPoint,
@@ -499,9 +500,7 @@ fn check_channel_sender_result<T>(
 // ~~ Testing ~~
 
 fn create_default_cube_object(object_collection: &mut ObjectCollection) {
-    let (object_id, object) = object_collection
-        .new_object("Cube", Vec3::ZERO)
-        .expect("just made this");
+    let mut object = Object::new(String::from("Cube"), Vec3::ZERO);
     let cube = Cube::new(Vec3::splat(1.));
     _ = object.push_primitive_op(
         cube.into(),
@@ -511,7 +510,9 @@ fn create_default_cube_object(object_collection: &mut ObjectCollection) {
         Vec3::new(0.8, 0.3, 0.1),
         0.5,
     );
-    _ = object_collection.mark_object_for_data_update(object_id);
+    _ = object_collection
+        .insert_object(object)
+        .expect("no where near maxing out unique ids");
 }
 
 fn object_testing(object_collection: &mut ObjectCollection) {
@@ -521,9 +522,7 @@ fn object_testing(object_collection: &mut ObjectCollection) {
     let cube = Cube::new(Vec3::splat(0.8));
     let another_sphere = Sphere::new(0.83);
 
-    let (object_id, object) = object_collection
-        .new_object("Bruh", Vec3::new(-0.2, 0.2, 0.))
-        .expect("no where near maxing out unique ids");
+    let mut object = Object::new(String::from("Bruh"), Vec3::new(-0.2, 0.2, 0.));
     _ = object.push_primitive_op(
         Primitive::Cube(cube),
         PrimitiveTransform::new(Vec3::new(-0.2, 0.2, 0.), Quat::IDENTITY),
@@ -548,11 +547,11 @@ fn object_testing(object_collection: &mut ObjectCollection) {
         Vec3::new(0.8, 0.5, 0.1),
         0.5,
     );
-    _ = object_collection.mark_object_for_data_update(object_id);
-
-    let (another_object_id, another_object) = object_collection
-        .new_object("Another Bruh", Vec3::new(0.2, -0.2, 0.))
+    _ = object_collection
+        .insert_object(object)
         .expect("no where near maxing out unique ids");
+
+    let mut another_object = Object::new(String::from("Another Bruh"), Vec3::new(0.2, -0.2, 0.));
     _ = another_object.push_primitive_op(
         Primitive::Sphere(sphere),
         PrimitiveTransform::DEFAULT,
@@ -561,5 +560,5 @@ fn object_testing(object_collection: &mut ObjectCollection) {
         Vec3::new(0.8, 0.8, 0.8),
         0.5,
     );
-    _ = object_collection.mark_object_for_data_update(another_object_id);
+    _ = object_collection.insert_object(another_object);
 }
