@@ -452,6 +452,14 @@ impl EngineInstance {
             }
         }
     }
+
+    fn is_object_id_selected(&self, compare_object_id: ObjectId) -> bool {
+        if let Some(some_selected_object_id) = self.selected_object_id {
+            some_selected_object_id == compare_object_id
+        } else {
+            false
+        }
+    }
 }
 
 // ~~ Engine Error ~~

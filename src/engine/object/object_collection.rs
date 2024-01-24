@@ -1,9 +1,14 @@
 use super::{
     object::{Object, ObjectId},
     objects_delta::{ObjectDeltaOperation, ObjectsDelta},
+    operation::Operation,
+    primitive_op::PrimitiveOpId,
 };
 use crate::{
-    engine::config_engine::DEFAULT_ORIGIN,
+    engine::{
+        config_engine::DEFAULT_ORIGIN,
+        primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
+    },
     helper::{
         more_errors::CollectionError,
         unique_id_gen::{UniqueIdError, UniqueIdGen, UniqueIdType},
@@ -69,23 +74,71 @@ impl ObjectCollection {
     pub fn set_object(
         &mut self,
         object_id: ObjectId,
-        updated_object: Object,
+        new_object: Object,
     ) -> Result<(), CollectionError> {
-        let mut object_mut_ref = self.get_object_mut(object_id)?;
-        *object_mut_ref = updated_object;
-        _ = self.mark_object_for_data_update(object_id);
-        Ok(())
+        let object_mut_ref = self.get_object_mut(object_id)?;
+        *object_mut_ref = new_object;
+        self.mark_object_for_data_update(object_id)
     }
 
     pub fn set_object_name(
         &mut self,
         object_id: ObjectId,
-        updated_name: String,
+        new_name: String,
     ) -> Result<(), CollectionError> {
-        let mut object_mut_ref = self.get_object_mut(object_id)?;
-        object_mut_ref.name = updated_name;
-        // don't need to mark for update becuase name isn't sent to gpu
+        let object_mut_ref = self.get_object_mut(object_id)?;
+        object_mut_ref.name = new_name;
+        // don't need to mark for update becuase the name isn't sent to gpu
         Ok(())
+    }
+
+    pub fn set_object_origin(
+        &mut self,
+        object_id: ObjectId,
+        new_origin: Vec3,
+    ) -> Result<(), CollectionError> {
+        let object_mut_ref = self.get_object_mut(object_id)?;
+        object_mut_ref.origin = new_origin;
+        self.mark_object_for_data_update(object_id)
+    }
+
+    pub fn push_op_to_object(
+        &mut self,
+        object_id: ObjectId,
+        primitive: Primitive,
+        transform: PrimitiveTransform,
+        op: Operation,
+        blend: f32,
+        albedo: Vec3,
+        specular: f32,
+    ) -> Result<PrimitiveOpId, CollectionError> {
+        let object_mut_ref = self.get_object_mut(object_id)?;
+        let primitive_op_id =
+            object_mut_ref.push_primitive_op(primitive, transform, op, blend, albedo, specular)?;
+        self.mark_object_for_data_update(object_id);
+        Ok(primitive_op_id)
+    }
+
+    pub fn remove_primitive_op_id_from_object(
+        &mut self,
+        object_id: ObjectId,
+        remove_primitive_op_id: PrimitiveOpId,
+    ) -> Result<usize, CollectionError> {
+        let object_mut_ref = self.get_object_mut(object_id)?;
+        let index = object_mut_ref.remove_primitive_op_id(remove_primitive_op_id)?;
+        _ = self.mark_object_for_data_update(object_id);
+        Ok(index)
+    }
+
+    pub fn remove_primitive_op_index_from_object(
+        &mut self,
+        object_id: ObjectId,
+        remove_primitive_op_index: usize,
+    ) -> Result<PrimitiveOpId, CollectionError> {
+        let object_mut_ref = self.get_object_mut(object_id)?;
+        let id = object_mut_ref.remove_primitive_op_index(remove_primitive_op_index)?;
+        _ = self.mark_object_for_data_update(object_id);
+        Ok(id)
     }
 
     pub fn remove_object(&mut self, object_id: ObjectId) -> Result<Object, CollectionError> {
@@ -135,7 +188,6 @@ impl ObjectCollection {
                 raw_id: object_id.raw_id(),
             });
         };
-
         self.insert_object_delta(object_id, ObjectDeltaOperation::Update(cloned_object));
         Ok(())
     }
@@ -176,6 +228,9 @@ impl ObjectCollection {
         (object_id, object)
     }
 
+    /// Don't want this to be public because any updates to objects should be followed by a call to
+    /// `mark_object_for_data_update` which is hard to maintain and thus should be the
+    /// responsibility of `ObjectCollection`.
     fn get_object_mut(&mut self, object_id: ObjectId) -> Result<&mut Object, CollectionError> {
         self.objects
             .get_mut(&object_id)

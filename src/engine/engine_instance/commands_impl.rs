@@ -10,7 +10,10 @@ use crate::{
         primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
         save_states::{load_objects, load_state_camera, save_all_objects, save_state_camera},
     },
-    helper::{list::choose_closest_valid_index, unique_id_gen::UniqueIdError},
+    helper::{
+        list::choose_closest_valid_index, more_errors::CollectionError,
+        unique_id_gen::UniqueIdError,
+    },
     renderer::config_renderer::RenderOptions,
     user_interface::gui::Gui,
 };
@@ -290,7 +293,7 @@ impl EngineInstance {
         command: Command,
     ) {
         let Some(object) = self.object_collection.get_object(target_object_id) else {
-            command_failed_warn(command, "invalid object id");
+            failure_warn_invalid_object_id(target_object_id, Some(command));
             return;
         };
 
@@ -345,7 +348,7 @@ impl EngineInstance {
     fn remove_object_via_command(&mut self, object_id_to_remove: ObjectId, command: Command) {
         let res = self.object_collection.remove_object(object_id_to_remove);
         if let Err(_e) = res {
-            command_failed_warn(command, "invalid object id");
+            failure_warn_invalid_object_id(object_id_to_remove, Some(command));
         }
 
         if let Some(previously_selected_object_id) = self.selected_object_id {
@@ -374,7 +377,7 @@ impl EngineInstance {
         let (new_object_id, new_object) = match new_object_res {
             Ok(object_and_id) => object_and_id,
             Err(e) => {
-                command_failed_unique_id_error(e, command);
+                failure_warn_unique_id_error(Some(command), e);
                 return;
             }
         };
@@ -386,18 +389,15 @@ impl EngineInstance {
     fn set_object_origin_via_command(
         &mut self,
         object_id: ObjectId,
-        origin: Vec3,
+        new_origin: Vec3,
         command: Command,
     ) {
-        let Some(object) = self.object_collection.get_object_mut(object_id) else {
-            command_failed_warn(command, "invalid object id");
-            return;
-        };
-
-        object.origin = origin;
-        _ = self
+        let update_res = self
             .object_collection
-            .mark_object_for_data_update(object_id);
+            .set_object_origin(object_id, new_origin);
+        if let Err(e) = update_res {
+            failure_warn_invalid_object_id(object_id, Some(command));
+        }
     }
 
     fn set_object_name_via_command(
@@ -406,12 +406,10 @@ impl EngineInstance {
         new_name: String,
         command: Command,
     ) {
-        let Some(object) = self.object_collection.get_object_mut(object_id) else {
-            command_failed_warn(command, "invalid object id");
-            return;
-        };
-
-        object.name = new_name;
+        let update_res = self.object_collection.set_object_name(object_id, new_name);
+        if let Err(e) = update_res {
+            failure_warn_invalid_object_id(object_id, Some(command));
+        }
     }
 
     // ~~ Primtive Op: Selection ~~
@@ -520,17 +518,22 @@ impl EngineInstance {
         let Some(object_id) =
             self.object_id_from_target_primitive_op(target_primitive_op, source_command.clone())
         else {
+            failure_warn_no_selected_object(source_command);
             return;
         };
 
-        let Some(object) = self.object_collection.get_object_mut(object_id) else {
+        // check early to ensure if `remove_primitive_op_id_from_object` or `failure_warn_invalid_primitive_op_index`
+        // fails it is because of invalid primitive op id/index
+        if let None = self.object_collection.get_object(object_id) {
             failure_warn_invalid_object_id(object_id, source_command);
             return;
         };
 
         let (removed_id, removed_index) = match target_primitive_op {
             TargetPrimitiveOp::Id(_, primitive_op_id) => {
-                let remove_res = object.remove_primitive_op_id(primitive_op_id);
+                let remove_res = self
+                    .object_collection
+                    .remove_primitive_op_id_from_object(object_id, primitive_op_id);
                 let Ok(removed_index) = remove_res else {
                     failure_warn_invalid_primitive_op_id(
                         object_id,
@@ -542,7 +545,9 @@ impl EngineInstance {
                 (primitive_op_id, removed_index)
             }
             TargetPrimitiveOp::Index(_, primitive_op_index) => {
-                let remove_res = object.remove_primitive_op_index(primitive_op_index);
+                let remove_res = self
+                    .object_collection
+                    .remove_primitive_op_index_from_object(object_id, primitive_op_index);
                 let Ok(removed_id) = remove_res else {
                     failure_warn_invalid_primitive_op_index(
                         object_id,
@@ -555,7 +560,9 @@ impl EngineInstance {
             }
             TargetPrimitiveOp::Selected => match self.selected_primitive_op_id {
                 Some(primitive_op_id) => {
-                    let remove_res = object.remove_primitive_op_id(primitive_op_id);
+                    let remove_res = self
+                        .object_collection
+                        .remove_primitive_op_id_from_object(object_id, primitive_op_id);
                     let Ok(removed_index) = remove_res else {
                         failure_warn_invalid_primitive_op_id(
                             object_id,
@@ -574,19 +581,23 @@ impl EngineInstance {
             },
         };
 
+        if !self.is_object_id_selected(object_id) {
+            return;
+        }
+
         // this primitive op may have been currently selected, in which case we may have
         // to select the primitive op next to it.
+        let updated_object = self
+            .object_collection
+            .get_object(object_id)
+            .expect("checked that object id is valid at beginning of fn");
         Self::check_and_select_closest_primitive_op(
             &mut self.selected_primitive_op_id,
             &mut self.gui,
             removed_id,
             removed_index,
-            object,
+            updated_object,
         );
-
-        _ = self
-            .object_collection
-            .mark_object_for_data_update(object_id);
     }
 
     /// If a removed primitive op is currently selected, select a different primitive op with the
@@ -674,29 +685,24 @@ impl EngineInstance {
         specular: f32,
         command: Command,
     ) -> Option<PrimitiveOpId> {
-        let object = if let Some(some_object) = self.object_collection.get_object_mut(object_id) {
-            some_object
-        } else {
-            command_failed_warn(command, "invalid object id");
-            return None;
-        };
-
-        let push_op_res =
-            object.push_primitive_op(primitive, transform, operation, blend, albedo, specular);
-
-        let new_primitive_op_id = match push_op_res {
-            Err(e) => {
-                command_failed_unique_id_error(e, command);
-                return None;
+        let push_op_res = self.object_collection.push_op_to_object(
+            object_id, primitive, transform, operation, blend, albedo, specular,
+        );
+        match push_op_res {
+            Ok(primitive_op_id) => Some(primitive_op_id),
+            Err(collection_error) => {
+                match collection_error {
+                    CollectionError::InvalidId { .. } => {
+                        failure_warn_invalid_object_id(object_id, Some(command))
+                    }
+                    CollectionError::UniqueIdError(unique_id_error) => {
+                        failure_warn_unique_id_error(Some(command), unique_id_error)
+                    }
+                    _ => (),
+                }
+                None
             }
-            Ok(id) => id,
-        };
-
-        _ = self
-            .object_collection
-            .mark_object_for_data_update(object_id);
-
-        Some(new_primitive_op_id)
+        }
     }
 
     // ~~ Primitive Op: Modify ~~
@@ -789,10 +795,6 @@ impl EngineInstance {
                 }
             },
         }
-
-        _ = self
-            .object_collection
-            .mark_object_for_data_update(object_id);
     }
 
     fn shift_primitive_ops_via_command(
@@ -805,7 +807,7 @@ impl EngineInstance {
         let object = if let Some(some_object) = self.object_collection.get_object_mut(object_id) {
             some_object
         } else {
-            command_failed_warn(command, "invalid object id");
+            failure_warn_invalid_object_id(object_id, Some(command));
             return;
         };
 
@@ -815,10 +817,6 @@ impl EngineInstance {
             let error_msg = e.to_string();
             command_failed_warn(command, &error_msg);
         }
-
-        _ = self
-            .object_collection
-            .mark_object_for_data_update(object_id);
     }
 
     // ~~ Internal ~~
@@ -875,17 +873,6 @@ fn command_failed_error(command: Command, failed_because: &str) {
         "command {:?} critically failed due to: {}",
         command, failed_because
     );
-}
-
-fn command_failed_unique_id_error(e: UniqueIdError, command: Command) {
-    let failed_because = format!(
-        "The engine has run out of unique ids to assign to new objects.\
-        This case is not yet handled by goshenite!\
-        Please report this as a bug...\n
-        Returned error: {}",
-        e
-    );
-    command_failed_error(command, &failed_because);
 }
 
 fn failure_warn_already_selected(source_command: Option<Command>) {
@@ -952,5 +939,20 @@ fn failure_warn_no_selected_primitive_op(source_command: Option<Command>) {
         warn!(
             "attempting to modify selected primitive op when no primitive op is currently selected"
         );
+    }
+}
+
+fn failure_warn_unique_id_error(source_command: Option<Command>, unique_id_error: UniqueIdError) {
+    let failed_because = format!(
+        "The engine has run out of unique ids to assign to new objects.\
+        This case is not yet handled by goshenite!\
+        Please report this as a bug...\n
+        Returned error: {}",
+        unique_id_error
+    );
+    if let Some(some_command) = source_command {
+        command_failed_warn(some_command, &failed_because);
+    } else {
+        warn!("{}", failed_because);
     }
 }

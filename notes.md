@@ -9,6 +9,9 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - change ray-marching cut-off params and see if makes a difference
 - infinite far plane https://developer.nvidia.com/content/depth-precision-visualized https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
 
+- egui color picker
+- remove `PrimitiveOpId` from `Primitive` and have a vec of `(PrimitiveOpId, Primitive)` tuples instead to reduce crazy number of args in push_primitive_op (maintainability etc)
+
 - undo (ctrl z)
 
 - compute dispatch
