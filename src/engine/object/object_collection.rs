@@ -232,6 +232,12 @@ impl ObjectCollection {
     pub fn get_object(&self, object_id: ObjectId) -> Option<&Object> {
         self.objects.get(&object_id)
     }
+
+    /// Marks all objects for gpu update, regardless of wherever they've been modified since the
+    /// last upload.
+    pub fn force_gpu_update(&mut self) {
+        todo!()
+    }
 }
 
 // ~~ Private Functions ~~
@@ -251,23 +257,40 @@ impl ObjectCollection {
         Ok(())
     }
 
-    /// Use this instead of directly inserting to perform some operation specific checks
+    /// Use this instead of directly inserting to perform some operation specific checks.
+    ///
+    /// ### Table for handling delta for same object id
+    /// ```
+    ///                       existing
+    ///             |  add  | update | remove
+    ///     --------+-------+--------+--------
+    ///       add   | skip  |  bug   | push
+    ///     --------+-------+--------+--------
+    /// new  update | push  |   ow   | skip
+    ///     --------+-------+--------+--------
+    ///      remove | push  |   ow   | skip
+    /// ```
     fn insert_object_delta(
         &mut self,
         object_id: ObjectId,
         object_delta_operation: ObjectDeltaOperation,
     ) {
-        if let ObjectDeltaOperation::Update(new_object_duplicate) = object_delta_operation.clone() {
-            if let Some(ObjectDeltaOperation::Add(_old_object_duplicate)) =
-                self.objects_delta_accumulation.get(&object_id)
-            {
-                // object was previously queued for add, so we still need to treat this as an add, not an update
-                self.objects_delta_accumulation
-                    .insert(object_id, ObjectDeltaOperation::Add(new_object_duplicate));
-                return;
+        // need to check for conflicts if the new delta is an update
+        if let ObjectDeltaOperation::Update(new_object) = &object_delta_operation {
+            if let Some(existing_delta) = self.objects_delta_accumulation.get(&object_id) {
+                match existing_delta {
+                    // object is still queued for add, so we still need to treat this as an add
+                    ObjectDeltaOperation::Add(_old_object_duplicate) => {
+                        self.objects_delta_accumulation
+                            .insert(object_id, ObjectDeltaOperation::Add(new_object.clone()));
+                        return;
+                    }
+                    // shouldn't update an object id that is queued to be removed
+                    ObjectDeltaOperation::Remove => return,
+                    _ => (),
+                }
             }
         }
-
         self.objects_delta_accumulation
             .insert(object_id, object_delta_operation);
     }
