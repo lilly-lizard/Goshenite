@@ -144,7 +144,7 @@ impl EngineInstance {
 
                 // TESTING OBJECTS START
 
-                //object_testing(&mut self.object_collection);
+                object_testing(&mut self.object_collection);
 
                 // TESTING OBJECTS END
             }
@@ -276,6 +276,10 @@ impl EngineInstance {
             .render_thread_channels
             .update_camera(self.camera.clone());
         check_channel_updater_result(thread_send_res)?;
+
+        // ~~ DEBUGGING ~~
+        self.object_collection.force_gpu_update();
+        // ~~ DEBUGGING ~~
 
         // update object buffers
         let objects_delta = self.object_collection.get_and_clear_objects_delta();

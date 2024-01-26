@@ -17,7 +17,7 @@ use std::{
     time::Instant,
 };
 
-use super::object::objects_delta::ObjectsDelta;
+use super::object::objects_delta::{push_object_delta, ObjectsDelta};
 
 #[derive(Clone, Copy)]
 pub enum RenderThreadCommand {
@@ -105,22 +105,27 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
                 anyhow_unwrap(update_camera_res, "update camera buffer");
             }
 
-            // the main thread may have sent multiple objects delta packages since we last checked...
+            // gather up all object updates that have been submitted
+            let mut accumulated_objects_delta = ObjectsDelta::default();
             loop {
-                match objects_delta_rx.try_recv() {
-                    Ok(objects_delta) => {
-                        let update_objects_res = renderer.update_objects(objects_delta);
-                        anyhow_unwrap(update_objects_res, "update object buffers");
-                    }
+                let last_objects_delta = match objects_delta_rx.try_recv() {
+                    Ok(last_objects_delta) => last_objects_delta,
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(mpsc::TryRecvError::Disconnected) => {
                         error!("render thread > textures delta sender disconnected! stopping render thread...");
                         break;
                     }
+                };
+                for (object_id, object_delta) in last_objects_delta {
+                    // multiple updates for the same object id may have been pushed across multiple
+                    // frames on the engine side, in which case these need to be merged
+                    push_object_delta(&mut accumulated_objects_delta, object_id, object_delta);
                 }
             }
+            let update_objects_res = renderer.update_objects(accumulated_objects_delta);
+            anyhow_unwrap(update_objects_res, "update object buffers");
 
-            // the main thread may have sent multiple texture delta packages since we last checked...
+            // the main thread may have sent multiple texture delta packages since we last checked
             loop {
                 match textures_delta_rx.try_recv() {
                     Ok(textures_delta) => {

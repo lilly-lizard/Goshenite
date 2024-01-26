@@ -3,12 +3,11 @@ use crate::engine::{
     aabb::AABB_VERTEX_COUNT,
     object::{
         object::{Object, ObjectId},
-        object_collection::ObjectCollection,
         objects_delta::{ObjectDeltaOperation, ObjectsDelta},
     },
 };
 use anyhow::Context;
-use ash::{extensions::khr::Synchronization2, vk};
+use ash::{extensions::khr::Synchronization2, prelude::VkResult, vk};
 use bort_vk::{
     allocation_info_from_flags, AllocationAccess, AllocatorAccess, Buffer, BufferProperties,
     CommandBuffer, CommandPool, CommandPoolProperties, DescriptorPool, DescriptorPoolProperties,
@@ -78,37 +77,6 @@ impl ObjectResourceManager {
         })
     }
 
-    pub fn upload_object_collection(
-        &mut self,
-        object_collection: &ObjectCollection,
-        transfer_queue: &Queue,
-        render_queue: &Queue,
-    ) -> anyhow::Result<()> {
-        let objects = object_collection.objects();
-        if objects.is_empty() {
-            return Ok(());
-        }
-
-        let mut transfer_operation_resources = self.get_transfer_command_resources()?;
-
-        transfer_operation_resources.begin_command_buffers()?;
-
-        for (&object_id, object) in objects {
-            trace!("uploading object id = {:?} to gpu buffer", object_id);
-            self.update_or_push(object_id, object, &mut transfer_operation_resources)?;
-        }
-
-        transfer_operation_resources.end_command_buffers()?;
-
-        transfer_operation_resources
-            .submit_upload_and_sync_commands(transfer_queue, render_queue)?;
-
-        self.pending_upload_resources
-            .push(transfer_operation_resources);
-
-        Ok(())
-    }
-
     pub fn update_objects(
         &mut self,
         objects_delta: ObjectsDelta,
@@ -133,7 +101,7 @@ impl ObjectResourceManager {
                     if let Some(_removed_index) = self.remove(object_id) {
                         trace!("removing object buffer id = {:?}", object_id);
                     } else {
-                        trace!(
+                        info!(
                             "attempted to remove object id = {:?} from gpu buffer but not found!",
                             object_id
                         );
@@ -216,6 +184,12 @@ impl ObjectResourceManager {
     }
 }
 
+impl Drop for ObjectResourceManager {
+    fn drop(&mut self) {
+        trace!("dropping object resource manager...");
+    }
+}
+
 // Private functions
 
 impl ObjectResourceManager {
@@ -248,18 +222,17 @@ impl ObjectResourceManager {
     }
 
     fn get_transfer_command_resources(&mut self) -> anyhow::Result<BufferUploadResources> {
-        if let Some(mut resources) = self.available_upload_resources.pop() {
-            // use existing resources (not the buffers though, vma handles that for us!)
-            resources.free_buffers();
-            Ok(resources)
-        } else {
-            // create new resources
-            Ok(BufferUploadResources::new(
-                self.device.clone(),
-                &self.command_pool_transfer_queue,
-                &self.command_pool_render_queue,
-            )?)
-        }
+        self.check_and_reuse_pending_resources()?;
+
+        let returned_resources =
+            self.available_upload_resources
+                .pop()
+                .unwrap_or(BufferUploadResources::new(
+                    self.device.clone(),
+                    &self.command_pool_transfer_queue,
+                    &self.command_pool_render_queue,
+                )?);
+        Ok(returned_resources)
     }
 
     fn check_and_reuse_pending_resources(&mut self) -> anyhow::Result<()> {
@@ -268,7 +241,6 @@ impl ObjectResourceManager {
             let wait_res = self.pending_upload_resources[i]
                 .completion_fence
                 .wait(CHECK_FENCE_TIMEOUT_NANOSECONDS);
-
             if let Err(vk_res) = wait_res {
                 match vk_res {
                     // timeout means commands are still executing, can't use this one so we move on.
@@ -283,9 +255,9 @@ impl ObjectResourceManager {
 
             // else: commands finished executing, can reuse these resources.
             let mut command_resources = self.pending_upload_resources.remove(i);
-
-            command_resources.free_buffers();
-
+            command_resources
+                .reset()
+                .context("resetting object buffer upload fence")?;
             self.available_upload_resources.push(command_resources);
         }
         Ok(())
@@ -641,9 +613,12 @@ impl BufferUploadResources {
         })
     }
 
-    pub fn free_buffers(&mut self) {
+    /// cleans up buffers and resets the fence
+    pub fn reset(&mut self) -> VkResult<()> {
         self.staging_buffers.clear();
         self.target_buffers.clear();
+        self.completion_fence.reset()?;
+        Ok(())
     }
 
     pub fn queue_ownership_transfer_required(&self) -> bool {

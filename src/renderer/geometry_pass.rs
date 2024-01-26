@@ -5,7 +5,7 @@ use super::{
         create_camera_descriptor_set_with_binding, render_pass_indices, write_camera_descriptor_set,
     },
 };
-use crate::engine::object::{object_collection::ObjectCollection, objects_delta::ObjectsDelta};
+use crate::engine::object::objects_delta::ObjectsDelta;
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{
@@ -75,21 +75,6 @@ impl GeometryPass {
             pipeline,
             object_buffer_manager,
         })
-    }
-
-    /// Good for initializing
-    #[inline]
-    pub fn upload_object_collection(
-        &mut self,
-        object_collection: &ObjectCollection,
-        transfer_queue: &Queue,
-        render_queue: &Queue,
-    ) -> anyhow::Result<()> {
-        self.object_buffer_manager.upload_object_collection(
-            object_collection,
-            transfer_queue,
-            render_queue,
-        )
     }
 
     #[inline]

@@ -1,6 +1,6 @@
 use super::{
     object::{Object, ObjectId},
-    objects_delta::{ObjectDeltaOperation, ObjectsDelta},
+    objects_delta::{push_object_delta, ObjectDeltaOperation, ObjectsDelta},
     operation::Operation,
     primitive_op::PrimitiveOpId,
 };
@@ -54,7 +54,7 @@ impl ObjectCollection {
     pub fn push_object(&mut self, new_object: Object) -> Result<ObjectId, UniqueIdError> {
         let new_object_id = self.unique_id_gen.new_id()?;
         self.objects.insert(new_object_id, new_object);
-        self.mark_object_for_data_update(new_object_id)
+        self.mark_object_for_gpu_update(new_object_id)
             .expect("new object just created");
         Ok(new_object_id)
     }
@@ -78,7 +78,7 @@ impl ObjectCollection {
     ) -> Result<(), CollectionError> {
         let object_mut_ref = self.get_object_mut(object_id)?;
         *object_mut_ref = new_object;
-        self.mark_object_for_data_update(object_id)
+        self.mark_object_for_gpu_update(object_id)
     }
 
     pub fn set_object_name(
@@ -99,7 +99,7 @@ impl ObjectCollection {
     ) -> Result<(), CollectionError> {
         let object_mut_ref = self.get_object_mut(object_id)?;
         object_mut_ref.origin = new_origin;
-        self.mark_object_for_data_update(object_id)
+        self.mark_object_for_gpu_update(object_id)
     }
 
     pub fn push_op_to_object(
@@ -115,7 +115,7 @@ impl ObjectCollection {
         let object_mut_ref = self.get_object_mut(object_id)?;
         let primitive_op_id =
             object_mut_ref.push_primitive_op(primitive, transform, op, blend, albedo, specular)?;
-        _ = self.mark_object_for_data_update(object_id);
+        _ = self.mark_object_for_gpu_update(object_id);
         Ok(primitive_op_id)
     }
 
@@ -140,7 +140,7 @@ impl ObjectCollection {
             new_albedo,
             new_specular,
         )?;
-        self.mark_object_for_data_update(object_id)
+        self.mark_object_for_gpu_update(object_id)
     }
 
     pub fn set_primitive_op_index_in_object(
@@ -164,7 +164,7 @@ impl ObjectCollection {
             new_albedo,
             new_specular,
         )?;
-        self.mark_object_for_data_update(object_id)
+        self.mark_object_for_gpu_update(object_id)
     }
 
     pub fn shift_primitive_ops_in_object(
@@ -175,7 +175,7 @@ impl ObjectCollection {
     ) -> Result<(), CollectionError> {
         let object_mut_ref = self.get_object_mut(object_id)?;
         object_mut_ref.shift_primitive_ops(source_index, target_index)?;
-        self.mark_object_for_data_update(object_id)
+        self.mark_object_for_gpu_update(object_id)
     }
 
     pub fn remove_primitive_op_id_from_object(
@@ -185,7 +185,7 @@ impl ObjectCollection {
     ) -> Result<usize, CollectionError> {
         let object_mut_ref = self.get_object_mut(object_id)?;
         let index = object_mut_ref.remove_primitive_op_id(remove_primitive_op_id)?;
-        _ = self.mark_object_for_data_update(object_id);
+        _ = self.mark_object_for_gpu_update(object_id);
         Ok(index)
     }
 
@@ -196,7 +196,7 @@ impl ObjectCollection {
     ) -> Result<PrimitiveOpId, CollectionError> {
         let object_mut_ref = self.get_object_mut(object_id)?;
         let id = object_mut_ref.remove_primitive_op_index(remove_primitive_op_index)?;
-        _ = self.mark_object_for_data_update(object_id);
+        _ = self.mark_object_for_gpu_update(object_id);
         Ok(id)
     }
 
@@ -210,7 +210,7 @@ impl ObjectCollection {
             }
 
             // record changed data to update the gpu
-            self.insert_object_delta(object_id, ObjectDeltaOperation::Remove);
+            self.push_object_delta(object_id, ObjectDeltaOperation::Remove);
 
             return Ok(removed_object);
         } else {
@@ -234,9 +234,11 @@ impl ObjectCollection {
     }
 
     /// Marks all objects for gpu update, regardless of wherever they've been modified since the
-    /// last upload.
+    /// last upload. Useful for debugging.
     pub fn force_gpu_update(&mut self) {
-        todo!()
+        for (object_id, object) in self.objects.clone() {
+            self.push_object_delta(object_id, ObjectDeltaOperation::Update(object));
+        }
     }
 }
 
@@ -245,54 +247,30 @@ impl ObjectCollection {
 impl ObjectCollection {
     /// Call this whenever an object is modified via [`get_object_mut`] so that the updated data
     /// can be sent to the GPU.
-    fn mark_object_for_data_update(&mut self, object_id: ObjectId) -> Result<(), CollectionError> {
-        let cloned_object = if let Some(updated_object) = self.objects.get(&object_id) {
-            updated_object.clone()
-        } else {
+    fn mark_object_for_gpu_update(&mut self, object_id: ObjectId) -> Result<(), CollectionError> {
+        let Some(updated_object) = self.objects.get(&object_id) else {
             return Err(CollectionError::InvalidId {
                 raw_id: object_id.raw_id(),
             });
         };
-        self.insert_object_delta(object_id, ObjectDeltaOperation::Update(cloned_object));
+        self.push_object_delta(
+            object_id,
+            ObjectDeltaOperation::Update(updated_object.clone()),
+        );
         Ok(())
     }
 
-    /// Use this instead of directly inserting to perform some operation specific checks.
+    /// Use this instead of directly inserting to perform conflict checks.
     ///
-    /// ### Table for handling delta for same object id
-    /// ```
-    ///                       existing
-    ///             |  add  | update | remove
-    ///     --------+-------+--------+--------
-    ///       add   | skip  |  bug   | push
-    ///     --------+-------+--------+--------
-    /// new  update | push  |   ow   | skip
-    ///     --------+-------+--------+--------
-    ///      remove | push  |   ow   | skip
-    /// ```
-    fn insert_object_delta(
-        &mut self,
-        object_id: ObjectId,
-        object_delta_operation: ObjectDeltaOperation,
-    ) {
-        // need to check for conflicts if the new delta is an update
-        if let ObjectDeltaOperation::Update(new_object) = &object_delta_operation {
-            if let Some(existing_delta) = self.objects_delta_accumulation.get(&object_id) {
-                match existing_delta {
-                    // object is still queued for add, so we still need to treat this as an add
-                    ObjectDeltaOperation::Add(_old_object_duplicate) => {
-                        self.objects_delta_accumulation
-                            .insert(object_id, ObjectDeltaOperation::Add(new_object.clone()));
-                        return;
-                    }
-                    // shouldn't update an object id that is queued to be removed
-                    ObjectDeltaOperation::Remove => return,
-                    _ => (),
-                }
-            }
-        }
-        self.objects_delta_accumulation
-            .insert(object_id, object_delta_operation);
+    /// Note: the reason multiple deltas for the same object are merged is so that the renderer doesn't
+    /// have to do any unnecessary gpu buffer uploads.
+    #[inline]
+    fn push_object_delta(&mut self, object_id: ObjectId, new_object_delta: ObjectDeltaOperation) {
+        push_object_delta(
+            &mut self.objects_delta_accumulation,
+            object_id,
+            new_object_delta,
+        )
     }
 
     fn new_object_internal(
@@ -305,13 +283,13 @@ impl ObjectCollection {
         self.objects.insert(object_id, object.clone());
 
         // record changed data
-        self.insert_object_delta(object_id, ObjectDeltaOperation::Add(object.clone()));
+        self.push_object_delta(object_id, ObjectDeltaOperation::Add(object.clone()));
 
         (object_id, object)
     }
 
     /// Don't want this to be public because any updates to objects should be followed by a call to
-    /// `mark_object_for_data_update` which is hard to maintain and thus should be the
+    /// `mark_object_for_gpu_update` which is hard to maintain and thus should be the
     /// responsibility of `ObjectCollection`.
     fn get_object_mut(&mut self, object_id: ObjectId) -> Result<&mut Object, CollectionError> {
         self.objects
