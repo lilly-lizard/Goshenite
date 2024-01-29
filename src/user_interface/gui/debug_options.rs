@@ -1,10 +1,6 @@
 use super::Gui;
-use crate::{
-    engine::{commands::Command, config_engine::AABB_EDGE},
-    renderer::config_renderer::RenderOptions,
-    user_interface::gui_state::DRAG_INC,
-};
-use egui::{DragValue, Ui};
+use crate::{engine::commands::Command, renderer::config_renderer::RenderOptions};
+use egui::Ui;
 
 impl Gui {
     pub(super) fn draw_debug_options_window(
@@ -40,10 +36,6 @@ fn layout_debug_options(ui: &mut Ui, old_render_options: RenderOptions) -> Vec<C
     if aabb_button_res.clicked() {
         new_render_options.enable_aabb_wire_display = !new_render_options.enable_aabb_wire_display;
     }
-
-    // DEBUGGING
-    ui.label("AABB edge");
-    ui.add(DragValue::new(unsafe { &mut AABB_EDGE }).speed(DRAG_INC));
 
     if new_render_options != old_render_options {
         commands.push(Command::SetRenderOptions(new_render_options));

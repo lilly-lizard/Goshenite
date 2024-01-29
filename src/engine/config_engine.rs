@@ -13,8 +13,7 @@ pub mod primitive_names {
     pub const UBER_PRIMITIVE: &str = "Uber Primitive";
 }
 
-// DEBUGGING single-threaded access
-pub static mut AABB_EDGE: f32 = 0.05;
+pub const AABB_EDGE: f32 = 0.05;
 
 pub const DEFAULT_ORIGIN: Vec3 = Vec3::ZERO;
 

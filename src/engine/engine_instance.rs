@@ -278,10 +278,6 @@ impl EngineInstance {
             .update_camera(self.camera.clone());
         check_channel_updater_result(thread_send_res)?;
 
-        // ~~ DEBUGGING ~~
-        self.object_collection.force_gpu_update();
-        // ~~ DEBUGGING ~~
-
         // update object buffers
         let objects_delta = self.object_collection.get_and_clear_objects_delta();
         if !objects_delta.is_empty() {

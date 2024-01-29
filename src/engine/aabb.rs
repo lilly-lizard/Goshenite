@@ -16,7 +16,7 @@ pub struct Aabb {
 impl Aabb {
     /// `dimensions` are the x/y/z lengths of the box.
     pub fn new(center: Vec3, dimensions: Vec3) -> Self {
-        let dimensions_expanded = dimensions + unsafe { AABB_EDGE };
+        let dimensions_expanded = dimensions + AABB_EDGE;
         let dimensions_halved = dimensions_expanded / 2.;
         let max = center + dimensions_halved;
         let min = center - dimensions_halved;
