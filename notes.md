@@ -4,9 +4,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
-- edge cases for insert_object_delta
-- call "mark all for update" fn every frame for debugging
-- change ray-marching cut-off params and see if makes a difference
 - switch to back-face culling beacuse only the misses benefit from the max-dist cutoff, where as the more expensive hit frags will benefit from the initial min-distance
 
 - egui color picker
