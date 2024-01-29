@@ -406,40 +406,15 @@ fn primitive_op_list(
         selected_object.primitive_ops.iter(),
         // function to draw a single primitive op entry in the list
         |ui, drag_handle, index, primitive_op| {
-            let draggable_text =
-                RichText::new(format!("{}", index)).text_style(TextStyle::Monospace);
-
-            // label text
-            let primitive_op_text = RichText::new(format!(
-                "{} {}",
-                primitive_op.op.name(),
-                primitive_op.primitive.type_name()
-            ))
-            .text_style(TextStyle::Monospace);
-
-            // check if this primitive op is selected
-            let is_selected = match selected_prim_op {
-                Some(some_selected_prim_op) => some_selected_prim_op.id() == primitive_op.id(),
-                None => false,
-            };
-
-            // draw ui for this primitive op
-            ui.horizontal(|ui_h| {
-                // anything inside the handle can be used to drag the item
-                drag_handle.ui(ui_h, primitive_op, |handle_ui| {
-                    handle_ui.label(draggable_text);
-                });
-
-                // label to select this primitive op
-                let prim_op_res = ui_h.selectable_label(is_selected, primitive_op_text);
-
-                // primitive op selected
-                if prim_op_res.clicked() {
-                    let target_primitive_op =
-                        TargetPrimitiveOp::Id(selected_object_id, primitive_op.id());
-                    commands.push(Command::SelectPrimitiveOp(target_primitive_op))
-                }
-            });
+            primitive_op_list_item(
+                ui,
+                commands,
+                primitive_op,
+                index,
+                selected_prim_op,
+                drag_handle,
+                selected_object_id,
+            );
         },
     );
     gui_state.primitive_op_list_drag = primitive_op_list_drag_state;
@@ -452,6 +427,49 @@ fn primitive_op_list(
             target_index: drag_indices.target,
         });
     }
+}
+
+fn primitive_op_list_item(
+    ui: &mut egui::Ui,
+    commands: &mut Vec<Command>,
+    primitive_op: &PrimitiveOp,
+    index: usize,
+    selected_prim_op: Option<&PrimitiveOp>,
+    drag_handle: egui_dnd::handle::DragHandle<'_>,
+    selected_object_id: ObjectId,
+) {
+    let draggable_text = RichText::new(format!("{}", index)).text_style(TextStyle::Monospace);
+
+    // label text
+    let primitive_op_text = RichText::new(format!(
+        "{} {}",
+        primitive_op.op.name(),
+        primitive_op.primitive.type_name()
+    ))
+    .text_style(TextStyle::Monospace);
+
+    // check if this primitive op is selected
+    let is_selected = match selected_prim_op {
+        Some(some_selected_prim_op) => some_selected_prim_op.id() == primitive_op.id(),
+        None => false,
+    };
+
+    // draw ui for this primitive op
+    ui.horizontal(|ui_h| {
+        // anything inside the handle can be used to drag the item
+        drag_handle.ui(ui_h, primitive_op, |handle_ui| {
+            handle_ui.label(draggable_text);
+        });
+
+        // label to select this primitive op
+        let prim_op_res = ui_h.selectable_label(is_selected, primitive_op_text);
+
+        // primitive op selected
+        if prim_op_res.clicked() {
+            let target_primitive_op = TargetPrimitiveOp::Id(selected_object_id, primitive_op.id());
+            commands.push(Command::SelectPrimitiveOp(target_primitive_op))
+        }
+    });
 }
 
 fn primitive_editor_ui(ui: &mut egui::Ui, gui_state: &mut GuiState) -> EditState {

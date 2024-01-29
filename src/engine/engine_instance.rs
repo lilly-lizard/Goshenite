@@ -526,6 +526,7 @@ fn create_default_cube_object(object_collection: &mut ObjectCollection) {
 }
 
 fn object_testing(object_collection: &mut ObjectCollection) {
+    use config_engine::DEFAULT_ALBEDO;
     use glam::Quat;
 
     let sphere = Sphere::new(0.5);
@@ -567,7 +568,7 @@ fn object_testing(object_collection: &mut ObjectCollection) {
         PrimitiveTransform::DEFAULT,
         Operation::Union,
         0.1,
-        Vec3::new(0.8, 0.8, 0.8),
+        DEFAULT_ALBEDO,
         0.5,
     );
     _ = object_collection.push_object(another_object);

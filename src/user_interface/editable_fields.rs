@@ -13,7 +13,11 @@ use crate::{
         axis::{Axis, CartesianAxis},
     },
 };
-use egui::{ComboBox, DragValue};
+use egui::{
+    color_picker::{color_edit_button_hsva, Alpha},
+    epaint::Hsva,
+    ComboBox, DragValue,
+};
 use egui_dnd::DragableItem;
 use glam::{Vec2, Vec3, Vec4};
 
@@ -87,27 +91,17 @@ pub fn color_specular_editor_ui(
 ) -> EditState {
     let original_color = *color;
     let original_specular = *specular;
-    ui.horizontal(|ui_h| {
-        ui_h.label("Color:");
-        ui_h.add(
-            DragValue::new(&mut color.x)
-                .speed(DRAG_INC)
-                .clamp_range(0..=1),
-        );
-        ui_h.add(
-            DragValue::new(&mut color.y)
-                .speed(DRAG_INC)
-                .clamp_range(0..=1),
-        );
-        ui_h.add(
-            DragValue::new(&mut color.z)
-                .speed(DRAG_INC)
-                .clamp_range(0..=1),
-        );
 
+    let mut hsva_color = Hsva::from_rgb(color.to_array());
+    ui.label("Color:");
+    color_edit_button_hsva(ui, &mut hsva_color, Alpha::Opaque);
+    *color = Vec3::from_array(hsva_color.to_rgb());
+
+    ui.horizontal(|ui_h| {
         ui_h.label("Specular:");
         ui_h.add(DragValue::new(specular).speed(DRAG_INC).clamp_range(0..=1));
     });
+
     if original_color != *color || original_specular != *specular {
         EditState::Modified
     } else {

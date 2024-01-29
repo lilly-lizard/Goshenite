@@ -4,7 +4,7 @@ pub const RENDER_THREAD_WAIT_TIMEOUT_SECONDS: f64 = 2.;
 
 pub const DEFAULT_RADIUS: f32 = 0.5;
 pub const DEFAULT_DIMENSIONS: Vec3 = Vec3::ONE;
-pub const DEFAULT_ALBEDO: Vec3 = Vec3::new(0.8, 0.8, 0.8);
+pub const DEFAULT_ALBEDO: Vec3 = Vec3::new(0.9, 0.8, 0.2);
 pub const DEFAULT_SPECULAR: f32 = 0.5;
 
 pub mod primitive_names {
