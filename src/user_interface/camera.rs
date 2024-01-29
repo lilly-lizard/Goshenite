@@ -151,6 +151,7 @@ impl Camera {
         )
     }
 
+    // https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
     /// right handed, reverse z, vulkan coordinates
     pub fn projection_matrix(&self) -> Mat4 {
         let (w, h, a, b) = self.projection_matrix_components();
@@ -162,6 +163,7 @@ impl Camera {
         )
     }
 
+    // https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
     /// right handed, reverse z, vulkan coordinates
     pub fn projection_matrix_inverse(&self) -> Mat4 {
         let (w, h, a, b) = self.projection_matrix_components();
@@ -197,6 +199,11 @@ impl Camera {
     #[inline]
     pub fn position(&self) -> DVec3 {
         self.position
+    }
+
+    /// Normalized
+    pub fn direction(&self) -> DVec3 {
+        self.look_direction().normalize()
     }
 
     #[inline]
@@ -235,14 +242,13 @@ impl Camera {
     fn look_direction(&self) -> DVec3 {
         match self.look_mode {
             LookMode::Direction(direction) => direction,
-            LookMode::TargetPos(target_pos) => self.position - target_pos,
+            LookMode::TargetPos(target_pos) => target_pos - self.position,
             LookMode::TargetObject {
                 last_known_origin, ..
-            } => self.position - last_known_origin.as_dvec3(),
+            } => last_known_origin.as_dvec3() - self.position,
         }
     }
 
-    /// Not necessarily normalized
     fn target_pos(&self) -> DVec3 {
         match self.look_mode {
             LookMode::Direction(direction) => self.position + direction,
@@ -401,12 +407,12 @@ fn arcball(
 ) -> DVec3 {
     let look_direction = target_pos - camera_pos;
     let delta_v_clamped = clamp_vertical_angle_delta(look_direction, delta_v);
-    let delta_v_inverted = delta_v_clamped.invert();
+    let delta_h_inverted = -delta_h.radians();
 
     // lock on target stays the same but camera position rotates around it
     let normal = normal.normalize();
-    let rotation_matrix = DMat3::from_axis_angle(normal, delta_v_inverted.radians())
-        * DMat3::from_rotation_z(-delta_h.radians());
+    let rotation_matrix = DMat3::from_axis_angle(normal, delta_v_clamped.radians())
+        * DMat3::from_rotation_z(delta_h_inverted);
 
     let new_position = rotation_matrix * (camera_pos - target_pos) + target_pos;
     new_position

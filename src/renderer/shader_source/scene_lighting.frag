@@ -17,10 +17,11 @@ layout (location = 0) out vec4 out_color;
 layout (set = 1, binding = 0) uniform Camera {
 	mat4 view_inverse;
 	mat4 proj_inverse;
-	vec4 _position;
 	vec2 framebuffer_dims;
 	float _near;
 	float _far;
+	vec3 _position;
+	vec3 _direction;
     uint write_linear_color;
 } cam;
 

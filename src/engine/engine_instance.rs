@@ -142,11 +142,12 @@ impl EngineInstance {
             Event::NewEvents(StartCause::Init) => {
                 // note: window initialization (and thus swapchain init too) is done here because of certain platform epecific behaviour e.g. https://github.com/rust-windowing/winit/issues/2051
 
-                // TESTING OBJECTS START
+                // ~~ TESTING OBJECTS START ~~
 
                 object_testing(&mut self.object_collection);
+                //create_default_cube_object(&mut self.object_collection);
 
-                // TESTING OBJECTS END
+                // ~~ TESTING OBJECTS END ~~
             }
 
             // exit the event loop and close application
@@ -418,6 +419,7 @@ impl EngineInstance {
 
     fn background_clicked(&mut self) {
         self.deselect_primitive_op();
+        self.camera.unset_lock_on_target();
     }
 
     fn object_clicked(&mut self, object_id: ObjectId, primitive_op_index: Option<usize>) {

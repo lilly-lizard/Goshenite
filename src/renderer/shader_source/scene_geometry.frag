@@ -15,19 +15,21 @@ const vec2 NORMAL_OFFSET = vec2(NORMAL_EPSILON, -NORMAL_EPSILON);
 
 layout (location = 0) in flat uint in_object_id;
 layout (location = 1) in noperspective vec2 in_clip_space_uv; // clip space position [-1, 1]
+layout (location = 2) in float in_camera_distance;
 
 layout (location = 0) out vec4 out_normal;
 layout (location = 1) out vec4 out_albedo_specular;
-layout (location = 2) out uint out_object_op_id; // upper 16 bits = object index; lower 16 bits = op index; todo checks for 16bit max on rust side
+layout (location = 2) out uint out_object_op_id; // upper 16 bits = object index; lower 16 bits = op index;
 layout (depth_greater) out float gl_FragDepth; // https://docs.vulkan.org/guide/latest/depth.html#conservative-depth
 
 layout (set = 0, binding = 0) uniform Camera {
 	mat4 view_inverse;
 	mat4 proj_inverse;
-	vec4 position;
 	vec2 framebuffer_dims;
 	float near;
 	float far;
+	vec3 position;
+	vec3 direction;
     uint _write_linear_color;
 } cam;
 
@@ -196,20 +198,6 @@ vec3 calcNormal(vec3 pos)
 					 e.xxx * map(pos + e.xxx).d);
 }
 
-/// `dist` is world-space distance from camera (or view z), `depth` is reverse depth (in depth buffer)
-float dist_to_depth(float dist, float near, float far) {
-	float b = near / (far - near);
-	float a = far * b;
-	return (a / dist) - b;
-}
-
-/// `dist` is world-space distance from camera (or view z), `depth` is reverse depth (in depth buffer)
-float depth_to_dist(float depth, float near, float far) {
-	float b = near / (far - near);
-	float a = far * b;
-	return a / (depth + b);
-}
-
 struct RayMarchHit {
 	float dist;
 	vec3 normal;
@@ -225,7 +213,7 @@ RayMarchHit ray_march(const vec3 ray_o, const vec3 ray_d)
 {
 	// total distance traveled. start at the frag depth
 	float dist = cam.near;
-	const float dist_max = depth_to_dist(gl_FragCoord.z, cam.near, cam.far);
+	const float dist_max = in_camera_distance;
 
 	for (int i = 0; dist < dist_max && i < MAX_STEPS; i++) {
 		// get the world space position from the current marching distance
@@ -259,18 +247,29 @@ RayMarchHit ray_march(const vec3 ray_o, const vec3 ray_d)
 
 /// Normalized ray direction in world space
 vec3 ray_direction() {
-	vec4 origin = cam.view_inverse * vec4(0, 0, 0, 1);
-	vec4 target = cam.proj_inverse * vec4(in_clip_space_uv, 1, 1);
+	//vec4 world_origin = cam.view_inverse * vec4(0, 0, 0, 1);
+	vec4 target = cam.proj_inverse * vec4(in_clip_space_uv, 1, 1); // view space
 	vec4 direction = cam.view_inverse * vec4(normalize(target.xyz / target.w), 0);
-	return normalize(direction.xyz); // todo what changes when normalize is removed here?
+	return normalize(direction.xyz);
+}
+
+// `distance` is world-space distance from camera (or view z), `depth` is reverse depth (in depth buffer)
+// http://blog.hvidtfeldts.net/index.php/2014/01/combining-ray-tracing-and-polygons/
+// https://developer.nvidia.com/content/depth-precision-visualized
+// https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
+float distance_to_depth(float distance, vec3 ray_d) {
+	float view_z = distance * dot(cam.direction, ray_d); // view space
+	float a = cam.near / (cam.far - cam.near);
+	float b = cam.far * a;
+	return a + b / view_z;
 }
 
 void main()
 {
 	vec3 ray_d_norm = ray_direction();
-	RayMarchHit hit = ray_march(cam.position.xyz, ray_d_norm);
+	RayMarchHit hit = ray_march(cam.position, ray_d_norm);
 
-	gl_FragDepth = dist_to_depth(hit.dist, cam.near, cam.far);
+	gl_FragDepth = distance_to_depth(hit.dist, ray_d_norm);
 	out_normal = vec4(hit.normal / 2. + 0.5, 0.); // fit [-1, 1] in unorm range
 	out_albedo_specular = vec4(hit.albedo, hit.specular);
 	out_object_op_id = hit.object_op_id;

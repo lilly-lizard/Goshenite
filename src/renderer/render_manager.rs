@@ -5,7 +5,7 @@ use super::{
     gui_pass::GuiPass,
     lighting_pass::LightingPass,
     overlay_pass::OverlayPass,
-    shader_interfaces::uniform_buffers::CameraUniformBuffer,
+    shader_interfaces::camera_uniform_buffer::CameraUniformBuffer,
     vulkan_init::{
         choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
         create_depth_buffer, create_framebuffers, create_normal_buffer, create_render_pass,

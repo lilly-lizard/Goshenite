@@ -14,7 +14,7 @@ pub mod primitive_names {
 }
 
 // DEBUGGING single-threaded access
-pub static mut AABB_EDGE: f32 = 0.5;
+pub static mut AABB_EDGE: f32 = 0.05;
 
 pub const DEFAULT_ORIGIN: Vec3 = Vec3::ZERO;
 

@@ -6,7 +6,7 @@ use super::{
     },
     debug_callback::log_vulkan_debug_callback,
     shader_interfaces::{
-        primitive_op_buffer::PRIMITIVE_ID_BACKGROUND, uniform_buffers::CameraUniformBuffer,
+        camera_uniform_buffer::CameraUniformBuffer, primitive_op_buffer::PRIMITIVE_ID_BACKGROUND,
     },
 };
 use crate::renderer::config_renderer::ENABLE_VULKAN_VALIDATION;
