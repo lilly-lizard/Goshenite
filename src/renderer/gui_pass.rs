@@ -19,7 +19,10 @@ use bort_vk::{
     RenderPass, Sampler, SamplerProperties, Semaphore, ShaderModule, ShaderStage, ViewportState,
 };
 use bort_vma::Alloc;
-use egui::{epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureId, TexturesDelta};
+use egui::{
+    epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureFilter, TextureId, TextureOptions,
+    TexturesDelta,
+};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{
@@ -61,9 +64,9 @@ pub struct GuiPass {
     descriptor_pools: Vec<Arc<DescriptorPool>>,
     unused_texture_desc_sets: Vec<Arc<DescriptorSet>>,
 
-    texture_sampler: Arc<Sampler>,
-    texture_image_views: AHashMap<egui::TextureId, Arc<ImageView<Image>>>,
-    texture_desc_sets: AHashMap<egui::TextureId, Arc<DescriptorSet>>,
+    texture_samplers: SamplerVariations,
+    texture_desc_sets_and_images:
+        AHashMap<egui::TextureId, (Arc<DescriptorSet>, Arc<ImageView<Image>>, TextureOptions)>,
 
     buffer_pools: Vec<Arc<MemoryPool>>,
     /// Indicates which buffer pool to use next. E.g. two buffer pools have been created, but
@@ -114,7 +117,8 @@ impl GuiPass {
         let pipeline_layout = create_pipeline_layout(device.clone(), desc_set_layout)?;
         let pipeline = create_pipeline(pipeline_layout, render_pass)?;
 
-        let texture_sampler = create_texture_sampler(device.clone())?;
+        let texture_samplers =
+            SamplerVariations::new(device.clone()).context("creating gui texture samplers")?;
         let initial_buffer_pool = create_buffer_pool(memory_allocator.clone())?;
 
         let texture_create_fence =
@@ -142,9 +146,8 @@ impl GuiPass {
             descriptor_pools: vec![descriptor_pool],
             unused_texture_desc_sets: Vec::new(),
 
-            texture_sampler,
-            texture_image_views: AHashMap::default(),
-            texture_desc_sets: AHashMap::default(),
+            texture_samplers,
+            texture_desc_sets_and_images: AHashMap::default(),
 
             buffer_pools: vec![initial_buffer_pool],
             current_buffer_pool_index: 0,
@@ -430,36 +433,9 @@ impl GuiPass {
             new_image_commands_recorded: false,
         };
 
-        // extract pixel data from egui
-        let data: Vec<u8> = match &delta.image {
-            egui::ImageData::Color(image) => {
-                if image.width() * image.height() != image.pixels.len() {
-                    warn!(
-                        "mismatch between gui color texture size and texel count. texture_id = {:?}",
-                        texture_id
-                    );
-                }
-                image
-                    .pixels
-                    .iter()
-                    .flat_map(|color| color.to_array())
-                    .collect()
-            }
-            egui::ImageData::Font(image) => {
-                if image.width() * image.height() != image.pixels.len() {
-                    warn!(
-                        "mismatch between gui font texture size and texel count. texture_id = {:?}",
-                        texture_id
-                    );
-                }
-                image
-                    .srgba_pixels(None)
-                    .flat_map(|color| color.to_array())
-                    .collect()
-            }
-        };
+        let image_bytes = egui_image_bytes(&delta.image, texture_id);
 
-        if data.len() == 0 {
+        if image_bytes.len() == 0 {
             info!(
                 "attempted to create gui texture with no data! skipping... texture_id = {:?}",
                 texture_id
@@ -475,14 +451,16 @@ impl GuiPass {
         // create buffer to be copied to the image
         let mut texture_staging_buffer = create_texture_staging_buffer(
             self.memory_allocator.clone(),
-            std::mem::size_of_val(data.as_slice()) as u64,
+            std::mem::size_of_val(image_bytes.as_slice()) as u64,
         )?;
         texture_staging_buffer
-            .write_slice(&data, 0)
+            .write_slice(&image_bytes, 0)
             .context("uploading gui texture data to staging buffer")?;
 
         if let Some(update_pos) = delta.pos {
-            if let Some(existing_image_view) = self.texture_image_views.get(&texture_id) {
+            if let Some((_, existing_image_view, _)) =
+                self.texture_desc_sets_and_images.get(&texture_id)
+            {
                 // a subregion of an already allocated texture needs to be updated e.g. when a font size is changed
 
                 let copy_region = vk::BufferImageCopy {
@@ -506,13 +484,12 @@ impl GuiPass {
                     texture_id, copy_region.image_offset, copy_region.image_extent
                 );
 
-                upload_existing_font_texture(
-                    &self.synchronization_2_functions,
-                    &self.render_queue_command_buffer,
+                self.upload_existing_font_texture(
                     existing_image_view,
                     &texture_staging_buffer,
                     copy_region,
                 );
+                self.check_and_update_sampler(delta.options, texture_id)?;
 
                 ret.existing_image_commands_recorded = true;
             }
@@ -534,20 +511,10 @@ impl GuiPass {
     /// Helper function for [`Self::update_textures`]
     fn unregister_image(&mut self, texture_id: egui::TextureId) {
         trace!("removing unneeded gui texture id = {:?}", texture_id);
-        self.texture_image_views.remove(&texture_id);
-        let unused_desc_set = self.texture_desc_sets.remove(&texture_id);
-        if let Some(unused_desc_set) = unused_desc_set {
+        let unused_desc_set = self.texture_desc_sets_and_images.remove(&texture_id);
+        if let Some((unused_desc_set, _, _)) = unused_desc_set {
             self.unused_texture_desc_sets.push(unused_desc_set);
         }
-    }
-
-    fn get_new_font_texture_desc_set(&mut self) -> anyhow::Result<Arc<DescriptorSet>> {
-        if let Some(existing_desc_set) = self.unused_texture_desc_sets.pop() {
-            // reuse old desc set
-            return Ok(existing_desc_set);
-        }
-        // else allocate new one
-        return self.allocate_font_texture_desc_set();
     }
 
     /// Note: staging buffer commands are always used regardless of memory type because the image
@@ -713,14 +680,82 @@ impl GuiPass {
 
         // new descriptor set
 
+        let sampler = self.texture_samplers.get_sampler(delta.options);
         let font_desc_set = self.get_new_font_texture_desc_set()?;
+        write_desc_set_font_texture(&font_desc_set, &new_image_view, &sampler)?;
 
-        write_font_texture_desc_set(&font_desc_set, &new_image_view, &self.texture_sampler)?;
-
-        self.texture_desc_sets.insert(texture_id, font_desc_set);
-        self.texture_image_views.insert(texture_id, new_image_view);
+        self.texture_desc_sets_and_images
+            .insert(texture_id, (font_desc_set, new_image_view, delta.options));
 
         Ok(())
+    }
+
+    fn upload_existing_font_texture(
+        &self,
+        existing_image_view: &ImageView<Image>,
+        texture_data_buffer: &Buffer,
+        copy_region: vk::BufferImageCopy,
+    ) {
+        // we need to transition the image layout to vk::ImageLayout::TRANSFER_DST_OPTIMAL
+        let to_general_image_barrier = vk::ImageMemoryBarrier2::builder()
+            .src_stage_mask(vk::PipelineStageFlags2::FRAGMENT_SHADER)
+            .dst_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+            .src_access_mask(vk::AccessFlags2::SHADER_READ)
+            .dst_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+            .old_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .image(existing_image_view.image().handle())
+            .subresource_range(existing_image_view.properties().subresource_range);
+
+        let to_general_barriers = [to_general_image_barrier.build()];
+        let to_general_dependency =
+            vk::DependencyInfo::builder().image_memory_barriers(&to_general_barriers);
+
+        // then transition back to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
+        let to_shader_read_image_barrier = vk::ImageMemoryBarrier2::builder()
+            .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
+            .dst_stage_mask(vk::PipelineStageFlags2::FRAGMENT_SHADER)
+            .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
+            .dst_access_mask(vk::AccessFlags2::SHADER_READ)
+            .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
+            .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
+            .image(existing_image_view.image().handle())
+            .subresource_range(existing_image_view.properties().subresource_range);
+
+        let to_shader_read_barriers = [to_shader_read_image_barrier.build()];
+        let to_shader_read_dependency =
+            vk::DependencyInfo::builder().image_memory_barriers(&to_shader_read_barriers);
+
+        // copy buffer to image
+        unsafe {
+            self.synchronization_2_functions.cmd_pipeline_barrier2(
+                self.render_queue_command_buffer.handle(),
+                &to_general_dependency,
+            );
+        }
+
+        self.render_queue_command_buffer.copy_buffer_to_image(
+            texture_data_buffer,
+            existing_image_view.image().as_ref(),
+            vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+            &[copy_region],
+        );
+
+        unsafe {
+            self.synchronization_2_functions.cmd_pipeline_barrier2(
+                self.render_queue_command_buffer.handle(),
+                &to_shader_read_dependency,
+            );
+        }
+    }
+
+    fn get_new_font_texture_desc_set(&mut self) -> anyhow::Result<Arc<DescriptorSet>> {
+        if let Some(existing_desc_set) = self.unused_texture_desc_sets.pop() {
+            // reuse old desc set
+            return Ok(existing_desc_set);
+        }
+        // else allocate new one
+        return self.allocate_font_texture_desc_set();
     }
 
     fn allocate_font_texture_desc_set(&mut self) -> anyhow::Result<Arc<DescriptorSet>> {
@@ -768,6 +803,23 @@ impl GuiPass {
             .context("allocating descriptor set for new egui texture")
     }
 
+    fn check_and_update_sampler(
+        &mut self,
+        texture_options: TextureOptions,
+        texture_id: TextureId,
+    ) -> anyhow::Result<()> {
+        let Some((descriptor_set_ref, image_view, previous_texture_options)) =
+            self.texture_desc_sets_and_images.get_mut(&texture_id)
+        else {
+            return Ok(());
+        };
+        if texture_options == *previous_texture_options {
+            return Ok(());
+        }
+        let sampler = self.texture_samplers.get_sampler(texture_options);
+        write_desc_set_font_texture(descriptor_set_ref, image_view, &sampler)
+    }
+
     fn record_mesh_commands(
         &mut self,
         command_buffer: &CommandBuffer,
@@ -784,8 +836,8 @@ impl GuiPass {
         let scissor =
             calculate_gui_element_scissor(scale_factor, framebuffer_dimensions, clip_rect);
 
-        let desc_set = self
-            .texture_desc_sets
+        let (desc_set, _, _) = self
+            .texture_desc_sets_and_images
             .get(&texture_id)
             .ok_or(GuiRendererError::TextureDescSetMissing { id: texture_id })
             .context("recording gui render commands")?
@@ -893,63 +945,37 @@ impl GuiPass {
     }
 }
 
-fn upload_existing_font_texture(
-    synchronization_2_functions: &Synchronization2,
-    command_buffer: &CommandBuffer,
-    existing_image_view: &ImageView<Image>,
-    texture_data_buffer: &Buffer,
-    copy_region: vk::BufferImageCopy,
-) {
-    // we need to transition the image layout to vk::ImageLayout::TRANSFER_DST_OPTIMAL
-    let to_general_image_barrier = vk::ImageMemoryBarrier2::builder()
-        .src_stage_mask(vk::PipelineStageFlags2::FRAGMENT_SHADER)
-        .dst_stage_mask(vk::PipelineStageFlags2::TRANSFER)
-        .src_access_mask(vk::AccessFlags2::SHADER_READ)
-        .dst_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
-        .old_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-        .new_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-        .image(existing_image_view.image().handle())
-        .subresource_range(existing_image_view.properties().subresource_range);
-
-    let to_general_barriers = [to_general_image_barrier.build()];
-    let to_general_dependency =
-        vk::DependencyInfo::builder().image_memory_barriers(&to_general_barriers);
-
-    // then transition back to vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL
-    let to_shader_read_image_barrier = vk::ImageMemoryBarrier2::builder()
-        .src_stage_mask(vk::PipelineStageFlags2::TRANSFER)
-        .dst_stage_mask(vk::PipelineStageFlags2::FRAGMENT_SHADER)
-        .src_access_mask(vk::AccessFlags2::TRANSFER_WRITE)
-        .dst_access_mask(vk::AccessFlags2::SHADER_READ)
-        .old_layout(vk::ImageLayout::TRANSFER_DST_OPTIMAL)
-        .new_layout(vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL)
-        .image(existing_image_view.image().handle())
-        .subresource_range(existing_image_view.properties().subresource_range);
-
-    let to_shader_read_barriers = [to_shader_read_image_barrier.build()];
-    let to_shader_read_dependency =
-        vk::DependencyInfo::builder().image_memory_barriers(&to_shader_read_barriers);
-
-    // copy buffer to image
-    unsafe {
-        synchronization_2_functions
-            .cmd_pipeline_barrier2(command_buffer.handle(), &to_general_dependency);
-    }
-
-    command_buffer.copy_buffer_to_image(
-        texture_data_buffer,
-        existing_image_view.image().as_ref(),
-        vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        &[copy_region],
-    );
-
-    unsafe {
-        synchronization_2_functions
-            .cmd_pipeline_barrier2(command_buffer.handle(), &to_shader_read_dependency);
+fn egui_image_bytes(image_data: &egui::ImageData, texture_id: TextureId) -> Vec<u8> {
+    match image_data {
+        egui::ImageData::Color(image) => {
+            if image.width() * image.height() != image.pixels.len() {
+                warn!(
+                    "mismatch between gui color texture size and texel count. texture_id = {:?}",
+                    texture_id
+                );
+            }
+            image
+                .pixels
+                .iter()
+                .flat_map(|color| color.to_array())
+                .collect()
+        }
+        egui::ImageData::Font(image) => {
+            if image.width() * image.height() != image.pixels.len() {
+                warn!(
+                    "mismatch between gui font texture size and texel count. texture_id = {:?}",
+                    texture_id
+                );
+            }
+            image
+                .srgba_pixels(None)
+                .flat_map(|color| color.to_array())
+                .collect()
+        }
     }
 }
 
-fn write_font_texture_desc_set(
+fn write_desc_set_font_texture(
     desc_set: &DescriptorSet,
     image_view: &ImageView<Image>,
     sampler: &Sampler,
@@ -1021,19 +1047,6 @@ fn create_buffer_pool(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<
     let memory_pool = MemoryPool::new(memory_allocator, pool_props)
         .context("creating gui pass vertex/index buffer pool")?;
     Ok(Arc::new(memory_pool))
-}
-
-fn create_texture_sampler(device: Arc<Device>) -> anyhow::Result<Arc<Sampler>> {
-    let sampler_props = SamplerProperties {
-        mag_filter: vk::Filter::LINEAR,
-        min_filter: vk::Filter::LINEAR,
-        address_mode: [vk::SamplerAddressMode::CLAMP_TO_EDGE; 3],
-        mipmap_mode: vk::SamplerMipmapMode::LINEAR,
-        ..Default::default()
-    };
-
-    let sampler = Sampler::new(device, sampler_props).context("creating gui texture sampler")?;
-    Ok(Arc::new(sampler))
 }
 
 fn create_descriptor_layout(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorSetLayout>> {
@@ -1222,6 +1235,62 @@ fn create_texture_staging_buffer(
 }
 
 // ~~ Other stucts ~~
+
+struct SamplerVariations {
+    /// magnification = linear, minificaiton = linear
+    pub l_mag_l_min: Arc<Sampler>,
+    /// magnification = linear, minificaiton = nearest
+    pub l_mag_n_min: Arc<Sampler>,
+    /// magnification = nearest, minificaiton = linear
+    pub n_mag_l_min: Arc<Sampler>,
+    /// magnification = nearest, minificaiton = nearest
+    pub n_mag_n_min: Arc<Sampler>,
+}
+
+impl SamplerVariations {
+    pub fn new(device: Arc<Device>) -> VkResult<Self> {
+        let mut sampler_props = SamplerProperties {
+            mag_filter: vk::Filter::LINEAR,
+            min_filter: vk::Filter::LINEAR,
+            address_mode: [vk::SamplerAddressMode::REPEAT; 3],
+            mipmap_mode: vk::SamplerMipmapMode::LINEAR,
+            ..Default::default()
+        };
+        let l_mag_l_min = Arc::new(Sampler::new(device.clone(), sampler_props)?);
+
+        sampler_props.mag_filter = vk::Filter::LINEAR;
+        sampler_props.min_filter = vk::Filter::NEAREST;
+        let l_mag_n_min = Arc::new(Sampler::new(device.clone(), sampler_props)?);
+
+        sampler_props.mag_filter = vk::Filter::NEAREST;
+        sampler_props.min_filter = vk::Filter::LINEAR;
+        let n_mag_l_min = Arc::new(Sampler::new(device.clone(), sampler_props)?);
+
+        sampler_props.mag_filter = vk::Filter::NEAREST;
+        sampler_props.min_filter = vk::Filter::NEAREST;
+        let n_mag_n_min = Arc::new(Sampler::new(device.clone(), sampler_props)?);
+
+        Ok(Self {
+            l_mag_l_min,
+            l_mag_n_min,
+            n_mag_l_min,
+            n_mag_n_min,
+        })
+    }
+
+    pub fn get_sampler(&self, options: TextureOptions) -> Arc<Sampler> {
+        match options.magnification {
+            TextureFilter::Linear => match options.minification {
+                TextureFilter::Linear => self.l_mag_l_min.clone(),
+                TextureFilter::Nearest => self.l_mag_n_min.clone(),
+            },
+            TextureFilter::Nearest => match options.minification {
+                TextureFilter::Linear => self.n_mag_l_min.clone(),
+                TextureFilter::Nearest => self.n_mag_n_min.clone(),
+            },
+        }
+    }
+}
 
 struct ProcessTextureDataReturn {
     texture_staging_buffer: Option<Buffer>,
