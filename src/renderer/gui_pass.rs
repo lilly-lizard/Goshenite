@@ -1252,7 +1252,7 @@ impl SamplerVariations {
         let mut sampler_props = SamplerProperties {
             mag_filter: vk::Filter::LINEAR,
             min_filter: vk::Filter::LINEAR,
-            address_mode: [vk::SamplerAddressMode::REPEAT; 3],
+            address_mode: [vk::SamplerAddressMode::CLAMP_TO_EDGE; 3],
             mipmap_mode: vk::SamplerMipmapMode::LINEAR,
             ..Default::default()
         };
