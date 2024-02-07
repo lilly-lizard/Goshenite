@@ -12,6 +12,7 @@ use bort_vk::{
     GraphicsPipelineProperties, InputAssemblyState, PipelineAccess, PipelineLayout,
     PipelineLayoutProperties, RasterizationState, RenderPass, ShaderStage, ViewportState,
 };
+use std::fs::OpenOptions;
 use std::sync::Arc;
 
 mod descriptor {
@@ -21,7 +22,7 @@ mod descriptor {
 
 pub struct OverlayPass {
     desc_set_camera: Arc<DescriptorSet>,
-    pipeline: Arc<GraphicsPipeline>,
+    pipeline_aabb: Arc<GraphicsPipeline>,
 }
 
 impl OverlayPass {
@@ -33,16 +34,17 @@ impl OverlayPass {
         write_camera_descriptor_set(&desc_set_camera, camera_buffer, descriptor::BINDING_CAMERA);
 
         let pipeline_layout =
-            create_pipeline_layout(device.clone(), desc_set_camera.layout().clone())?;
-        let pipeline = create_pipeline(device.clone(), pipeline_layout.clone(), render_pass)?;
+            create_aabb_pipeline_layout(device.clone(), desc_set_camera.layout().clone())?;
+        let pipeline_aabb =
+            create_aabb_pipeline(device.clone(), pipeline_layout.clone(), render_pass)?;
 
         Ok(Self {
             desc_set_camera,
-            pipeline,
+            pipeline_aabb,
         })
     }
 
-    pub fn record_commands(
+    pub fn record_aabb_overlay_commands(
         &self,
         command_buffer: &CommandBuffer,
         object_resource_manager: &ObjectResourceManager,
@@ -53,12 +55,12 @@ impl OverlayPass {
             return;
         }
 
-        command_buffer.bind_pipeline(self.pipeline.as_ref());
+        command_buffer.bind_pipeline(self.pipeline_aabb.as_ref());
         command_buffer.set_viewport(0, &[viewport]);
         command_buffer.set_scissor(0, &[scissor]);
         command_buffer.bind_descriptor_sets(
             vk::PipelineBindPoint::GRAPHICS,
-            self.pipeline.pipeline_layout().as_ref(),
+            self.pipeline_aabb.pipeline_layout().as_ref(),
             0,
             [self.desc_set_camera.as_ref()],
             &[],
@@ -90,7 +92,9 @@ fn create_descriptor_set_camera(
         .context("creating geometry pass descriptor set")
 }
 
-fn create_pipeline_layout(
+fn load_coordinate_models() {}
+
+fn create_aabb_pipeline_layout(
     device: Arc<Device>,
     desc_set_layout_camera: Arc<DescriptorSetLayout>,
 ) -> anyhow::Result<Arc<PipelineLayout>> {
@@ -98,17 +102,17 @@ fn create_pipeline_layout(
         PipelineLayoutProperties::new(vec![desc_set_layout_camera], Vec::new());
 
     let pipeline_layout = PipelineLayout::new(device, pipeline_layout_props)
-        .context("creating overlay pass pipeline layout")?;
+        .context("creating overlay pass pipeline_aabb layout")?;
 
     Ok(Arc::new(pipeline_layout))
 }
 
-fn create_pipeline(
+fn create_aabb_pipeline(
     device: Arc<Device>,
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
 ) -> anyhow::Result<Arc<GraphicsPipeline>> {
-    let (vert_stage, frag_stage) = create_shader_stages(&device)?;
+    let (vert_stage, frag_stage) = create_aabb_shader_stages(&device)?;
 
     let dynamic_state =
         DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
@@ -141,20 +145,20 @@ fn create_pipeline(
         ..Default::default()
     };
 
-    let pipeline = GraphicsPipeline::new(
+    let pipeline_aabb = GraphicsPipeline::new(
         pipeline_layout,
         pipeline_properties,
         &[vert_stage, frag_stage],
         render_pass,
         None,
     )
-    .context("creating overlay pass pipeline")?;
+    .context("creating overlay pass pipeline_aabb")?;
 
-    Ok(Arc::new(pipeline))
+    Ok(Arc::new(pipeline_aabb))
 }
 
 #[cfg(feature = "include-spirv-bytes")]
-fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
+fn create_aabb_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
     use super::vulkan_init::create_shader_stages_from_bytes;
 
     let vertex_spv_file =

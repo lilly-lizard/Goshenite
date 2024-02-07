@@ -27,3 +27,5 @@ pub const CPU_ACCESS_BUFFER_SIZE: vk::DeviceSize = 1024;
 pub struct RenderOptions {
     pub enable_aabb_wire_display: bool,
 }
+
+pub const COORDINATE_ARROW_STL_PATH: &str = "./assets/models/coordinate-arrow.stl";

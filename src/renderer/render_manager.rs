@@ -614,7 +614,7 @@ impl RenderManager {
         );
 
         if overlay_options.enable_aabb_wire_display {
-            self.overlay_pass.record_commands(
+            self.overlay_pass.record_aabb_overlay_commands(
                 command_buffer,
                 self.geometry_pass.object_buffer_manager(),
                 viewport,

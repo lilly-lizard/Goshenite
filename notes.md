@@ -6,9 +6,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - switch to back-face culling beacuse only the misses benefit from the max-dist cutoff, where as the more expensive hit frags will benefit from the initial min-distance
 
-- egui color picker
-- remove `PrimitiveOpId` from `Primitive` and have a vec of `(PrimitiveOpId, Primitive)` tuples instead to reduce crazy number of args in push_primitive_op (maintainability etc)
-
 - undo (ctrl z)
 
 - compute dispatch
