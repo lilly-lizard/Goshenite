@@ -126,7 +126,7 @@ fn create_descriptor_pool(
         pool_sizes: vec![
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::INPUT_ATTACHMENT,
-                descriptor_count: 2 * framebuffer_count as u32,
+                descriptor_count: 3 * framebuffer_count as u32,
             },
             vk::DescriptorPoolSize {
                 ty: vk::DescriptorType::UNIFORM_BUFFER,
