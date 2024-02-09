@@ -4,39 +4,40 @@ use super::{
 };
 use crate::{
     config::{PRECURSOR_BYTES, PRECURSOR_BYTE_COUNT},
+    helper::more_errors::IoError,
     user_interface::camera::Camera,
 };
 use serde::{de::DeserializeOwned, Serialize};
-use std::{fs, io, path::PathBuf};
+use std::{fs, path::PathBuf};
 
 // ~~ Public ~~
 
-pub fn save_state_camera(camera: &Camera) -> Result<(), SaveStateError> {
+pub fn save_state_camera(camera: &Camera) -> Result<(), IoError> {
     save_state(camera, SAVE_STATE_FILENAME_CAMERA)
 }
 
-pub fn load_state_camera() -> Result<Camera, SaveStateError> {
+pub fn load_state_camera() -> Result<Camera, IoError> {
     load_state::<Camera>(SAVE_STATE_FILENAME_CAMERA)
 }
 
-pub fn save_all_objects(object_collection: &ObjectCollection) -> Result<(), SaveStateError> {
+pub fn save_all_objects(object_collection: &ObjectCollection) -> Result<(), IoError> {
     let object_list: Vec<Object> = object_collection.objects().values().cloned().collect();
     save_state(&object_list, SAVE_STATE_FILENAME_OBJECTS)
 }
 
-pub fn load_objects() -> Result<Vec<Object>, SaveStateError> {
+pub fn load_objects() -> Result<Vec<Object>, IoError> {
     load_state::<Vec<Object>>(SAVE_STATE_FILENAME_OBJECTS)
 }
 
 // ~~ Private ~~
 
-fn save_state(to_serialize: &impl Serialize, file_name: &str) -> Result<(), SaveStateError> {
+fn save_state(to_serialize: &impl Serialize, file_name: &str) -> Result<(), IoError> {
     let encoded_bytes =
-        bincode::serialize(to_serialize).map_err(|e| SaveStateError::SerializeFailed(e))?;
+        bincode::serialize(to_serialize).map_err(|e| IoError::SerializeFailed(e))?;
     save_state_bytes(file_name, encoded_bytes)
 }
 
-fn save_state_bytes(file_name: &str, mut encoded_bytes: Vec<u8>) -> Result<(), SaveStateError> {
+fn save_state_bytes(file_name: &str, mut encoded_bytes: Vec<u8>) -> Result<(), IoError> {
     // prepend encoded bytes with engine info
     let mut write_bytes = PRECURSOR_BYTES.to_vec();
     write_bytes.append(&mut encoded_bytes);
@@ -44,107 +45,45 @@ fn save_state_bytes(file_name: &str, mut encoded_bytes: Vec<u8>) -> Result<(), S
     let file_path = validated_file_path(file_name)?;
     fs::write(file_path.clone(), write_bytes).map_err(|e| {
         let file_path_string = file_path.to_str().unwrap_or(file_name).to_string();
-        SaveStateError::WriteFileFailed(file_path_string, e)
+        IoError::WriteFileFailed(file_path_string, e)
     })?;
     Ok(())
 }
 
-fn load_state<T>(file_path: &str) -> Result<T, SaveStateError>
+fn load_state<T>(file_path: &str) -> Result<T, IoError>
 where
     T: DeserializeOwned,
 {
     let encoded_bytes = load_state_bytes(file_path)?;
-    bincode::deserialize::<T>(&encoded_bytes).map_err(|e| SaveStateError::DeserializeFailed(e))
+    bincode::deserialize::<T>(&encoded_bytes).map_err(|e| IoError::DeserializeFailed(e))
 }
 
-fn load_state_bytes(file_name: &str) -> Result<Vec<u8>, SaveStateError> {
+fn load_state_bytes(file_name: &str) -> Result<Vec<u8>, IoError> {
     let file_path = validated_file_path(file_name)?;
     let read_res = fs::read(file_path.clone());
 
-    let io_error = match read_res {
-        Ok(mut read_bytes) => {
-            // ignore engine info for now
-            let _read_precursor_bytes: Vec<u8> =
-                read_bytes.drain(0..PRECURSOR_BYTE_COUNT).collect();
-            return Ok(read_bytes);
+    let mut read_bytes = match read_res {
+        Ok(read_bytes) => read_bytes,
+        Err(io_error) => {
+            let file_path_string = file_path.to_str().unwrap_or(file_name).to_string();
+            return Err(IoError::read_file_error(io_error, file_path_string));
         }
-        Err(io_error) => io_error,
     };
 
-    let file_path_string = file_path.to_str().unwrap_or(file_name).to_string();
-    match io_error.kind() {
-        io::ErrorKind::NotFound => Err(SaveStateError::FileDoesntExist(file_path_string, io_error)),
-        _ => Err(SaveStateError::ReadExistingFileFailed(
-            file_path_string,
-            io_error,
-        )),
-    }
+    // ignore engine info for now
+    let _read_precursor_bytes: Vec<u8> = read_bytes.drain(0..PRECURSOR_BYTE_COUNT).collect();
+    return Ok(read_bytes);
 }
 
 /// Ensures containing directories exist, but not the actual file
-fn validated_file_path(file_name: &str) -> Result<PathBuf, SaveStateError> {
+fn validated_file_path(file_name: &str) -> Result<PathBuf, IoError> {
     // create dir if missing
     fs::create_dir_all(LOCAL_STORAGE_DIR)
-        .map_err(|e| SaveStateError::CreateSaveDirectoryFailed(LOCAL_STORAGE_DIR.to_string(), e))?;
+        .map_err(|e| IoError::CreateDirectoryFailed(LOCAL_STORAGE_DIR.to_string(), e))?;
 
     let mut file_path = PathBuf::from(LOCAL_STORAGE_DIR);
     file_path.push(file_name);
     Ok(file_path)
-}
-
-// ~~ Errors ~~
-
-#[derive(Debug)]
-pub enum SaveStateError {
-    CreateSaveDirectoryFailed(String, io::Error),
-    SerializeFailed(bincode::Error),
-    DeserializeFailed(bincode::Error),
-    WriteFileFailed(String, io::Error),
-    FileDoesntExist(String, io::Error),
-    ReadExistingFileFailed(String, io::Error),
-}
-
-impl std::fmt::Display for SaveStateError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::CreateSaveDirectoryFailed(directory_name, e) => write!(
-                f,
-                "the save state directory \"{}\" does not exist
-				and attempting to create it failed due to: {}",
-                directory_name, e,
-            ),
-            Self::SerializeFailed(e) => write!(f, "data serialization failed: {}", e),
-            Self::DeserializeFailed(e) => write!(f, "data deserialization failed: {}", e),
-            Self::WriteFileFailed(file_name, e) => write!(
-                f,
-                "failed to open file \"{}\" for writing due to: {}",
-                file_name, e
-            ),
-            Self::FileDoesntExist(file_name, e) => write!(
-                f,
-                "attempted to read a non-existant file \"{}\". io error: {}",
-                file_name, e
-            ),
-            Self::ReadExistingFileFailed(file_name, e) => write!(
-                f,
-                "reading an existing file \"{}\" failed due to: {}",
-                file_name, e
-            ),
-        }
-    }
-}
-
-impl std::error::Error for SaveStateError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Self::CreateSaveDirectoryFailed(_, e) => Some(e),
-            Self::SerializeFailed(e) => Some(e),
-            Self::DeserializeFailed(e) => Some(e),
-            Self::WriteFileFailed(_, e) => Some(e),
-            Self::FileDoesntExist(_, e) => Some(e),
-            Self::ReadExistingFileFailed(_, e) => Some(e),
-        }
-    }
 }
 
 // ~~ Tests ~~

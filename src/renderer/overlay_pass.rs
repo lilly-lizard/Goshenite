@@ -1,9 +1,10 @@
 use super::{
+    config_renderer::GIZMO_ARROW_STL_PATH,
     object_resource_manager::ObjectResourceManager,
     shader_interfaces::vertex_inputs::BoundingBoxVertex,
     vulkan_init::{create_camera_descriptor_set_with_binding, render_pass_indices},
 };
-use crate::renderer::vulkan_init::write_camera_descriptor_set;
+use crate::{helper::more_errors::IoError, renderer::vulkan_init::write_camera_descriptor_set};
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{
@@ -12,8 +13,8 @@ use bort_vk::{
     GraphicsPipelineProperties, InputAssemblyState, PipelineAccess, PipelineLayout,
     PipelineLayoutProperties, RasterizationState, RenderPass, ShaderStage, ViewportState,
 };
-use std::fs::OpenOptions;
 use std::sync::Arc;
+use std::{fs::OpenOptions, path::Path};
 
 mod descriptor {
     pub const SET_CAMERA: usize = 0;
@@ -92,7 +93,17 @@ fn create_descriptor_set_camera(
         .context("creating geometry pass descriptor set")
 }
 
-fn load_coordinate_models() {}
+fn load_gizmo_models() -> Result<(), IoError> {
+    let gizmo_arrow_stl_path = Path::new(GIZMO_ARROW_STL_PATH);
+    let mut arrow_stl_file = OpenOptions::new()
+        .read(true)
+        .open(gizmo_arrow_stl_path)
+        .map_err(|e| IoError::read_file_error(e, GIZMO_ARROW_STL_PATH.to_string()))?;
+
+    let arrow_stl = stl_io::read_stl(&mut arrow_stl_file).map_err(IoError::ReadBufferFailed)?;
+
+    Ok(())
+}
 
 fn create_aabb_pipeline_layout(
     device: Arc<Device>,
