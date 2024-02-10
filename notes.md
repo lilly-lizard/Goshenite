@@ -9,6 +9,17 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - egui color picker
 - remove `PrimitiveOpId` from `Primitive` and have a vec of `(PrimitiveOpId, Primitive)` tuples instead to reduce crazy number of args in push_primitive_op (maintainability etc)
 
+- license (every source file)
+	- https://kristoff.it/blog/the-open-source-game/
+	- https://web.archive.org/web/20231030181609/https://redis.io/docs/about/governance/
+	- https://en.wikipedia.org/wiki/Benevolent_dictator_for_life
+	- https://opensource.org/license/bsd-3-clause/
+	- https://redis.io/docs/about/license/
+	- https://github.com/redis/redis/blob/unstable/src/acl.c
+	- https://github.com/godotengine/godot/blob/master/main/main.cpp
+- code of conduct
+- contributing
+
 - undo (ctrl z)
 
 - compute dispatch
