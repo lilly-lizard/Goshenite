@@ -1,18 +1,20 @@
 use super::{
     config_renderer::GIZMO_ARROW_STL_PATH,
     object_resource_manager::ObjectResourceManager,
-    shader_interfaces::vertex_inputs::BoundingBoxVertex,
+    shader_interfaces::vertex_inputs::{BoundingBoxVertex, GizmoVertex, VulkanVertex},
     vulkan_init::{create_camera_descriptor_set_with_binding, render_pass_indices},
 };
 use crate::{helper::more_errors::IoError, renderer::vulkan_init::write_camera_descriptor_set};
 use anyhow::Context;
-use ash::vk;
+use ash::vk::{self, BufferUsageFlags};
 use bort_vk::{
-    Buffer, ColorBlendState, CommandBuffer, DescriptorPool, DescriptorPoolProperties,
-    DescriptorSet, DescriptorSetLayout, Device, DeviceOwned, DynamicState, GraphicsPipeline,
-    GraphicsPipelineProperties, InputAssemblyState, PipelineAccess, PipelineLayout,
-    PipelineLayoutProperties, RasterizationState, RenderPass, ShaderStage, ViewportState,
+    Buffer, BufferProperties, ColorBlendState, CommandBuffer, DescriptorPool,
+    DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, Device, DeviceOwned,
+    DynamicState, GraphicsPipeline, GraphicsPipelineProperties, InputAssemblyState,
+    MemoryAllocator, PipelineAccess, PipelineLayout, PipelineLayoutProperties, RasterizationState,
+    RenderPass, ShaderStage, ViewportState,
 };
+use bort_vma::AllocationCreateInfo;
 use std::sync::Arc;
 use std::{fs::OpenOptions, path::Path};
 
@@ -24,6 +26,7 @@ mod descriptor {
 pub struct OverlayPass {
     desc_set_camera: Arc<DescriptorSet>,
     pipeline_aabb: Arc<GraphicsPipeline>,
+    pipeline_gizmos: Arc<GraphicsPipeline>,
 }
 
 impl OverlayPass {
@@ -34,14 +37,20 @@ impl OverlayPass {
         let desc_set_camera = create_descriptor_set_camera(descriptor_pool)?;
         write_camera_descriptor_set(&desc_set_camera, camera_buffer, descriptor::BINDING_CAMERA);
 
-        let pipeline_layout =
+        let pipeline_layout_aabb =
             create_aabb_pipeline_layout(device.clone(), desc_set_camera.layout().clone())?;
         let pipeline_aabb =
-            create_aabb_pipeline(device.clone(), pipeline_layout.clone(), render_pass)?;
+            create_aabb_pipeline(device.clone(), pipeline_layout_aabb.clone(), render_pass)?;
+
+        let pipeline_layout_gizmos =
+            create_aabb_pipeline_layout(device.clone(), desc_set_camera.layout().clone())?;
+        let pipeline_gizmos =
+            create_aabb_pipeline(device.clone(), pipeline_layout_gizmos.clone(), render_pass)?;
 
         Ok(Self {
             desc_set_camera,
             pipeline_aabb,
+            pipeline_gizmos,
         })
     }
 
@@ -93,16 +102,49 @@ fn create_descriptor_set_camera(
         .context("creating geometry pass descriptor set")
 }
 
-fn load_gizmo_models() -> Result<(), IoError> {
+/// Returns `(vertex_buffer, index_buffer)`
+fn create_gizmo_buffers(
+    memory_allocator: Arc<MemoryAllocator>,
+) -> anyhow::Result<(Arc<Buffer>, Arc<Buffer>)> {
+    let arrow_stl = load_arrow_stl().context("loading gizmo arrow stl")?;
+
+    let buffer_allocation_info = AllocationCreateInfo {
+        required_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        ..AllocationCreateInfo::default()
+    };
+
+    let vertex_buffer_properties = BufferProperties::new_default(
+        arrow_stl.vertices.len() as u64 * 3 * 4, // 3 f32 vertices
+        BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
+    );
+    let vertex_buffer = Buffer::new(
+        memory_allocator.clone(),
+        vertex_buffer_properties,
+        buffer_allocation_info.clone(),
+    )
+    .context("creating gizmo vertex buffer")?;
+
+    let index_buffer_properties = BufferProperties::new_default(
+        arrow_stl.faces.len() as u64 * 3 * 4, // 3 u32 indices
+        BufferUsageFlags::INDEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
+    );
+    let index_buffer = Buffer::new(
+        memory_allocator,
+        index_buffer_properties,
+        buffer_allocation_info,
+    )
+    .context("creating gizmo vertex buffer")?;
+
+    Ok((Arc::new(vertex_buffer), Arc::new(index_buffer)))
+}
+
+fn load_arrow_stl() -> Result<stl_io::IndexedMesh, IoError> {
     let gizmo_arrow_stl_path = Path::new(GIZMO_ARROW_STL_PATH);
     let mut arrow_stl_file = OpenOptions::new()
         .read(true)
         .open(gizmo_arrow_stl_path)
         .map_err(|e| IoError::read_file_error(e, GIZMO_ARROW_STL_PATH.to_string()))?;
-
-    let arrow_stl = stl_io::read_stl(&mut arrow_stl_file).map_err(IoError::ReadBufferFailed)?;
-
-    Ok(())
+    stl_io::read_stl(&mut arrow_stl_file).map_err(IoError::ReadBufferFailed)
 }
 
 fn create_aabb_pipeline_layout(
@@ -113,7 +155,7 @@ fn create_aabb_pipeline_layout(
         PipelineLayoutProperties::new(vec![desc_set_layout_camera], Vec::new());
 
     let pipeline_layout = PipelineLayout::new(device, pipeline_layout_props)
-        .context("creating overlay pass pipeline_aabb layout")?;
+        .context("creating overlay pass aabb pipeline layout")?;
 
     Ok(Arc::new(pipeline_layout))
 }
@@ -163,7 +205,7 @@ fn create_aabb_pipeline(
         render_pass,
         None,
     )
-    .context("creating overlay pass pipeline_aabb")?;
+    .context("creating overlay pass aabb pipeline")?;
 
     Ok(Arc::new(pipeline_aabb))
 }
@@ -178,16 +220,96 @@ fn create_aabb_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStag
         std::io::Cursor::new(&include_bytes!("../../assets/shader_binaries/outlines.frag.spv")[..]);
 
     create_shader_stages_from_bytes(device, vertex_spv_file, frag_spv_file)
-        .context("creating overlay pass shaders")
+        .context("creating overlay pass aabb shaders")
 }
 
 #[cfg(not(feature = "include-spirv-bytes"))]
-fn create_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
+fn create_aabb_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
     use crate::renderer::vulkan_init::create_shader_stages_from_path;
 
     const VERT_SHADER_PATH: &str = "assets/shader_binaries/outlines.vert.spv";
     const FRAG_SHADER_PATH: &str = "assets/shader_binaries/outlines.frag.spv";
 
     create_shader_stages_from_path(device, VERT_SHADER_PATH, FRAG_SHADER_PATH)
-        .context("creating overlay pass shaders")
+        .context("creating overlay pass aabb shaders")
+}
+
+fn create_gizmos_pipeline_layout(
+    device: Arc<Device>,
+    desc_set_layout_camera: Arc<DescriptorSetLayout>,
+) -> anyhow::Result<Arc<PipelineLayout>> {
+    let pipeline_layout_props =
+        PipelineLayoutProperties::new(vec![desc_set_layout_camera], Vec::new());
+
+    let pipeline_layout = PipelineLayout::new(device, pipeline_layout_props)
+        .context("creating overlay pass gizmos pipeline layout")?;
+
+    Ok(Arc::new(pipeline_layout))
+}
+
+fn create_gizmos_pipeline(
+    device: Arc<Device>,
+    pipeline_layout: Arc<PipelineLayout>,
+    render_pass: &RenderPass,
+) -> anyhow::Result<Arc<GraphicsPipeline>> {
+    let (vert_stage, frag_stage) = create_gizmos_shader_stages(&device)?;
+
+    let dynamic_state =
+        DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
+    let viewport_state = ViewportState::new_dynamic(1, 1);
+
+    let color_blend_state =
+        ColorBlendState::new_default(vec![ColorBlendState::blend_state_disabled()]);
+
+    let rasterization_state = RasterizationState {
+        cull_mode: vk::CullModeFlags::BACK,
+        ..Default::default()
+    };
+
+    let vertex_input_state = GizmoVertex::vertex_input_state();
+
+    let pipeline_properties = GraphicsPipelineProperties {
+        color_blend_state,
+        dynamic_state,
+        rasterization_state,
+        subpass_index: render_pass_indices::SUBPASS_DEFERRED as u32,
+        vertex_input_state,
+        viewport_state,
+        ..Default::default()
+    };
+
+    let pipeline_gizmos = GraphicsPipeline::new(
+        pipeline_layout,
+        pipeline_properties,
+        &[vert_stage, frag_stage],
+        render_pass,
+        None,
+    )
+    .context("creating overlay pass gizmos pipeline")?;
+
+    Ok(Arc::new(pipeline_gizmos))
+}
+
+#[cfg(feature = "include-spirv-bytes")]
+fn create_gizmos_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
+    use super::vulkan_init::create_shader_stages_from_bytes;
+
+    let vertex_spv_file =
+        std::io::Cursor::new(&include_bytes!("../../assets/shader_binaries/gizmos.vert.spv")[..]);
+    let frag_spv_file =
+        std::io::Cursor::new(&include_bytes!("../../assets/shader_binaries/gizmos.frag.spv")[..]);
+
+    create_shader_stages_from_bytes(device, vertex_spv_file, frag_spv_file)
+        .context("creating overlay pass gizmos shaders")
+}
+
+#[cfg(not(feature = "include-spirv-bytes"))]
+fn create_gizmos_shader_stages(device: &Arc<Device>) -> anyhow::Result<(ShaderStage, ShaderStage)> {
+    use crate::renderer::vulkan_init::create_shader_stages_from_path;
+
+    const VERT_SHADER_PATH: &str = "assets/shader_binaries/gizmos.vert.spv";
+    const FRAG_SHADER_PATH: &str = "assets/shader_binaries/gizmos.frag.spv";
+
+    create_shader_stages_from_path(device, VERT_SHADER_PATH, FRAG_SHADER_PATH)
+        .context("creating overlay pass gizmos shaders")
 }

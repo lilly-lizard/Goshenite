@@ -3,7 +3,7 @@ use glam::{Mat4, Vec4};
 
 /// Should match definitions in `gui.vert` and `gui.frag`.
 #[repr(C)]
-#[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
+#[derive(Clone, Copy, Default, Pod, Zeroable)]
 pub struct GuiPushConstant {
     /// Framebuffer dimensions.
     pub screen_size: [f32; 2],
@@ -21,7 +21,7 @@ impl GuiPushConstant {
 
 /// Should match definition in `overlay.vert`
 #[repr(C)]
-#[derive(Clone, Copy, Default, Debug, Pod, Zeroable)]
+#[derive(Clone, Copy, Default, Pod, Zeroable)]
 pub struct OverlayPushConstant {
     pub proj_view: [f32; 16],
     pub offset: [f32; 4],
@@ -33,4 +33,12 @@ impl OverlayPushConstant {
             offset: offset.into(),
         }
     }
+}
+
+/// Should match definition in `gizmos.frag`
+#[repr(C)]
+#[derive(Clone, Copy, Default, Pod, Zeroable)]
+pub struct GizmosPushConstant {
+    pub color: [f32; 3],
+    pub object_id: u32,
 }

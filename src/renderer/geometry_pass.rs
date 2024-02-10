@@ -5,7 +5,10 @@ use super::{
         create_camera_descriptor_set_with_binding, render_pass_indices, write_camera_descriptor_set,
     },
 };
-use crate::engine::object::objects_delta::ObjectsDelta;
+use crate::{
+    engine::object::objects_delta::ObjectsDelta,
+    renderer::shader_interfaces::vertex_inputs::VulkanVertex,
+};
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{

@@ -2,7 +2,10 @@
 
 use super::{
     config_renderer::{SHADER_ENTRY_POINT, TIMEOUT_NANOSECS},
-    shader_interfaces::{push_constants::GuiPushConstant, vertex_inputs::EguiVertex},
+    shader_interfaces::{
+        push_constants::GuiPushConstant,
+        vertex_inputs::{EguiVertex, VulkanVertex},
+    },
     vulkan_init::render_pass_indices,
 };
 use ahash::AHashMap;

@@ -5,21 +5,14 @@ use bytemuck::NoUninit;
 use glam::Vec3;
 use memoffset::offset_of;
 
-/// Should match inputs in `overlay.vert`
-#[repr(C)]
-#[derive(Default, Debug, Clone, Copy)] // todo bytemuck needed now?
-pub struct OverlayVertex {
-    pub in_position: [f32; 4],
-    pub in_normal: [f32; 4],
-    pub in_color: [f32; 4],
-}
-
-impl OverlayVertex {
-    pub const fn new(position: Vec3, normal: Vec3, color: Vec3) -> Self {
-        Self {
-            in_position: [position.x, position.y, position.z, 1.],
-            in_normal: [normal.x, normal.y, normal.z, 1.],
-            in_color: [color.x, color.y, color.z, 1.],
+pub trait VulkanVertex {
+    fn binding_description() -> vk::VertexInputBindingDescription;
+    fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescription>;
+    fn vertex_input_state() -> VertexInputState {
+        VertexInputState {
+            vertex_binding_descriptions: vec![Self::binding_description()],
+            vertex_attribute_descriptions: Self::attribute_descriptions(),
+            ..Default::default()
         }
     }
 }
@@ -48,8 +41,10 @@ impl EguiVertex {
             in_color: color,
         }
     }
+}
 
-    pub fn binding_description() -> vk::VertexInputBindingDescription {
+impl VulkanVertex for EguiVertex {
+    fn binding_description() -> vk::VertexInputBindingDescription {
         vk::VertexInputBindingDescription {
             binding: 0,
             stride: std::mem::size_of::<Self>() as u32,
@@ -57,7 +52,7 @@ impl EguiVertex {
         }
     }
 
-    pub fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescription> {
+    fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescription> {
         vec![
             // in_position
             vk::VertexInputAttributeDescription {
@@ -82,14 +77,6 @@ impl EguiVertex {
             },
         ]
     }
-
-    pub fn vertex_input_state() -> VertexInputState {
-        VertexInputState {
-            vertex_binding_descriptions: vec![Self::binding_description()],
-            vertex_attribute_descriptions: Self::attribute_descriptions(),
-            ..Default::default()
-        }
-    }
 }
 
 /// Should match inputs in `bounding_mesh.vert`
@@ -107,8 +94,10 @@ impl BoundingBoxVertex {
             in_object_id: object_id.raw_id() as u32,
         }
     }
+}
 
-    pub fn binding_description() -> vk::VertexInputBindingDescription {
+impl VulkanVertex for BoundingBoxVertex {
+    fn binding_description() -> vk::VertexInputBindingDescription {
         vk::VertexInputBindingDescription {
             binding: 0,
             stride: std::mem::size_of::<Self>() as u32,
@@ -116,7 +105,7 @@ impl BoundingBoxVertex {
         }
     }
 
-    pub fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescription> {
+    fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescription> {
         vec![
             // in_position
             vk::VertexInputAttributeDescription {
@@ -134,12 +123,33 @@ impl BoundingBoxVertex {
             },
         ]
     }
+}
 
-    pub fn vertex_input_state() -> VertexInputState {
-        VertexInputState {
-            vertex_binding_descriptions: vec![Self::binding_description()],
-            vertex_attribute_descriptions: Self::attribute_descriptions(),
-            ..Default::default()
+/// Should match inputs in `gizmos.frag`
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, NoUninit)]
+pub struct GizmoVertex {
+    pub in_position: [f32; 3],
+}
+
+impl VulkanVertex for GizmoVertex {
+    fn binding_description() -> vk::VertexInputBindingDescription {
+        vk::VertexInputBindingDescription {
+            binding: 0,
+            stride: std::mem::size_of::<Self>() as u32,
+            input_rate: vk::VertexInputRate::VERTEX,
         }
+    }
+
+    fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescription> {
+        vec![
+            // in_position
+            vk::VertexInputAttributeDescription {
+                binding: 0,
+                location: 0,
+                format: vk::Format::R32G32B32A32_SFLOAT,
+                offset: offset_of!(Self, in_position) as u32,
+            },
+        ]
     }
 }
