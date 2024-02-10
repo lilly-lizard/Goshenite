@@ -29,11 +29,11 @@ mod descriptor {
 pub struct LightingPass {
     device: Arc<Device>,
 
-    desc_set_camera: Arc<DescriptorSet>,
+    desc_set_camera: DescriptorSet,
     /// One per framebuffer
-    desc_sets_g_buffer: Vec<Arc<DescriptorSet>>,
+    desc_sets_g_buffer: Vec<DescriptorSet>,
 
-    pipeline: Arc<GraphicsPipeline>,
+    pipeline: GraphicsPipeline,
 }
 
 impl LightingPass {
@@ -100,17 +100,14 @@ impl LightingPass {
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
     ) {
-        command_buffer.bind_pipeline(self.pipeline.as_ref());
+        command_buffer.bind_pipeline(&self.pipeline);
         command_buffer.set_viewport(0, &[viewport]);
         command_buffer.set_scissor(0, &[scissor]);
         command_buffer.bind_descriptor_sets(
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline.pipeline_layout().as_ref(),
             0,
-            [
-                self.desc_sets_g_buffer[frame_index].as_ref(),
-                self.desc_set_camera.as_ref(),
-            ],
+            [&self.desc_sets_g_buffer[frame_index], &self.desc_set_camera],
             &[],
         );
         command_buffer.draw(3, 1, 0, 0);
@@ -141,9 +138,7 @@ fn create_descriptor_pool(
     Ok(Arc::new(descriptor_pool))
 }
 
-fn create_desc_set_camera(
-    descriptor_pool: Arc<DescriptorPool>,
-) -> anyhow::Result<Arc<DescriptorSet>> {
+fn create_desc_set_camera(descriptor_pool: Arc<DescriptorPool>) -> anyhow::Result<DescriptorSet> {
     create_camera_descriptor_set_with_binding(descriptor_pool, descriptor::BINDING_CAMERA)
         .context("creating geometry pass descriptor set")
 }
@@ -151,16 +146,14 @@ fn create_desc_set_camera(
 fn create_desc_sets_gbuffer(
     descriptor_pool: Arc<DescriptorPool>,
     framebuffer_count: usize,
-) -> anyhow::Result<Vec<Arc<DescriptorSet>>> {
+) -> anyhow::Result<Vec<DescriptorSet>> {
     (0..framebuffer_count)
         .into_iter()
         .map(|_| create_desc_set_gbuffer(descriptor_pool.clone()))
         .collect::<anyhow::Result<Vec<_>>>()
 }
 
-fn create_desc_set_gbuffer(
-    descriptor_pool: Arc<DescriptorPool>,
-) -> anyhow::Result<Arc<DescriptorSet>> {
+fn create_desc_set_gbuffer(descriptor_pool: Arc<DescriptorPool>) -> anyhow::Result<DescriptorSet> {
     let mut desc_set_layout_props = DescriptorSetLayoutProperties::default();
     desc_set_layout_props.bindings = vec![
         DescriptorSetLayoutBinding {
@@ -195,18 +188,18 @@ fn create_desc_set_gbuffer(
         .allocate_descriptor_set(desc_set_layout)
         .context("allocating lighting pass g-buffer descriptor set")?;
 
-    Ok(Arc::new(desc_set))
+    Ok(desc_set)
 }
 
 fn write_desc_sets_gbuffer(
-    desc_sets_gbuffer: &Vec<Arc<DescriptorSet>>,
+    desc_sets_gbuffer: &Vec<DescriptorSet>,
     normal_buffer: &ImageView<Image>,
     albedo_buffer: &ImageView<Image>,
     primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
 ) -> anyhow::Result<()> {
     for i in 0..desc_sets_gbuffer.len() {
         write_desc_set_gbuffer(
-            desc_sets_gbuffer[i].as_ref(),
+            &desc_sets_gbuffer[i],
             normal_buffer,
             albedo_buffer,
             primitive_id_buffers[i].as_ref(),
@@ -290,7 +283,7 @@ fn create_pipeline(
     device: Arc<Device>,
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
-) -> anyhow::Result<Arc<GraphicsPipeline>> {
+) -> anyhow::Result<GraphicsPipeline> {
     let (vert_stage, frag_stage) = create_shader_stages(&device)?;
 
     let dynamic_state =
@@ -318,7 +311,7 @@ fn create_pipeline(
     )
     .context("creating lighting pass pipeline")?;
 
-    Ok(Arc::new(pipeline))
+    Ok(pipeline)
 }
 
 #[cfg(feature = "include-spirv-bytes")]

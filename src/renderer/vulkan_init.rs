@@ -871,7 +871,7 @@ pub fn create_framebuffers(
     albedo_buffer: Arc<ImageView<Image>>,
     primitive_id_buffers: &[Arc<ImageView<Image>>],
     depth_buffer: Arc<ImageView<Image>>,
-) -> anyhow::Result<Vec<Arc<Framebuffer>>> {
+) -> anyhow::Result<Vec<Framebuffer>> {
     (0..swapchain_image_views.len())
         .into_iter()
         .map(|i| {
@@ -905,9 +905,9 @@ pub fn create_framebuffers(
             );
             let framebuffer = Framebuffer::new(render_pass.clone(), framebuffer_properties)
                 .context("creating framebuffer")?;
-            Ok(Arc::new(framebuffer))
+            Ok(framebuffer)
         })
-        .collect::<anyhow::Result<Vec<_>>>()
+        .collect()
 }
 
 pub fn create_clear_values() -> Vec<vk::ClearValue> {
@@ -953,35 +953,30 @@ pub fn create_clear_values() -> Vec<vk::ClearValue> {
     clear_values
 }
 
-pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Arc<Buffer>> {
+pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Buffer> {
     let ubo_size = mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize;
     let ubo_props = BufferProperties::new_default(ubo_size, vk::BufferUsageFlags::UNIFORM_BUFFER);
 
     let alloc_info = allocation_info_cpu_accessible();
     let buffer = Buffer::new(memory_allocator, ubo_props, alloc_info)
         .context("creating camera ubo buffer")?;
-    Ok(Arc::new(buffer))
+    Ok(buffer)
 }
 
 pub fn create_render_command_buffers(
     render_command_pool: Arc<CommandPool>,
     swapchain_image_count: u32,
-) -> anyhow::Result<Vec<Arc<CommandBuffer>>> {
+) -> anyhow::Result<Vec<CommandBuffer>> {
     let command_buffers = render_command_pool
         .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, swapchain_image_count)
         .context("allocating per-frame command buffers")?;
-
-    let command_buffer_arcs = command_buffers
-        .into_iter()
-        .map(|cb| Arc::new(cb))
-        .collect::<Vec<_>>();
-    Ok(command_buffer_arcs)
+    Ok(command_buffers)
 }
 
 pub fn create_camera_descriptor_set_with_binding(
     descriptor_pool: Arc<DescriptorPool>,
     binding: u32,
-) -> VkResult<Arc<DescriptorSet>> {
+) -> VkResult<DescriptorSet> {
     let desc_set_layout_props =
         DescriptorSetLayoutProperties::new_default(vec![DescriptorSetLayoutBinding {
             binding,
@@ -997,8 +992,7 @@ pub fn create_camera_descriptor_set_with_binding(
     )?);
 
     let desc_set = descriptor_pool.allocate_descriptor_set(desc_set_layout)?;
-
-    Ok(Arc::new(desc_set))
+    Ok(desc_set)
 }
 
 pub fn write_camera_descriptor_set(

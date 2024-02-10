@@ -60,7 +60,7 @@ pub struct RenderManager {
     render_pass: Arc<RenderPass>,
     /// One per swapchain image, or two if there's only one swapchain image so we can store some
     /// images written to in the previous render
-    framebuffers: Vec<Arc<Framebuffer>>,
+    framebuffers: Vec<Framebuffer>,
     /// One for each framebuffer attachment
     clear_values: Vec<vk::ClearValue>,
 
@@ -69,7 +69,7 @@ pub struct RenderManager {
     albedo_buffer: Arc<ImageView<Image>>,
     /// One per framebuffer
     primitive_id_buffers: Vec<Arc<ImageView<Image>>>,
-    camera_ubo: Arc<Buffer>,
+    camera_ubo: Buffer,
 
     lighting_pass: LightingPass,
     geometry_pass: GeometryPass,
@@ -79,10 +79,10 @@ pub struct RenderManager {
     object_id_reader: ElementIdReader,
 
     /// One per framebuffer
-    render_command_buffers: Vec<Arc<CommandBuffer>>,
-    previous_render_fence: Arc<Fence>,
-    next_frame_wait_semaphore: Arc<Semaphore>,
-    swapchain_image_available_semaphore: Arc<Semaphore>,
+    render_command_buffers: Vec<CommandBuffer>,
+    previous_render_fence: Fence,
+    next_frame_wait_semaphore: Semaphore,
+    swapchain_image_available_semaphore: Semaphore,
 
     renderer_state: RendererState,
     /// Indicates which framebuffer is being processed right now.
@@ -202,7 +202,7 @@ impl RenderManager {
             scale_factor,
         )?;
 
-        let overlay_pass = OverlayPass::new(&render_pass, &camera_ubo)?;
+        let overlay_pass = OverlayPass::new(memory_allocator.clone(), &render_pass, &camera_ubo)?;
 
         let render_command_buffers = create_render_command_buffers(
             command_pool_render.clone(),
@@ -210,12 +210,11 @@ impl RenderManager {
         )?;
 
         let previous_render_fence =
-            Arc::new(Fence::new_signalled(device.clone()).context("creating fence")?);
+            Fence::new_signalled(device.clone()).context("creating fence")?;
         let next_frame_wait_semaphore =
-            Arc::new(Semaphore::new(device.clone()).context("creating per-frame semaphore")?);
-        let swapchain_image_available_semaphore = Arc::new(
-            Semaphore::new(device.clone()).context("creating per-swapchain-image semaphore")?,
-        );
+            Semaphore::new(device.clone()).context("creating per-frame semaphore")?;
+        let swapchain_image_available_semaphore =
+            Semaphore::new(device.clone()).context("creating per-swapchain-image semaphore")?;
 
         let object_id_reader = ElementIdReader::new(
             transfer_queue.clone(),
@@ -282,15 +281,7 @@ impl RenderManager {
             self.shaders_write_linear_color,
         );
 
-        let camera_ubo_mut = match Arc::get_mut(&mut self.camera_ubo) {
-            Some(ubo) => ubo,
-            None => {
-                warn!("attempted to borrow camera buffer as mutable but couldn't! skipping update_camera()...");
-                return Ok(());
-            }
-        };
-
-        camera_ubo_mut
+        self.camera_ubo
             .write_struct(camera_data, 0)
             .context("uploading camera ubo data")?;
 
@@ -373,8 +364,7 @@ impl RenderManager {
 
         // record commands
 
-        let command_buffer = self.render_command_buffers[framebuffer_index].clone();
-        self.record_render_commands(&command_buffer, framebuffer_index, overlay_options)?;
+        self.record_render_commands(framebuffer_index, overlay_options)?;
 
         // submit commands
 
@@ -382,7 +372,7 @@ impl RenderManager {
             .reset()
             .context("reseting previous render fence")?;
 
-        let submit_command_buffers = [command_buffer.handle()];
+        let submit_command_buffers = [self.render_command_buffers[framebuffer_index].handle()];
 
         let wait_semaphores = [self.swapchain_image_available_semaphore.handle()];
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
@@ -396,7 +386,7 @@ impl RenderManager {
             .signal_semaphores(&signal_semaphores);
 
         self.render_queue
-            .submit([submit_info], Some(self.previous_render_fence.as_ref()))
+            .submit([submit_info], Some(&self.previous_render_fence))
             .context("submitting render commands")?;
 
         self.framebuffer_index_currently_rendering = swapchain_index;
@@ -581,12 +571,12 @@ impl RenderManager {
 
     fn record_render_commands(
         &mut self,
-        command_buffer: &CommandBuffer,
         framebuffer_index: usize,
         overlay_options: RenderOptions,
     ) -> anyhow::Result<()> {
         let viewport = self.framebuffers[framebuffer_index].whole_viewport();
         let render_area = self.framebuffers[framebuffer_index].whole_rect();
+        let command_buffer = &self.render_command_buffers[framebuffer_index];
 
         let begin_info = vk::CommandBufferBeginInfo::builder()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
@@ -602,13 +592,13 @@ impl RenderManager {
         command_buffer.begin_render_pass(&render_pass_begin, vk::SubpassContents::INLINE);
 
         self.geometry_pass
-            .record_commands(&command_buffer, viewport, render_area);
+            .record_commands(command_buffer, viewport, render_area);
 
         command_buffer.next_subpass(vk::SubpassContents::INLINE);
 
         self.lighting_pass.record_commands(
             framebuffer_index,
-            &command_buffer,
+            command_buffer,
             viewport,
             render_area,
         );
@@ -623,7 +613,7 @@ impl RenderManager {
         }
 
         self.gui_pass.record_render_commands(
-            &command_buffer,
+            command_buffer,
             self.shaders_write_linear_color,
             [viewport.width, viewport.height],
         )?;

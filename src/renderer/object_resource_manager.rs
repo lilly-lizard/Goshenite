@@ -130,22 +130,14 @@ impl ObjectResourceManager {
                 [per_object_buffers.primitive_ops_descriptor_set.as_ref()],
                 &[],
             );
-            command_buffer.bind_vertex_buffers(
-                0,
-                [per_object_buffers.bounding_mesh_buffer.as_ref()],
-                &[0],
-            );
+            command_buffer.bind_vertex_buffers(0, [&per_object_buffers.bounding_mesh_buffer], &[0]);
             command_buffer.draw(per_object_buffers.bounding_mesh_vertex_count, 1, 0, 0);
         }
     }
 
     pub fn draw_bounding_box_commands(&self, command_buffer: &CommandBuffer) {
         for per_object_buffers in self.objects_buffers.iter() {
-            command_buffer.bind_vertex_buffers(
-                0,
-                [per_object_buffers.bounding_mesh_buffer.as_ref()],
-                &[0],
-            );
+            command_buffer.bind_vertex_buffers(0, [&per_object_buffers.bounding_mesh_buffer], &[0]);
             command_buffer.draw(per_object_buffers.bounding_mesh_vertex_count, 1, 0, 0);
         }
     }
@@ -163,20 +155,6 @@ impl ObjectResourceManager {
         self.objects_buffers
             .iter()
             .position(|o| o.object_id == object_id)
-    }
-
-    pub fn primitive_op_buffers(&self) -> Vec<Arc<Buffer>> {
-        self.objects_buffers
-            .iter()
-            .map(|o| o.primitive_ops_buffer.clone())
-            .collect::<Vec<_>>()
-    }
-
-    pub fn bounding_mesh_buffers(&self) -> Vec<Arc<Buffer>> {
-        self.objects_buffers
-            .iter()
-            .map(|o| o.bounding_mesh_buffer.clone())
-            .collect::<Vec<_>>()
     }
 
     pub fn object_count(&self) -> usize {
@@ -310,7 +288,7 @@ impl ObjectResourceManager {
         object_id: ObjectId,
         object: &Object,
         transfer_resources: &mut BufferUploadResources,
-    ) -> anyhow::Result<Arc<Buffer>> {
+    ) -> anyhow::Result<Buffer> {
         trace!(
             "uploading bounding box vertices for object id = {:?} to gpu buffer",
             object_id
@@ -332,7 +310,7 @@ impl ObjectResourceManager {
         object_id: ObjectId,
         object: &Object,
         transfer_resources: &mut BufferUploadResources,
-    ) -> anyhow::Result<Arc<Buffer>> {
+    ) -> anyhow::Result<Buffer> {
         trace!(
             "uploading primitive ops for object id = {:?} to gpu buffer",
             object_id
@@ -356,7 +334,7 @@ impl ObjectResourceManager {
         buffer_usage_during_render: vk::BufferUsageFlags,
         render_dst_stage: vk::PipelineStageFlags2,
         render_dst_access_flags: vk::AccessFlags2,
-    ) -> anyhow::Result<Arc<Buffer>>
+    ) -> anyhow::Result<Buffer>
     where
         I: NoUninit,
     {
@@ -403,12 +381,7 @@ impl ObjectResourceManager {
             render_dst_access_flags,
         );
 
-        let new_buffer = Arc::new(new_buffer);
-
-        transfer_resources
-            .staging_buffers
-            .push(Arc::new(staging_buffer));
-        transfer_resources.target_buffers.push(new_buffer.clone());
+        transfer_resources.staging_buffers.push(staging_buffer);
 
         Ok(new_buffer)
     }
@@ -557,9 +530,9 @@ fn write_desc_set_primitive_ops(
 
 struct PerObjectResources {
     pub object_id: ObjectId,
-    pub bounding_mesh_buffer: Arc<Buffer>,
+    pub bounding_mesh_buffer: Buffer,
     pub bounding_mesh_vertex_count: u32,
-    pub primitive_ops_buffer: Arc<Buffer>,
+    pub primitive_ops_buffer: Buffer,
     pub primitive_ops_descriptor_set: Arc<DescriptorSet>,
 }
 
@@ -570,8 +543,7 @@ struct BufferUploadResources {
     pub render_queue_family_index: u32,
     pub completion_fence: Arc<Fence>,
     pub semaphore_queue_sync: Arc<Semaphore>,
-    pub staging_buffers: Vec<Arc<Buffer>>,
-    pub target_buffers: Vec<Arc<Buffer>>,
+    pub staging_buffers: Vec<Buffer>,
 }
 
 impl BufferUploadResources {
@@ -609,14 +581,12 @@ impl BufferUploadResources {
             completion_fence,
             semaphore_queue_sync,
             staging_buffers: Default::default(),
-            target_buffers: Default::default(),
         })
     }
 
     /// cleans up buffers and resets the fence
     pub fn reset(&mut self) -> VkResult<()> {
         self.staging_buffers.clear();
-        self.target_buffers.clear();
         self.completion_fence.reset()?;
         Ok(())
     }

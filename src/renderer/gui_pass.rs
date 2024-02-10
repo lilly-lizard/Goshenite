@@ -51,25 +51,25 @@ pub struct GuiPass {
     synchronization_2_functions: Synchronization2,
 
     memory_allocator: Arc<MemoryAllocator>,
-    pipeline: Arc<GraphicsPipeline>,
+    pipeline: GraphicsPipeline,
 
     /// Used for data transfers asynchronous to the rendering queue
-    transfer_command_buffer: Arc<CommandBuffer>,
+    transfer_command_buffer: CommandBuffer,
     /// Used for pipeline barriers to sync with the render queue family
-    render_sync_command_buffer: Arc<CommandBuffer>,
+    render_sync_command_buffer: CommandBuffer,
     /// Used for data transfers on the rendering queue
-    render_queue_command_buffer: Arc<CommandBuffer>,
+    render_queue_command_buffer: CommandBuffer,
 
-    texture_create_fence: Arc<Fence>,
-    texture_update_fence: Arc<Fence>,
-    render_sync_semaphore: Arc<Semaphore>,
+    texture_create_fence: Fence,
+    texture_update_fence: Fence,
+    render_sync_semaphore: Semaphore,
 
     descriptor_pools: Vec<Arc<DescriptorPool>>,
-    unused_texture_desc_sets: Vec<Arc<DescriptorSet>>,
+    unused_texture_desc_sets: Vec<DescriptorSet>,
 
     texture_samplers: SamplerVariations,
     texture_desc_sets_and_images:
-        AHashMap<egui::TextureId, (Arc<DescriptorSet>, Arc<ImageView<Image>>, TextureOptions)>,
+        AHashMap<egui::TextureId, (DescriptorSet, ImageView<Image>, TextureOptions)>,
 
     buffer_pools: Vec<Arc<MemoryPool>>,
     /// Indicates which buffer pool to use next. E.g. two buffer pools have been created, but
@@ -99,20 +99,15 @@ impl GuiPass {
         let synchronization_2_functions =
             Synchronization2::new(&device.instance().inner(), &device.inner());
 
-        let transfer_command_buffer = Arc::new(
+        let transfer_command_buffer =
             CommandBuffer::new(transfer_command_pool, vk::CommandBufferLevel::PRIMARY)
-                .context("allocating transfer command buffer")?,
-        );
-
-        let render_sync_command_buffer = Arc::new(
+                .context("allocating transfer command buffer")?;
+        let render_sync_command_buffer =
             CommandBuffer::new(render_command_pool.clone(), vk::CommandBufferLevel::PRIMARY)
-                .context("allocating render command buffer")?,
-        );
-
-        let render_queue_command_buffer = Arc::new(
+                .context("allocating render command buffer")?;
+        let render_queue_command_buffer =
             CommandBuffer::new(render_command_pool, vk::CommandBufferLevel::PRIMARY)
-                .context("allocating render command buffer")?,
-        );
+                .context("allocating render command buffer")?;
 
         let descriptor_pool = create_descriptor_pool(device.clone())?;
         let desc_set_layout = create_descriptor_layout(device.clone())?;
@@ -125,11 +120,11 @@ impl GuiPass {
         let initial_buffer_pool = create_buffer_pool(memory_allocator.clone())?;
 
         let texture_create_fence =
-            Arc::new(Fence::new_signalled(device.clone()).context("creating fence")?);
+            Fence::new_signalled(device.clone()).context("creating fence")?;
         let texture_update_fence =
-            Arc::new(Fence::new_signalled(device.clone()).context("creating fence")?);
+            Fence::new_signalled(device.clone()).context("creating fence")?;
         let render_sync_semaphore =
-            Arc::new(Semaphore::new(device.clone()).context("creating render sync semaphore")?);
+            Semaphore::new(device.clone()).context("creating render sync semaphore")?;
 
         Ok(Self {
             device,
@@ -286,7 +281,7 @@ impl GuiPass {
             max_depth: 1.,
         };
 
-        command_buffer.bind_pipeline(self.pipeline.as_ref());
+        command_buffer.bind_pipeline(&self.pipeline);
         command_buffer.push_constants(
             self.pipeline.pipeline_layout().as_ref(),
             vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
@@ -341,10 +336,7 @@ impl Drop for GuiPass {
 impl GuiPass {
     fn wait_on_upload_fences(&mut self) -> VkResult<()> {
         self.device.wait_for_fences(
-            [
-                self.texture_create_fence.as_ref(),
-                self.texture_update_fence.as_ref(),
-            ],
+            [&self.texture_create_fence, &self.texture_update_fence],
             true,
             TIMEOUT_NANOSECS,
         )
@@ -369,7 +361,7 @@ impl GuiPass {
         let transfer_fence = if queue_ownership_transfer_required {
             None // fence signalled by render sync command buffer instead
         } else {
-            Some(self.texture_create_fence.as_ref())
+            Some(&self.texture_create_fence)
         };
 
         let transfer_command_buffers = [self.transfer_command_buffer.handle()];
@@ -391,10 +383,7 @@ impl GuiPass {
                 .wait_dst_stage_mask(&[vk::PipelineStageFlags::FRAGMENT_SHADER]);
 
             render_queue
-                .submit(
-                    [render_sync_submit_info],
-                    Some(self.texture_create_fence.as_ref()),
-                )
+                .submit([render_sync_submit_info], Some(&self.texture_create_fence))
                 .context("submitting texture creation render queue sync commands")?;
         }
 
@@ -413,7 +402,7 @@ impl GuiPass {
         let submit_info = vk::SubmitInfo::builder().command_buffers(&command_buffers);
 
         render_queue
-            .submit([submit_info], Some(self.texture_update_fence.as_ref()))
+            .submit([submit_info], Some(&self.texture_update_fence))
             .context("submitting gui texture update commands")?;
 
         Ok(())
@@ -569,10 +558,8 @@ impl GuiPass {
 
         let new_image_view_properties =
             ImageViewProperties::from_image_properties_default(&new_image_properties);
-        let new_image_view = Arc::new(
-            ImageView::new(new_image.clone(), new_image_view_properties)
-                .context("creating image view for new egui texture")?,
-        );
+        let new_image_view = ImageView::new(new_image.clone(), new_image_view_properties)
+            .context("creating image view for new egui texture")?;
 
         // copy data from staging buffer to image
 
@@ -752,7 +739,7 @@ impl GuiPass {
         }
     }
 
-    fn get_new_font_texture_desc_set(&mut self) -> anyhow::Result<Arc<DescriptorSet>> {
+    fn get_new_font_texture_desc_set(&mut self) -> anyhow::Result<DescriptorSet> {
         if let Some(existing_desc_set) = self.unused_texture_desc_sets.pop() {
             // reuse old desc set
             return Ok(existing_desc_set);
@@ -761,7 +748,7 @@ impl GuiPass {
         return self.allocate_font_texture_desc_set();
     }
 
-    fn allocate_font_texture_desc_set(&mut self) -> anyhow::Result<Arc<DescriptorSet>> {
+    fn allocate_font_texture_desc_set(&mut self) -> anyhow::Result<DescriptorSet> {
         let set_layout = self
             .pipeline
             .pipeline_layout()
@@ -789,7 +776,7 @@ impl GuiPass {
             Ok(desc_set) => desc_set,
         };
 
-        Ok(Arc::new(desc_set))
+        Ok(desc_set)
     }
 
     fn allocate_font_texture_desc_set_from_new_pool(
@@ -843,15 +830,14 @@ impl GuiPass {
             .texture_desc_sets_and_images
             .get(&texture_id)
             .ok_or(GuiRendererError::TextureDescSetMissing { id: texture_id })
-            .context("recording gui render commands")?
-            .clone();
+            .context("recording gui render commands")?;
 
         command_buffer.set_scissor(0, &[scissor]);
         command_buffer.bind_descriptor_sets(
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline.pipeline_layout().as_ref(),
             0,
-            [desc_set.as_ref()],
+            [desc_set],
             &[],
         );
         command_buffer.bind_vertex_buffers(0, [&vertex_buffer], &[0]);
@@ -1088,7 +1074,7 @@ fn create_pipeline_layout(
 fn create_pipeline(
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
-) -> anyhow::Result<Arc<GraphicsPipeline>> {
+) -> anyhow::Result<GraphicsPipeline> {
     let (vert_stage, frag_stage) = create_shader_stages(pipeline_layout.device())?;
 
     let dynamic_state =
@@ -1129,7 +1115,7 @@ fn create_pipeline(
     )
     .context("creating gui pass pipeline")?;
 
-    Ok(Arc::new(pipeline))
+    Ok(pipeline)
 }
 
 #[cfg(feature = "include-spirv-bytes")]

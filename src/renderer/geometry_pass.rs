@@ -35,9 +35,9 @@ pub(super) mod descriptor {
 pub struct GeometryPass {
     device: Arc<Device>,
 
-    desc_set_camera: Arc<DescriptorSet>,
+    desc_set_camera: DescriptorSet,
 
-    pipeline: Arc<GraphicsPipeline>,
+    pipeline: GraphicsPipeline,
     object_buffer_manager: ObjectResourceManager,
 }
 
@@ -53,7 +53,7 @@ impl GeometryPass {
     ) -> anyhow::Result<Self> {
         let descriptor_pool = create_descriptor_pool(device.clone())?;
 
-        let desc_set_camera: Arc<DescriptorSet> = create_desc_set_camera(descriptor_pool.clone())?;
+        let desc_set_camera = create_desc_set_camera(descriptor_pool.clone())?;
         write_camera_descriptor_set(&desc_set_camera, camera_buffer, descriptor::BINDING_CAMERA);
 
         let primitive_ops_desc_set_layout = create_primitive_ops_desc_set_layout(device.clone())?;
@@ -102,14 +102,14 @@ impl GeometryPass {
             return;
         }
 
-        command_buffer.bind_pipeline(self.pipeline.as_ref());
+        command_buffer.bind_pipeline(&self.pipeline);
         command_buffer.set_viewport(0, &[viewport]);
         command_buffer.set_scissor(0, &[scissor]);
         command_buffer.bind_descriptor_sets(
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline.pipeline_layout().as_ref(),
             0,
-            [self.desc_set_camera.as_ref()],
+            [&self.desc_set_camera],
             &[],
         );
 
@@ -144,9 +144,7 @@ fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorP
     Ok(Arc::new(descriptor_pool))
 }
 
-fn create_desc_set_camera(
-    descriptor_pool: Arc<DescriptorPool>,
-) -> anyhow::Result<Arc<DescriptorSet>> {
+fn create_desc_set_camera(descriptor_pool: Arc<DescriptorPool>) -> anyhow::Result<DescriptorSet> {
     create_camera_descriptor_set_with_binding(descriptor_pool, descriptor::BINDING_CAMERA)
         .context("creating geometry pass descriptor set")
 }
@@ -188,7 +186,7 @@ fn create_pipeline_layout(
 fn create_pipeline(
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
-) -> anyhow::Result<Arc<GraphicsPipeline>> {
+) -> anyhow::Result<GraphicsPipeline> {
     let (vert_stage, frag_stage) = create_shader_stages(pipeline_layout.device())?;
 
     let dynamic_state =
@@ -241,7 +239,7 @@ fn create_pipeline(
     )
     .context("creating geometry pass pipeline")?;
 
-    Ok(Arc::new(pipeline))
+    Ok(pipeline)
 }
 
 #[cfg(feature = "include-spirv-bytes")]

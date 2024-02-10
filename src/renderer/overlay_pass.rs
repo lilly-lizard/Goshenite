@@ -8,7 +8,7 @@ use crate::{helper::more_errors::IoError, renderer::vulkan_init::write_camera_de
 use anyhow::Context;
 use ash::vk::{self, BufferUsageFlags};
 use bort_vk::{
-    Buffer, BufferProperties, ColorBlendState, CommandBuffer, DescriptorPool,
+    AllocationAccess, Buffer, BufferProperties, ColorBlendState, CommandBuffer, DescriptorPool,
     DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, Device, DeviceOwned,
     DynamicState, GraphicsPipeline, GraphicsPipelineProperties, InputAssemblyState,
     MemoryAllocator, PipelineAccess, PipelineLayout, PipelineLayoutProperties, RasterizationState,
@@ -24,13 +24,19 @@ mod descriptor {
 }
 
 pub struct OverlayPass {
-    desc_set_camera: Arc<DescriptorSet>,
-    pipeline_aabb: Arc<GraphicsPipeline>,
-    pipeline_gizmos: Arc<GraphicsPipeline>,
+    desc_set_camera: DescriptorSet,
+    pipeline_aabb: GraphicsPipeline,
+    pipeline_gizmos: GraphicsPipeline,
+    arrow_gizmo_vertex_buffer: Buffer,
+    arrow_gizmo_index_buffer: Buffer,
 }
 
 impl OverlayPass {
-    pub fn new(render_pass: &RenderPass, camera_buffer: &Buffer) -> anyhow::Result<Self> {
+    pub fn new(
+        memory_allocator: Arc<MemoryAllocator>,
+        render_pass: &RenderPass,
+        camera_buffer: &Buffer,
+    ) -> anyhow::Result<Self> {
         let device = render_pass.device().clone();
 
         let descriptor_pool = create_descriptor_pool(device.clone())?;
@@ -47,10 +53,15 @@ impl OverlayPass {
         let pipeline_gizmos =
             create_aabb_pipeline(device.clone(), pipeline_layout_gizmos.clone(), render_pass)?;
 
+        let (arrow_gizmo_vertex_buffer, arrow_gizmo_index_buffer) =
+            create_and_upload_gizmo_buffers(memory_allocator)?;
+
         Ok(Self {
             desc_set_camera,
             pipeline_aabb,
             pipeline_gizmos,
+            arrow_gizmo_vertex_buffer,
+            arrow_gizmo_index_buffer,
         })
     }
 
@@ -65,18 +76,29 @@ impl OverlayPass {
             return;
         }
 
-        command_buffer.bind_pipeline(self.pipeline_aabb.as_ref());
+        command_buffer.bind_pipeline(&self.pipeline_aabb);
         command_buffer.set_viewport(0, &[viewport]);
         command_buffer.set_scissor(0, &[scissor]);
         command_buffer.bind_descriptor_sets(
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline_aabb.pipeline_layout().as_ref(),
             0,
-            [self.desc_set_camera.as_ref()],
+            [&self.desc_set_camera],
             &[],
         );
 
         object_resource_manager.draw_bounding_box_commands(command_buffer);
+    }
+
+    pub fn record_gizmo_commands(
+        &self,
+        command_buffer: &CommandBuffer,
+        viewport: vk::Viewport,
+        scissor: vk::Rect2D,
+    ) {
+        command_buffer.bind_pipeline(&self.pipeline_gizmos);
+        command_buffer.set_viewport(0, &[viewport]);
+        command_buffer.set_scissor(0, &[scissor]);
     }
 }
 
@@ -97,45 +119,68 @@ fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorP
 
 fn create_descriptor_set_camera(
     descriptor_pool: Arc<DescriptorPool>,
-) -> anyhow::Result<Arc<DescriptorSet>> {
+) -> anyhow::Result<DescriptorSet> {
     create_camera_descriptor_set_with_binding(descriptor_pool, descriptor::BINDING_CAMERA)
         .context("creating geometry pass descriptor set")
 }
 
 /// Returns `(vertex_buffer, index_buffer)`
-fn create_gizmo_buffers(
+fn create_and_upload_gizmo_buffers(
     memory_allocator: Arc<MemoryAllocator>,
-) -> anyhow::Result<(Arc<Buffer>, Arc<Buffer>)> {
+) -> anyhow::Result<(Buffer, Buffer)> {
     let arrow_stl = load_arrow_stl().context("loading gizmo arrow stl")?;
 
+    let vertices = arrow_stl.vertices;
+    let indices: Vec<u32> = arrow_stl
+        .faces
+        .iter()
+        .flat_map(|indexed_triangle| {
+            [
+                // these are called vertices but are actually indices
+                indexed_triangle.vertices[0] as u32,
+                indexed_triangle.vertices[1] as u32,
+                indexed_triangle.vertices[2] as u32,
+            ]
+        })
+        .collect();
+
     let buffer_allocation_info = AllocationCreateInfo {
-        required_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE, // todo staging buffer
+        preferred_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
         ..AllocationCreateInfo::default()
     };
 
     let vertex_buffer_properties = BufferProperties::new_default(
-        arrow_stl.vertices.len() as u64 * 3 * 4, // 3 f32 vertices
+        vertices.len() as u64 * 3 * 4, // 3 f32 vertices
         BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
     );
-    let vertex_buffer = Buffer::new(
+    let mut vertex_buffer = Buffer::new(
         memory_allocator.clone(),
         vertex_buffer_properties,
         buffer_allocation_info.clone(),
     )
     .context("creating gizmo vertex buffer")?;
 
+    vertex_buffer
+        .write_iter(vertices, 0)
+        .context("uploading gizmo vertices")?;
+
     let index_buffer_properties = BufferProperties::new_default(
-        arrow_stl.faces.len() as u64 * 3 * 4, // 3 u32 indices
+        indices.len() as u64 * 4, // u32 indices
         BufferUsageFlags::INDEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
     );
-    let index_buffer = Buffer::new(
+    let mut index_buffer = Buffer::new(
         memory_allocator,
         index_buffer_properties,
         buffer_allocation_info,
     )
     .context("creating gizmo vertex buffer")?;
 
-    Ok((Arc::new(vertex_buffer), Arc::new(index_buffer)))
+    index_buffer
+        .write_iter(indices, 0)
+        .context("uploading gizmo indices")?;
+
+    Ok((vertex_buffer, index_buffer))
 }
 
 fn load_arrow_stl() -> Result<stl_io::IndexedMesh, IoError> {
@@ -164,7 +209,7 @@ fn create_aabb_pipeline(
     device: Arc<Device>,
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
-) -> anyhow::Result<Arc<GraphicsPipeline>> {
+) -> anyhow::Result<GraphicsPipeline> {
     let (vert_stage, frag_stage) = create_aabb_shader_stages(&device)?;
 
     let dynamic_state =
@@ -207,7 +252,7 @@ fn create_aabb_pipeline(
     )
     .context("creating overlay pass aabb pipeline")?;
 
-    Ok(Arc::new(pipeline_aabb))
+    Ok(pipeline_aabb)
 }
 
 #[cfg(feature = "include-spirv-bytes")]
@@ -251,7 +296,7 @@ fn create_gizmos_pipeline(
     device: Arc<Device>,
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
-) -> anyhow::Result<Arc<GraphicsPipeline>> {
+) -> anyhow::Result<GraphicsPipeline> {
     let (vert_stage, frag_stage) = create_gizmos_shader_stages(&device)?;
 
     let dynamic_state =
@@ -287,7 +332,7 @@ fn create_gizmos_pipeline(
     )
     .context("creating overlay pass gizmos pipeline")?;
 
-    Ok(Arc::new(pipeline_gizmos))
+    Ok(pipeline_gizmos)
 }
 
 #[cfg(feature = "include-spirv-bytes")]
