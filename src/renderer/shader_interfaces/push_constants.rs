@@ -1,5 +1,4 @@
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat4, Vec4};
 
 /// Should match definitions in `gui.vert` and `gui.frag`.
 #[repr(C)]
@@ -15,22 +14,6 @@ impl GuiPushConstant {
         Self {
             screen_size,
             need_srgb_conv: need_srgb_conv as u32,
-        }
-    }
-}
-
-/// Should match definition in `overlay.vert`
-#[repr(C)]
-#[derive(Clone, Copy, Default, Pod, Zeroable)]
-pub struct OverlayPushConstant {
-    pub proj_view: [f32; 16],
-    pub offset: [f32; 4],
-}
-impl OverlayPushConstant {
-    pub fn new(proj_view: Mat4, offset: Vec4) -> Self {
-        Self {
-            proj_view: proj_view.to_cols_array(),
-            offset: offset.into(),
         }
     }
 }

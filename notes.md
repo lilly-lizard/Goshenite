@@ -4,6 +4,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- make GizmoPass and draw in first subpass
 - switch to back-face culling beacuse only the misses benefit from the max-dist cutoff, where as the more expensive hit frags will benefit from the initial min-distance
 
 - undo (ctrl z)

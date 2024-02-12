@@ -1,10 +1,19 @@
 use super::{
     config_renderer::GIZMO_ARROW_STL_PATH,
     object_resource_manager::ObjectResourceManager,
-    shader_interfaces::vertex_inputs::{BoundingBoxVertex, GizmoVertex, VulkanVertex},
+    shader_interfaces::{
+        primitive_op_buffer::PRIMITIVE_ID_BACKGROUND,
+        vertex_inputs::{BoundingBoxVertex, GizmoVertex, VulkanVertex},
+    },
     vulkan_init::{create_camera_descriptor_set_with_binding, render_pass_indices},
 };
-use crate::{helper::more_errors::IoError, renderer::vulkan_init::write_camera_descriptor_set};
+use crate::{
+    helper::more_errors::IoError,
+    renderer::{
+        shader_interfaces::push_constants::GizmosPushConstant,
+        vulkan_init::write_camera_descriptor_set,
+    },
+};
 use anyhow::Context;
 use ash::vk::{self, BufferUsageFlags};
 use bort_vk::{
@@ -27,8 +36,10 @@ pub struct OverlayPass {
     desc_set_camera: DescriptorSet,
     pipeline_aabb: GraphicsPipeline,
     pipeline_gizmos: GraphicsPipeline,
+
     arrow_gizmo_vertex_buffer: Buffer,
     arrow_gizmo_index_buffer: Buffer,
+    arrow_gizmo_index_count: u32,
 }
 
 impl OverlayPass {
@@ -53,7 +64,7 @@ impl OverlayPass {
         let pipeline_gizmos =
             create_aabb_pipeline(device.clone(), pipeline_layout_gizmos.clone(), render_pass)?;
 
-        let (arrow_gizmo_vertex_buffer, arrow_gizmo_index_buffer) =
+        let (arrow_gizmo_vertex_buffer, arrow_gizmo_index_buffer, arrow_gizmo_index_count) =
             create_and_upload_gizmo_buffers(memory_allocator)?;
 
         Ok(Self {
@@ -62,6 +73,7 @@ impl OverlayPass {
             pipeline_gizmos,
             arrow_gizmo_vertex_buffer,
             arrow_gizmo_index_buffer,
+            arrow_gizmo_index_count,
         })
     }
 
@@ -96,9 +108,30 @@ impl OverlayPass {
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
     ) {
+        let color: [f32; 3] = [0.8, 0.1, 0.1];
+        let object_id = PRIMITIVE_ID_BACKGROUND;
+        let gizmo_push_constant = GizmosPushConstant { color, object_id };
+        let gizmo_push_constant_bytes = bytemuck::bytes_of(&gizmo_push_constant);
+
         command_buffer.bind_pipeline(&self.pipeline_gizmos);
         command_buffer.set_viewport(0, &[viewport]);
         command_buffer.set_scissor(0, &[scissor]);
+        command_buffer.bind_descriptor_sets(
+            vk::PipelineBindPoint::GRAPHICS,
+            self.pipeline_gizmos.pipeline_layout().as_ref(),
+            0,
+            [&self.desc_set_camera],
+            &[],
+        );
+        command_buffer.push_constants(
+            self.pipeline_gizmos.pipeline_layout().as_ref(),
+            vk::ShaderStageFlags::FRAGMENT,
+            0,
+            gizmo_push_constant_bytes,
+        );
+        command_buffer.bind_vertex_buffers(0, [&self.arrow_gizmo_vertex_buffer], &[0]);
+        command_buffer.bind_index_buffer(&self.arrow_gizmo_index_buffer, 0, vk::IndexType::UINT32);
+        command_buffer.draw_indexed(self.arrow_gizmo_index_count, 1, 0, 0, 0);
     }
 }
 
@@ -124,10 +157,10 @@ fn create_descriptor_set_camera(
         .context("creating geometry pass descriptor set")
 }
 
-/// Returns `(vertex_buffer, index_buffer)`
+/// Returns `(vertex_buffer, index_buffer, index_count)`
 fn create_and_upload_gizmo_buffers(
     memory_allocator: Arc<MemoryAllocator>,
-) -> anyhow::Result<(Buffer, Buffer)> {
+) -> anyhow::Result<(Buffer, Buffer, u32)> {
     let arrow_stl = load_arrow_stl().context("loading gizmo arrow stl")?;
 
     let vertices = arrow_stl.vertices;
@@ -165,8 +198,9 @@ fn create_and_upload_gizmo_buffers(
         .write_iter(vertices, 0)
         .context("uploading gizmo vertices")?;
 
+    let index_count = indices.len();
     let index_buffer_properties = BufferProperties::new_default(
-        indices.len() as u64 * 4, // u32 indices
+        index_count as u64 * 4, // u32 indices
         BufferUsageFlags::INDEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
     );
     let mut index_buffer = Buffer::new(
@@ -180,7 +214,7 @@ fn create_and_upload_gizmo_buffers(
         .write_iter(indices, 0)
         .context("uploading gizmo indices")?;
 
-    Ok((vertex_buffer, index_buffer))
+    Ok((vertex_buffer, index_buffer, index_count as u32))
 }
 
 fn load_arrow_stl() -> Result<stl_io::IndexedMesh, IoError> {
@@ -283,8 +317,14 @@ fn create_gizmos_pipeline_layout(
     device: Arc<Device>,
     desc_set_layout_camera: Arc<DescriptorSetLayout>,
 ) -> anyhow::Result<Arc<PipelineLayout>> {
+    let push_constant_range = vk::PushConstantRange::builder()
+        .stage_flags(vk::ShaderStageFlags::FRAGMENT)
+        .offset(0)
+        .size(std::mem::size_of::<GizmosPushConstant>() as u32)
+        .build();
+
     let pipeline_layout_props =
-        PipelineLayoutProperties::new(vec![desc_set_layout_camera], Vec::new());
+        PipelineLayoutProperties::new(vec![desc_set_layout_camera], vec![push_constant_range]);
 
     let pipeline_layout = PipelineLayout::new(device, pipeline_layout_props)
         .context("creating overlay pass gizmos pipeline layout")?;
