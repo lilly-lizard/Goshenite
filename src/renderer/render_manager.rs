@@ -2,6 +2,7 @@ use super::{
     config_renderer::{RenderOptions, TIMEOUT_NANOSECS},
     element_id_reader::{ElementAtPoint, ElementIdReader},
     geometry_pass::GeometryPass,
+    gizmo_pass::GizmoPass,
     gui_pass::GuiPass,
     lighting_pass::LightingPass,
     overlay_pass::OverlayPass,
@@ -71,10 +72,11 @@ pub struct RenderManager {
     primitive_id_buffers: Vec<Arc<ImageView<Image>>>,
     camera_ubo: Buffer,
 
-    lighting_pass: LightingPass,
     geometry_pass: GeometryPass,
-    gui_pass: GuiPass,
+    gizmo_pass: GizmoPass,
+    lighting_pass: LightingPass,
     overlay_pass: OverlayPass,
+    gui_pass: GuiPass,
 
     object_id_reader: ElementIdReader,
 
@@ -185,6 +187,8 @@ impl RenderManager {
             render_queue_family_index,
         )?;
 
+        let gizmo_pass = GizmoPass::new(memory_allocator.clone(), &render_pass, &camera_ubo)?;
+
         let lighting_pass = LightingPass::new(
             device.clone(),
             &render_pass,
@@ -194,6 +198,8 @@ impl RenderManager {
             &primitive_id_buffers,
         )?;
 
+        let overlay_pass = OverlayPass::new(&render_pass, &camera_ubo)?;
+
         let gui_pass = GuiPass::new(
             memory_allocator.clone(),
             &render_pass,
@@ -201,8 +207,6 @@ impl RenderManager {
             command_pool_transfer.clone(),
             scale_factor,
         )?;
-
-        let overlay_pass = OverlayPass::new(memory_allocator.clone(), &render_pass, &camera_ubo)?;
 
         let render_command_buffers = create_render_command_buffers(
             command_pool_render.clone(),
@@ -253,9 +257,10 @@ impl RenderManager {
             camera_ubo,
 
             geometry_pass,
+            gizmo_pass,
             lighting_pass,
-            gui_pass,
             overlay_pass,
+            gui_pass,
 
             object_id_reader,
 
@@ -592,6 +597,9 @@ impl RenderManager {
         command_buffer.begin_render_pass(&render_pass_begin, vk::SubpassContents::INLINE);
 
         self.geometry_pass
+            .record_commands(command_buffer, viewport, render_area);
+
+        self.gizmo_pass
             .record_commands(command_buffer, viewport, render_area);
 
         command_buffer.next_subpass(vk::SubpassContents::INLINE);

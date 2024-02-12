@@ -1,7 +1,7 @@
 #version 450
 
 layout (location = 0) in vec4 in_position;
-layout (location = 1) in uint in_object_id;
+layout (location = 1) in uint _in_object_id;
 
 layout (set = 0, binding = 0) uniform Camera {
 	mat4 view_inverse;

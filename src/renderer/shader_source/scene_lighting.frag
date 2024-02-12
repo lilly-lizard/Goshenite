@@ -50,6 +50,8 @@ void main()
 	if (object_op_id == ID_BACKGROUND) {
 		// ray miss: draw background
 		out_color = vec4(background(ray_d), 1.);
+	} else if (object_op_id == ID_GIZMO) {
+		out_color = subpassLoad(in_albedo_specular);
 	} else {
 		// ray hit: calculate color (https://learnopengl.com/Lighting/Basic-Lighting)
 

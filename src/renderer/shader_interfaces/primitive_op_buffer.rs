@@ -10,6 +10,7 @@ pub const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
 pub const PRIMITIVE_ID_BLEND: PrimitiveOpBufferUnit = 0xFFFE;
 /// Inicates an unset primitive id
 pub const PRIMITIVE_ID_BACKGROUND: PrimitiveOpBufferUnit = 0xFFFFFFFF;
+pub const PRIMITIVE_ID_GIZMO: PrimitiveOpBufferUnit = 0xFFFFFFFE;
 
 #[rustfmt::skip]
 #[allow(dead_code)]

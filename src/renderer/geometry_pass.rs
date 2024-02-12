@@ -194,11 +194,10 @@ fn create_pipeline(
 
     let viewport_state = ViewportState::new_dynamic(1, 1);
 
-    const COLOR_ATTACHMENT_COUNT: usize = 3;
     let color_blend_state = ColorBlendState::new_default(vec![
         ColorBlendState::blend_state_disabled(
         );
-        COLOR_ATTACHMENT_COUNT
+        render_pass_indices::GBUFFER_COLOR_ATTACHMENT_COUNT
     ]);
 
     let depth_stencil_state = DepthStencilState {

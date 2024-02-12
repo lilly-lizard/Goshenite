@@ -129,7 +129,7 @@ impl VulkanVertex for BoundingBoxVertex {
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, NoUninit)]
 pub struct GizmoVertex {
-    pub in_position: [f32; 3],
+    pub in_position: [f32; 4],
 }
 
 impl VulkanVertex for GizmoVertex {

@@ -569,6 +569,8 @@ pub mod render_pass_indices {
     pub const SUBPASS_GBUFFER: usize = 0;
     pub const SUBPASS_DEFERRED: usize = 1;
     pub const NUM_SUBPASSES: usize = 2;
+
+    pub const GBUFFER_COLOR_ATTACHMENT_COUNT: usize = 3;
 }
 
 fn attachment_descriptions(
