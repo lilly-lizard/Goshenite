@@ -563,14 +563,12 @@ impl RenderManager {
                     "previous render fence timed out! timeout set to {}ns",
                     TIMEOUT_NANOSECS
                 );
-                // todo can handle this on caller side
                 return Err(fence_wait_err)
                     .context("timeout while waiting for previous frame fence");
             } else {
                 return Err(fence_wait_err).context("waiting for previous frame fence");
             }
         }
-
         Ok(())
     }
 
