@@ -7,6 +7,17 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - make GizmoPass and draw in first subpass
 - switch to back-face culling beacuse only the misses benefit from the max-dist cutoff, where as the more expensive hit frags will benefit from the initial min-distance
 
+- license (every source file)
+	- https://kristoff.it/blog/the-open-source-game/
+	- https://web.archive.org/web/20231030181609/https://redis.io/docs/about/governance/
+	- https://en.wikipedia.org/wiki/Benevolent_dictator_for_life
+	- https://opensource.org/license/bsd-3-clause/
+	- https://redis.io/docs/about/license/
+	- https://github.com/redis/redis/blob/unstable/src/acl.c
+	- https://github.com/godotengine/godot/blob/master/main/main.cpp
+- code of conduct
+- contributing
+
 - undo (ctrl z)
 
 - compute dispatch

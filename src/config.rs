@@ -30,8 +30,6 @@ pub const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Debug;
 #[cfg(not(debug_assertions))]
 pub const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Info;
 
-/// Wherever the app window starts maximized
-pub const START_MAXIMIZED: bool = false;
 /// Default window size if `START_MAXIMIZED` is false
 pub const DEFAULT_WINDOW_SIZE: [u32; 2] = [1000, 700];
 
