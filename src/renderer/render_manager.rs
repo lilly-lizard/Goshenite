@@ -596,10 +596,10 @@ impl RenderManager {
 
         self.geometry_pass
             .record_commands(command_buffer, viewport, render_area);
-
+        /*
         self.gizmo_pass
             .record_commands(command_buffer, viewport, render_area);
-
+        */
         command_buffer.next_subpass(vk::SubpassContents::INLINE);
 
         self.lighting_pass.record_commands(
