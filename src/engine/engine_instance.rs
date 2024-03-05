@@ -38,8 +38,9 @@ use std::{
     time::Instant,
 };
 use winit::{
-    event::{ElementState, Event, KeyboardInput, StartCause, VirtualKeyCode, WindowEvent},
+    event::{ElementState, Event, KeyEvent, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
+    keyboard::PhysicalKey,
     window::{Window, WindowBuilder},
 };
 
@@ -214,7 +215,7 @@ impl EngineInstance {
             WindowEvent::CursorLeft { .. } => self.cursor.set_in_window_state(false),
 
             // keyboard
-            WindowEvent::KeyboardInput { input, .. } => self.process_keyboard_input(input),
+            WindowEvent::KeyboardInput { event, .. } => self.process_keyboard_input(event),
 
             // window resize
             WindowEvent::Resized(new_inner_size) => {
@@ -222,12 +223,8 @@ impl EngineInstance {
             }
 
             // dpi change
-            WindowEvent::ScaleFactorChanged {
-                scale_factor,
-                new_inner_size,
-            } => {
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
                 self.set_scale_factor(scale_factor)?;
-                self.update_window_inner_size(*new_inner_size)?;
             }
 
             WindowEvent::ThemeChanged(winit_theme) => {
@@ -316,19 +313,15 @@ impl EngineInstance {
         Ok(())
     }
 
-    fn process_keyboard_input(&mut self, keyboard_input: KeyboardInput) {
-        let Some(key_code) = keyboard_input.virtual_keycode else {
-            return;
-        };
-
-        match key_code {
-            VirtualKeyCode::P => {
-                if let ElementState::Released = keyboard_input.state {
+    fn process_keyboard_input(&mut self, key_event: KeyEvent) {
+        match key_event.physical_key {
+            PhysicalKey::P => {
+                if let ElementState::Released = key_event.state {
                     self.gui.set_command_palette_visability(true);
                 }
             }
-            VirtualKeyCode::Escape => {
-                if let ElementState::Released = keyboard_input.state {
+            PhysicalKey::Escape => {
+                if let ElementState::Released = key_event.state {
                     self.gui.set_command_palette_visability(false);
                 }
             }
