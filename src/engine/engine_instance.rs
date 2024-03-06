@@ -100,7 +100,7 @@ impl EngineInstance {
         let renderer_update_camera_res = renderer.update_camera(&camera);
         anyhow_unwrap(renderer_update_camera_res, "init renderer camera");
 
-        let gui = Gui::new(&event_loop, scale_factor as f32);
+        let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32);
 
         let object_collection = ObjectCollection::new();
 

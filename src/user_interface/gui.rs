@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use self::command_palette::GuiStateCommandPalette;
 
 use super::{
@@ -44,7 +46,8 @@ impl EditState {
 
 /// Controller for an [`egui`] immediate-mode gui
 pub struct Gui {
-    context: egui::Context,
+    egui_context: egui::Context,
+    window: Arc<Window>,
     winit_state: egui_winit::State,
     mesh_primitives: Vec<egui::ClippedPrimitive>,
     sub_window_states: SubWindowStates,
@@ -60,20 +63,30 @@ impl Gui {
     /// * `window`: [`winit`] window
     /// * `max_texture_side`: maximum size of a texture. Query from graphics driver using
     /// [`crate::renderer::render_manager::RenderManager::max_image_array_layers`]
-    pub fn new<T>(event_loop: &EventLoopWindowTarget<T>, scale_factor: f32) -> Self {
-        let context = egui::Context::default();
-        context.set_style(egui::Style {
+    pub fn new<T>(
+        event_loop: &EventLoopWindowTarget<T>,
+        window: Arc<Window>,
+        scale_factor: f32,
+    ) -> Self {
+        let egui_context = egui::Context::default();
+        egui_context.set_style(egui::Style {
             // disable sentance wrap by default (horizontal scroll instead)
             wrap: Some(false),
             ..Default::default()
         });
 
         // todo max_texture_side?
-        let winit_state =
-            egui_winit::State::new(egui::ViewportId::ROOT, event_loop, Some(scale_factor), None);
+        let winit_state = egui_winit::State::new(
+            egui_context,
+            egui::ViewportId::ROOT,
+            event_loop,
+            Some(scale_factor),
+            None,
+        );
 
         Self {
-            context,
+            egui_context,
+            window,
             winit_state,
             mesh_primitives: Default::default(),
             sub_window_states: Default::default(),
@@ -83,15 +96,15 @@ impl Gui {
         }
     }
 
-    /// Updates context state by winit window event.
+    /// Updates egui_context state by winit window event.
     /// Returns `true` if egui wants exclusive use of this event
     /// (e.g. a mouse click on an egui window, or entering text into a text field).
     /// For instance, if you use egui for a game, you want to first call this
     /// and only when this returns `false` pass on the events to your game.
     ///
     /// Note that egui uses `tab` to move focus between elements, so this will always return `true` for tabs.
-    pub fn process_event(&mut self, event: &winit::event::WindowEvent<'_>) -> EventResponse {
-        self.winit_state.on_window_event(&self.context, event)
+    pub fn process_event(&mut self, event: &winit::event::WindowEvent) -> EventResponse {
+        self.winit_state.on_window_event(&self.window, event)
     }
 
     /// Get a reference to the clipped meshes required for rendering
@@ -100,11 +113,11 @@ impl Gui {
     }
 
     pub fn scale_factor(&self, window: &Window) -> f32 {
-        egui_winit::pixels_per_point(&self.context, window)
+        egui_winit::pixels_per_point(&self.egui_context, window)
     }
 
     pub fn set_scale_factor(&mut self, scale_factor: f32) {
-        self.context.set_pixels_per_point(scale_factor);
+        self.egui_context.set_pixels_per_point(scale_factor);
     }
 
     /// Call this when the selected object is changed
@@ -131,7 +144,7 @@ impl Gui {
 
         // begin frame
         let raw_input = self.winit_state.take_egui_input(window);
-        self.context.begin_frame(raw_input);
+        self.egui_context.begin_frame(raw_input);
 
         // draw
 
@@ -178,12 +191,12 @@ impl Gui {
             shapes,
             pixels_per_point,
             viewport_output: _,
-        } = self.context.end_frame();
+        } = self.egui_context.end_frame();
         self.winit_state
-            .handle_platform_output(window, &self.context, platform_output);
+            .handle_platform_output(&self.window, platform_output);
 
         // store clipped primitive data for use by the renderer
-        self.mesh_primitives = self.context.tessellate(shapes, pixels_per_point);
+        self.mesh_primitives = self.egui_context.tessellate(shapes, pixels_per_point);
 
         // store required texture changes for the renderer to apply updates
         if !textures_delta.is_empty() {
@@ -197,7 +210,7 @@ impl Gui {
     }
 
     pub fn set_cursor_icon(&self, cursor_icon: egui::CursorIcon) {
-        self.context.set_cursor_icon(cursor_icon);
+        self.egui_context.set_cursor_icon(cursor_icon);
     }
 
     /// Returns texture update info accumulated since the last call to this function.
@@ -214,7 +227,7 @@ impl Gui {
     }
 
     pub fn set_theme_egui(&self, theme: egui::Visuals) {
-        self.context.set_visuals(theme);
+        self.egui_context.set_visuals(theme);
     }
 
     pub fn set_command_palette_visability(&mut self, is_open: bool) {
