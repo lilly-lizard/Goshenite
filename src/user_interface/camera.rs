@@ -1,5 +1,12 @@
-use super::config_ui;
-use crate::{config, engine::object::object::ObjectId, helper::angle::Angle};
+use super::{
+    config_ui,
+    cursor::{Cursor, MouseButton},
+};
+use crate::{
+    config,
+    engine::object::{object::ObjectId, object_collection::ObjectCollection},
+    helper::angle::Angle,
+};
 use glam::{DMat3, DVec2, DVec3, Mat4, Vec3, Vec4};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -47,40 +54,25 @@ impl Camera {
         })
     }
 
-    /// Changes the viewing direction based on the pixel amount the cursor has moved
-    pub fn rotate_from_cursor_delta(&mut self, delta_cursor_position: DVec2) {
-        let delta_angle = self.delta_cursor_to_angle(delta_cursor_position.into());
-
-        // orientation shouldn't be vertical
-        let normal = match self.normal_with_vertical_check() {
-            Ok(normal) => normal,
-            Err(CameraError::VerticalCameraDirection) => {
-                self.recover_from_vertical_orientation_alignment();
-                self.normal()
-            }
-        };
-
-        self.rotate_from_angle_delta(normal, delta_angle);
-    }
-
-    /// Move camera position forwards/backwards according to cursor scroll value
-    pub fn scroll_zoom(&mut self, scroll_delta: f64) {
-        match self.look_mode {
-            LookMode::Direction(direction) => {
-                let new_position = self.position + scroll_delta * direction;
-                self.set_position(new_position);
-            }
-
-            LookMode::TargetPos(target_pos) => {
-                self.scroll_zoom_target(scroll_delta, target_pos);
-            }
-
-            LookMode::TargetObject {
-                last_known_origin, ..
-            } => {
-                self.scroll_zoom_target(scroll_delta, last_known_origin.as_dvec3());
+    pub fn update_camera(&mut self, cursor: &mut Cursor, object_collection: &ObjectCollection) {
+        if let LookMode::TargetObject { object_id, .. } = self.look_mode() {
+            if let Some(object) = object_collection.get_object(object_id) {
+                // update camera target position
+                self.set_lock_on_target_object(object_id, object.origin);
+            } else {
+                // object dropped
+                self.unset_lock_on_target();
             }
         }
+
+        // left mouse button dragging changes camera orientation
+        if cursor.which_dragging() == Some(MouseButton::Left) {
+            self.rotate_from_cursor_delta(cursor.position_frame_change());
+        }
+
+        // zoom in/out logic
+        let scroll_delta = cursor.get_and_clear_scroll_delta();
+        self.scroll_zoom(scroll_delta.y);
     }
 
     /// Resets the following properties to their defaults:
@@ -141,6 +133,8 @@ impl Camera {
         self.look_mode = LookMode::Direction(direction);
     }
 
+    // Getters
+
     pub fn view_matrix(&self) -> Mat4 {
         let target_pos = self.target_pos();
 
@@ -194,8 +188,6 @@ impl Camera {
         (w, h, a, b)
     }
 
-    // Getters
-
     #[inline]
     pub fn position(&self) -> DVec3 {
         self.position
@@ -238,6 +230,42 @@ impl Default for Camera {
 // Private functions
 
 impl Camera {
+    /// Changes the viewing direction based on the pixel amount the cursor has moved
+    fn rotate_from_cursor_delta(&mut self, delta_cursor_position: DVec2) {
+        let delta_angle = self.delta_cursor_to_angle(delta_cursor_position.into());
+
+        // orientation shouldn't be vertical
+        let normal = match self.normal_with_vertical_check() {
+            Ok(normal) => normal,
+            Err(CameraError::VerticalCameraDirection) => {
+                self.recover_from_vertical_orientation_alignment();
+                self.normal()
+            }
+        };
+
+        self.rotate_from_angle_delta(normal, delta_angle);
+    }
+
+    /// Move camera position forwards/backwards according to cursor scroll value
+    fn scroll_zoom(&mut self, scroll_delta: f64) {
+        match self.look_mode {
+            LookMode::Direction(direction) => {
+                let new_position = self.position + scroll_delta * direction;
+                self.set_position(new_position);
+            }
+
+            LookMode::TargetPos(target_pos) => {
+                self.scroll_zoom_target(scroll_delta, target_pos);
+            }
+
+            LookMode::TargetObject {
+                last_known_origin, ..
+            } => {
+                self.scroll_zoom_target(scroll_delta, last_known_origin.as_dvec3());
+            }
+        }
+    }
+
     /// Not necessarily normalized
     fn look_direction(&self) -> DVec3 {
         match self.look_mode {

@@ -18,9 +18,8 @@ use crate::{
         config_renderer::RenderOptions, element_id_reader::ElementAtPoint,
         render_manager::RenderManager,
     },
-    user_interface::camera::Camera,
     user_interface::{
-        camera::LookMode,
+        camera::Camera,
         cursor::{Cursor, CursorEvent, MouseButton},
         gui::Gui,
     },
@@ -268,7 +267,8 @@ impl EngineInstance {
         self.execute_engine_commands();
 
         // update camera
-        self.update_camera();
+        self.camera
+            .update_camera(&mut self.cursor, &self.object_collection);
         let thread_send_res = self
             .render_thread_channels
             .update_camera(self.camera.clone());
@@ -300,7 +300,7 @@ impl EngineInstance {
         }
 
         // if render clicked, send request to find out which element on scene it is
-        if let CursorEvent::LeftClickInPlace = cursor_event {
+        if let CursorEvent::ClickInPlace(MouseButton::Left) = cursor_event {
             self.submit_request_for_element_id_at_point()?;
         }
 
@@ -354,29 +354,6 @@ impl EngineInstance {
             .set_scale_factor(scale_factor as f32);
 
         check_channel_updater_result(thread_send_res)
-    }
-
-    fn update_camera(&mut self) {
-        if let LookMode::TargetObject { object_id, .. } = self.camera.look_mode() {
-            if let Some(object) = self.object_collection.get_object(object_id) {
-                // update camera target position
-                self.camera
-                    .set_lock_on_target_object(object_id, object.origin);
-            } else {
-                // object dropped
-                self.camera.unset_lock_on_target();
-            }
-        }
-
-        // left mouse button dragging changes camera orientation
-        if self.cursor.which_dragging() == Some(MouseButton::Left) {
-            self.camera
-                .rotate_from_cursor_delta(self.cursor.position_frame_change());
-        }
-
-        // zoom in/out logic
-        let scroll_delta = self.cursor.get_and_clear_scroll_delta();
-        self.camera.scroll_zoom(scroll_delta.y);
     }
 
     fn submit_request_for_element_id_at_point(&mut self) -> Result<(), EngineError> {

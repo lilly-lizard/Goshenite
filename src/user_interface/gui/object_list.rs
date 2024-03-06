@@ -78,8 +78,6 @@ fn layout_object_list(
         if object_label_res.clicked() {
             // select object in the object editor
             commands.push(Command::SelectObject(current_id));
-            // set lock on target to selected object
-            commands.push(Command::SetCameraLockOnObject(current_id));
         }
     }
 

@@ -316,8 +316,12 @@ impl EngineInstance {
         object_id_to_select: ObjectId,
         command: Option<Command>,
     ) {
-        if let Some(object) = self.object_collection.get_object(object_id_to_select) {
-            self.select_object_unchecked(object_id_to_select, object.origin);
+        if self
+            .object_collection
+            .get_object(object_id_to_select)
+            .is_some()
+        {
+            self.select_object_unchecked(object_id_to_select);
         } else {
             failure_warn_invalid_object_id(object_id_to_select, command);
         }
@@ -325,7 +329,7 @@ impl EngineInstance {
 
     /// Doesn't check validity of `object_id`. Ideally we'd pass a reference to the object here
     /// to account for this, but the borrow checker doesn't like that...
-    fn select_object_unchecked(&mut self, object_id_to_select: ObjectId, object_origin: Vec3) {
+    fn select_object_unchecked(&mut self, object_id_to_select: ObjectId) {
         let mut selected_object_changed = true;
         if let Some(previously_selected_object_id) = self.selected_object_id {
             if previously_selected_object_id == object_id_to_select {
@@ -334,8 +338,6 @@ impl EngineInstance {
         }
 
         self.selected_object_id = Some(object_id_to_select);
-        self.camera
-            .set_lock_on_target_object(object_id_to_select, object_origin);
 
         if selected_object_changed {
             // if a different object is already selected, deselect the primitive op because it will
@@ -374,7 +376,7 @@ impl EngineInstance {
     fn create_and_select_new_default_object_via_command(&mut self, command: Command) {
         let new_object_res = self.object_collection.new_object_default();
 
-        let (new_object_id, new_object) = match new_object_res {
+        let (new_object_id, _) = match new_object_res {
             Ok(object_and_id) => object_and_id,
             Err(e) => {
                 failure_warn_unique_id_error(Some(command), e);
@@ -382,8 +384,7 @@ impl EngineInstance {
             }
         };
 
-        let new_object_origin = new_object.origin;
-        self.select_object_unchecked(new_object_id, new_object_origin);
+        self.select_object_unchecked(new_object_id);
     }
 
     fn set_object_origin_via_command(
@@ -465,7 +466,7 @@ impl EngineInstance {
             TargetPrimitiveOp::Selected => unreachable!("returned for this case at start of fn"),
         };
 
-        self.select_object_unchecked(object_id, object.origin);
+        self.select_object_unchecked(object_id);
         self.select_primitive_op_unchecked(primitive_op);
     }
 
