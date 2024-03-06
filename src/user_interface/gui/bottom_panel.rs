@@ -4,7 +4,7 @@ use egui::Ui;
 
 impl Gui {
     pub(super) fn draw_bottom_panel(&mut self) {
-        egui::TopBottomPanel::bottom("main top panel").show(&self.context, |ui| {
+        egui::TopBottomPanel::bottom("main top panel").show(&self.egui_context, |ui| {
             bottom_panel_layout(ui, &mut self.sub_window_states);
         });
     }

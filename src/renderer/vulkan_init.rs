@@ -27,7 +27,7 @@ use bort_vk::{
 use bort_vma::AllocationCreateInfo;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use raw_window_handle::HasRawDisplayHandle;
+use raw_window_handle::HasDisplayHandle;
 use std::{
     ffi::{CStr, CString},
     mem,
