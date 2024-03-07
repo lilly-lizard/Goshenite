@@ -29,7 +29,7 @@ const SPLASH: &str = "
 
 static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
 
-fn main() {
+fn main() -> Result<(), impl std::error::Error> {
     println!("{}", SPLASH);
 
     init_logger();
@@ -38,13 +38,15 @@ fn main() {
         "if debugging, set environment variable `RUST_BACKTRACE=1` to see anyhow error backtrace"
     );
 
-    let event_loop = EventLoop::new();
+    let event_loop = EventLoop::new()?;
 
     // init engine
     let mut engine_instance = EngineInstance::new(&event_loop);
 
     // start engine
-    event_loop.run(move |event, _, control_flow| engine_instance.control_flow(event, control_flow));
+    event_loop.run(move |event, event_loop_window_target| {
+        engine_instance.control_flow(event, event_loop_window_target)
+    })
 }
 
 fn init_logger() {

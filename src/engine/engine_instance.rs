@@ -39,7 +39,7 @@ use std::{
 };
 use winit::{
     event::{ElementState, Event, KeyEvent, StartCause, WindowEvent},
-    event_loop::{ControlFlow, EventLoop},
+    event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
     keyboard::PhysicalKey,
     window::{Window, WindowBuilder},
 };
@@ -128,12 +128,11 @@ impl EngineInstance {
     }
 
     /// The main loop of the engine thread. Processes winit events. Pass this function to EventLoop::run_return.
-    pub fn control_flow(&mut self, event: Event<()>, control_flow: &mut ControlFlow) {
-        match *control_flow {
-            ControlFlow::ExitWithCode(_) => return, // don't do any more processing if we're quitting
-            _ => (),
-        }
-
+    pub fn control_flow(
+        &mut self,
+        event: Event<()>,
+        event_loop_window_target: &EventLoopWindowTarget<()>,
+    ) {
         match event {
             // initialize the window
             Event::NewEvents(StartCause::Init) => {
@@ -155,8 +154,8 @@ impl EngineInstance {
                 info!("close requested by window");
 
                 // quit
-                *control_flow = ControlFlow::Exit;
                 self.stop_render_thread();
+                event_loop_window_target.exit();
             }
 
             // process window events and update state
@@ -167,8 +166,8 @@ impl EngineInstance {
                     error!("error while processing input: {}", e);
 
                     // quit
-                    *control_flow = ControlFlow::Exit;
                     self.stop_render_thread();
+                    event_loop_window_target.exit();
                 }
             }
 
@@ -180,8 +179,8 @@ impl EngineInstance {
                     error!("error during per-frame processing: {}", e);
 
                     // quit
-                    *control_flow = ControlFlow::Exit;
                     self.stop_render_thread();
+                    event_loop_window_target.exit();
                 }
             }
             _ => (),
