@@ -27,11 +27,14 @@ use bort_vk::{
 use bort_vma::AllocationCreateInfo;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use raw_window_handle::HasDisplayHandle;
+use raw_window_handle::{
+    DisplayHandle, HandleError, HasDisplayHandle, HasWindowHandle, WindowHandle,
+};
 use std::{
     ffi::{CStr, CString},
     mem,
     sync::Arc,
+    thread, time,
 };
 use winit::window::Window;
 
@@ -68,7 +71,60 @@ pub fn required_features_1_0() -> vk::PhysicalDeviceFeatures {
     }
 }
 
-pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Result<Arc<Instance>> {
+pub fn get_display_handle(window: &Window) -> anyhow::Result<DisplayHandle> {
+    match window.display_handle() {
+        Ok(dh) => Ok(dh),
+        Err(HandleError::Unavailable) => poll_unavailable_display_handle(window),
+        Err(e) => Err(anyhow::Error::new(e)),
+    }
+}
+
+/// See docs for `raw_window_handle::HandleError::Unavailable`
+fn poll_unavailable_display_handle(window: &Window) -> anyhow::Result<DisplayHandle> {
+    warn!("display handle unavailable, polling for 10s or until it is available...");
+    for _i in 0..10000 {
+        thread::sleep(time::Duration::from_millis(1));
+        match window.display_handle() {
+            Ok(dh) => return Ok(dh),
+            Err(HandleError::Unavailable) => continue,
+            Err(e) => anyhow::bail!(e),
+        }
+    }
+    error!("display handle unavailable for 10s... panic!");
+    Err(anyhow::Error::msg(
+        "display handle unavailable for 10s during vulkan instance creation...",
+    ))
+}
+
+pub fn get_window_handle(window: &Window) -> anyhow::Result<WindowHandle> {
+    match window.window_handle() {
+        Ok(wh) => Ok(wh),
+        Err(HandleError::Unavailable) => poll_unavailable_window_handle(window),
+        Err(e) => Err(anyhow::Error::new(e)),
+    }
+}
+
+/// See docs for `raw_window_handle::HandleError::Unavailable`
+fn poll_unavailable_window_handle(window: &Window) -> anyhow::Result<WindowHandle> {
+    warn!("window handle unavailable, polling for 10s or until it is available...");
+    for _i in 0..10000 {
+        thread::sleep(time::Duration::from_millis(1));
+        match window.window_handle() {
+            Ok(dh) => return Ok(dh),
+            Err(HandleError::Unavailable) => continue,
+            Err(e) => anyhow::bail!(e),
+        }
+    }
+    error!("window handle unavailable for 10s... panic!");
+    Err(anyhow::Error::msg(
+        "window handle unavailable for 10s during vulkan instance creation...",
+    ))
+}
+
+pub fn create_instance(
+    entry: Arc<ash::Entry>,
+    display_handle: &DisplayHandle,
+) -> anyhow::Result<Arc<Instance>> {
     let mut layer_names = Vec::<CString>::new();
 
     let validation_layer_name =
@@ -100,7 +156,7 @@ pub fn create_instance(entry: Arc<ash::Entry>, window: &Window) -> anyhow::Resul
         Instance::new_with_display_extensions(
             entry,
             MAX_VULKAN_VER,
-            window.raw_display_handle(),
+            display_handle.as_raw(),
             layer_names,
             extension_names,
         )

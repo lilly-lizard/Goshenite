@@ -20,8 +20,8 @@ use crate::{
     renderer::vulkan_init::{
         choose_depth_buffer_format, create_albedo_buffer, create_command_pool,
         create_debug_callback, create_device_and_queue, create_entry, create_instance,
-        create_primitive_id_buffers, create_render_command_buffers,
-        shaders_should_write_linear_color,
+        create_primitive_id_buffers, create_render_command_buffers, get_display_handle,
+        get_window_handle, shaders_should_write_linear_color,
     },
     user_interface::camera::Camera,
 };
@@ -35,7 +35,6 @@ use bort_vk::{
 use egui::{ClippedPrimitive, TexturesDelta};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use raw_window_handle::{HasRawDisplayHandle, HasRawWindowHandle};
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -102,15 +101,18 @@ impl RenderManager {
     pub fn new(window: Arc<Window>, scale_factor: f32) -> anyhow::Result<Self> {
         let entry = create_entry()?;
 
-        let instance = create_instance(entry.clone(), &window)?;
+        let display_handle = get_display_handle(&window)?;
+        let window_handle = get_window_handle(&window)?;
+
+        let instance = create_instance(entry.clone(), &display_handle)?;
         let debug_callback = create_debug_callback(&instance);
 
         let surface = Arc::new(
             Surface::new(
                 &entry,
                 instance.clone(),
-                window.raw_display_handle(),
-                window.raw_window_handle(),
+                display_handle.as_raw(),
+                window_handle.as_raw(),
             )
             .context("creating vulkan surface")?,
         );
