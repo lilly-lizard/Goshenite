@@ -9,7 +9,9 @@ use super::{
         camera_uniform_buffer::CameraUniformBuffer, primitive_op_buffer::PRIMITIVE_ID_BACKGROUND,
     },
 };
-use crate::renderer::config_renderer::ENABLE_VULKAN_VALIDATION;
+use crate::renderer::config_renderer::{
+    DISPLAY_UNAVAILABLE_TIMEOUT_NANOSECONDS, ENABLE_VULKAN_VALIDATION,
+};
 use anyhow::{anyhow, Context};
 use ash::{
     prelude::VkResult,
@@ -82,7 +84,7 @@ pub fn get_display_handle(window: &Window) -> anyhow::Result<DisplayHandle> {
 /// See docs for `raw_window_handle::HandleError::Unavailable`
 fn poll_unavailable_display_handle(window: &Window) -> anyhow::Result<DisplayHandle> {
     warn!("display handle unavailable, polling for 10s or until it is available...");
-    for _i in 0..10000 {
+    for _i in 0..DISPLAY_UNAVAILABLE_TIMEOUT_NANOSECONDS {
         thread::sleep(time::Duration::from_millis(1));
         match window.display_handle() {
             Ok(dh) => return Ok(dh),
@@ -107,7 +109,7 @@ pub fn get_window_handle(window: &Window) -> anyhow::Result<WindowHandle> {
 /// See docs for `raw_window_handle::HandleError::Unavailable`
 fn poll_unavailable_window_handle(window: &Window) -> anyhow::Result<WindowHandle> {
     warn!("window handle unavailable, polling for 10s or until it is available...");
-    for _i in 0..10000 {
+    for _i in 0..DISPLAY_UNAVAILABLE_TIMEOUT_NANOSECONDS {
         thread::sleep(time::Duration::from_millis(1));
         match window.window_handle() {
             Ok(dh) => return Ok(dh),

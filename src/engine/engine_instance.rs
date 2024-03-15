@@ -40,7 +40,7 @@ use std::{
 use winit::{
     event::{ElementState, Event, KeyEvent, StartCause, WindowEvent},
     event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
-    keyboard::PhysicalKey,
+    keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowBuilder},
 };
 
@@ -160,7 +160,7 @@ impl EngineInstance {
 
             // process window events and update state
             Event::WindowEvent { event, .. } => {
-                let process_input_res = self.process_input(event);
+                let process_input_res = self.process_window_event(event);
 
                 if let Err(e) = process_input_res {
                     error!("error while processing input: {}", e);
@@ -188,7 +188,7 @@ impl EngineInstance {
     }
 
     /// Process window events and update state
-    fn process_input(&mut self, event: WindowEvent) -> Result<(), EngineError> {
+    fn process_window_event(&mut self, event: WindowEvent) -> Result<(), EngineError> {
         trace!("winit event: {:?}", event);
 
         // egui event handling
@@ -270,14 +270,14 @@ impl EngineInstance {
             .update_camera(self.camera.clone());
         check_channel_updater_result(thread_send_res)?;
 
-        // update object buffers
+        // submit object buffer updates
         let objects_delta = self.object_collection.get_and_clear_objects_delta();
         if !objects_delta.is_empty() {
             let thread_send_res = self.render_thread_channels.update_objects(objects_delta);
             check_channel_sender_result(thread_send_res)?;
         }
 
-        // update gui textures
+        // submit gui texture updates
         let textures_delta = self.gui.get_and_clear_textures_delta();
         if !textures_delta.is_empty() {
             let thread_send_res = self
@@ -286,7 +286,7 @@ impl EngineInstance {
             check_channel_sender_result(thread_send_res)?;
         }
 
-        // update gui primitives
+        // submit gui primitive updates
         let gui_primitives = self.gui.mesh_primitives().clone();
         if !gui_primitives.is_empty() {
             let thread_send_res = self
@@ -314,12 +314,12 @@ impl EngineInstance {
 
     fn process_keyboard_input(&mut self, key_event: KeyEvent) {
         match key_event.physical_key {
-            PhysicalKey::P => {
+            PhysicalKey::Code(KeyCode::KeyP) => {
                 if let ElementState::Released = key_event.state {
                     self.gui.set_command_palette_visability(true);
                 }
             }
-            PhysicalKey::Escape => {
+            PhysicalKey::Code(KeyCode::Escape) => {
                 if let ElementState::Released = key_event.state {
                     self.gui.set_command_palette_visability(false);
                 }
