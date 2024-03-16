@@ -1,4 +1,4 @@
-use super::EngineInstance;
+use super::EngineController;
 use crate::{
     engine::{
         commands::{Command, CommandWithSource, TargetPrimitiveOp, ValidationCommand},
@@ -23,7 +23,7 @@ use log::{debug, error, info, trace, warn};
 
 // ~~ Commands ~~
 
-impl EngineInstance {
+impl EngineController {
     pub(super) fn execute_engine_commands(&mut self) {
         while let Some(CommandWithSource {
             command,
@@ -229,7 +229,7 @@ impl EngineInstance {
 
 // ~~ Per-Command Processing ~~
 
-impl EngineInstance {
+impl EngineController {
     // ~~ Renderer ~~
 
     fn set_render_options(&mut self, new_render_options: RenderOptions) {

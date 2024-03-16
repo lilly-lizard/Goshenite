@@ -47,7 +47,7 @@ use winit::{
 // engine_instance sub-modules (files in engine_instance directory)
 mod commands_impl;
 
-pub struct EngineInstance {
+pub struct EngineController {
     window: Arc<Window>,
 
     // state
@@ -69,7 +69,7 @@ pub struct EngineInstance {
     render_thread_channels: RenderThreadChannels,
 }
 
-impl EngineInstance {
+impl EngineController {
     pub fn new(event_loop: &EventLoop<()>) -> Self {
         let mut window_builder = WindowBuilder::new().with_title(config::ENGINE_NAME);
 
@@ -102,12 +102,19 @@ impl EngineInstance {
 
         let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32);
 
-        let object_collection = ObjectCollection::new();
+        let mut object_collection = ObjectCollection::new();
 
         // start render thread
         let (render_thread_handle, render_thread_channels) = start_render_thread(renderer);
 
-        EngineInstance {
+        // ~~ TESTING OBJECTS START ~~
+
+        object_testing(&mut object_collection);
+        //create_default_cube_object(&mut self.object_collection);
+
+        // ~~ TESTING OBJECTS END ~~
+
+        EngineController {
             window,
 
             scale_factor,
@@ -134,18 +141,6 @@ impl EngineInstance {
         event_loop_window_target: &EventLoopWindowTarget<()>,
     ) {
         match event {
-            // initialize the window
-            Event::NewEvents(StartCause::Init) => {
-                // note: window initialization (and thus swapchain init too) is done here because of certain platform epecific behaviour e.g. https://github.com/rust-windowing/winit/issues/2051
-
-                // ~~ TESTING OBJECTS START ~~
-
-                object_testing(&mut self.object_collection);
-                //create_default_cube_object(&mut self.object_collection);
-
-                // ~~ TESTING OBJECTS END ~~
-            }
-
             // exit the event loop and close application
             Event::WindowEvent {
                 event: WindowEvent::CloseRequested,

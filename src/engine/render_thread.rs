@@ -74,8 +74,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
         single_value_channel::channel::<[f32; 2]>();
     let (element_id_rx, element_id_tx) = single_value_channel::channel::<ElementAtPoint>();
 
-    // render thread loop
-    let render_thread_handle = thread::spawn(move || {
+    let render_loop = {
         let mut frame_timestamp = initial_render_frame_timestamp;
 
         loop {
@@ -171,7 +170,10 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
                 break;
             }
         }
-    });
+    };
+
+    // render thread loop
+    let render_thread_handle = thread::spawn(move || render_loop);
 
     (
         render_thread_handle,
