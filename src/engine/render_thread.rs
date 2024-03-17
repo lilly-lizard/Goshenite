@@ -74,10 +74,10 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
         single_value_channel::channel::<[f32; 2]>();
     let (element_id_rx, element_id_tx) = single_value_channel::channel::<ElementAtPoint>();
 
-    let render_loop = {
+    let render_loop_fn = {
         let mut frame_timestamp = initial_render_frame_timestamp;
 
-        loop {
+        'render_loop: loop {
             // receive and process command from main thread
 
             let render_command = render_command_rx.latest();
@@ -112,7 +112,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(mpsc::TryRecvError::Disconnected) => {
                         error!("render thread > textures delta sender disconnected! stopping render thread...");
-                        break;
+                        break 'render_loop;
                     }
                 };
                 for (object_id, object_delta) in last_objects_delta {
@@ -134,7 +134,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
                     Err(mpsc::TryRecvError::Empty) => break,
                     Err(mpsc::TryRecvError::Disconnected) => {
                         error!("render thread > textures delta sender disconnected! stopping render thread...");
-                        break;
+                        break 'render_loop;
                     }
                 }
             }
@@ -153,7 +153,7 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
 
                 if let Err(NoReceiverError(_)) = element_id_tx.update(element_id) {
                     error!("render thread > element id receiver disconnected! stopping render thread...");
-                    break;
+                    break 'render_loop;
                 }
             }
 
@@ -167,13 +167,13 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
             frame_timestamp = RenderFrameTimestamp::incriment(frame_timestamp.frame_num);
             if let Err(NoReceiverError(_)) = frame_timestamp_tx.update(Some(frame_timestamp)) {
                 error!("render thread > frame timestamp receiver disconnected! stopping render thread...");
-                break;
+                break 'render_loop;
             }
         }
     };
 
     // render thread loop
-    let render_thread_handle = thread::spawn(move || render_loop);
+    let render_thread_handle = thread::spawn(move || render_loop_fn);
 
     (
         render_thread_handle,

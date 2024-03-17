@@ -1,47 +1,28 @@
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{
-    sync::mpsc,
+    sync::{mpsc, Arc},
     thread::{self, JoinHandle},
 };
-use winit::{
-    event::{Event, StartCause, WindowEvent},
-    event_loop::EventLoop,
-};
+use winit::{error::EventLoopError, event::Event, event_loop::EventLoop, window::WindowBuilder};
 
-pub fn start_window_thread(event_loop: EventLoop<()>) -> (JoinHandle<()>, WindowThreadChannels) {
-    let (window_event_tx, window_event_rx) = mpsc::channel::<Vec<Windowevent>>();
+use crate::config;
+
+pub fn start_window_thread() -> (JoinHandle<Result<(), EventLoopError>>, WindowThreadChannels) {
+    let (window_event_tx, window_event_rx) = mpsc::channel::<Event<()>>();
 
     let window_thread_handle = thread::spawn(move || {
+        let event_loop = EventLoop::new()?;
+
+        let mut window_builder = WindowBuilder::new().with_title(config::ENGINE_NAME);
+        let window = Arc::new(
+            window_builder
+                .build(&event_loop)
+                .expect("failed to instanciate window due to os error"),
+        );
+
         event_loop.run(move |event, event_loop_window_target| {
-            match event {
-                // exit the event loop and close application
-                Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
-                    ..
-                } => {
-                    info!("close requested by window");
-
-                    // quit
-                    self.stop_render_thread();
-                    event_loop_window_target.exit();
-                }
-
-                // process window events and update state
-                Event::WindowEvent { event, .. } => {
-                    let process_input_res = self.process_window_event(event);
-
-                    if let Err(e) = process_input_res {
-                        error!("error while processing input: {}", e);
-
-                        // quit
-                        self.stop_render_thread();
-                        event_loop_window_target.exit();
-                    }
-                }
-
-                _ => (),
-            }
+            window_event_tx.send(event);
         })
     });
 
@@ -52,5 +33,5 @@ pub fn start_window_thread(event_loop: EventLoop<()>) -> (JoinHandle<()>, Window
 }
 
 pub struct WindowThreadChannels {
-    pub window_event_rx: mpsc::Receiver<Vec<WindowEvent>>,
+    pub window_event_rx: mpsc::Receiver<Event<()>>,
 }
