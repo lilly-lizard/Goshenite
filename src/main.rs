@@ -11,7 +11,6 @@ use engine::engine_controller::EngineController;
 use helper::logger::ConsoleLogger;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use winit::event_loop::EventLoop;
 
 const SPLASH: &str = "
      ___        ___        ___        ___        ___        ___        ___       ___        ___     
@@ -29,7 +28,7 @@ const SPLASH: &str = "
 
 static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
 
-fn main() -> Result<(), impl std::error::Error> {
+fn main() -> Result<(), anyhow::Error> {
     println!("{}", SPLASH);
 
     init_logger();
@@ -38,15 +37,13 @@ fn main() -> Result<(), impl std::error::Error> {
         "if debugging, set environment variable `RUST_BACKTRACE=1` to see anyhow error backtrace"
     );
 
-    let event_loop = EventLoop::new()?;
-
     // init engine
-    let mut engine_instance = EngineController::new(&event_loop);
+    let mut engine_instance = EngineController::new()?;
 
     // start engine
-    event_loop.run(move |event, event_loop_window_target| {
-        engine_instance.control_flow(event, event_loop_window_target)
-    })
+    engine_instance.run()?;
+
+    Ok(())
 }
 
 fn init_logger() {

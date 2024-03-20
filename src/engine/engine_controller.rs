@@ -1,6 +1,6 @@
 use super::{
     commands::{CommandWithSource, TargetPrimitiveOp},
-    config_engine::{self},
+    config_engine,
     object::{
         object::ObjectId, object_collection::ObjectCollection, operation::Operation,
         primitive_op::PrimitiveOpId,
@@ -9,6 +9,7 @@ use super::{
         cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform, sphere::Sphere,
     },
     render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
+    window_thread::{start_window_thread, WindowThreadChannels, WindowThreadError},
 };
 use crate::{
     config,
@@ -38,10 +39,9 @@ use std::{
     time::Instant,
 };
 use winit::{
-    event::{ElementState, Event, KeyEvent, StartCause, WindowEvent},
-    event_loop::{ControlFlow, EventLoop, EventLoopWindowTarget},
+    event::{ElementState, Event, KeyEvent, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowBuilder},
+    window::Window,
 };
 
 // engine_instance sub-modules (files in engine_instance directory)
@@ -67,22 +67,16 @@ pub struct EngineController {
     // render thread
     render_thread_handle: JoinHandle<()>,
     render_thread_channels: RenderThreadChannels,
+
+    // window thread
+    /// TODO how to use WindowThreadError? e.g. get_events.
+    window_thread_handle: JoinHandle<Result<(), WindowThreadError>>,
+    window_thread_channels: WindowThreadChannels,
 }
 
 impl EngineController {
-    pub fn new(event_loop: &EventLoop<()>) -> Self {
-        let mut window_builder = WindowBuilder::new().with_title(config::ENGINE_NAME);
-
-        window_builder = window_builder.with_inner_size(winit::dpi::LogicalSize::new(
-            config::DEFAULT_WINDOW_SIZE[0],
-            config::DEFAULT_WINDOW_SIZE[1],
-        ));
-
-        let window = Arc::new(
-            window_builder
-                .build(event_loop)
-                .expect("failed to instanciate window due to os error"),
-        );
+    pub fn new() -> anyhow::Result<Self> {
+        let (window, window_thread_handle, window_thread_channels) = start_window_thread()?;
 
         let scale_factor_override: Option<f64> = match env::var(config::ENV::SCALE_FACTOR) {
             Ok(s) => s.parse::<f64>().ok(),
@@ -92,15 +86,12 @@ impl EngineController {
 
         let cursor = Cursor::new();
 
-        let camera = anyhow_unwrap(Camera::new(window.inner_size().into()), "initialize camera");
+        let camera = Camera::new(window.inner_size().into())?;
 
-        let init_renderer_res = RenderManager::new(window.clone(), scale_factor as f32);
-        let mut renderer = anyhow_unwrap(init_renderer_res, "initialize renderer");
+        let mut renderer = RenderManager::new(window.clone(), scale_factor as f32)?;
+        renderer.update_camera(&camera)?;
 
-        let renderer_update_camera_res = renderer.update_camera(&camera);
-        anyhow_unwrap(renderer_update_camera_res, "init renderer camera");
-
-        let gui = Gui::new(&event_loop, window.clone(), scale_factor as f32);
+        let gui = Gui::new(window.clone(), scale_factor as f32);
 
         let mut object_collection = ObjectCollection::new();
 
@@ -114,7 +105,7 @@ impl EngineController {
 
         // ~~ TESTING OBJECTS END ~~
 
-        EngineController {
+        Ok(EngineController {
             window,
 
             scale_factor,
@@ -131,55 +122,59 @@ impl EngineController {
 
             render_thread_handle,
             render_thread_channels,
+
+            window_thread_handle,
+            window_thread_channels,
+        })
+    }
+
+    pub fn run(&mut self) -> anyhow::Result<()> {
+        loop {
+            let loop_res = self.main_loop()?;
+
+            if let Err(e) = loop_res {
+                // quit
+                self.stop_render_thread();
+                // todo window thread
+            }
         }
     }
 
     /// The main loop of the engine thread. Processes winit events. Pass this function to EventLoop::run_return.
-    pub fn control_flow(
-        &mut self,
-        event: Event<()>,
-        event_loop_window_target: &EventLoopWindowTarget<()>,
-    ) {
-        match event {
-            // exit the event loop and close application
-            Event::WindowEvent {
-                event: WindowEvent::CloseRequested,
-                ..
-            } => {
-                info!("close requested by window");
+    fn main_loop(&mut self) -> anyhow::Result<()> {
+        let Ok(events) = self.window_thread_channels.get_events() else {
+            todo!()
+        };
 
-                // quit
-                self.stop_render_thread();
-                event_loop_window_target.exit();
-            }
+        for event in events {
+            match event {
+                // exit the event loop and close application
+                Event::WindowEvent {
+                    event: WindowEvent::CloseRequested,
+                    ..
+                } => {
+                    info!("close requested by window");
 
-            // process window events and update state
-            Event::WindowEvent { event, .. } => {
-                let process_input_res = self.process_window_event(event);
-
-                if let Err(e) = process_input_res {
-                    error!("error while processing input: {}", e);
-
-                    // quit
+                    // quit todo window thread
                     self.stop_render_thread();
-                    event_loop_window_target.exit();
                 }
-            }
 
-            // per frame logic
-            Event::MainEventsCleared => {
-                let process_frame_res = self.per_frame_processing();
+                // process window events and update state
+                Event::WindowEvent { event, .. } => {
+                    let process_input_res = self.process_window_event(event);
 
-                if let Err(e) = process_frame_res {
-                    error!("error during per-frame processing: {}", e);
-
-                    // quit
-                    self.stop_render_thread();
-                    event_loop_window_target.exit();
+                    if let Err(e) = process_input_res {
+                        error!("error while processing input: {}", e);
+                    }
                 }
+
+                _ => (),
             }
-            _ => (),
         }
+
+        self.per_frame_processing()?;
+
+        Ok(())
     }
 
     /// Process window events and update state
@@ -230,7 +225,7 @@ impl EngineController {
         Ok(())
     }
 
-    fn per_frame_processing(&mut self) -> Result<(), EngineError> {
+    fn per_frame_processing(&mut self) -> anyhow::Result<()> {
         // make sure the render thread is active to receive the upcoming messages
         let thread_send_res = self
             .render_thread_channels
@@ -452,6 +447,7 @@ impl EngineController {
 #[derive(Debug)]
 pub enum EngineError {
     RenderThreadClosedPrematurely,
+    WindowThreadClosedPrematurely,
 }
 
 impl std::fmt::Display for EngineError {
@@ -459,6 +455,9 @@ impl std::fmt::Display for EngineError {
         match *self {
             Self::RenderThreadClosedPrematurely => {
                 write!(f, "render thread was closed prematurely")
+            }
+            Self::WindowThreadClosedPrematurely => {
+                write!(f, "window thread was closed prematurely")
             }
         }
     }

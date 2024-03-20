@@ -21,7 +21,7 @@ use egui::{TexturesDelta, Visuals};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use winit::{event_loop::EventLoopWindowTarget, window::Window};
+use winit::window::Window;
 
 // various gui sections
 mod bottom_panel;
@@ -63,11 +63,7 @@ impl Gui {
     /// * `window`: [`winit`] window
     /// * `max_texture_side`: maximum size of a texture. Query from graphics driver using
     /// [`crate::renderer::render_manager::RenderManager::max_image_array_layers`]
-    pub fn new<T>(
-        event_loop: &EventLoopWindowTarget<T>,
-        window: Arc<Window>,
-        scale_factor: f32,
-    ) -> Self {
+    pub fn new(window: Arc<Window>, scale_factor: f32) -> Self {
         let egui_context = egui::Context::default();
         egui_context.set_style(egui::Style {
             // disable sentance wrap by default (horizontal scroll instead)
@@ -77,9 +73,9 @@ impl Gui {
 
         // todo max_texture_side?
         let winit_state = egui_winit::State::new(
-            egui_context,
+            egui_context.clone(),
             egui::ViewportId::ROOT,
-            event_loop,
+            &window,
             Some(scale_factor),
             None,
         );
