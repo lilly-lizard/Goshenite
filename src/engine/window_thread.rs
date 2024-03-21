@@ -2,6 +2,7 @@ use crate::config;
 use anyhow::Context;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use single_value_channel::NoReceiverError;
 use std::{
     error, fmt,
     sync::{
@@ -51,7 +52,7 @@ pub fn start_window_thread() -> anyhow::Result<(
             return Err(WindowThreadError::ReceiverDisconnected);
         }
 
-        event_loop
+        let winit_run_loop_res = event_loop
             .run(move |event, event_loop_window_target| {
                 // receive command from main thread
                 if let Some(command) = window_command_rx.latest() {
@@ -71,7 +72,12 @@ pub fn start_window_thread() -> anyhow::Result<(
                     return;
                 }
             })
-            .map_err(WindowThreadError::from)
+            .map_err(WindowThreadError::from);
+
+        if let Err(e) = &winit_run_loop_res {
+            error!("window thread > {}", e);
+        }
+        winit_run_loop_res
     });
 
     let window = window_rx
@@ -107,6 +113,10 @@ impl WindowThreadChannels {
             };
         }
         Ok(events)
+    }
+
+    pub fn send_command(&self, command: WindowThreadCommand) -> Result<(), NoReceiverError<Option<WindowThreadCommand>>> {
+        self.window_command_tx.update(Some(command))
     }
 }
 

@@ -13,15 +13,14 @@ use super::{
 };
 use crate::{
     config,
-    engine::object::object::Object,
+    engine::{object::object::Object, window_thread::WindowThreadCommand},
     helper::anyhow_panic::anyhow_unwrap,
     renderer::{
         config_renderer::RenderOptions, element_id_reader::ElementAtPoint,
         render_manager::RenderManager,
     },
-    user_interface::camera::Camera,
     user_interface::{
-        camera::LookMode,
+        camera::{Camera, LookMode},
         cursor::{Cursor, CursorEvent, MouseButton},
         gui::Gui,
     },
@@ -47,6 +46,11 @@ use winit::{
 // engine_instance sub-modules (files in engine_instance directory)
 mod commands_impl;
 
+pub enum EngineState {
+    Run,
+    Quit,
+}
+
 pub struct EngineController {
     window: Arc<Window>,
 
@@ -65,12 +69,11 @@ pub struct EngineController {
     gui: Gui,
 
     // render thread
-    render_thread_handle: JoinHandle<()>,
+    render_thread_handle: Option<JoinHandle<()>>, // option so can be consumed by `join`
     render_thread_channels: RenderThreadChannels,
 
     // window thread
-    /// TODO how to use WindowThreadError? e.g. get_events.
-    window_thread_handle: JoinHandle<Result<(), WindowThreadError>>,
+    window_thread_handle: Option<JoinHandle<Result<(), WindowThreadError>>>, // option so can be consumed by `join`
     window_thread_channels: WindowThreadChannels,
 }
 
@@ -120,28 +123,41 @@ impl EngineController {
             camera,
             gui,
 
-            render_thread_handle,
+            render_thread_handle: Some(render_thread_handle),
             render_thread_channels,
 
-            window_thread_handle,
+            window_thread_handle: Some(window_thread_handle),
             window_thread_channels,
         })
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {
         loop {
-            let loop_res = self.main_loop()?;
+            let loop_res = self.main_loop();
 
-            if let Err(e) = loop_res {
-                // quit
-                self.stop_render_thread();
-                // todo window thread
+            match loop_res {
+                Ok(EngineState::Run) => (),
+                Ok(EngineState::Quit) => {
+                    self.shut_down();
+                }
+                Err(e) => {
+                    // quit
+                    self.shut_down();
+                    return Err(e);
+                }
             }
         }
     }
 
+    fn shut_down(&mut self) {
+        self.request_render_thread_quit();
+        self.request_window_thread_quit();
+        self.wait_for_render_thread_quit();
+        self.wait_for_window_thread_quit();
+    }
+
     /// The main loop of the engine thread. Processes winit events. Pass this function to EventLoop::run_return.
-    fn main_loop(&mut self) -> anyhow::Result<()> {
+    fn main_loop(&mut self) -> anyhow::Result<EngineState> {
         let Ok(events) = self.window_thread_channels.get_events() else {
             todo!()
         };
@@ -154,9 +170,7 @@ impl EngineController {
                     ..
                 } => {
                     info!("close requested by window");
-
-                    // quit todo window thread
-                    self.stop_render_thread();
+                    return Ok(EngineState::Quit);
                 }
 
                 // process window events and update state
@@ -174,7 +188,7 @@ impl EngineController {
 
         self.per_frame_processing()?;
 
-        Ok(())
+        Ok(EngineState::Run)
     }
 
     /// Process window events and update state
@@ -405,32 +419,74 @@ impl EngineController {
         }
     }
 
-    fn stop_render_thread(&self) {
+    fn request_window_thread_quit(&self) {
+        debug!("sending quit request to window thread...");
+        let _send_res = self
+            .window_thread_channels
+            .send_command(WindowThreadCommand::Exit);
+    }
+
+    fn request_render_thread_quit(&self) {
         debug!("sending quit command to render thread...");
         let _render_thread_send_res = self
             .render_thread_channels
             .set_render_thread_command(RenderThreadCommand::Quit);
+    }
 
+    fn wait_for_window_thread_quit(&mut self) {
+        let Some(window_thread_handle) = self.window_thread_handle.take() else {
+            debug!("no window thread handle");
+            return;
+        };
         debug!(
-            "waiting for render thread to quit (timeout = {:.2}s)",
-            config_engine::RENDER_THREAD_WAIT_TIMEOUT_SECONDS
+            "waiting for window thread to quit (timeout = {:.2}s)",
+            config_engine::JOIN_THREAD_WAIT_TIMEOUT_SECONDS
         );
-        let render_thread_timeout_begin = Instant::now();
-        let timeout_millis = (config_engine::RENDER_THREAD_WAIT_TIMEOUT_SECONDS * 1_000.) as u128;
+        let join_timeout_begin = Instant::now();
+        let timeout_millis = (config_engine::JOIN_THREAD_WAIT_TIMEOUT_SECONDS * 1_000.) as u128;
         loop {
-            let render_thread_quit = self.render_thread_handle.is_finished();
-            if render_thread_quit {
-                debug!("render thread quit.");
+            let window_thread_finished = window_thread_handle.is_finished();
+            if window_thread_finished {
                 break;
             }
-            if render_thread_timeout_begin.elapsed().as_millis() > timeout_millis {
+            if join_timeout_begin.elapsed().as_millis() > timeout_millis {
                 error!(
-                    "render thread hanging longer than timeout of {:.2}s. continuing now...",
-                    config_engine::RENDER_THREAD_WAIT_TIMEOUT_SECONDS
+                    "window thread hanging longer than timeout of {:.2}s. continuing now...",
+                    config_engine::JOIN_THREAD_WAIT_TIMEOUT_SECONDS
                 );
-                break;
+                return;
             }
         }
+        window_thread_handle.join();
+        debug!("window thread quit.");
+    }
+
+    fn wait_for_render_thread_quit(&mut self) {
+        let Some(render_thread_handle) = self.render_thread_handle.take() else {
+            debug!("no render thread handle");
+            return;
+        };
+        debug!(
+            "waiting for render thread to quit (timeout = {:.2}s)",
+            config_engine::JOIN_THREAD_WAIT_TIMEOUT_SECONDS
+        );
+        let join_timeout_begin = Instant::now();
+        let timeout_millis = (config_engine::JOIN_THREAD_WAIT_TIMEOUT_SECONDS * 1_000.) as u128;
+        loop {
+            let render_thread_finished = render_thread_handle.is_finished();
+            if render_thread_finished {
+                break;
+            }
+            if join_timeout_begin.elapsed().as_millis() > timeout_millis {
+                error!(
+                    "render thread hanging longer than timeout of {:.2}s. continuing now...",
+                    config_engine::JOIN_THREAD_WAIT_TIMEOUT_SECONDS
+                );
+                return;
+            }
+        }
+        render_thread_handle.join();
+        debug!("render thread quit.");
     }
 
     fn is_object_id_selected(&self, compare_object_id: ObjectId) -> bool {

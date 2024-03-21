@@ -1,6 +1,6 @@
 use glam::Vec3;
 
-pub const RENDER_THREAD_WAIT_TIMEOUT_SECONDS: f64 = 2.;
+pub const JOIN_THREAD_WAIT_TIMEOUT_SECONDS: f64 = 2.;
 
 pub const DEFAULT_RADIUS: f32 = 0.5;
 pub const DEFAULT_DIMENSIONS: Vec3 = Vec3::ONE;
