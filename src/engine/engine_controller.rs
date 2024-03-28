@@ -457,7 +457,11 @@ impl EngineController {
                 return;
             }
         }
-        window_thread_handle.join();
+        match window_thread_handle.join() {
+            Err(e) => error!("thread joined -> window thread paniced: {:?}", e),
+            Ok(Err(e)) => error!("thread joined -> window thread error: {}", e),
+            _ => (),
+        }
         debug!("window thread quit.");
     }
 
@@ -485,7 +489,10 @@ impl EngineController {
                 return;
             }
         }
-        render_thread_handle.join();
+        match render_thread_handle.join() {
+            Err(e) => error!("thread joined -> render thread paniced: {:?}", e),
+            Ok(()) => (),
+        }
         debug!("render thread quit.");
     }
 
