@@ -23,6 +23,7 @@ use crate::{
         camera::Camera,
         cursor::{Cursor, CursorEvent, MouseButton},
         gui::Gui,
+        keyboard_modifiers::KeyboardModifiers,
     },
 };
 use glam::Vec3;
@@ -64,6 +65,7 @@ pub struct EngineController {
     selected_object_id: Option<ObjectId>,
     selected_primitive_op_id: Option<PrimitiveOpId>,
     render_options: RenderOptions,
+    keyboard_modifiers: KeyboardModifiers,
 
     // controllers
     cursor: Cursor,
@@ -122,6 +124,7 @@ impl EngineController {
             selected_object_id: None,
             selected_primitive_op_id: None,
             render_options: RenderOptions::default(),
+            keyboard_modifiers: KeyboardModifiers::default(),
 
             cursor,
             camera,
@@ -205,7 +208,7 @@ impl EngineController {
         trace!("winit event: {:?}", event);
 
         // egui event handling
-        let captured_by_egui = self.gui.process_event(&event).consumed;
+        let captured_by_gui = self.gui.process_event(&event).consumed;
 
         // engine event handling
         match event {
@@ -214,10 +217,10 @@ impl EngineController {
 
             // send mouse button events to cursor state
             WindowEvent::MouseInput { state, button, .. } => {
-                self.cursor.set_click_state(button, state, captured_by_egui)
+                self.cursor.set_click_state(button, state, captured_by_gui)
             }
             WindowEvent::MouseWheel { delta, .. } => {
-                self.cursor.accumulate_scroll_delta(delta, captured_by_egui)
+                self.cursor.accumulate_scroll_delta(delta, captured_by_gui)
             }
 
             // cursor entered window
@@ -227,7 +230,9 @@ impl EngineController {
             WindowEvent::CursorLeft { .. } => self.cursor.set_in_window_state(false),
 
             // keyboard
-            WindowEvent::KeyboardInput { event, .. } => self.process_keyboard_input(event),
+            WindowEvent::KeyboardInput { event, .. } => {
+                self.process_keyboard_input(event, captured_by_gui)
+            }
 
             // window resize
             WindowEvent::Resized(new_inner_size) => {
@@ -326,14 +331,25 @@ impl EngineController {
         Ok(())
     }
 
-    fn process_keyboard_input(&mut self, key_event: KeyEvent) {
-        match key_event.physical_key {
-            PhysicalKey::Code(KeyCode::KeyP) => {
+    fn process_keyboard_input(&mut self, key_event: KeyEvent, captured_by_gui: bool) {
+        // update modifiers whenever focus is in window
+        self.keyboard_modifiers.set(key_event.clone());
+
+        if captured_by_gui {
+            return;
+        }
+
+        let PhysicalKey::Code(key_code) = key_event.physical_key else {
+            return;
+        };
+
+        match key_code {
+            KeyCode::KeyP => {
                 if let ElementState::Released = key_event.state {
                     self.gui.set_command_palette_visability(true);
                 }
             }
-            PhysicalKey::Code(KeyCode::Escape) => {
+            KeyCode::Escape => {
                 if let ElementState::Released = key_event.state {
                     self.gui.set_command_palette_visability(false);
                 }
