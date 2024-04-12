@@ -7,7 +7,7 @@ mod helper;
 mod renderer;
 mod user_interface;
 
-use engine::engine_controller::EngineController;
+use crate::engine::main_thread::start_main_thread;
 use helper::logger::ConsoleLogger;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -37,13 +37,7 @@ fn main() -> Result<(), anyhow::Error> {
         "if debugging, set environment variable `RUST_BACKTRACE=1` to see anyhow error backtrace"
     );
 
-    // init engine
-    let mut engine_instance = EngineController::new()?;
-
-    // start engine
-    engine_instance.run()?;
-
-    Ok(())
+    start_main_thread()
 }
 
 fn init_logger() {

@@ -1,6 +1,7 @@
 use super::{
     commands::{CommandWithSource, TargetPrimitiveOp},
     config_engine,
+    main_thread::MainThreadChannels,
     object::{
         object::ObjectId, object_collection::ObjectCollection, operation::Operation,
         primitive_op::PrimitiveOpId,
@@ -9,11 +10,10 @@ use super::{
         cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform, sphere::Sphere,
     },
     render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
-    window_thread::{start_window_thread, WindowThreadChannels, WindowThreadError},
 };
 use crate::{
     config,
-    engine::{object::object::Object, window_thread::WindowThreadCommand},
+    engine::object::object::Object,
     helper::anyhow_panic::anyhow_unwrap,
     renderer::{
         config_renderer::RenderOptions, element_id_reader::ElementAtPoint,
@@ -46,8 +46,10 @@ use winit::{
 // engine_instance sub-modules (files in engine_instance directory)
 mod commands_impl;
 
-pub enum EngineState {
+#[derive(Clone, Copy)]
+pub enum EngineCommand {
     Run,
+    Pause,
     Quit,
 }
 
@@ -68,19 +70,21 @@ pub struct EngineController {
     camera: Camera,
     gui: Gui,
 
+    // window thread (main thread)
+    main_thread_channels: MainThreadChannels,
+
     // render thread
     render_thread_handle: Option<JoinHandle<()>>, // option so can be consumed by `join`
     render_thread_channels: RenderThreadChannels,
-
-    // window thread
-    window_thread_handle: Option<JoinHandle<Result<(), WindowThreadError>>>, // option so can be consumed by `join`
-    window_thread_channels: WindowThreadChannels,
 }
 
-impl EngineController {
-    pub fn new() -> anyhow::Result<Self> {
-        let (window, window_thread_handle, window_thread_channels) = start_window_thread()?;
+// ~~ Public Functions ~~
 
+impl EngineController {
+    pub fn new(
+        window: Arc<Window>,
+        main_thread_channels: MainThreadChannels,
+    ) -> anyhow::Result<Self> {
         let scale_factor_override: Option<f64> = match env::var(config::ENV::SCALE_FACTOR) {
             Ok(s) => s.parse::<f64>().ok(),
             _ => None,
@@ -123,44 +127,49 @@ impl EngineController {
             camera,
             gui,
 
+            main_thread_channels,
+
             render_thread_handle: Some(render_thread_handle),
             render_thread_channels,
-
-            window_thread_handle: Some(window_thread_handle),
-            window_thread_channels,
         })
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {
         loop {
-            let loop_res = self.main_loop();
-
-            match loop_res {
-                Ok(EngineState::Run) => (),
-                Ok(EngineState::Quit) => {
+            let engine_command = self.main_thread_channels.latest_command();
+            match engine_command {
+                Some(EngineCommand::Run) => (),
+                None => (), // just keep running
+                Some(EngineCommand::Pause) => continue,
+                Some(EngineCommand::Quit) => {
                     self.shut_down();
+                    return Ok(());
+                }
+            }
+
+            let frame_res = self.run_frame();
+
+            match frame_res {
+                Ok(EngineCommand::Quit) => {
+                    self.shut_down();
+                    return Ok(());
                 }
                 Err(e) => {
-                    // quit
                     self.shut_down();
                     return Err(e);
                 }
+                _ => (),
             }
         }
     }
+}
 
-    fn shut_down(&mut self) {
-        self.request_render_thread_quit();
-        self.request_window_thread_quit();
-        self.wait_for_render_thread_quit();
-        self.wait_for_window_thread_quit();
-    }
+// ~~ Private Functions ~~
 
-    /// The main loop of the engine thread. Processes winit events. Pass this function to EventLoop::run_return.
-    fn main_loop(&mut self) -> anyhow::Result<EngineState> {
-        let Ok(events) = self.window_thread_channels.get_events() else {
-            todo!()
-        };
+impl EngineController {
+    /// The main loop of the engine thread
+    fn run_frame(&mut self) -> anyhow::Result<EngineCommand> {
+        let events = self.main_thread_channels.get_events()?;
 
         for event in events {
             match event {
@@ -170,7 +179,7 @@ impl EngineController {
                     ..
                 } => {
                     info!("close requested by window");
-                    return Ok(EngineState::Quit);
+                    return Ok(EngineCommand::Quit);
                 }
 
                 // process window events and update state
@@ -186,9 +195,9 @@ impl EngineController {
             }
         }
 
-        self.per_frame_processing()?;
+        self.update_engine()?;
 
-        Ok(EngineState::Run)
+        Ok(EngineCommand::Run)
     }
 
     /// Process window events and update state
@@ -239,7 +248,7 @@ impl EngineController {
         Ok(())
     }
 
-    fn per_frame_processing(&mut self) -> anyhow::Result<()> {
+    fn update_engine(&mut self) -> anyhow::Result<()> {
         // make sure the render thread is active to receive the upcoming messages
         let thread_send_res = self
             .render_thread_channels
@@ -419,11 +428,17 @@ impl EngineController {
         }
     }
 
-    fn request_window_thread_quit(&self) {
-        debug!("sending quit request to window thread...");
-        let _send_res = self
-            .window_thread_channels
-            .send_command(WindowThreadCommand::Exit);
+    fn is_object_id_selected(&self, compare_object_id: ObjectId) -> bool {
+        if let Some(some_selected_object_id) = self.selected_object_id {
+            some_selected_object_id == compare_object_id
+        } else {
+            false
+        }
+    }
+
+    fn shut_down(&mut self) {
+        self.request_render_thread_quit();
+        self.wait_for_render_thread_quit();
     }
 
     fn request_render_thread_quit(&self) {
@@ -431,38 +446,6 @@ impl EngineController {
         let _render_thread_send_res = self
             .render_thread_channels
             .set_render_thread_command(RenderThreadCommand::Quit);
-    }
-
-    fn wait_for_window_thread_quit(&mut self) {
-        let Some(window_thread_handle) = self.window_thread_handle.take() else {
-            debug!("no window thread handle");
-            return;
-        };
-        debug!(
-            "waiting for window thread to quit (timeout = {:.2}s)",
-            config_engine::JOIN_THREAD_WAIT_TIMEOUT_SECONDS
-        );
-        let join_timeout_begin = Instant::now();
-        let timeout_millis = (config_engine::JOIN_THREAD_WAIT_TIMEOUT_SECONDS * 1_000.) as u128;
-        loop {
-            let window_thread_finished = window_thread_handle.is_finished();
-            if window_thread_finished {
-                break;
-            }
-            if join_timeout_begin.elapsed().as_millis() > timeout_millis {
-                error!(
-                    "window thread hanging longer than timeout of {:.2}s. continuing now...",
-                    config_engine::JOIN_THREAD_WAIT_TIMEOUT_SECONDS
-                );
-                return;
-            }
-        }
-        match window_thread_handle.join() {
-            Err(e) => error!("thread joined -> window thread paniced: {:?}", e),
-            Ok(Err(e)) => error!("thread joined -> window thread error: {}", e),
-            _ => (),
-        }
-        debug!("window thread quit.");
     }
 
     fn wait_for_render_thread_quit(&mut self) {
@@ -494,14 +477,6 @@ impl EngineController {
             Ok(()) => (),
         }
         debug!("render thread quit.");
-    }
-
-    fn is_object_id_selected(&self, compare_object_id: ObjectId) -> bool {
-        if let Some(some_selected_object_id) = self.selected_object_id {
-            some_selected_object_id == compare_object_id
-        } else {
-            false
-        }
     }
 }
 

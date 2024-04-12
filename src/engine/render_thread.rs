@@ -48,132 +48,48 @@ impl RenderFrameTimestamp {
     }
 }
 
-pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, RenderThreadChannels) {
-    let (mut render_command_rx, render_command_tx) = single_value_channel::channel_starting_with::<
+pub fn start_render_thread(renderer: RenderManager) -> (JoinHandle<()>, RenderThreadChannels) {
+    let (render_command_rx, render_command_tx) = single_value_channel::channel_starting_with::<
         RenderThreadCommand,
     >(RenderThreadCommand::DoNothing);
 
-    let (mut window_resize_flag_rx, window_resize_flag_tx) =
-        single_value_channel::channel::<bool>();
+    let (window_resize_flag_rx, window_resize_flag_tx) = single_value_channel::channel::<bool>();
 
-    let (mut scale_factor_rx, scale_factor_tx) = single_value_channel::channel::<f32>();
+    let (scale_factor_rx, scale_factor_tx) = single_value_channel::channel::<f32>();
 
-    let (mut camera_rx, camera_tx) = single_value_channel::channel::<Camera>();
+    let (camera_rx, camera_tx) = single_value_channel::channel::<Camera>();
 
     let (objects_delta_tx, objects_delta_rx) = mpsc::channel::<ObjectsDelta>();
 
     let (textures_delta_tx, textures_delta_rx) = mpsc::channel::<Vec<TexturesDelta>>();
 
-    let (mut gui_primitives_rx, gui_primitives_tx) =
+    let (gui_primitives_rx, gui_primitives_tx) =
         single_value_channel::channel::<Vec<ClippedPrimitive>>();
 
     let initial_render_frame_timestamp = RenderFrameTimestamp::start();
     let (frame_timestamp_rx, frame_timestamp_tx) = single_value_channel::channel();
 
-    let (mut element_id_coordinate_rx, element_id_coordinate_tx) =
+    let (element_id_coordinate_rx, element_id_coordinate_tx) =
         single_value_channel::channel::<[f32; 2]>();
     let (element_id_rx, element_id_tx) = single_value_channel::channel::<ElementAtPoint>();
 
-    let render_loop_fn = {
-        let mut frame_timestamp = initial_render_frame_timestamp;
-
-        'render_loop: loop {
-            // receive and process command from main thread
-
-            let render_command = render_command_rx.latest();
-            let render_options = match render_command {
-                RenderThreadCommand::Quit => break,
-                RenderThreadCommand::DoNothing => continue,
-                RenderThreadCommand::Run(options) => *options,
-            };
-
-            // check for state updates
-
-            if let Some(window_resized_flag) = mem::take(window_resize_flag_rx.latest_mut()) {
-                if window_resized_flag {
-                    renderer.set_window_just_resized_flag();
-                }
-            }
-
-            if let Some(scale_factor) = mem::take(scale_factor_rx.latest_mut()) {
-                renderer.set_scale_factor(scale_factor);
-            }
-
-            if let Some(camera) = mem::take(camera_rx.latest_mut()) {
-                let update_camera_res = renderer.update_camera(&camera);
-                anyhow_unwrap(update_camera_res, "update camera buffer");
-            }
-
-            // gather up all object updates that have been submitted
-            let mut accumulated_objects_delta = ObjectsDelta::default();
-            loop {
-                let last_objects_delta = match objects_delta_rx.try_recv() {
-                    Ok(last_objects_delta) => last_objects_delta,
-                    Err(mpsc::TryRecvError::Empty) => break,
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        error!("render thread > textures delta sender disconnected! stopping render thread...");
-                        break 'render_loop;
-                    }
-                };
-                for (object_id, object_delta) in last_objects_delta {
-                    // multiple updates for the same object id may have been pushed across multiple
-                    // frames on the engine side, in which case these need to be merged
-                    push_object_delta(&mut accumulated_objects_delta, object_id, object_delta);
-                }
-            }
-            let update_objects_res = renderer.update_objects(accumulated_objects_delta);
-            anyhow_unwrap(update_objects_res, "update object buffers");
-
-            // the main thread may have sent multiple texture delta packages since we last checked
-            loop {
-                match textures_delta_rx.try_recv() {
-                    Ok(textures_delta) => {
-                        let update_textures_res = renderer.update_gui_textures(textures_delta);
-                        anyhow_unwrap(update_textures_res, "update gui textures");
-                    }
-                    Err(mpsc::TryRecvError::Empty) => break,
-                    Err(mpsc::TryRecvError::Disconnected) => {
-                        error!("render thread > textures delta sender disconnected! stopping render thread...");
-                        break 'render_loop;
-                    }
-                }
-            }
-
-            if let Some(gui_primitives) = mem::take(gui_primitives_rx.latest_mut()) {
-                renderer.set_gui_primitives(gui_primitives);
-            }
-
-            // request data from previous render. this is done just before next-frame submission to
-            // minimize fence stalling
-
-            if let Some(screen_coordinate) = mem::take(element_id_coordinate_rx.latest_mut()) {
-                let get_element_res = renderer.get_element_at_screen_coordinate(screen_coordinate);
-                let element_id =
-                    anyhow_unwrap(get_element_res, "getting element id at screen cordinate");
-
-                if let Err(NoReceiverError(_)) = element_id_tx.update(element_id) {
-                    error!("render thread > element id receiver disconnected! stopping render thread...");
-                    break 'render_loop;
-                }
-            }
-
-            // submit frame rendering commands
-
-            let render_frame_res = renderer.render_frame(render_options);
-            anyhow_unwrap(render_frame_res, "render frame");
-
-            // send new frame timestamp
-
-            frame_timestamp = RenderFrameTimestamp::incriment(frame_timestamp.frame_num);
-            if let Err(NoReceiverError(_)) = frame_timestamp_tx.update(Some(frame_timestamp)) {
-                error!("render thread > frame timestamp receiver disconnected! stopping render thread...");
-                break 'render_loop;
-            }
-        }
-    };
-
     // render thread loop
-    let render_thread_handle = thread::spawn(move || render_loop_fn);
+    let render_thread_handle = thread::spawn(move || {
+        render_loop(
+            renderer,
+            initial_render_frame_timestamp,
+            render_command_rx,
+            window_resize_flag_rx,
+            scale_factor_rx,
+            camera_rx,
+            objects_delta_rx,
+            textures_delta_rx,
+            gui_primitives_rx,
+            element_id_coordinate_rx,
+            element_id_tx,
+            frame_timestamp_tx,
+        )
+    });
 
     (
         render_thread_handle,
@@ -194,6 +110,127 @@ pub fn start_render_thread(mut renderer: RenderManager) -> (JoinHandle<()>, Rend
             frame_timestamp_rx,
         },
     )
+}
+
+fn render_loop(
+    mut renderer: RenderManager,
+    initial_render_frame_timestamp: RenderFrameTimestamp,
+    mut render_command_rx: single_value_channel::Receiver<RenderThreadCommand>,
+    mut window_resize_flag_rx: single_value_channel::Receiver<Option<bool>>,
+    mut scale_factor_rx: single_value_channel::Receiver<Option<f32>>,
+    mut camera_rx: single_value_channel::Receiver<Option<Camera>>,
+    objects_delta_rx: mpsc::Receiver<
+        std::collections::HashMap<
+            super::object::object::ObjectId,
+            super::object::objects_delta::ObjectDeltaOperation,
+            ahash::RandomState,
+        >,
+    >,
+    textures_delta_rx: mpsc::Receiver<Vec<TexturesDelta>>,
+    mut gui_primitives_rx: single_value_channel::Receiver<Option<Vec<ClippedPrimitive>>>,
+    mut element_id_coordinate_rx: single_value_channel::Receiver<Option<[f32; 2]>>,
+    element_id_tx: single_value_channel::Updater<Option<ElementAtPoint>>,
+    frame_timestamp_tx: single_value_channel::Updater<Option<RenderFrameTimestamp>>,
+) {
+    let mut frame_timestamp = initial_render_frame_timestamp;
+
+    'render_loop: loop {
+        // receive and process command from main thread
+
+        let render_command = render_command_rx.latest();
+        let render_options = match render_command {
+            RenderThreadCommand::Quit => break,
+            RenderThreadCommand::DoNothing => continue,
+            RenderThreadCommand::Run(options) => *options,
+        };
+
+        // check for state updates
+
+        if let Some(window_resized_flag) = mem::take(window_resize_flag_rx.latest_mut()) {
+            if window_resized_flag {
+                renderer.set_window_just_resized_flag();
+            }
+        }
+
+        if let Some(scale_factor) = mem::take(scale_factor_rx.latest_mut()) {
+            renderer.set_scale_factor(scale_factor);
+        }
+
+        if let Some(camera) = mem::take(camera_rx.latest_mut()) {
+            let update_camera_res = renderer.update_camera(&camera);
+            anyhow_unwrap(update_camera_res, "update camera buffer");
+        }
+
+        // gather up all object updates that have been submitted
+        let mut accumulated_objects_delta = ObjectsDelta::default();
+        loop {
+            let last_objects_delta = match objects_delta_rx.try_recv() {
+                Ok(last_objects_delta) => last_objects_delta,
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    error!("render thread > textures delta sender disconnected! stopping render thread...");
+                    break 'render_loop;
+                }
+            };
+            for (object_id, object_delta) in last_objects_delta {
+                // multiple updates for the same object id may have been pushed across multiple
+                // frames on the engine side, in which case these need to be merged
+                push_object_delta(&mut accumulated_objects_delta, object_id, object_delta);
+            }
+        }
+        let update_objects_res = renderer.update_objects(accumulated_objects_delta);
+        anyhow_unwrap(update_objects_res, "update object buffers");
+
+        // the main thread may have sent multiple texture delta packages since we last checked
+        loop {
+            match textures_delta_rx.try_recv() {
+                Ok(textures_delta) => {
+                    let update_textures_res = renderer.update_gui_textures(textures_delta);
+                    anyhow_unwrap(update_textures_res, "update gui textures");
+                }
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    error!("render thread > textures delta sender disconnected! stopping render thread...");
+                    break 'render_loop;
+                }
+            }
+        }
+
+        if let Some(gui_primitives) = mem::take(gui_primitives_rx.latest_mut()) {
+            renderer.set_gui_primitives(gui_primitives);
+        }
+
+        // request data from previous render. this is done just before next-frame submission to
+        // minimize fence stalling
+
+        if let Some(screen_coordinate) = mem::take(element_id_coordinate_rx.latest_mut()) {
+            let get_element_res = renderer.get_element_at_screen_coordinate(screen_coordinate);
+            let element_id =
+                anyhow_unwrap(get_element_res, "getting element id at screen cordinate");
+
+            if let Err(NoReceiverError(_)) = element_id_tx.update(element_id) {
+                error!(
+                    "render thread > element id receiver disconnected! stopping render thread..."
+                );
+                break 'render_loop;
+            }
+        }
+
+        // submit frame rendering commands
+
+        let render_frame_res = renderer.render_frame(render_options);
+        anyhow_unwrap(render_frame_res, "render frame");
+
+        // send new frame timestamp
+
+        frame_timestamp = RenderFrameTimestamp::incriment(frame_timestamp.frame_num);
+        if let Err(NoReceiverError(_)) = frame_timestamp_tx.update(Some(frame_timestamp)) {
+            error!(
+                "render thread > frame timestamp receiver disconnected! stopping render thread..."
+            );
+            break 'render_loop;
+        }
+    }
 }
 
 /// Render thread channel handles for the main thread to send/receive data
