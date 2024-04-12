@@ -55,7 +55,7 @@ impl Gui {
             .resizable(false)
             .vscroll(true)
             .fixed_size([width, height])
-            .show(&self.context, add_contents);
+            .show(&self.egui_context, add_contents);
 
         new_command
     }

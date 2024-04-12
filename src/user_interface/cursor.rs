@@ -67,7 +67,7 @@ impl Cursor {
         match MouseButton::from_winit(winit_button) {
             Ok(button) => {
                 // button is only set to pressed when cursor hasn't been captured by e.g. gui
-                self.button_states.set_from_winit(button, state)
+                self.button_states.set(button, state)
             }
             Err(e) => debug!("set_click_state: {}", e),
         };
@@ -178,8 +178,8 @@ pub enum MouseButton {
     Left,
     Right,
     Middle,
-    Button4,
-    Button5,
+    Back,
+    Forward,
 }
 
 /// List of available [`MouseButton`] enum variations. Note that the order affects the priority for things like dragging logic.
@@ -191,11 +191,9 @@ impl MouseButton {
             winit::event::MouseButton::Left => Ok(Self::Left),
             winit::event::MouseButton::Right => Ok(Self::Right),
             winit::event::MouseButton::Middle => Ok(Self::Middle),
+            winit::event::MouseButton::Back => Ok(Self::Back),
+            winit::event::MouseButton::Forward => Ok(Self::Forward),
             winit::event::MouseButton::Other(code) => match code {
-                #[cfg(target_os = "linux")] // haven't tested this on other platforms yet
-                8 => Ok(Self::Button4),
-                #[cfg(target_os = "linux")]
-                9 => Ok(Self::Button5),
                 _ => Err(format!(
                     "attempted to index unsupported mouse button code: {}",
                     code
@@ -263,14 +261,14 @@ struct MouseButtonStates {
     left: ButtonState,
     right: ButtonState,
     middle: ButtonState,
-    button_4: ButtonState,
-    button_5: ButtonState,
+    back: ButtonState,
+    forward: ButtonState,
 
     previous_left: ButtonState,
     previous_right: ButtonState,
     previous_middle: ButtonState,
-    previous_button_4: ButtonState,
-    previous_button_5: ButtonState,
+    previous_back: ButtonState,
+    previous_forward: ButtonState,
 }
 
 impl MouseButtonStates {
@@ -280,8 +278,8 @@ impl MouseButtonStates {
         Self::increment_frame_via_button_pointer(&mut self.left, &mut self.previous_left);
         Self::increment_frame_via_button_pointer(&mut self.right, &mut self.previous_right);
         Self::increment_frame_via_button_pointer(&mut self.middle, &mut self.previous_middle);
-        Self::increment_frame_via_button_pointer(&mut self.button_4, &mut self.previous_button_4);
-        Self::increment_frame_via_button_pointer(&mut self.button_5, &mut self.previous_button_5);
+        Self::increment_frame_via_button_pointer(&mut self.back, &mut self.previous_back);
+        Self::increment_frame_via_button_pointer(&mut self.forward, &mut self.previous_forward);
     }
 
     fn increment_frame_via_button_pointer(
@@ -301,14 +299,14 @@ impl MouseButtonStates {
         }
     }
 
-    pub fn set_from_winit(&mut self, button: MouseButton, winit_state: winit::event::ElementState) {
+    pub fn set(&mut self, button: MouseButton, winit_state: winit::event::ElementState) {
         let state = ButtonState::from_winit_event(winit_state);
         let (button, previous) = match button {
             MouseButton::Left => (&mut self.left, self.previous_left),
             MouseButton::Right => (&mut self.right, self.previous_right),
             MouseButton::Middle => (&mut self.middle, self.previous_middle),
-            MouseButton::Button4 => (&mut self.button_4, self.previous_button_4),
-            MouseButton::Button5 => (&mut self.button_5, self.previous_button_5),
+            MouseButton::Back => (&mut self.back, self.previous_back),
+            MouseButton::Forward => (&mut self.forward, self.previous_forward),
         };
         Self::set_via_button_pointer(button, previous, state)
     }
@@ -327,8 +325,8 @@ impl MouseButtonStates {
             MouseButton::Left => self.left,
             MouseButton::Right => self.right,
             MouseButton::Middle => self.middle,
-            MouseButton::Button4 => self.button_4,
-            MouseButton::Button5 => self.button_5,
+            MouseButton::Back => self.back,
+            MouseButton::Forward => self.forward,
         }
     }
 
@@ -337,8 +335,8 @@ impl MouseButtonStates {
             MouseButton::Left => self.previous_left,
             MouseButton::Right => self.previous_right,
             MouseButton::Middle => self.previous_middle,
-            MouseButton::Button4 => self.previous_button_4,
-            MouseButton::Button5 => self.previous_button_5,
+            MouseButton::Back => self.previous_back,
+            MouseButton::Forward => self.previous_forward,
         }
     }
 

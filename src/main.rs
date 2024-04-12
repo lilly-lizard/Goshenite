@@ -7,11 +7,10 @@ mod helper;
 mod renderer;
 mod user_interface;
 
-use engine::engine_instance::EngineInstance;
+use crate::engine::main_thread::start_main_thread;
 use helper::logger::ConsoleLogger;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use winit::event_loop::EventLoop;
 
 const SPLASH: &str = "
      ___        ___        ___        ___        ___        ___        ___       ___        ___     
@@ -29,7 +28,7 @@ const SPLASH: &str = "
 
 static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
 
-fn main() {
+fn main() -> Result<(), anyhow::Error> {
     println!("{}", SPLASH);
 
     init_logger();
@@ -38,13 +37,7 @@ fn main() {
         "if debugging, set environment variable `RUST_BACKTRACE=1` to see anyhow error backtrace"
     );
 
-    let event_loop = EventLoop::new();
-
-    // init engine
-    let mut engine_instance = EngineInstance::new(&event_loop);
-
-    // start engine
-    event_loop.run(move |event, _, control_flow| engine_instance.control_flow(event, control_flow));
+    start_main_thread()
 }
 
 fn init_logger() {

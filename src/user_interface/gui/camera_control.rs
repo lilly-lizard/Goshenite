@@ -16,7 +16,7 @@ impl Gui {
             .resizable(true)
             .vscroll(true)
             .hscroll(true)
-            .show(&self.context, add_contents);
+            .show(&self.egui_context, add_contents);
 
         commands
     }
