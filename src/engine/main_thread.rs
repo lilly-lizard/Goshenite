@@ -10,7 +10,7 @@ use std::{
     thread,
 };
 use winit::{
-    event::Event,
+    event::{Event, WindowEvent},
     event_loop::EventLoop,
     window::{Window, WindowBuilder},
 };
@@ -21,6 +21,7 @@ pub fn start_main_thread() -> anyhow::Result<()> {
     let event_loop = EventLoop::new().context("creating os event loop")?;
 
     let window = create_window(&event_loop)?;
+    let primary_window_id = window.id();
 
     let (engine_command_rx, engine_command_tx) = single_value_channel::channel::<EngineCommand>();
     let (window_event_tx, window_event_rx) = mpsc::channel::<Event<()>>();
@@ -41,10 +42,24 @@ pub fn start_main_thread() -> anyhow::Result<()> {
 
     event_loop
         .run(move |event, event_loop_window_target| {
-            // send os event to engine thread
-            let send_res = window_event_tx.send(event);
+            // check for primary window close request
+            if let Event::WindowEvent {
+                event: WindowEvent::CloseRequested,
+                window_id,
+            } = event
+            {
+                if window_id == primary_window_id {
+                    let _ = engine_command_tx.update(Some(EngineCommand::Quit));
+                    info!("close requested by window. stopping main thread...");
+                    event_loop_window_target.exit();
+                    return;
+                }
+            }
 
-            // handle shutdown
+            // send os event to engine thread
+            let send_res = window_event_tx.send(event.clone());
+
+            // handle premature engine closure
             if let Err(_e) = send_res {
                 info!("engine thread disconnected. stopping main thread...");
                 event_loop_window_target.exit();

@@ -176,15 +176,6 @@ impl EngineController {
 
         for event in events {
             match event {
-                // exit the event loop and close application
-                Event::WindowEvent {
-                    event: WindowEvent::CloseRequested,
-                    ..
-                } => {
-                    info!("close requested by window");
-                    return Ok(EngineCommand::Quit);
-                }
-
                 // process window events and update state
                 Event::WindowEvent { event, .. } => {
                     let process_input_res = self.process_window_event(event);

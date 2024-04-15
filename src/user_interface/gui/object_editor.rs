@@ -38,6 +38,7 @@ impl Gui {
             commands = layout_object_editor(
                 ui,
                 &mut self.gui_state,
+                &self.egui_context,
                 object_collection,
                 selected_object_id,
                 selected_primitive_op_id,
@@ -57,6 +58,7 @@ impl Gui {
 fn layout_object_editor(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
+    context: &egui::Context,
     object_collection: &ObjectCollection,
     selected_object_id: Option<ObjectId>,
     selected_primitive_op_id: Option<PrimitiveOpId>,
@@ -89,6 +91,7 @@ fn layout_object_editor(
         ui,
         &mut commands,
         gui_state,
+        context,
         selected_object,
         some_selected_object_id,
         selected_primitive_op_id,
@@ -371,6 +374,7 @@ fn primitive_op_list(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
     gui_state: &mut GuiState,
+    context: &egui::Context,
     selected_object: &Object,
     selected_object_id: ObjectId,
     selected_primitive_op_id: Option<PrimitiveOpId>,
@@ -402,6 +406,7 @@ fn primitive_op_list(
     // draw each item in the primitive op list
     let mut primitive_op_list_drag_state = gui_state.primitive_op_list_drag.clone();
     let drag_drop_response = primitive_op_list_drag_state.list_ui::<PrimitiveOp>(
+        context,
         ui,
         selected_object.primitive_ops.iter(),
         // function to draw a single primitive op entry in the list
