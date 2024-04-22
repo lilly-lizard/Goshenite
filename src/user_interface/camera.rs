@@ -1,7 +1,4 @@
-use super::{
-    config_ui,
-    cursor::{Cursor, MouseButton},
-};
+use super::{config_ui, cursor::Cursor, mouse_button::MouseButton};
 use crate::{
     config,
     engine::object::{object::ObjectId, object_collection::ObjectCollection},

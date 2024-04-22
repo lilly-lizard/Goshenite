@@ -21,9 +21,10 @@ use crate::{
     },
     user_interface::{
         camera::Camera,
-        cursor::{Cursor, CursorEvent, MouseButton},
+        cursor::{Cursor, CursorEvent},
         gui::Gui,
-        keyboard_modifiers::KeyboardModifiers,
+        keyboard_modifiers::KeyboardModifierStates,
+        mouse_button::MouseButton,
     },
 };
 use glam::Vec3;
@@ -65,7 +66,7 @@ pub struct EngineController {
     selected_object_id: Option<ObjectId>,
     selected_primitive_op_id: Option<PrimitiveOpId>,
     render_options: RenderOptions,
-    keyboard_modifiers: KeyboardModifiers,
+    keyboard_modifiers: KeyboardModifierStates,
 
     // controllers
     cursor: Cursor,
@@ -124,7 +125,7 @@ impl EngineController {
             selected_object_id: None,
             selected_primitive_op_id: None,
             render_options: RenderOptions::default(),
-            keyboard_modifiers: KeyboardModifiers::default(),
+            keyboard_modifiers: KeyboardModifierStates::default(),
 
             cursor,
             camera,
