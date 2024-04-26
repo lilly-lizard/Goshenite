@@ -1,12 +1,15 @@
 use super::{
     camera_control::CameraControlMappings,
-    config_ui::{self, MOUSE_ZOOM_SENSITIVITY, PAN_SENSITIVITY, SCROLL_ZOOM_SENSITIVITY},
+    config_ui::{self, MOUSE_ZOOM_FACTOR, PAN_FACTOR},
     cursor::Cursor,
     keyboard_modifiers::KeyboardModifierStates,
 };
 use crate::{
     config,
-    engine::object::{object::ObjectId, object_collection::ObjectCollection},
+    engine::{
+        object::{object::ObjectId, object_collection::ObjectCollection},
+        settings::Settings,
+    },
     helper::angle::Angle,
 };
 use glam::{DMat3, DVec2, DVec3, Mat4, Vec3, Vec4};
@@ -59,6 +62,7 @@ impl Camera {
     pub fn update_camera(
         &mut self,
         cursor: &mut Cursor,
+        settings: Settings,
         keyboard_modifier_states: KeyboardModifierStates,
         camera_control_mappings: CameraControlMappings,
         object_collection: &ObjectCollection,
@@ -76,24 +80,24 @@ impl Camera {
         if camera_control_mappings
             .mappings_active_and_dragging_look(cursor, keyboard_modifier_states)
         {
-            self.rotate_from_cursor_delta(cursor.position_frame_change());
+            self.rotate_from_cursor_delta(cursor.position_frame_change_adjusted());
         }
 
         if camera_control_mappings
             .mappings_active_and_dragging_pan(cursor, keyboard_modifier_states)
         {
-            self.pan_from_cursor_delta(cursor.position_frame_change());
+            self.pan_from_cursor_delta(cursor.position_frame_change_adjusted());
         }
 
         if camera_control_mappings
             .mappings_active_and_dragging_zoom(cursor, keyboard_modifier_states)
         {
-            self.zoom_from_cursor_delta(cursor.position_frame_change());
+            self.zoom_from_cursor_delta(cursor.position_frame_change_adjusted());
         }
 
         // zoom in/out logic
         let scroll_delta = cursor.get_and_clear_scroll_delta();
-        self.zoom_from_scroll(scroll_delta.y);
+        self.zoom_from_scroll(scroll_delta.y, settings.scroll_zoom_sensitivity);
     }
 
     /// Resets the following properties to their defaults:
@@ -270,17 +274,17 @@ impl Camera {
     fn pan_from_cursor_delta(&mut self, delta_cursor_position: DVec2) {
         let view_horizontal = self.normal().normalize();
         let view_vertical = self.direction().cross(view_horizontal).normalize();
-        let delta_pan = delta_cursor_position * PAN_SENSITIVITY;
+        let delta_pan = delta_cursor_position * PAN_FACTOR;
         let delta_position = delta_pan.x * view_horizontal + delta_pan.y * view_vertical;
         self.position += delta_position;
     }
 
-    fn zoom_from_scroll(&mut self, scroll_delta: f64) {
-        self.zoom(scroll_delta * SCROLL_ZOOM_SENSITIVITY)
+    fn zoom_from_scroll(&mut self, scroll_delta: f64, scroll_zoom_sensitivity: f64) {
+        self.zoom(scroll_delta * scroll_zoom_sensitivity)
     }
 
     fn zoom_from_cursor_delta(&mut self, delta_cursor_position: DVec2) {
-        self.zoom(-delta_cursor_position.y * MOUSE_ZOOM_SENSITIVITY)
+        self.zoom(-delta_cursor_position.y * MOUSE_ZOOM_FACTOR)
     }
 
     fn zoom(&mut self, zoom_delta: f64) {
@@ -398,14 +402,12 @@ impl Camera {
 
     fn delta_cursor_to_angle(&self, delta_cursor_position: [f64; 2]) -> [Angle; 2] {
         delta_cursor_position.map(|delta| match self.look_mode {
-            LookMode::Direction(_) => {
-                Angle::from_radians(delta * config_ui::LOOK_SENSITIVITY.radians())
-            }
+            LookMode::Direction(_) => Angle::from_radians(delta * config_ui::LOOK_FACTOR.radians()),
             LookMode::TargetPos(_) => {
-                Angle::from_radians(delta * config_ui::ARC_BALL_SENSITIVITY.radians())
+                Angle::from_radians(delta * config_ui::ARC_BALL_FACTOR.radians())
             }
             LookMode::TargetObject { .. } => {
-                Angle::from_radians(delta * config_ui::ARC_BALL_SENSITIVITY.radians())
+                Angle::from_radians(delta * config_ui::ARC_BALL_FACTOR.radians())
             }
         })
     }

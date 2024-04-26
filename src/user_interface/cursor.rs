@@ -1,5 +1,6 @@
 use super::{
     button_state::{ButtonState, MouseButtonStates},
+    config_ui::CURSOR_SENSITIVITY,
     mouse_button::{MouseButton, MOUSE_BUTTONS},
 };
 use glam::DVec2;
@@ -139,8 +140,8 @@ impl Cursor {
     }
 
     /// Returns the change in cursor pixel position between the previous 2 [`Self::process_frame`] calls
-    pub fn position_frame_change(&self) -> DVec2 {
-        self.position_frame_change
+    pub fn position_frame_change_adjusted(&self) -> DVec2 {
+        self.position_frame_change * CURSOR_SENSITIVITY
     }
 
     /// Returns the accumulated horizontal and vertical scrolling since the last call to this function.

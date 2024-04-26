@@ -17,10 +17,12 @@ pub const CAMERA_MAX_TARGET_DISTANCE: f64 = 10_000.;
 /// Minumum distance between the camera position and the camera target. Ensures valid results for view matrix
 pub const CAMERA_MIN_TARGET_DISTANCE: f64 = 0.001;
 
+/// Sensitivity multiplier for cursor movement.
+pub const CURSOR_SENSITIVITY: f64 = 1.;
 /// Sensitivity rotating the camera in [`ViewMode::Direction`](crate::camera::ViewMode::Direction) = angle / pixels
-pub const LOOK_SENSITIVITY: Angle = Angle::from_radians(0.001);
+pub const LOOK_FACTOR: Angle = Angle::from_radians(0.001);
 /// Sensitivity rotating the camera in [`ViewMode::Target`](crate::camera::ViewMode::Target) = angle / pixels
-pub const ARC_BALL_SENSITIVITY: Angle = Angle::from_radians(0.005);
-pub const PAN_SENSITIVITY: DVec2 = DVec2::new(0.01, 0.01);
-pub const SCROLL_ZOOM_SENSITIVITY: f64 = 0.5;
-pub const MOUSE_ZOOM_SENSITIVITY: f64 = 0.1;
+pub const ARC_BALL_FACTOR: Angle = Angle::from_radians(0.005);
+pub const PAN_FACTOR: DVec2 = DVec2::new(0.01, 0.01);
+pub const DEFAULT_SCROLL_ZOOM_SENSITIVITY: f64 = 0.5;
+pub const MOUSE_ZOOM_FACTOR: f64 = 0.1;

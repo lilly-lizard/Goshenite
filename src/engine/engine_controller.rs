@@ -10,6 +10,7 @@ use super::{
         cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform, sphere::Sphere,
     },
     render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
+    settings::Settings,
 };
 use crate::{
     config,
@@ -76,6 +77,7 @@ pub struct EngineController {
 
     // settings
     camera_control_mappings: CameraControlMappings,
+    settings: Settings,
 
     // window thread (main thread)
     main_thread_channels: MainThreadChannels,
@@ -135,6 +137,7 @@ impl EngineController {
             camera,
             gui,
 
+            settings: Settings::default(),
             camera_control_mappings: CameraControlMappings::default(),
 
             main_thread_channels,
@@ -282,6 +285,7 @@ impl EngineController {
         // update camera
         self.camera.update_camera(
             &mut self.cursor,
+            self.settings,
             self.keyboard_modifier_states,
             self.camera_control_mappings,
             &self.object_collection,

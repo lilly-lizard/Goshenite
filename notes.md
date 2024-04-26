@@ -4,6 +4,9 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- move rendering to engine thread to reduce latency and make thermal throttling management easier
+- iosevka font
+
 - switch to back-face culling beacuse only the misses benefit from the max-dist cutoff, where as the more expensive hit frags will benefit from the initial min-distance
 - add support for mouse button numbers using maps
 
