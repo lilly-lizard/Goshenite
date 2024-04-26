@@ -44,12 +44,12 @@ impl MouseMapping {
 
 #[derive(Clone, Copy)]
 pub struct CameraControlMappings {
-    look: MouseMapping,
-    look_2: Option<MouseMapping>,
-    pan: MouseMapping,
-    pan_2: Option<MouseMapping>,
-    zoom: MouseMapping,
-    zoom_2: Option<MouseMapping>,
+    pub look: MouseMapping,
+    pub look_2: Option<MouseMapping>,
+    pub pan: MouseMapping,
+    pub pan_2: Option<MouseMapping>,
+    pub zoom: MouseMapping,
+    pub zoom_2: Option<MouseMapping>,
 }
 
 impl CameraControlMappings {

@@ -1,6 +1,5 @@
-use glam::DVec3;
-
 use crate::helper::angle::Angle;
+use glam::{DVec2, DVec3};
 
 /// If set to true, after clicking "Add primitive op" the newly created primitive op will be selected
 pub const SELECT_PRIMITIVE_OP_AFTER_ADD: bool = false;
@@ -24,3 +23,5 @@ pub const LOOK_SENSITIVITY: Angle = Angle::from_radians(0.001);
 pub const ARC_BALL_SENSITIVITY: Angle = Angle::from_radians(0.005);
 /// Scrolling sensitivity
 pub const SCROLL_SENSITIVITY: f64 = 0.5;
+/// Pan sensitivity
+pub const PAN_SENSITIVITY: DVec2 = DVec2::new(0.01, 0.01);

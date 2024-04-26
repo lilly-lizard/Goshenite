@@ -1,5 +1,7 @@
 use super::{
-    camera_control::CameraControlMappings, config_ui, cursor::Cursor,
+    camera_control::CameraControlMappings,
+    config_ui::{self, PAN_SENSITIVITY},
+    cursor::Cursor,
     keyboard_modifiers::KeyboardModifierStates,
 };
 use crate::{
@@ -71,11 +73,16 @@ impl Camera {
             }
         }
 
-        // left mouse button dragging changes camera orientation
         if camera_control_mappings
             .mappings_active_and_dragging_look(cursor, keyboard_modifier_states)
         {
             self.rotate_from_cursor_delta(cursor.position_frame_change());
+        }
+
+        if camera_control_mappings
+            .mappings_active_and_dragging_pan(cursor, keyboard_modifier_states)
+        {
+            self.pan_from_cursor_delta(cursor.position_frame_change());
         }
 
         // zoom in/out logic
@@ -252,6 +259,14 @@ impl Camera {
         };
 
         self.rotate_from_angle_delta(normal, delta_angle);
+    }
+
+    fn pan_from_cursor_delta(&mut self, delta_cursor_position: DVec2) {
+        let view_horizontal = self.normal().normalize();
+        let view_vertical = self.direction().cross(view_horizontal).normalize();
+        let delta_pan = delta_cursor_position * PAN_SENSITIVITY;
+        let delta_position = delta_pan.x * view_horizontal + delta_pan.y * view_vertical;
+        self.position += delta_position;
     }
 
     /// Move camera position forwards/backwards according to cursor scroll value
