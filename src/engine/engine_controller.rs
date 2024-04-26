@@ -21,6 +21,7 @@ use crate::{
     },
     user_interface::{
         camera::Camera,
+        camera_control::CameraControlMappings,
         cursor::{Cursor, CursorEvent},
         gui::Gui,
         keyboard_modifiers::KeyboardModifierStates,
@@ -66,12 +67,15 @@ pub struct EngineController {
     selected_object_id: Option<ObjectId>,
     selected_primitive_op_id: Option<PrimitiveOpId>,
     render_options: RenderOptions,
-    keyboard_modifiers: KeyboardModifierStates,
+    keyboard_modifier_states: KeyboardModifierStates,
 
     // controllers
     cursor: Cursor,
     camera: Camera,
     gui: Gui,
+
+    // settings
+    camera_control_mappings: CameraControlMappings,
 
     // window thread (main thread)
     main_thread_channels: MainThreadChannels,
@@ -125,11 +129,13 @@ impl EngineController {
             selected_object_id: None,
             selected_primitive_op_id: None,
             render_options: RenderOptions::default(),
-            keyboard_modifiers: KeyboardModifierStates::default(),
+            keyboard_modifier_states: KeyboardModifierStates::default(),
 
             cursor,
             camera,
             gui,
+
+            camera_control_mappings: CameraControlMappings::default(),
 
             main_thread_channels,
 
@@ -254,7 +260,7 @@ impl EngineController {
 
         // process recieved events for cursor state
         let cursor_event = self.cursor.process_frame();
-        if let Some(cursor_icon) = self.cursor.get_cursor_icon() {
+        if let Some(cursor_icon) = self.cursor.cursor_icon() {
             self.gui.set_cursor_icon(cursor_icon);
         }
 
@@ -274,8 +280,12 @@ impl EngineController {
         self.execute_engine_commands();
 
         // update camera
-        self.camera
-            .update_camera(&mut self.cursor, &self.object_collection);
+        self.camera.update_camera(
+            &mut self.cursor,
+            self.keyboard_modifier_states,
+            self.camera_control_mappings,
+            &self.object_collection,
+        );
         let thread_send_res = self
             .render_thread_channels
             .update_camera(self.camera.clone());
@@ -325,8 +335,9 @@ impl EngineController {
 
     fn process_keyboard_input(&mut self, key_event: KeyEvent, captured_by_gui: bool) {
         // update modifiers whenever focus is in window
-        self.keyboard_modifiers.set(key_event.clone());
+        self.keyboard_modifier_states.set(key_event.clone());
 
+        // todo clean up the ordering of this... move keyboard_modifiers up? think it through...
         if captured_by_gui {
             return;
         }

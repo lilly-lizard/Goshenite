@@ -1,4 +1,9 @@
-use super::{keyboard_modifiers::KeyboardModifier, mouse_button::MouseButton};
+use super::{
+    button_state::MouseButtonStates,
+    cursor::Cursor,
+    keyboard_modifiers::{KeyboardModifier, KeyboardModifierStates},
+    mouse_button::MouseButton,
+};
 use crate::engine::settings::{
     SETTING_NAME_LOOK_MAPPING, SETTING_NAME_LOOK_MAPPING_2, SETTING_NAME_MODIFIERS,
     SETTING_NAME_MOUSE_BUTTON, SETTING_NAME_PAN_MAPPING, SETTING_NAME_PAN_MAPPING_2,
@@ -11,12 +16,33 @@ pub const MAX_MODIFIERS: usize = 3;
 
 /// Defines a combination of keyboard modifiers and a mouse button to for controls that require
 /// mouse movement e.g. camera control.
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct MouseMapping {
-    mouse_button: MouseButton,
-    modifiers: [Option<KeyboardModifier>; MAX_MODIFIERS],
+    pub mouse_button: MouseButton,
+    pub modifiers: [Option<KeyboardModifier>; MAX_MODIFIERS],
 }
 
+impl MouseMapping {
+    pub fn mapping_active(
+        &self,
+        button_states: MouseButtonStates,
+        modifier_states: KeyboardModifierStates,
+    ) -> bool {
+        if button_states.get(self.mouse_button).is_up() {
+            return false;
+        }
+        for modifier in self.modifiers {
+            if let Some(some_modifier) = modifier {
+                if !modifier_states.is_pressed(some_modifier) {
+                    return false;
+                }
+            }
+        }
+        true
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct CameraControlMappings {
     look: MouseMapping,
     look_2: Option<MouseMapping>,
@@ -24,6 +50,50 @@ pub struct CameraControlMappings {
     pan_2: Option<MouseMapping>,
     zoom: MouseMapping,
     zoom_2: Option<MouseMapping>,
+}
+
+impl CameraControlMappings {
+    pub fn mappings_active_and_dragging_look(
+        &self,
+        cursor: &Cursor,
+        modifier_states: KeyboardModifierStates,
+    ) -> bool {
+        mapping_active_and_dragging_general(cursor, modifier_states, self.look, self.look_2)
+    }
+
+    pub fn mappings_active_and_dragging_pan(
+        &self,
+        cursor: &Cursor,
+        modifier_states: KeyboardModifierStates,
+    ) -> bool {
+        mapping_active_and_dragging_general(cursor, modifier_states, self.pan, self.pan_2)
+    }
+
+    pub fn mappings_active_and_dragging_zoom(
+        &self,
+        cursor: &Cursor,
+        modifier_states: KeyboardModifierStates,
+    ) -> bool {
+        mapping_active_and_dragging_general(cursor, modifier_states, self.zoom, self.zoom_2)
+    }
+}
+
+fn mapping_active_and_dragging_general(
+    cursor: &Cursor,
+    modifier_states: KeyboardModifierStates,
+    mapping_1: MouseMapping,
+    mapping_2: Option<MouseMapping>,
+) -> bool {
+    if mapping_1.mapping_active(cursor.mouse_button_states(), modifier_states)
+        && cursor.is_dragging(mapping_1.mouse_button)
+    {
+        return true;
+    }
+    if let Some(some_mapping_2) = mapping_2 {
+        return some_mapping_2.mapping_active(cursor.mouse_button_states(), modifier_states)
+            && cursor.is_dragging(some_mapping_2.mouse_button);
+    }
+    false
 }
 
 impl Default for CameraControlMappings {

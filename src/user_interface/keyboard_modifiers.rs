@@ -42,7 +42,7 @@ impl Display for KeyboardModifier {
 // ~~ Keyboard Modifier States ~~
 
 /// A modifier is `true` if it currently held down.
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 pub struct KeyboardModifierStates {
     pub shift: bool,
     pub control: bool,

@@ -5,6 +5,7 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 # todo
 
 - switch to back-face culling beacuse only the misses benefit from the max-dist cutoff, where as the more expensive hit frags will benefit from the initial min-distance
+- add support for mouse button numbers using maps
 
 - license (every source file)
 	- https://kristoff.it/blog/the-open-source-game/

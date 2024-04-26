@@ -1,5 +1,5 @@
 use super::{
-    button_state::MouseButtonStates,
+    button_state::{ButtonState, MouseButtonStates},
     config_ui,
     mouse_button::{MouseButton, MOUSE_BUTTONS},
 };
@@ -20,9 +20,7 @@ pub struct Cursor {
     /// The change in cursor position since the previous frame
     position_frame_change: DVec2,
     /// Describes wherever each mouse button is pressed
-    button_states: MouseButtonStates,
-    /// Which button (if any) is currently dragging (if multiple, set to the first)
-    which_dragging: Option<MouseButton>,
+    mouse_button_states: MouseButtonStates,
     /// Horizontal/vertical scrolling since last call to [`get_and_clear_scroll_delta`](Self::get_and_clear_scroll_delta).
     scroll_delta: DVec2,
     /// None indicates 'no preference'
@@ -36,8 +34,7 @@ impl Cursor {
             position: None, // because there's (currenlty) no way to know the initial cursor position until the first `WindowEvent::CursorMoved` event
             position_previous: None,
             position_frame_change: DVec2::ZERO,
-            button_states: Default::default(),
-            which_dragging: None,
+            mouse_button_states: Default::default(),
             scroll_delta: DVec2::ZERO,
             cursor_icon: None,
         }
@@ -71,7 +68,8 @@ impl Cursor {
         match MouseButton::from_winit(winit_button) {
             Ok(button) => {
                 // button is only set to pressed when cursor hasn't been captured by e.g. gui
-                self.button_states.set(button, state)
+                self.mouse_button_states
+                    .set(button, state, self.position.unwrap_or_default())
             }
             Err(e) => debug!("set_click_state: {}", e),
         };
@@ -105,40 +103,27 @@ impl Cursor {
         // position processing
         self.position_frame_change =
             self.position.unwrap_or_default() - self.position_previous.unwrap_or_default();
-        let has_moved =
-            self.position_frame_change.x != 0_f64 || self.position_frame_change.y != 0_f64;
         self.position_previous = self.position;
 
         // check previous states before ButtonStates::increment_frame() overwrites it
-        let left_click_released_in_place = self.button_states.get(MouseButton::Left).is_released()
-            && self.button_states.get_previous(MouseButton::Left).is_down()
-            && self.which_dragging.is_none();
+        let left_click_released_in_place = self.clicked_in_place(MouseButton::Left);
+        let right_click_released_in_place = self.clicked_in_place(MouseButton::Right);
+        let middle_click_released_in_place = self.clicked_in_place(MouseButton::Middle);
 
-        // dragging logic
-        self.button_states.increment_frame();
-        if let Some(dragging_button) = self.which_dragging {
-            // if which_dragging set but button released, unset which_dragging
-            if self.button_states.is_unheld(dragging_button) {
-                self.which_dragging = None;
-                self.cursor_icon = None;
-            }
+        self.mouse_button_states.increment_frame();
+
+        if self.is_any_dragging() {
+            self.cursor_icon = Some(egui::CursorIcon::Grabbing);
         } else {
-            // check each button
-            for button in MOUSE_BUTTONS {
-                // if button held and cursor has moved, set which_dragging
-                if self.button_states.is_held(button) {
-                    if has_moved {
-                        self.which_dragging = Some(button);
-                        self.cursor_icon = Some(egui::CursorIcon::Grabbing);
-                        // priority given to the order of `MOUSE_BUTTONS`
-                        break;
-                    }
-                }
-            }
+            self.cursor_icon = None;
         }
 
         if left_click_released_in_place {
             CursorEvent::ClickInPlace(MouseButton::Left)
+        } else if right_click_released_in_place {
+            CursorEvent::ClickInPlace(MouseButton::Right)
+        } else if middle_click_released_in_place {
+            CursorEvent::ClickInPlace(MouseButton::Middle)
         } else {
             CursorEvent::None
         }
@@ -149,7 +134,11 @@ impl Cursor {
         self.position
     }
 
-    pub fn get_cursor_icon(&self) -> Option<egui::CursorIcon> {
+    pub fn mouse_button_states(&self) -> MouseButtonStates {
+        self.mouse_button_states
+    }
+
+    pub fn cursor_icon(&self) -> Option<egui::CursorIcon> {
         self.cursor_icon
     }
 
@@ -158,15 +147,45 @@ impl Cursor {
         self.position_frame_change
     }
 
-    /// Returns which, if any, mouse button is in the dragging state
-    pub fn which_dragging(&self) -> Option<MouseButton> {
-        self.which_dragging
-    }
-
     /// Returns the accumulated horizontal and vertical scrolling since the last call to this function.
     /// Clears the internal scroll delta storage.
     pub fn get_and_clear_scroll_delta(&mut self) -> DVec2 {
         std::mem::take(&mut self.scroll_delta)
+    }
+
+    /// Returns true if the mouse button is down and the position has changed since it was first
+    /// pressed down
+    pub fn is_dragging(&self, mouse_button: MouseButton) -> bool {
+        let mouse_button_state = self.mouse_button_states.get(mouse_button);
+        if mouse_button_state.is_down() {
+            let start_position = mouse_button_state
+                .start_position()
+                .expect("if `is_down` is true, can't be unheld");
+            return start_position != self.position.unwrap_or_default();
+        }
+        false
+    }
+}
+
+// ~~ Private Functions ~~
+
+impl Cursor {
+    fn is_any_dragging(&self) -> bool {
+        for mouse_button in MOUSE_BUTTONS {
+            if self.is_dragging(mouse_button) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn clicked_in_place(&self, mouse_button: MouseButton) -> bool {
+        let mouse_button_state = self.mouse_button_states.get(mouse_button);
+        mouse_button_state
+            == ButtonState::JustReleased {
+                // start position and current position are the same
+                start_position: self.position.unwrap_or_default(),
+            }
     }
 }
 

@@ -1,50 +1,77 @@
 use super::mouse_button::MouseButton;
+use glam::DVec2;
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 
 // ~~ Button State ~~
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq)]
 pub enum ButtonState {
-    /// Was down before this frame and now is up
-    JustReleased,
+    /// Was down before this frame and now is up.
+    /// `start_position` is the cursor position when the button was first pressed down.
+    JustReleased { start_position: DVec2 },
     /// Has been up for multiple frames
     UnHeld,
-    /// Was up before this frame and now is down
-    JustClicked,
-    /// Has been down for multple frames
-    Held,
+    /// Was up before this frame and now is down.
+    /// `start_position` is the cursor position when the button was first pressed down.
+    JustClicked { start_position: DVec2 },
+    /// Has been down for multple frames.
+    /// `start_position` is the cursor position when the button was first pressed down.
+    Held { start_position: DVec2 },
 }
 
 impl ButtonState {
-    pub fn is_released(&self) -> bool {
-        *self == Self::JustReleased
+    pub fn is_just_released(&self) -> bool {
+        match self {
+            ButtonState::JustReleased { start_position: _ } => true,
+            _ => false,
+        }
     }
 
     pub fn is_unheld(&self) -> bool {
         *self == Self::UnHeld
     }
 
-    pub fn is_clicked(&self) -> bool {
-        *self == Self::JustClicked
+    pub fn is_just_clicked(&self) -> bool {
+        match self {
+            ButtonState::JustClicked { start_position: _ } => true,
+            _ => false,
+        }
     }
 
     pub fn is_held(&self) -> bool {
-        *self == Self::Held
+        match self {
+            ButtonState::Held { start_position: _ } => true,
+            _ => false,
+        }
+    }
+
+    pub fn start_position(&self) -> Option<DVec2> {
+        match self {
+            ButtonState::JustReleased { start_position } => Some(*start_position),
+            ButtonState::UnHeld => None,
+            ButtonState::JustClicked { start_position } => Some(*start_position),
+            ButtonState::Held { start_position } => Some(*start_position),
+        }
     }
 
     #[inline]
     pub fn is_up(&self) -> bool {
-        self.is_released() || self.is_unheld()
+        self.is_just_released() || self.is_unheld()
     }
 
     #[inline]
     pub fn is_down(&self) -> bool {
-        self.is_clicked() || self.is_held()
+        self.is_just_clicked() || self.is_held()
     }
 
-    pub fn from_winit_event(winit_state: winit::event::ElementState) -> Self {
+    pub fn from_winit_event(
+        winit_state: winit::event::ElementState,
+        start_position: DVec2,
+    ) -> Self {
         match winit_state {
-            winit::event::ElementState::Pressed => Self::JustClicked,
-            winit::event::ElementState::Released => Self::JustReleased,
+            winit::event::ElementState::Pressed => Self::JustClicked { start_position },
+            winit::event::ElementState::Released => Self::JustReleased { start_position },
         }
     }
 }
@@ -87,9 +114,15 @@ impl MouseButtonStates {
         current_button: &mut ButtonState,
         previous_button: &mut ButtonState,
     ) {
-        let button_update = if current_button.is_down() && previous_button.is_down() {
-            Some(ButtonState::Held)
-        } else if current_button.is_up() && previous_button.is_up() {
+        let button_update = if !current_button.is_held()
+            && current_button.is_down()
+            && previous_button.is_down()
+        {
+            let start_position = current_button
+                .start_position()
+                .expect("if `is_down` is true, can't be unheld");
+            Some(ButtonState::Held { start_position })
+        } else if !current_button.is_unheld() && current_button.is_up() && previous_button.is_up() {
             Some(ButtonState::UnHeld)
         } else {
             None
@@ -100,8 +133,15 @@ impl MouseButtonStates {
         }
     }
 
-    pub fn set(&mut self, button: MouseButton, winit_state: winit::event::ElementState) {
-        let state = ButtonState::from_winit_event(winit_state);
+    pub fn set(
+        &mut self,
+        button: MouseButton,
+        winit_state: winit::event::ElementState,
+        cursor_position: DVec2,
+    ) {
+        let start_position = self.get(button).start_position().unwrap_or(cursor_position);
+        let new_state = ButtonState::from_winit_event(winit_state, start_position);
+
         let (button, previous) = match button {
             MouseButton::Left => (&mut self.left, self.previous_left),
             MouseButton::Right => (&mut self.right, self.previous_right),
@@ -109,16 +149,11 @@ impl MouseButtonStates {
             MouseButton::Back => (&mut self.back, self.previous_back),
             MouseButton::Forward => (&mut self.forward, self.previous_forward),
         };
-        Self::set_via_button_pointer(button, previous, state)
-    }
 
-    #[inline]
-    fn set_via_button_pointer(button: &mut ButtonState, previous: ButtonState, new: ButtonState) {
-        if new.is_clicked() && previous.is_held() {
-            // stay held
-            return;
+        if new_state.is_just_clicked() && previous.is_held() {
+            return; // stay held
         }
-        *button = new;
+        *button = new_state;
     }
 
     pub fn get(&self, button: MouseButton) -> ButtonState {
@@ -142,8 +177,8 @@ impl MouseButtonStates {
     }
 
     #[inline]
-    pub fn is_released(&self, button: MouseButton) -> bool {
-        self.get(button).is_released()
+    pub fn is_just_released(&self, button: MouseButton) -> bool {
+        self.get(button).is_just_released()
     }
 
     #[inline]
@@ -152,12 +187,22 @@ impl MouseButtonStates {
     }
 
     #[inline]
-    pub fn is_clicked(&self, button: MouseButton) -> bool {
-        self.get(button).is_clicked()
+    pub fn is_just_clicked(&self, button: MouseButton) -> bool {
+        self.get(button).is_just_clicked()
     }
 
     #[inline]
     pub fn is_held(&self, button: MouseButton) -> bool {
         self.get(button).is_held()
+    }
+
+    #[inline]
+    pub fn is_up(&self, button: MouseButton) -> bool {
+        self.get(button).is_up()
+    }
+
+    #[inline]
+    pub fn is_down(&self, button: MouseButton) -> bool {
+        self.get(button).is_down()
     }
 }

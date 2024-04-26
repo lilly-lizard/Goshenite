@@ -1,4 +1,7 @@
-use super::{config_ui, cursor::Cursor, mouse_button::MouseButton};
+use super::{
+    camera_control::CameraControlMappings, config_ui, cursor::Cursor,
+    keyboard_modifiers::KeyboardModifierStates,
+};
 use crate::{
     config,
     engine::object::{object::ObjectId, object_collection::ObjectCollection},
@@ -51,10 +54,16 @@ impl Camera {
         })
     }
 
-    pub fn update_camera(&mut self, cursor: &mut Cursor, object_collection: &ObjectCollection) {
+    pub fn update_camera(
+        &mut self,
+        cursor: &mut Cursor,
+        keyboard_modifier_states: KeyboardModifierStates,
+        camera_control_mappings: CameraControlMappings,
+        object_collection: &ObjectCollection,
+    ) {
         if let LookMode::TargetObject { object_id, .. } = self.look_mode() {
             if let Some(object) = object_collection.get_object(object_id) {
-                // update camera target position
+                // update camera target positi on
                 self.set_lock_on_target_object(object_id, object.origin);
             } else {
                 // object dropped
@@ -63,7 +72,9 @@ impl Camera {
         }
 
         // left mouse button dragging changes camera orientation
-        if cursor.which_dragging() == Some(MouseButton::Left) {
+        if camera_control_mappings
+            .mappings_active_and_dragging_look(cursor, keyboard_modifier_states)
+        {
             self.rotate_from_cursor_delta(cursor.position_frame_change());
         }
 
