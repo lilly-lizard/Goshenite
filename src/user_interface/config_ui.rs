@@ -19,9 +19,8 @@ pub const CAMERA_MIN_TARGET_DISTANCE: f64 = 0.001;
 
 /// Sensitivity rotating the camera in [`ViewMode::Direction`](crate::camera::ViewMode::Direction) = angle / pixels
 pub const LOOK_SENSITIVITY: Angle = Angle::from_radians(0.001);
-/// Sensitivity rotating the camer in [`ViewMode::Target`](crate::camera::ViewMode::Target) = angle / pixels
+/// Sensitivity rotating the camera in [`ViewMode::Target`](crate::camera::ViewMode::Target) = angle / pixels
 pub const ARC_BALL_SENSITIVITY: Angle = Angle::from_radians(0.005);
-/// Scrolling sensitivity
-pub const SCROLL_SENSITIVITY: f64 = 0.5;
-/// Pan sensitivity
 pub const PAN_SENSITIVITY: DVec2 = DVec2::new(0.01, 0.01);
+pub const SCROLL_ZOOM_SENSITIVITY: f64 = 0.5;
+pub const MOUSE_ZOOM_SENSITIVITY: f64 = 0.1;

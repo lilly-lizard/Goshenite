@@ -1,6 +1,6 @@
 use super::{
     camera_control::CameraControlMappings,
-    config_ui::{self, PAN_SENSITIVITY},
+    config_ui::{self, MOUSE_ZOOM_SENSITIVITY, PAN_SENSITIVITY, SCROLL_ZOOM_SENSITIVITY},
     cursor::Cursor,
     keyboard_modifiers::KeyboardModifierStates,
 };
@@ -85,9 +85,15 @@ impl Camera {
             self.pan_from_cursor_delta(cursor.position_frame_change());
         }
 
+        if camera_control_mappings
+            .mappings_active_and_dragging_zoom(cursor, keyboard_modifier_states)
+        {
+            self.zoom_from_cursor_delta(cursor.position_frame_change());
+        }
+
         // zoom in/out logic
         let scroll_delta = cursor.get_and_clear_scroll_delta();
-        self.scroll_zoom(scroll_delta.y);
+        self.zoom_from_scroll(scroll_delta.y);
     }
 
     /// Resets the following properties to their defaults:
@@ -269,22 +275,29 @@ impl Camera {
         self.position += delta_position;
     }
 
-    /// Move camera position forwards/backwards according to cursor scroll value
-    fn scroll_zoom(&mut self, scroll_delta: f64) {
+    fn zoom_from_scroll(&mut self, scroll_delta: f64) {
+        self.zoom(scroll_delta * SCROLL_ZOOM_SENSITIVITY)
+    }
+
+    fn zoom_from_cursor_delta(&mut self, delta_cursor_position: DVec2) {
+        self.zoom(-delta_cursor_position.y * MOUSE_ZOOM_SENSITIVITY)
+    }
+
+    fn zoom(&mut self, zoom_delta: f64) {
         match self.look_mode {
             LookMode::Direction(direction) => {
-                let new_position = self.position + scroll_delta * direction;
+                let new_position = self.position + zoom_delta * direction;
                 self.set_position(new_position);
             }
 
             LookMode::TargetPos(target_pos) => {
-                self.scroll_zoom_target(scroll_delta, target_pos);
+                self.scroll_zoom_target(zoom_delta, target_pos);
             }
 
             LookMode::TargetObject {
                 last_known_origin, ..
             } => {
-                self.scroll_zoom_target(scroll_delta, last_known_origin.as_dvec3());
+                self.scroll_zoom_target(zoom_delta, last_known_origin.as_dvec3());
             }
         }
     }
