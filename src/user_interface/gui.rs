@@ -5,6 +5,7 @@ use self::command_palette::GuiStateCommandPalette;
 use super::{
     camera::Camera,
     gui_state::{GuiState, SubWindowStates},
+    theme::Theme,
 };
 use crate::{
     engine::{
@@ -212,6 +213,10 @@ impl Gui {
     /// Returns texture update info accumulated since the last call to this function.
     pub fn get_and_clear_textures_delta(&mut self) -> Vec<TexturesDelta> {
         std::mem::take(&mut self.textures_delta_accumulation)
+    }
+
+    pub fn set_theme(&self, theme: Theme) {
+        self.set_theme_egui(theme.as_egui_visuals())
     }
 
     pub fn set_theme_winit(&self, theme: winit::window::Theme) {

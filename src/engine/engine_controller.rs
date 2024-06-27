@@ -22,7 +22,6 @@ use crate::{
     },
     user_interface::{
         camera::Camera,
-        camera_control::CameraControlMappings,
         cursor::{Cursor, CursorEvent},
         gui::Gui,
         keyboard_modifiers::KeyboardModifierStates,
@@ -76,7 +75,6 @@ pub struct EngineController {
     gui: Gui,
 
     // settings
-    camera_control_mappings: CameraControlMappings,
     settings: Settings,
 
     // window thread (main thread)
@@ -138,7 +136,6 @@ impl EngineController {
             gui,
 
             settings: Settings::default(),
-            camera_control_mappings: CameraControlMappings::default(),
 
             main_thread_channels,
 
@@ -245,9 +242,7 @@ impl EngineController {
                 self.set_scale_factor(scale_factor)?;
             }
 
-            WindowEvent::ThemeChanged(winit_theme) => {
-                self.gui.set_theme_winit(winit_theme);
-            }
+            //WindowEvent::ThemeChanged(winit_theme)
             _ => (),
         }
 
@@ -287,7 +282,7 @@ impl EngineController {
             &mut self.cursor,
             self.settings,
             self.keyboard_modifier_states,
-            self.camera_control_mappings,
+            self.settings.camera_control_mappings,
             &self.object_collection,
         );
         let thread_send_res = self

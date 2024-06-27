@@ -8,3 +8,4 @@ pub mod gui;
 mod gui_state;
 pub mod keyboard_modifiers;
 pub mod mouse_button;
+pub mod theme;

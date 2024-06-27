@@ -1,4 +1,7 @@
-use crate::user_interface::config_ui::DEFAULT_SCROLL_ZOOM_SENSITIVITY;
+use crate::user_interface::{
+    camera_control::CameraControlMappings, config_ui::DEFAULT_SCROLL_ZOOM_SENSITIVITY, gui::Gui,
+    theme::Theme,
+};
 
 // ~~ Json Setting Names ~~
 
@@ -29,14 +32,37 @@ pub const SETTING_NAME_SCROLL_ZOOM_SENSITIVITY: &str = "scrollZoomSensitivity";
 #[derive(Clone, Copy)]
 pub struct Settings {
     pub scroll_zoom_sensitivity: f64,
+    pub theme: Theme,
+    pub camera_control_mappings: CameraControlMappings,
+}
+
+impl Settings {
+    pub fn reset_all(&mut self) {
+        *self = Self::default()
+    }
+
+    pub fn set_theme(&mut self, theme: Theme, gui: &mut Gui) {
+        self.theme = theme;
+        gui.set_theme(theme)
+    }
+
+    pub fn reset_scroll_zoom_sensitivity(&mut self) {
+        self.scroll_zoom_sensitivity = DEFAULT_SCROLL_ZOOM_SENSITIVITY;
+    }
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
             scroll_zoom_sensitivity: DEFAULT_SCROLL_ZOOM_SENSITIVITY,
+            theme: Default::default(),
+            camera_control_mappings: Default::default(),
         }
     }
 }
 
 // ~~ Json Encoding/Decoding Functions ~~
+
+impl Settings {
+    pub fn update_from_json(&mut self) {}
+}

@@ -19,6 +19,10 @@ pub enum Command {
     SaveAllObjects,
     LoadObjects,
 
+    // ~~ Settings ~~
+    SetScrollZoomSensitivity(f64),
+    ResetScrollZoomSensitivity,
+
     // ~~ Camera ~~
     SetCameraLockOnPos(DVec3),
     SetCameraLockOnObject(ObjectId),
