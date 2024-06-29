@@ -31,15 +31,7 @@ use crate::{
 use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use single_value_channel::NoReceiverError;
-use std::{
-    collections::VecDeque,
-    env,
-    fmt::Debug,
-    sync::{mpsc::SendError, Arc},
-    thread::JoinHandle,
-    time::Instant,
-};
+use std::{collections::VecDeque, env, fmt::Debug, sync::Arc};
 use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
@@ -228,12 +220,12 @@ impl EngineController {
 
             // window resize
             WindowEvent::Resized(new_inner_size) => {
-                self.update_window_inner_size(new_inner_size)?;
+                self.update_window_inner_size(new_inner_size);
             }
 
             // dpi change
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                self.set_scale_factor(scale_factor)?;
+                self.set_scale_factor(scale_factor);
             }
 
             WindowEvent::ThemeChanged(winit_theme) => {
@@ -289,17 +281,12 @@ impl EngineController {
         let gui_primitives = self.gui.mesh_primitives().clone();
         self.render_manager.set_gui_primitives(gui_primitives);
 
-        // if render clicked, send request to find out which element on scene it is
+        // if render area was clicked, select the element at the cursor position
         if let CursorEvent::ClickInPlace(MouseButton::Left) = cursor_event {
-            self.submit_request_for_element_id_at_point()?;
+            self.select_element_id_at_cursor_position()?;
         }
 
-        // receive clicked element response
-        self.receive_and_select_element_id_at_point();
-
-        let _latest_render_frame_timestamp = self
-            .render_thread_channels
-            .get_latest_render_frame_timestamp();
+        self.render_manager.render_frame(self.render_options)?;
 
         self.main_thread_frame_number += 1;
 
@@ -345,11 +332,10 @@ impl EngineController {
         self.render_manager.set_scale_factor(scale_factor as f32);
     }
 
-    fn submit_request_for_element_id_at_point(&mut self) -> anyhow::Result<()> {
+    fn select_element_id_at_cursor_position(&mut self) -> anyhow::Result<()> {
         let Some(cursor_screen_coordinates_dvec2) = self.cursor.position() else {
             return Ok(());
         };
-
         let cursor_screen_coordinates = cursor_screen_coordinates_dvec2.as_vec2().to_array();
 
         let element_at_point = self
@@ -367,23 +353,6 @@ impl EngineController {
         }
 
         Ok(())
-    }
-
-    fn receive_and_select_element_id_at_point(&mut self) {
-        if let Some(element_at_point) = self
-            .render_thread_channels
-            .receive_element_id_at_screen_coordinate()
-        {
-            debug!("element clicked = {:?}", element_at_point);
-            match element_at_point {
-                ElementAtPoint::Background => self.background_clicked(),
-                ElementAtPoint::Object {
-                    object_id,
-                    primitive_op_index,
-                } => self.object_clicked(object_id, Some(primitive_op_index)),
-                ElementAtPoint::BlendArea { object_id } => self.object_clicked(object_id, None),
-            }
-        }
     }
 
     fn background_clicked(&mut self) {
