@@ -9,7 +9,6 @@ use super::{
     primitives::{
         cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform, sphere::Sphere,
     },
-    render_thread::{start_render_thread, RenderThreadChannels, RenderThreadCommand},
     settings::Settings,
 };
 use crate::{
@@ -31,15 +30,7 @@ use crate::{
 use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use single_value_channel::NoReceiverError;
-use std::{
-    collections::VecDeque,
-    env,
-    fmt::Debug,
-    sync::{mpsc::SendError, Arc},
-    thread::JoinHandle,
-    time::Instant,
-};
+use std::{collections::VecDeque, env, fmt::Debug, sync::Arc};
 use winit::{
     event::{ElementState, Event, KeyEvent, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
@@ -73,16 +64,13 @@ pub struct EngineController {
     cursor: Cursor,
     camera: Camera,
     gui: Gui,
+    render_manager: RenderManager,
 
     // settings
     settings: Settings,
 
     // window thread (main thread)
     main_thread_channels: MainThreadChannels,
-
-    // render thread
-    render_thread_handle: Option<JoinHandle<()>>, // option so can be consumed by `join`
-    render_thread_channels: RenderThreadChannels,
 }
 
 // ~~ Public Functions ~~
@@ -102,15 +90,12 @@ impl EngineController {
 
         let camera = Camera::new(window.inner_size().into())?;
 
-        let mut renderer = RenderManager::new(window.clone(), scale_factor as f32)?;
-        renderer.update_camera(&camera)?;
+        let mut render_manager = RenderManager::new(window.clone(), scale_factor as f32)?;
+        render_manager.update_camera(&camera)?;
 
         let gui = Gui::new(window.clone(), scale_factor as f32);
 
         let mut object_collection = ObjectCollection::new();
-
-        // start render thread
-        let (render_thread_handle, render_thread_channels) = start_render_thread(renderer);
 
         // ~~ TESTING OBJECTS START ~~
 
@@ -134,13 +119,11 @@ impl EngineController {
             cursor,
             camera,
             gui,
+            render_manager,
 
             settings: Settings::default(),
 
             main_thread_channels,
-
-            render_thread_handle: Some(render_thread_handle),
-            render_thread_channels,
         })
     }
 
@@ -234,12 +217,12 @@ impl EngineController {
 
             // window resize
             WindowEvent::Resized(new_inner_size) => {
-                self.update_window_inner_size(new_inner_size)?;
+                self.update_window_inner_size(new_inner_size);
             }
 
             // dpi change
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                self.set_scale_factor(scale_factor)?;
+                self.set_scale_factor(scale_factor);
             }
 
             //WindowEvent::ThemeChanged(winit_theme)
@@ -250,12 +233,6 @@ impl EngineController {
     }
 
     fn update_engine(&mut self) -> anyhow::Result<()> {
-        // make sure the render thread is active to receive the upcoming messages
-        let thread_send_res = self
-            .render_thread_channels
-            .set_render_thread_command(RenderThreadCommand::Run(self.render_options));
-        check_channel_updater_result(thread_send_res)?;
-
         // process recieved events for cursor state
         let cursor_event = self.cursor.process_frame();
         if let Some(cursor_icon) = self.cursor.cursor_icon() {
@@ -285,47 +262,26 @@ impl EngineController {
             self.settings.camera_control_mappings,
             &self.object_collection,
         );
-        let thread_send_res = self
-            .render_thread_channels
-            .update_camera(self.camera.clone());
-        check_channel_updater_result(thread_send_res)?;
+        self.render_manager.update_camera(&self.camera)?;
 
-        // submit object buffer updates
+        // object buffer updates
         let objects_delta = self.object_collection.get_and_clear_objects_delta();
-        if !objects_delta.is_empty() {
-            let thread_send_res = self.render_thread_channels.update_objects(objects_delta);
-            check_channel_sender_result(thread_send_res)?;
-        }
+        self.render_manager.update_objects(objects_delta)?;
 
         // submit gui texture updates
         let textures_delta = self.gui.get_and_clear_textures_delta();
-        if !textures_delta.is_empty() {
-            let thread_send_res = self
-                .render_thread_channels
-                .update_gui_textures(textures_delta);
-            check_channel_sender_result(thread_send_res)?;
-        }
+        self.render_manager.update_gui_textures(textures_delta)?;
 
         // submit gui primitive updates
         let gui_primitives = self.gui.mesh_primitives().clone();
-        if !gui_primitives.is_empty() {
-            let thread_send_res = self
-                .render_thread_channels
-                .set_gui_primitives(gui_primitives);
-            check_channel_updater_result(thread_send_res)?;
-        }
+        self.render_manager.set_gui_primitives(gui_primitives);
 
-        // if render clicked, send request to find out which element on scene it is
+        // if render area was clicked, select the element at the cursor position
         if let CursorEvent::ClickInPlace(MouseButton::Left) = cursor_event {
-            self.submit_request_for_element_id_at_point()?;
+            self.select_element_id_at_cursor_position()?;
         }
 
-        // receive clicked element response
-        self.receive_and_select_element_id_at_point();
-
-        let _latest_render_frame_timestamp = self
-            .render_thread_channels
-            .get_latest_render_frame_timestamp();
+        self.render_manager.render_frame(self.render_options)?;
 
         self.main_thread_frame_number += 1;
 
@@ -360,54 +316,38 @@ impl EngineController {
         }
     }
 
-    fn update_window_inner_size(
-        &mut self,
-        new_inner_size: winit::dpi::PhysicalSize<u32>,
-    ) -> Result<(), EngineError> {
+    fn update_window_inner_size(&mut self, new_inner_size: winit::dpi::PhysicalSize<u32>) {
         self.camera.set_aspect_ratio(new_inner_size.into());
-        let thread_send_res = self.render_thread_channels.set_window_just_resized_flag();
-
-        check_channel_updater_result(thread_send_res)
+        self.render_manager.set_window_just_resized_flag();
     }
 
-    fn set_scale_factor(&mut self, scale_factor: f64) -> Result<(), EngineError> {
+    fn set_scale_factor(&mut self, scale_factor: f64) {
         self.scale_factor = scale_factor;
-        self.gui.set_scale_factor(self.scale_factor as f32);
-        let thread_send_res = self
-            .render_thread_channels
-            .set_scale_factor(scale_factor as f32);
-
-        check_channel_updater_result(thread_send_res)
+        self.gui.set_scale_factor(scale_factor as f32);
+        self.render_manager.set_scale_factor(scale_factor as f32);
     }
 
-    fn submit_request_for_element_id_at_point(&mut self) -> Result<(), EngineError> {
-        if let Some(cursor_screen_coordinates_dvec2) = self.cursor.position() {
-            let cursor_screen_coordinates = cursor_screen_coordinates_dvec2.as_vec2().to_array();
+    fn select_element_id_at_cursor_position(&mut self) -> anyhow::Result<()> {
+        let Some(cursor_screen_coordinates_dvec2) = self.cursor.position() else {
+            return Ok(());
+        };
+        let cursor_screen_coordinates = cursor_screen_coordinates_dvec2.as_vec2().to_array();
 
-            // send request
-            let thread_send_res = self
-                .render_thread_channels
-                .request_element_id_at_screen_coordinate(cursor_screen_coordinates);
-            check_channel_updater_result(thread_send_res)?;
+        let element_at_point = self
+            .render_manager
+            .get_element_at_screen_coordinate(cursor_screen_coordinates)?;
+
+        match element_at_point {
+            None => (),
+            Some(ElementAtPoint::Background) => self.background_clicked(),
+            Some(ElementAtPoint::Object {
+                object_id,
+                primitive_op_index,
+            }) => self.object_clicked(object_id, Some(primitive_op_index)),
+            Some(ElementAtPoint::BlendArea { object_id }) => self.object_clicked(object_id, None),
         }
+
         Ok(())
-    }
-
-    fn receive_and_select_element_id_at_point(&mut self) {
-        if let Some(element_at_point) = self
-            .render_thread_channels
-            .receive_element_id_at_screen_coordinate()
-        {
-            debug!("element clicked = {:?}", element_at_point);
-            match element_at_point {
-                ElementAtPoint::Background => self.background_clicked(),
-                ElementAtPoint::Object {
-                    object_id,
-                    primitive_op_index,
-                } => self.object_clicked(object_id, Some(primitive_op_index)),
-                ElementAtPoint::BlendArea { object_id } => self.object_clicked(object_id, None),
-            }
-        }
     }
 
     fn background_clicked(&mut self) {
@@ -432,48 +372,7 @@ impl EngineController {
         }
     }
 
-    fn shut_down(&mut self) {
-        self.request_render_thread_quit();
-        self.wait_for_render_thread_quit();
-    }
-
-    fn request_render_thread_quit(&self) {
-        debug!("sending quit command to render thread...");
-        let _render_thread_send_res = self
-            .render_thread_channels
-            .set_render_thread_command(RenderThreadCommand::Quit);
-    }
-
-    fn wait_for_render_thread_quit(&mut self) {
-        let Some(render_thread_handle) = self.render_thread_handle.take() else {
-            debug!("no render thread handle");
-            return;
-        };
-        debug!(
-            "waiting for render thread to quit (timeout = {:.2}s)",
-            config_engine::JOIN_THREAD_WAIT_TIMEOUT_SECONDS
-        );
-        let join_timeout_begin = Instant::now();
-        let timeout_millis = (config_engine::JOIN_THREAD_WAIT_TIMEOUT_SECONDS * 1_000.) as u128;
-        loop {
-            let render_thread_finished = render_thread_handle.is_finished();
-            if render_thread_finished {
-                break;
-            }
-            if join_timeout_begin.elapsed().as_millis() > timeout_millis {
-                error!(
-                    "render thread hanging longer than timeout of {:.2}s. continuing now...",
-                    config_engine::JOIN_THREAD_WAIT_TIMEOUT_SECONDS
-                );
-                return;
-            }
-        }
-        match render_thread_handle.join() {
-            Err(e) => error!("thread joined -> render thread paniced: {:?}", e),
-            Ok(()) => (),
-        }
-        debug!("render thread quit.");
-    }
+    fn shut_down(&mut self) {}
 }
 
 // ~~ Engine Error ~~
@@ -498,30 +397,6 @@ impl std::fmt::Display for EngineError {
 }
 
 impl std::error::Error for EngineError {}
-
-/// If `thread_send_res` is an error, returns `EngineError::RenderThreadClosedPrematurely`.
-/// Otherwise returns `Ok`.
-fn check_channel_updater_result<T>(
-    thread_send_res: Result<(), NoReceiverError<T>>,
-) -> Result<(), EngineError> {
-    if let Err(e) = thread_send_res {
-        warn!("render thread receiver dropped prematurely ({})", e);
-        return Err(EngineError::RenderThreadClosedPrematurely);
-    }
-    Ok(())
-}
-
-/// If `thread_send_res` is an error, returns `EngineError::RenderThreadClosedPrematurely`.
-/// Otherwise returns `Ok`.
-fn check_channel_sender_result<T>(
-    thread_send_res: Result<(), SendError<T>>,
-) -> Result<(), EngineError> {
-    if let Err(e) = thread_send_res {
-        warn!("render thread receiver dropped prematurely ({})", e);
-        return Err(EngineError::RenderThreadClosedPrematurely);
-    }
-    Ok(())
-}
 
 // ~~ Testing ~~
 
