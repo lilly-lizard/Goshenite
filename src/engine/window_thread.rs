@@ -29,11 +29,12 @@ pub fn start_main_thread() -> anyhow::Result<()> {
     let (engine_command_rx, engine_command_tx) = single_value_channel::channel::<EngineCommand>();
     let (window_event_tx, window_event_rx) = mpsc::channel::<WindowEvent>();
 
-    let main_thread_channels = MainThreadChannels {
+    let main_thread_channels = WindowThreadChannels {
         engine_command_rx,
         window_event_rx,
     };
 
+    // engine thread is separate from window event polling (so I'm not constricted by winit's loop structure which is subject to change)
     let _ = engine_command_tx.update(Some(EngineCommand::Run));
     let engine_thread_handle = thread::spawn(|| {
         info!("initializing engine instance");
@@ -45,26 +46,26 @@ pub fn start_main_thread() -> anyhow::Result<()> {
         Ok::<(), anyhow::Error>(())
     });
 
-    let mut main_thread = MainThread {
+    // main thread is responsible for recieving window events
+    let mut window_thread = WindowThread {
         primary_window_id,
         engine_thread_handle: ManuallyDrop::new(engine_thread_handle),
         engine_command_tx,
         window_event_tx,
     };
-
-    event_loop.run_app(&mut main_thread)?;
+    event_loop.run_app(&mut window_thread)?;
 
     Ok(())
 }
 
-pub struct MainThread {
+pub struct WindowThread {
     primary_window_id: WindowId,
     engine_thread_handle: ManuallyDrop<JoinHandle<Result<(), anyhow::Error>>>,
     engine_command_tx: Updater<Option<EngineCommand>>,
     window_event_tx: Sender<WindowEvent>,
 }
 
-impl ApplicationHandler for MainThread {
+impl ApplicationHandler for WindowThread {
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -129,13 +130,13 @@ fn create_window(event_loop: &EventLoop<()>) -> anyhow::Result<Arc<Window>> {
     Ok(Arc::new(window))
 }
 
-pub struct MainThreadChannels {
+pub struct WindowThreadChannels {
     /// FIFO queue
     pub engine_command_rx: single_value_channel::Receiver<Option<EngineCommand>>,
     pub window_event_rx: mpsc::Receiver<WindowEvent>,
 }
 
-impl MainThreadChannels {
+impl WindowThreadChannels {
     /// Ordered by time received, i.e. first event in index 0
     pub fn get_events(&self) -> anyhow::Result<Vec<WindowEvent>> {
         let mut events = Vec::<WindowEvent>::new();

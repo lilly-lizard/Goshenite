@@ -1,7 +1,6 @@
 use super::{
     commands::{CommandWithSource, TargetPrimitiveOp},
     config_engine,
-    main_thread::MainThreadChannels,
     object::{
         object::ObjectId, object_collection::ObjectCollection, operation::Operation,
         primitive_op::PrimitiveOpId,
@@ -10,6 +9,7 @@ use super::{
         cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform, sphere::Sphere,
     },
     settings::Settings,
+    window_thread::WindowThreadChannels,
 };
 use crate::{
     config,
@@ -70,7 +70,7 @@ pub struct EngineController {
     settings: Settings,
 
     // window thread (main thread)
-    main_thread_channels: MainThreadChannels,
+    window_thread_channels: WindowThreadChannels,
 }
 
 // ~~ Public Functions ~~
@@ -78,7 +78,7 @@ pub struct EngineController {
 impl EngineController {
     pub fn new(
         window: Arc<Window>,
-        main_thread_channels: MainThreadChannels,
+        window_thread_channels: WindowThreadChannels,
     ) -> anyhow::Result<Self> {
         let scale_factor_override: Option<f64> = match env::var(config::ENV::SCALE_FACTOR) {
             Ok(s) => s.parse::<f64>().ok(),
@@ -123,13 +123,13 @@ impl EngineController {
 
             settings: Settings::default(),
 
-            main_thread_channels,
+            window_thread_channels,
         })
     }
 
     pub fn run(&mut self) -> anyhow::Result<()> {
         loop {
-            let engine_command = self.main_thread_channels.latest_command();
+            let engine_command = self.window_thread_channels.latest_command();
             match engine_command {
                 Some(EngineCommand::Run) => (),
                 None => (), // just keep running
@@ -162,7 +162,7 @@ impl EngineController {
 impl EngineController {
     /// The main loop of the engine thread
     fn run_frame(&mut self) -> anyhow::Result<EngineCommand> {
-        let events = self.main_thread_channels.get_events()?;
+        let events = self.window_thread_channels.get_events()?;
 
         for event in events {
             let process_input_res = self.process_window_event(event);

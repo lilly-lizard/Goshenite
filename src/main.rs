@@ -7,7 +7,7 @@ mod helper;
 mod renderer;
 mod user_interface;
 
-use crate::engine::main_thread::start_main_thread;
+use crate::engine::window_thread::start_main_thread;
 use helper::logger::ConsoleLogger;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
