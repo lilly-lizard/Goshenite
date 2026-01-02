@@ -1,68 +1,22 @@
-use crate::config;
-use anyhow::Context;
+use super::engine_controller::EngineCommand;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use single_value_channel::Updater;
 use std::{
     mem::ManuallyDrop,
-    sync::{
-        mpsc::{self, Sender, TryRecvError},
-        Arc,
-    },
+    sync::mpsc::{self, Sender, TryRecvError},
     thread::{self, JoinHandle},
 };
 use winit::{
-    application::ApplicationHandler,
-    event::WindowEvent,
-    event_loop::{ActiveEventLoop, EventLoop},
-    window::{Window, WindowAttributes, WindowId},
+    application::ApplicationHandler, event::WindowEvent, event_loop::ActiveEventLoop,
+    window::WindowId,
 };
 
-use super::engine_controller::{EngineCommand, EngineController};
-
-pub fn start_main_thread() -> anyhow::Result<()> {
-    let event_loop = EventLoop::new().context("creating os event loop")?;
-
-    let window = create_window(&event_loop)?;
-    let primary_window_id = window.id();
-
-    let (engine_command_rx, engine_command_tx) = single_value_channel::channel::<EngineCommand>();
-    let (window_event_tx, window_event_rx) = mpsc::channel::<WindowEvent>();
-
-    let main_thread_channels = WindowThreadChannels {
-        engine_command_rx,
-        window_event_rx,
-    };
-
-    // engine thread is separate from window event polling (so I'm not constricted by winit's loop structure which is subject to change)
-    let _ = engine_command_tx.update(Some(EngineCommand::Run));
-    let engine_thread_handle = thread::spawn(|| {
-        info!("initializing engine instance");
-        let mut engine_controller = EngineController::new(window, main_thread_channels)?;
-
-        info!("starting engine loop");
-        engine_controller.run()?;
-
-        Ok::<(), anyhow::Error>(())
-    });
-
-    // main thread is responsible for recieving window events
-    let mut window_thread = WindowThread {
-        primary_window_id,
-        engine_thread_handle: ManuallyDrop::new(engine_thread_handle),
-        engine_command_tx,
-        window_event_tx,
-    };
-    event_loop.run_app(&mut window_thread)?;
-
-    Ok(())
-}
-
 pub struct WindowThread {
-    primary_window_id: WindowId,
-    engine_thread_handle: ManuallyDrop<JoinHandle<Result<(), anyhow::Error>>>,
-    engine_command_tx: Updater<Option<EngineCommand>>,
-    window_event_tx: Sender<WindowEvent>,
+    pub primary_window_id: WindowId,
+    pub engine_thread_handle: ManuallyDrop<JoinHandle<Result<(), anyhow::Error>>>,
+    pub engine_command_tx: Updater<Option<EngineCommand>>,
+    pub window_event_tx: Sender<WindowEvent>,
 }
 
 impl ApplicationHandler for WindowThread {
@@ -119,15 +73,6 @@ fn wait_for_engine_thread_closure(
             ),
         }
     }
-}
-
-fn create_window(event_loop: &EventLoop<()>) -> anyhow::Result<Arc<Window>> {
-    info!("creating main window...");
-    let window_attributes = WindowAttributes::default().with_title(config::ENGINE_NAME);
-    let window = event_loop
-        .create_window(window_attributes)
-        .context("instanciating initial os window")?;
-    Ok(Arc::new(window))
 }
 
 pub struct WindowThreadChannels {
