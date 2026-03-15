@@ -4,6 +4,11 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 # todo
 
+- saving/loading model files
+- benchmarking button in ui
+- model saving/loading in separate crate to programatically make models (for benchmarking)
+- commenting summary of what code is doing (cognative load)
+
 - move rendering to engine thread to reduce latency and make thermal throttling management easier
 - iosevka font
 
