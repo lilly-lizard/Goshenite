@@ -1,5 +1,4 @@
 use super::unique_id_gen::{UniqueId, UniqueIdError};
-use egui_dnd::utils::ShiftSliceError;
 use std::{error, fmt, io};
 
 // ~~ Collections ~~
@@ -9,7 +8,6 @@ pub enum CollectionError {
     OutOfBounds { index: usize, size: usize },
     InvalidId { raw_id: UniqueId },
     UniqueIdError(UniqueIdError),
-    ShiftSliceError(ShiftSliceError),
 }
 
 impl fmt::Display for CollectionError {
@@ -20,7 +18,6 @@ impl fmt::Display for CollectionError {
             }
             Self::InvalidId { raw_id } => write!(f, "invalid id {}", raw_id),
             Self::UniqueIdError(e) => e.fmt(f),
-            Self::ShiftSliceError(e) => e.fmt(f),
         }
     }
 }
@@ -29,7 +26,6 @@ impl error::Error for CollectionError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
             Self::UniqueIdError(e) => Some(e),
-            Self::ShiftSliceError(e) => Some(e),
             _ => None,
         }
     }
@@ -38,12 +34,6 @@ impl error::Error for CollectionError {
 impl From<UniqueIdError> for CollectionError {
     fn from(value: UniqueIdError) -> Self {
         Self::UniqueIdError(value)
-    }
-}
-
-impl From<ShiftSliceError> for CollectionError {
-    fn from(value: ShiftSliceError) -> Self {
-        Self::ShiftSliceError(value)
     }
 }
 

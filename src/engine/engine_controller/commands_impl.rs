@@ -215,14 +215,14 @@ impl EngineController {
                 Some(new_specular),
                 Some(command),
             ),
-            Command::ShiftPrimitiveOps {
+            Command::ReOrderPrimitiveOp {
                 object_id,
-                source_index,
+                primitive_op_id,
                 target_index,
             } => {
-                self.shift_primitive_ops_via_command(
+                self.re_order_primitive_op_via_command(
                     object_id,
-                    source_index,
+                    primitive_op_id,
                     target_index,
                     command,
                 );
@@ -320,9 +320,6 @@ impl EngineController {
     // ~~ Object ~~
 
     fn deselect_object(&mut self) {
-        if self.selected_object_id.is_some() {
-            self.gui.selected_object_changed();
-        }
         self.selected_object_id = None;
         self.selected_primitive_op_id = None;
     }
@@ -359,7 +356,6 @@ impl EngineController {
             // if a different object is already selected, deselect the primitive op because it will
             // no longer be valid
             self.deselect_primitive_op();
-            self.gui.selected_object_changed();
         }
     }
 
@@ -816,10 +812,10 @@ impl EngineController {
         }
     }
 
-    fn shift_primitive_ops_via_command(
+    fn re_order_primitive_op_via_command(
         &mut self,
         object_id: ObjectId,
-        source_index: usize,
+        primitive_op_id: PrimitiveOpId,
         target_index: usize,
         command: Command,
     ) {
@@ -831,7 +827,7 @@ impl EngineController {
 
         let shift_res = self.object_collection.shift_primitive_ops_in_object(
             object_id,
-            source_index,
+            primitive_op_id,
             target_index,
         );
         if let Err(e) = shift_res {

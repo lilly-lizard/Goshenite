@@ -12,6 +12,7 @@ use crate::{
     },
     helper::{
         more_errors::CollectionError,
+        shift_slice::{shift_slice, ShiftSliceError},
         unique_id_gen::{UniqueId, UniqueIdError, UniqueIdGen, UniqueIdType},
     },
     renderer::shader_interfaces::primitive_op_buffer::{
@@ -19,7 +20,6 @@ use crate::{
         PrimitiveOpPacket, MAX_PRIMITIVE_OP_COUNT,
     },
 };
-use egui_dnd::utils::{shift_slice, ShiftSliceError};
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
@@ -181,6 +181,13 @@ impl Object {
                     None
                 }
             })
+    }
+
+    #[inline]
+    pub fn get_primitive_op_index(&self, primitive_op_id: PrimitiveOpId) -> Option<usize> {
+        self.primitive_ops
+            .iter()
+            .position(|op| op.id() == primitive_op_id)
     }
 
     pub fn set_primitive_op_id(

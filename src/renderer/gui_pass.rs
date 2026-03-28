@@ -438,7 +438,6 @@ impl GuiPass {
 
         let upload_data_dimensions: [usize; 2] = match &delta.image {
             egui::ImageData::Color(image) => [image.width(), image.height()],
-            egui::ImageData::Font(image) => [image.width(), image.height()],
         };
 
         // create buffer to be copied to the image
@@ -956,18 +955,6 @@ fn egui_image_bytes(image_data: &egui::ImageData, texture_id: TextureId) -> Vec<
             image
                 .pixels
                 .iter()
-                .flat_map(|color| color.to_array())
-                .collect()
-        }
-        egui::ImageData::Font(image) => {
-            if image.width() * image.height() != image.pixels.len() {
-                warn!(
-                    "mismatch between gui font texture size and texel count. texture_id = {:?}",
-                    texture_id
-                );
-            }
-            image
-                .srgba_pixels(None)
                 .flat_map(|color| color.to_array())
                 .collect()
         }

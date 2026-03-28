@@ -105,9 +105,10 @@ pub enum Command {
         target_primitive_op: TargetPrimitiveOp,
         new_specular: f32,
     },
-    ShiftPrimitiveOps {
+    /// Moves a primitive op to a new index in the object's rendering order
+    ReOrderPrimitiveOp {
         object_id: ObjectId,
-        source_index: usize,
+        primitive_op_id: PrimitiveOpId,
         target_index: usize,
     },
 

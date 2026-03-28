@@ -8,4 +8,5 @@ pub mod list;
 pub mod logger;
 #[allow(dead_code)]
 pub mod more_errors;
+pub mod shift_slice;
 pub mod unique_id_gen;

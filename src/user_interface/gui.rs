@@ -116,11 +116,6 @@ impl Gui {
         self.egui_context.set_pixels_per_point(scale_factor);
     }
 
-    /// Call this when the selected object is changed
-    pub fn selected_object_changed(&mut self) {
-        self.gui_state.primitive_op_list_drag = Default::default();
-    }
-
     /// Call this when a primitive op is selected
     pub fn primitive_op_selected(&mut self, selected_primitive_op: &PrimitiveOp) {
         self.gui_state

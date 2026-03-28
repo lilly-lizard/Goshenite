@@ -20,7 +20,6 @@ use crate::{
     },
 };
 use egui::{ComboBox, DragValue, RichText, TextStyle};
-use egui_dnd::DragDropResponse;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::mem::discriminant;
@@ -38,7 +37,6 @@ impl Gui {
             commands = layout_object_editor(
                 ui,
                 &mut self.gui_state,
-                &self.egui_context,
                 object_collection,
                 selected_object_id,
                 selected_primitive_op_id,
@@ -58,7 +56,6 @@ impl Gui {
 fn layout_object_editor(
     ui: &mut egui::Ui,
     gui_state: &mut GuiState,
-    context: &egui::Context,
     object_collection: &ObjectCollection,
     selected_object_id: Option<ObjectId>,
     selected_primitive_op_id: Option<PrimitiveOpId>,
@@ -90,8 +87,6 @@ fn layout_object_editor(
     primitive_op_list(
         ui,
         &mut commands,
-        gui_state,
-        context,
         selected_object,
         some_selected_object_id,
         selected_primitive_op_id,
@@ -373,8 +368,6 @@ fn primitive_type_drop_down(
 fn primitive_op_list(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
-    gui_state: &mut GuiState,
-    context: &egui::Context,
     selected_object: &Object,
     selected_object_id: ObjectId,
     selected_primitive_op_id: Option<PrimitiveOpId>,
@@ -403,33 +396,29 @@ fn primitive_op_list(
         None => None,
     };
 
-    // draw each item in the primitive op list
-    let mut primitive_op_list_drag_state = gui_state.primitive_op_list_drag.clone();
-    let drag_drop_response = primitive_op_list_drag_state.list_ui::<PrimitiveOp>(
-        context,
-        ui,
-        selected_object.primitive_ops.iter(),
-        // function to draw a single primitive op entry in the list
-        |ui, drag_handle, index, primitive_op| {
+    let frame = egui::Frame::default().inner_margin(4.0);
+    let (_, dropped_payload) = ui.dnd_drop_zone::<(PrimitiveOpId, usize), ()>(frame, |ui| {
+        for (list_index, primitive_op) in selected_object.primitive_ops.iter().enumerate() {
             primitive_op_list_item(
                 ui,
                 commands,
                 primitive_op,
-                index,
+                list_index,
                 selected_prim_op,
-                drag_handle,
                 selected_object_id,
             );
-        },
-    );
-    gui_state.primitive_op_list_drag = primitive_op_list_drag_state;
+        }
+    });
 
-    // if an item has been dropped after being dragged, re-arrange the primtive ops list
-    if let DragDropResponse::Completed(drag_indices) = drag_drop_response {
-        commands.push(Command::ShiftPrimitiveOps {
+    if let Some(dropped_payload_arc) = dropped_payload {
+        let (dropped_primitive_op_id, _original_index) = *dropped_payload_arc;
+        // The user dropped onto the column, but not on any one item
+        // the area this happens in is below the list
+        commands.push(Command::ReOrderPrimitiveOp {
             object_id: selected_object_id,
-            source_index: drag_indices.source,
-            target_index: drag_indices.target,
+            primitive_op_id: dropped_primitive_op_id,
+            // move to end of the list
+            target_index: selected_object.primitive_ops.len(),
         });
     }
 }
@@ -438,20 +427,19 @@ fn primitive_op_list_item(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
     primitive_op: &PrimitiveOp,
-    index: usize,
+    primitive_op_index: usize,
     selected_prim_op: Option<&PrimitiveOp>,
-    drag_handle: egui_dnd::handle::DragHandle<'_>,
     selected_object_id: ObjectId,
 ) {
-    let draggable_text = RichText::new(format!("{}", index)).text_style(TextStyle::Monospace);
-
     // label text
-    let primitive_op_text = RichText::new(format!(
+    let label_text = RichText::new(format!(
         "{} {}",
         primitive_op.op.name(),
         primitive_op.primitive.type_name()
     ))
     .text_style(TextStyle::Monospace);
+
+    let item_gui_id = egui::Id::new(("p-op-list-menu", primitive_op_index));
 
     // check if this primitive op is selected
     let is_selected = match selected_prim_op {
@@ -459,22 +447,54 @@ fn primitive_op_list_item(
         None => false,
     };
 
-    // draw ui for this primitive op
-    ui.horizontal(|ui_h| {
-        // anything inside the handle can be used to drag the item
-        drag_handle.ui(ui_h, primitive_op, |handle_ui| {
-            handle_ui.label(draggable_text);
-        });
+    // label to select or drag/drop this primitive op
+    let dnd_response = ui
+        .dnd_drag_source(
+            item_gui_id,
+            (primitive_op.id(), primitive_op_index),
+            |ui_dnd| ui_dnd.selectable_label(is_selected, label_text),
+        )
+        .response;
 
-        // label to select this primitive op
-        let prim_op_res = ui_h.selectable_label(is_selected, primitive_op_text);
+    // primitive op selected
+    if dnd_response.clicked() {
+        let target_primitive_op = TargetPrimitiveOp::Id(selected_object_id, primitive_op.id());
+        commands.push(Command::SelectPrimitiveOp(target_primitive_op))
+    }
 
-        // primitive op selected
-        if prim_op_res.clicked() {
-            let target_primitive_op = TargetPrimitiveOp::Id(selected_object_id, primitive_op.id());
-            commands.push(Command::SelectPrimitiveOp(target_primitive_op))
+    if let (Some(dragging_position), Some(dragging_payload)) = (
+        ui.input(|i| i.pointer.interact_pos()),
+        dnd_response.dnd_hover_payload::<(PrimitiveOpId, usize)>(),
+    ) {
+        let (_dragging_primitive_op_id, dragging_original_index) = *dragging_payload;
+        let rect = dnd_response.rect;
+
+        // preview insertion
+        let stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
+        let drop_target_index = if dragging_original_index == primitive_op_index {
+            // dragged onto itself
+            ui.painter().hline(rect.x_range(), rect.center().y, stroke);
+            primitive_op_index
+        } else if dragging_position.y < rect.center().y {
+            // above current item
+            ui.painter().hline(rect.x_range(), rect.top(), stroke);
+            primitive_op_index
+        } else {
+            // below current item
+            ui.painter().hline(rect.x_range(), rect.bottom(), stroke);
+            primitive_op_index + 1
+        };
+
+        if let Some(dropped_payload) = dnd_response.dnd_release_payload::<(PrimitiveOpId, usize)>()
+        {
+            let (dropped_primitive_op_id, _original_index) = *dropped_payload;
+            commands.push(Command::ReOrderPrimitiveOp {
+                object_id: selected_object_id,
+                primitive_op_id: dropped_primitive_op_id,
+                target_index: drop_target_index,
+            });
         }
-    });
+    }
 }
 
 fn primitive_editor_ui(ui: &mut egui::Ui, gui_state: &mut GuiState) -> EditState {

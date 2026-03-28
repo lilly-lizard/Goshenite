@@ -118,6 +118,8 @@ comments by action or object e.g. a search for 'transition image layout' wouldn'
 
 - all 'spammy' logging should go in trace, e.g. per-frame states, per-input states, to keep debug and higher reasonably clean and readable
 
+[nice explanation of pros/cons of using anyhow vs Box<dyn Error>](https://old.reddit.com/r/rust/comments/17neomp/result_boxdyn_error_vs_anyhowresult/k7rhrss/)
+
 # design decisions
 
 - create objects and coloring from editor, set to vary against variables etc

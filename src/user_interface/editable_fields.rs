@@ -18,7 +18,6 @@ use egui::{
     epaint::Hsva,
     ComboBox, DragValue,
 };
-use egui_dnd::DragableItem;
 use glam::{Vec2, Vec3, Vec4};
 
 /// Returns a new operation if a different one is selected
@@ -308,11 +307,5 @@ pub fn editable_uber_parameters_ui(
         EditState::Modified
     } else {
         EditState::NoChange
-    }
-}
-
-impl DragableItem for PrimitiveOp {
-    fn drag_id(&self) -> egui::Id {
-        egui::Id::new(format!("p-op-drag{}", self.id()))
     }
 }

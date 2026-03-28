@@ -170,12 +170,18 @@ impl ObjectCollection {
     pub fn shift_primitive_ops_in_object(
         &mut self,
         object_id: ObjectId,
-        source_index: usize,
+        primitive_op_id: PrimitiveOpId,
         target_index: usize,
-    ) -> Result<(), CollectionError> {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let object_mut_ref = self.get_object_mut(object_id)?;
-        object_mut_ref.shift_primitive_ops(source_index, target_index)?;
-        self.mark_object_for_gpu_update(object_id)
+        if let Some(source_index) = object_mut_ref.get_primitive_op_index(primitive_op_id) {
+            object_mut_ref.shift_primitive_ops(source_index, target_index)?;
+            return Ok(self.mark_object_for_gpu_update(object_id)?);
+        } else {
+            return Err(Box::new(CollectionError::InvalidId {
+                raw_id: primitive_op_id.raw_id(),
+            }));
+        }
     }
 
     pub fn remove_primitive_op_id_from_object(

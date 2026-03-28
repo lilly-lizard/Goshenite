@@ -17,14 +17,14 @@ include-spirv-bytes = []
 
 [dependencies]
 log = "0.4"
-# error propogation and backtrace management
+# error propogation with backtraces
 anyhow = { version = "1.0", features = ["backtrace"] }
 # terminal output formatting
 colored = { version = "2.0", optional = true }
 # glam is a vector and math library well suited for 3D graphics (noticeably more lightweight than cgmath)
 glam = { version = "0.25", features = ["debug-glam-assert", "serde"] }
 # winit is a cross-platform window creation and management library (version must match egui-winit support)
-winit = "0.30"
+winit = "0.30.13"
 raw-window-handle = "0.6"
 # ash is a lightweight vulkan wrapper. note that with default features, the vulkan library will (attempt to) be loaded dynamically at runtime.
 ash = "0.38"
@@ -37,9 +37,8 @@ bort-vma = { path = "../bort/bort-vma", features = ["vulkan-1-2"] }
 # bit-casting crate (for cpu<->gpu buffers)
 bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
-egui = { version = "0.29", features = ["callstack"] }
-egui-winit = "0.29"
-egui_dnd = { version = "0.3", path = "vendor/egui_dnd-fork" }
+egui = { version = "0.33.3", features = ["callstack"] }
+egui-winit = "0.33.3"
 # hash library used by egui (fast af boii)
 ahash = { version = "0.8", default-features = false, features = [
     "no-rng", # we don't need DOS-protection, so we let users opt-in to it instead
