@@ -467,6 +467,13 @@ impl RenderManager {
     pub fn wait_idle_device(&self) -> anyhow::Result<()> {
         self.device.wait_idle().context("calling vkDeviceWaitIdle")
     }
+
+    pub fn max_2d_image_size(&self) -> usize {
+        self.device
+            .physical_device()
+            .limits()
+            .max_image_dimension2_d as usize
+    }
 }
 
 // Private functions

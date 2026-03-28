@@ -2,7 +2,7 @@ use super::{gui::EditState, gui_state::DRAG_INC};
 use crate::{
     config,
     engine::{
-        object::{object::ObjectId, operation::Operation, primitive_op::PrimitiveOp},
+        object::{object::ObjectId, operation::Operation},
         primitives::{
             cube::Cube, primitive_transform::PrimitiveTransform, sphere::Sphere,
             uber_primitive::UberPrimitive,

@@ -93,7 +93,8 @@ impl EngineController {
         let mut render_manager = RenderManager::new(window.clone(), scale_factor as f32)?;
         render_manager.update_camera(&camera)?;
 
-        let gui = Gui::new(window.clone(), scale_factor as f32);
+        let max_texture_size = render_manager.max_2d_image_size(); //maxImageDimension2D
+        let gui = Gui::new(window.clone(), scale_factor as f32, Some(max_texture_size));
 
         let mut object_collection = ObjectCollection::new();
 

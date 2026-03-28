@@ -59,24 +59,23 @@ pub struct Gui {
 impl Gui {
     /// Creates a new [`Gui`].
     /// * `window`: [`winit`] window
-    /// * `max_texture_side`: maximum size of a texture. Query from graphics driver using
-    /// [`crate::renderer::render_manager::RenderManager::max_image_array_layers`]
-    pub fn new(window: Arc<Window>, scale_factor: f32) -> Self {
+    /// * `max_texture_size`: maximum size of a texture. Corresponds to
+    ///   VkPhysicalDeviceLimits.maxImageDimension2D
+    pub fn new(window: Arc<Window>, scale_factor: f32, max_texture_size: Option<usize>) -> Self {
         let egui_context = egui::Context::default();
-        egui_context.set_style(egui::Style {
+        egui_context.set_global_style(egui::Style {
             // disable sentance wrap by default (horizontal scroll instead)
             wrap_mode: Some(TextWrapMode::Extend),
             ..Default::default()
         });
 
-        // todo max_texture_side?
         let winit_state = egui_winit::State::new(
             egui_context.clone(),
             egui::ViewportId::ROOT,
             &window,
             Some(scale_factor),
             None,
-            None,
+            max_texture_size,
         );
 
         Self {
