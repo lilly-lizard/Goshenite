@@ -1,10 +1,7 @@
 use super::{
     commands::{CommandWithSource, TargetPrimitiveOp},
     config_engine,
-    object::{
-        object::ObjectId, object_collection::ObjectCollection, operation::Operation,
-        primitive_op::PrimitiveOpId,
-    },
+    object::{object::ObjectId, object_collection::ObjectCollection, operation::Operation},
     primitives::{
         cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform, sphere::Sphere,
     },
@@ -13,7 +10,7 @@ use super::{
 };
 use crate::{
     config,
-    engine::object::object::Object,
+    engine::object::{object::Object, primitive_op::PrimitiveOpIndex},
     helper::anyhow_panic::anyhow_unwrap,
     renderer::{
         config_renderer::RenderOptions, element_id_reader::ElementAtPoint,
@@ -56,7 +53,7 @@ pub struct EngineController {
     main_thread_frame_number: u64,
     pending_commands: VecDeque<CommandWithSource>,
     selected_object_id: Option<ObjectId>,
-    selected_primitive_op_id: Option<PrimitiveOpId>,
+    selected_primitive_op_index: Option<PrimitiveOpIndex>,
     render_options: RenderOptions,
     keyboard_modifier_states: KeyboardModifierStates,
 
@@ -113,7 +110,7 @@ impl EngineController {
             main_thread_frame_number: 0,
             pending_commands: VecDeque::new(),
             selected_object_id: None,
-            selected_primitive_op_id: None,
+            selected_primitive_op_index: None,
             render_options: RenderOptions::default(),
             keyboard_modifier_states: KeyboardModifierStates::default(),
 
@@ -239,7 +236,7 @@ impl EngineController {
             &self.window,
             self.camera,
             self.selected_object_id,
-            self.selected_primitive_op_id,
+            self.selected_primitive_op_index,
             self.render_options,
         );
         let commands_from_gui = anyhow_unwrap(update_gui_res, "update gui");
@@ -349,7 +346,11 @@ impl EngineController {
         self.camera.unset_lock_on_target();
     }
 
-    fn object_clicked(&mut self, object_id: ObjectId, primitive_op_index: Option<usize>) {
+    fn object_clicked(
+        &mut self,
+        object_id: ObjectId,
+        primitive_op_index: Option<PrimitiveOpIndex>,
+    ) {
         if let Some(some_primitive_op_index) = primitive_op_index {
             let target_primitive_op = TargetPrimitiveOp::Index(object_id, some_primitive_op_index);
             self.select_primitive_op_and_object(target_primitive_op, None)

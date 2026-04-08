@@ -46,7 +46,7 @@ pub struct GuiState {
 
 // Setters
 impl GuiState {
-    pub fn set_selected_primitive_op(&mut self, selected_primitive_op: &PrimitiveOp) {
+    pub fn set_selected_primitive_op_fields(&mut self, selected_primitive_op: &PrimitiveOp) {
         self.primitive_edit = selected_primitive_op.primitive;
         self.op_edit = selected_primitive_op.op;
         self.albedo_edit = selected_primitive_op.albedo;
@@ -64,6 +64,17 @@ impl GuiState {
         self.transform_edit = primitive_op.transform;
         self.op_edit = primitive_op.op;
         self.blend_edit = primitive_op.blend;
+    }
+
+    pub fn get_primitive_op_from_editor_fields(&self) -> PrimitiveOp {
+        PrimitiveOp::new(
+            self.primitive_edit,
+            self.transform_edit,
+            self.op_edit,
+            self.blend_edit,
+            self.albedo_edit,
+            self.specular_edit,
+        )
     }
 }
 

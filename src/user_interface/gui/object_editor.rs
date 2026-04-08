@@ -5,7 +5,7 @@ use crate::{
         object::{
             object::{Object, ObjectId},
             object_collection::ObjectCollection,
-            primitive_op::{PrimitiveOp, PrimitiveOpId},
+            primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
         primitives::primitive::{EncodablePrimitive, Primitive},
     },
@@ -29,7 +29,7 @@ impl Gui {
         &mut self,
         object_collection: &ObjectCollection,
         selected_object_id: Option<ObjectId>,
-        selected_primitive_op_id: Option<PrimitiveOpId>,
+        selected_primitive_op_index: Option<PrimitiveOpIndex>,
     ) -> Vec<Command> {
         let mut commands = Vec::<Command>::new();
 
@@ -39,7 +39,7 @@ impl Gui {
                 &mut self.gui_state,
                 object_collection,
                 selected_object_id,
-                selected_primitive_op_id,
+                selected_primitive_op_index,
             );
         };
         egui::Window::new("Object Editor")
@@ -58,7 +58,7 @@ fn layout_object_editor(
     gui_state: &mut GuiState,
     object_collection: &ObjectCollection,
     selected_object_id: Option<ObjectId>,
-    selected_primitive_op_id: Option<PrimitiveOpId>,
+    selected_primitive_op_index: Option<PrimitiveOpIndex>,
 ) -> Vec<Command> {
     let mut commands = Vec::<Command>::new();
 
@@ -81,7 +81,7 @@ fn layout_object_editor(
         gui_state,
         selected_object,
         some_selected_object_id,
-        selected_primitive_op_id,
+        selected_primitive_op_index,
     );
 
     primitive_op_list(
@@ -89,7 +89,7 @@ fn layout_object_editor(
         &mut commands,
         selected_object,
         some_selected_object_id,
-        selected_primitive_op_id,
+        selected_primitive_op_index,
     );
 
     commands
@@ -173,16 +173,16 @@ fn primitive_op_editor(
     gui_state: &mut GuiState,
     selected_object: &Object,
     selected_object_id: ObjectId,
-    selected_primitive_op_id: Option<PrimitiveOpId>,
+    selected_primitive_op_index: Option<PrimitiveOpIndex>,
 ) {
-    if let Some(selected_prim_op_id) = selected_primitive_op_id {
+    if let Some(selected_primitive_op_index) = selected_primitive_op_index {
         existing_primitive_op_editor(
             ui,
             commands,
             gui_state,
             selected_object,
             selected_object_id,
-            selected_prim_op_id,
+            selected_primitive_op_index,
         );
     } else {
         new_primitive_op_editor(ui, commands, gui_state, selected_object_id);
@@ -195,23 +195,22 @@ fn existing_primitive_op_editor(
     gui_state: &mut GuiState,
     selected_object: &Object,
     selected_object_id: ObjectId,
-    selected_prim_op_id: PrimitiveOpId,
+    selected_primitive_op_index: PrimitiveOpIndex,
 ) {
     let mut primitive_op_edit_state = EditState::NoChange;
 
     let selected_object_id = selected_object_id;
-    let (selected_primitive_op, selected_primitive_op_index) =
-        match selected_object.get_primitive_op_and_index(selected_prim_op_id) {
-            Some(primitive_op_and_index) => primitive_op_and_index,
-            None => {
-                // selected_prim_op_id not in selected_obejct -> invalid id
-                debug!("selected object {} dropped", selected_object_id);
-                commands.push(ValidationCommand::SelectedObject().into());
-
-                new_primitive_op_editor(ui, commands, gui_state, selected_object_id);
-                return;
-            }
-        };
+    let Some(selected_primitive_op) = selected_object
+        .primitive_ops
+        .get(selected_primitive_op_index)
+    else {
+        // invalid primitive op index
+        debug!("invalid primitive op index");
+        debug!("  object id = {}", selected_object_id);
+        debug!("  primitive op index = {}", selected_primitive_op_index);
+        new_primitive_op_editor(ui, commands, gui_state, selected_object_id);
+        return;
+    };
 
     gui_state.set_primitive_op_edit_state(selected_primitive_op);
 
@@ -244,7 +243,8 @@ fn existing_primitive_op_editor(
 
     let delete_clicked = ui.button("Delete").clicked();
     if delete_clicked {
-        let target_primitive_op = TargetPrimitiveOp::Id(selected_object_id, selected_prim_op_id);
+        let target_primitive_op =
+            TargetPrimitiveOp::Index(selected_object_id, selected_primitive_op_index);
         commands.push(Command::RemovePrimitiveOp(target_primitive_op));
         return;
     }
@@ -253,15 +253,10 @@ fn existing_primitive_op_editor(
         EditState::Modified => {
             // update the primitive op data with what we've been using
             let target_primitive_op =
-                TargetPrimitiveOp::Id(selected_object_id, selected_prim_op_id);
-            commands.push(Command::SetPrimitiveOp {
+                TargetPrimitiveOp::Index(selected_object_id, selected_primitive_op_index);
+            commands.push(Command::UpdatePrimitiveOp {
                 target_primitive_op,
-                new_primitive: gui_state.primitive_edit,
-                new_transform: gui_state.transform_edit,
-                new_operation: gui_state.op_edit,
-                new_blend: gui_state.blend_edit,
-                new_albedo: gui_state.albedo_edit,
-                new_specular: gui_state.specular_edit,
+                new_primitive_op: gui_state.get_primitive_op_from_editor_fields(),
             });
         }
         EditState::NoChange => (),
@@ -306,22 +301,12 @@ fn new_primitive_op_editor(
         if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
             commands.push(Command::PushPrimitiveOpAndSelect {
                 object_id: selected_object_id,
-                primitive: gui_state.primitive_edit.clone(),
-                transform: gui_state.transform_edit,
-                operation: gui_state.op_edit,
-                blend: gui_state.blend_edit,
-                albedo: gui_state.albedo_edit,
-                specular: gui_state.specular_edit,
+                primitive_op: gui_state.get_primitive_op_from_editor_fields(),
             });
         } else {
             commands.push(Command::PushPrimitiveOp {
                 object_id: selected_object_id,
-                primitive: gui_state.primitive_edit.clone(),
-                transform: gui_state.transform_edit,
-                operation: gui_state.op_edit,
-                blend: gui_state.blend_edit,
-                albedo: gui_state.albedo_edit,
-                specular: gui_state.specular_edit,
+                primitive_op: gui_state.get_primitive_op_from_editor_fields(),
             });
         }
     }
@@ -370,53 +355,38 @@ fn primitive_op_list(
     commands: &mut Vec<Command>,
     selected_object: &Object,
     selected_object_id: ObjectId,
-    selected_primitive_op_id: Option<PrimitiveOpId>,
+    selected_primitive_op_index: Option<PrimitiveOpIndex>,
 ) {
     ui.separator();
 
     // new primitive op button
     let new_op_response =
-        ui.selectable_label(selected_primitive_op_id.is_none(), "New primitive op");
+        ui.selectable_label(selected_primitive_op_index.is_none(), "New primitive op");
     if new_op_response.clicked() {
         commands.push(Command::DeselectPrimtiveOp());
     }
 
-    let selected_prim_op = match selected_primitive_op_id {
-        Some(selected_prim_op_id) => {
-            match selected_object.get_primitive_op(selected_prim_op_id) {
-                Some(found_prim_op) => Some(found_prim_op),
-                None => {
-                    // selected_prim_op_id not in selected_obejct! invalid id so we should deselect
-                    debug!("primitive op id not found in selected object!");
-                    commands.push(Command::DeselectPrimtiveOp());
-                    None
-                }
-            }
-        }
-        None => None,
-    };
-
     let frame = egui::Frame::default().inner_margin(4.0);
-    let (_, dropped_payload) = ui.dnd_drop_zone::<(PrimitiveOpId, usize), ()>(frame, |ui| {
+    let (_, dropped_payload) = ui.dnd_drop_zone::<PrimitiveOpIndex, ()>(frame, |ui| {
         for (list_index, primitive_op) in selected_object.primitive_ops.iter().enumerate() {
             primitive_op_list_item(
                 ui,
                 commands,
                 primitive_op,
                 list_index,
-                selected_prim_op,
+                selected_primitive_op_index,
                 selected_object_id,
             );
         }
     });
 
     if let Some(dropped_payload_arc) = dropped_payload {
-        let (dropped_primitive_op_id, _original_index) = *dropped_payload_arc;
+        let original_index = *dropped_payload_arc;
         // The user dropped onto the column, but not on any one item
         // the area this happens in is below the list
         commands.push(Command::ReOrderPrimitiveOp {
             object_id: selected_object_id,
-            primitive_op_id: dropped_primitive_op_id,
+            original_index: original_index,
             // move to end of the list
             target_index: selected_object.primitive_ops.len(),
         });
@@ -427,8 +397,8 @@ fn primitive_op_list_item(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
     primitive_op: &PrimitiveOp,
-    primitive_op_index: usize,
-    selected_prim_op: Option<&PrimitiveOp>,
+    primitive_op_index: PrimitiveOpIndex,
+    selected_primitive_op_index: Option<PrimitiveOpIndex>,
     selected_object_id: ObjectId,
 ) {
     // label text
@@ -442,31 +412,29 @@ fn primitive_op_list_item(
     let item_gui_id = egui::Id::new(("p-op-list-menu", primitive_op_index));
 
     // check if this primitive op is selected
-    let is_selected = match selected_prim_op {
-        Some(some_selected_prim_op) => some_selected_prim_op.id() == primitive_op.id(),
+    let is_selected = match selected_primitive_op_index {
+        Some(some_selected_prim_op_index) => some_selected_prim_op_index == primitive_op_index,
         None => false,
     };
 
     // label to select or drag/drop this primitive op
     let dnd_response = ui
-        .dnd_drag_source(
-            item_gui_id,
-            (primitive_op.id(), primitive_op_index),
-            |ui_dnd| ui_dnd.selectable_label(is_selected, label_text),
-        )
+        .dnd_drag_source(item_gui_id, primitive_op_index, |ui_dnd| {
+            ui_dnd.selectable_label(is_selected, label_text)
+        })
         .response;
 
     // primitive op selected
     if dnd_response.clicked() {
-        let target_primitive_op = TargetPrimitiveOp::Id(selected_object_id, primitive_op.id());
+        let target_primitive_op = TargetPrimitiveOp::Index(selected_object_id, primitive_op_index);
         commands.push(Command::SelectPrimitiveOp(target_primitive_op))
     }
 
     if let (Some(dragging_position), Some(dragging_payload)) = (
         ui.input(|i| i.pointer.interact_pos()),
-        dnd_response.dnd_hover_payload::<(PrimitiveOpId, usize)>(),
+        dnd_response.dnd_hover_payload::<PrimitiveOpIndex>(),
     ) {
-        let (_dragging_primitive_op_id, dragging_original_index) = *dragging_payload;
+        let dragging_original_index = *dragging_payload;
         let rect = dnd_response.rect;
 
         // preview insertion
@@ -485,12 +453,11 @@ fn primitive_op_list_item(
             primitive_op_index + 1
         };
 
-        if let Some(dropped_payload) = dnd_response.dnd_release_payload::<(PrimitiveOpId, usize)>()
-        {
-            let (dropped_primitive_op_id, _original_index) = *dropped_payload;
+        if let Some(dropped_payload) = dnd_response.dnd_release_payload::<PrimitiveOpIndex>() {
+            let original_index = *dropped_payload;
             commands.push(Command::ReOrderPrimitiveOp {
                 object_id: selected_object_id,
-                primitive_op_id: dropped_primitive_op_id,
+                original_index: original_index,
                 target_index: drop_target_index,
             });
         }

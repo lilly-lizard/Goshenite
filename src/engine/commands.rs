@@ -1,7 +1,10 @@
-use crate::renderer::config_renderer::RenderOptions;
+use crate::{
+    engine::object::primitive_op::{PrimitiveOp, PrimitiveOpIndex},
+    renderer::config_renderer::RenderOptions,
+};
 
 use super::{
-    object::{object::ObjectId, operation::Operation, primitive_op::PrimitiveOpId},
+    object::{object::ObjectId, operation::Operation},
     primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
 };
 use glam::{DVec3, Vec3};
@@ -54,62 +57,47 @@ pub enum Command {
     // ~~ Primitive Op: Push ~~
     PushPrimitiveOp {
         object_id: ObjectId,
-        primitive: Primitive,
-        transform: PrimitiveTransform,
-        operation: Operation,
-        blend: f32,
-        albedo: Vec3,
-        specular: f32,
+        primitive_op: PrimitiveOp,
     },
     PushPrimitiveOpAndSelect {
         object_id: ObjectId,
-        primitive: Primitive,
-        transform: PrimitiveTransform,
-        operation: Operation,
-        blend: f32,
-        albedo: Vec3,
-        specular: f32,
+        primitive_op: PrimitiveOp,
     },
 
     // ~~ Primitive Op: Modify ~~
-    SetPrimitiveOp {
+    UpdatePrimitiveOp {
         target_primitive_op: TargetPrimitiveOp,
-        new_primitive: Primitive,
-        new_transform: PrimitiveTransform,
-        new_operation: Operation,
-        new_blend: f32,
-        new_albedo: Vec3,
-        new_specular: f32,
+        new_primitive_op: PrimitiveOp,
     },
-    SetPrimitive {
+    UpdatePrimitive {
         target_primitive_op: TargetPrimitiveOp,
         new_primitive: Primitive,
     },
-    SetPrimitiveTransform {
+    UpdatePrimitiveTransform {
         target_primitive_op: TargetPrimitiveOp,
         new_transform: PrimitiveTransform,
     },
-    SetOperation {
+    UpdateOperation {
         target_primitive_op: TargetPrimitiveOp,
         new_operation: Operation,
     },
-    SetBlend {
+    UpdateBlend {
         target_primitive_op: TargetPrimitiveOp,
         new_blend: f32,
     },
-    SetAlbedo {
+    UpdateAlbedo {
         target_primitive_op: TargetPrimitiveOp,
         new_albedo: Vec3,
     },
-    SetSpecular {
+    UpdateSpecular {
         target_primitive_op: TargetPrimitiveOp,
         new_specular: f32,
     },
     /// Moves a primitive op to a new index in the object's rendering order
     ReOrderPrimitiveOp {
         object_id: ObjectId,
-        primitive_op_id: PrimitiveOpId,
-        target_index: usize,
+        original_index: PrimitiveOpIndex,
+        target_index: PrimitiveOpIndex,
     },
 
     // ~~ Internal ~~
@@ -132,8 +120,7 @@ impl From<ValidationCommand> for Command {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum TargetPrimitiveOp {
     Selected,
-    Id(ObjectId, PrimitiveOpId),
-    Index(ObjectId, usize),
+    Index(ObjectId, PrimitiveOpIndex),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,18 +165,18 @@ impl CommandWithSource {
 #[derive(Debug)]
 pub enum CommandError {
     InvalidObjectId(ObjectId),
-    InvalidPrimitiveOpId(ObjectId, PrimitiveOpId),
+    InvalidPrimitiveOpIndex(ObjectId, PrimitiveOpIndex),
 }
 
 impl std::fmt::Display for CommandError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidObjectId(object_id) => write!(f, "invalid object id {}", object_id),
-            Self::InvalidPrimitiveOpId(object_id, primitive_op_id) => {
+            Self::InvalidPrimitiveOpIndex(object_id, primitive_op_index) => {
                 write!(
                     f,
-                    "primitive op id {} not present in object id {}",
-                    primitive_op_id, object_id
+                    "primitive op index {} not present in object id {}",
+                    primitive_op_index, object_id
                 )
             }
         }

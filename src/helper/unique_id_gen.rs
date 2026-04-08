@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeSet, error, fmt};
 
-// gpu id buffer packed as 16 bits for object and 16 bits for primitive op.
+// the gpu id buffer is packed as 16 bits for object id and 16 bits for primitive op index
 // 32 bit uint images have guarenteed vulkan support
 pub type UniqueId = u16;
 
@@ -71,7 +71,11 @@ impl fmt::Display for UniqueIdError {
                 )
             }
             Self::RecycledIdExists(recycled_id) => {
-                write!(f, "recycled id {} could not be inserted into recycled_ids collection because it already exists there", recycled_id)
+                write!(
+                    f,
+                    "recycled id {} could not be inserted into recycled_ids collection because it already exists there",
+                    recycled_id
+                )
             }
         }
     }
