@@ -59,6 +59,29 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - anti-aliased gui
 - 'waiting' cursor when other code taking time...
 
+# new renderer
+
+[sdf renderer optimizations](https://www.youtube.com/watch?v=il-TXbn5iMA)
+- sparse grid of cached sdf evaluations
+- only cache values on surfaces: blocks with positive and negative sdf evaluations
+	- sparse grid (can't use coordinates for look up)
+	- could use octrees (nvidia paper: Efficient Sparse Voxel Octrees)
+	- brick map
+		- each block contains 8 points (for each point of cube)
+		- each point stores a 1 byte sdf evaluation (don't need f32, result will be withing unit square)
+		- each pixel of 3d texture atlas is a point (brick map pointer grid)
+		- brick size is 8x8x8
+		- lookup (pointer) texture size = 4 bytes (brick map pointer size) * 1024^3 (full grid dimensions) / 8^3 (grid dimensions) = 8MB
+		- pointers point to sparse buffer with actual values (brick map) in which blocks are allocated and de-allocated if surfaces change
+		- naively store everything in big buffer = 1 byte * 1024^3 = 1GB
+- LOD
+	- paper: Geometry Clipmaps: terrain rendering using nested regular grids
+	- 11:55 for visualization
+	- set of grids nested on top of each other, each double in size
+- unknowns...
+	- how best to perform initial cached evaluations
+	- how to determine which sparse grid surface blocks intersect the current ray
+
 ## ui additions
 
 - comand palette and keyboard shortcuts
