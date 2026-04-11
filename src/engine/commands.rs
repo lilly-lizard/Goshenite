@@ -19,8 +19,8 @@ pub enum Command {
     // ~~ Save states ~~
     SaveStateCamera,
     LoadStateCamera,
-    SaveAllObjects,
-    LoadObjects,
+    SaveScene,
+    LoadScene,
 
     // ~~ Settings ~~
     SetScrollZoomSensitivity(f64),

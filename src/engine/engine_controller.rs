@@ -18,6 +18,7 @@ use crate::{
     },
     user_interface::{
         camera::Camera,
+        config_ui::KEY_BINDING_COMMAND_PALETTE,
         cursor::{Cursor, CursorEvent},
         gui::Gui,
         keyboard_modifiers::KeyboardModifierStates,
@@ -294,9 +295,9 @@ impl EngineController {
         };
 
         match key_code {
-            KeyCode::KeyP => {
+            KEY_BINDING_COMMAND_PALETTE => {
                 if let ElementState::Released = key_event.state {
-                    self.gui.set_command_palette_visability(true);
+                    self.gui.toggle_command_palette_visability();
                 }
             }
             KeyCode::Escape => {

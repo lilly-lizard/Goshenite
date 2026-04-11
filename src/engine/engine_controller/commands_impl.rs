@@ -43,8 +43,8 @@ impl EngineController {
             // ~~ Save states ~~
             Command::SaveStateCamera => self.save_state_camera(command),
             Command::LoadStateCamera => self.load_state_camera(command),
-            Command::SaveAllObjects => self.save_all_objects(command),
-            Command::LoadObjects => self.load_objects(command),
+            Command::SaveScene => self.save_all_objects(command),
+            Command::LoadScene => self.load_objects(command),
 
             // ~~ Settings ~~
             Command::SetScrollZoomSensitivity(new_sensitivity) => {

@@ -23,12 +23,12 @@ const AVAILABLE_PALETTE_COMMANDS: [CommandPaletteEntry; 4] = [
         command: Command::LoadStateCamera,
     },
     CommandPaletteEntry {
-        name: "Save All Objects",
-        command: Command::SaveAllObjects,
+        name: "Save Scene",
+        command: Command::SaveScene,
     },
     CommandPaletteEntry {
-        name: "Load Objects",
-        command: Command::LoadObjects,
+        name: "Load Scene",
+        command: Command::LoadScene,
     },
 ];
 
@@ -40,11 +40,13 @@ impl Gui {
         // max width/height but cap it if window is too small
         // caps: max width, then 0.5 of window width
         // caps: half height, until minimum, then capped by bottom panel
-        const DEFAULT_WIDTH: f32 = 60.;
-        const MIN_HEIGHT: f32 = 10.;
+        const DEFAULT_WIDTH: f32 = 200.;
+        const MIN_HEIGHT: f32 = 80.;
         let window_size = window.inner_size();
         let width = f32::min(DEFAULT_WIDTH, 0.6 * window_size.width as f32);
-        let height = f32::max(MIN_HEIGHT, 0.5 * window_size.height as f32);
+        let height = f32::max(MIN_HEIGHT, 0.05 * window_size.height as f32);
+        let x_pos = (window_size.width as f32 - width) / 2.;
+        let y_pos: f32 = (window_size.height as f32 - height) / 2.;
 
         let mut new_command = None;
         let add_contents = |ui: &mut egui::Ui| {
@@ -52,9 +54,10 @@ impl Gui {
         };
         egui::Window::new("Command Palette")
             .open(&mut self.sub_window_states.command_palette)
-            .resizable(false)
+            .resizable(true)
             .vscroll(true)
             .fixed_size([width, height])
+            .fixed_pos([x_pos, y_pos])
             .show(&self.egui_context, add_contents);
 
         new_command

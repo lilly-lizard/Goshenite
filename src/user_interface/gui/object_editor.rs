@@ -127,8 +127,6 @@ fn label_and_get_selected_object<'a>(
     ui.horizontal(|ui_h| {
         ui_h.label("Name:");
         ui_h.text_edit_singleline(&mut new_name);
-        let id_label = format!("id: {}", some_selected_object_id);
-        ui_h.label(&id_label);
     });
     if new_name != selected_object.name {
         commands.push(Command::SetObjectName {
@@ -138,6 +136,16 @@ fn label_and_get_selected_object<'a>(
     }
 
     Some((selected_object, some_selected_object_id))
+}
+
+fn save_load_buttons(ui: &mut egui::Ui, commands: &mut Vec<Command>, object_id: ObjectId) {
+    ui.separator();
+
+    ui.horizontal(|ui| {
+        if ui.button("Save").clicked() {
+            commands.push(todo!());
+        }
+    });
 }
 
 fn object_properties_editor(

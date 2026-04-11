@@ -208,6 +208,10 @@ impl Gui {
         std::mem::take(&mut self.textures_delta_accumulation)
     }
 
+    pub fn toggle_command_palette_visability(&mut self) {
+        self.sub_window_states.command_palette = !self.sub_window_states.command_palette;
+    }
+
     pub fn set_command_palette_visability(&mut self, is_open: bool) {
         self.sub_window_states.command_palette = is_open;
     }

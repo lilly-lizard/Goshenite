@@ -16,7 +16,6 @@ shader-compile = ["dep:shaderc"]
 include-spirv-bytes = []
 
 [dependencies]
-goshenite_model_loader = { path = "./model_loader" }
 log = "0.4"
 # error propogation with backtraces
 anyhow = { version = "1.0", features = ["backtrace"] }

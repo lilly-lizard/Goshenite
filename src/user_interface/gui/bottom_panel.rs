@@ -4,7 +4,7 @@ use egui::Ui;
 
 impl Gui {
     pub(super) fn draw_bottom_panel(&mut self) {
-        egui::TopBottomPanel::bottom("main top panel").show(&self.egui_context, |ui| {
+        egui::Panel::bottom("main top panel").show(&self.egui_context, |ui| {
             bottom_panel_layout(ui, &mut self.sub_window_states);
         });
     }
@@ -22,6 +22,7 @@ fn bottom_panel_layout(ui: &mut Ui, window_states: &mut SubWindowStates) {
         // window toggles
         ui.toggle_value(&mut window_states.object_list, "Object List");
         ui.toggle_value(&mut window_states.object_editor, "Object Editor");
+        ui.toggle_value(&mut window_states.command_palette, "Command Pallete");
         ui.toggle_value(&mut window_states.camera_control, "Camera Control");
 
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

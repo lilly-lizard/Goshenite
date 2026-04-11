@@ -867,7 +867,6 @@ dependencies = [
  "egui",
  "egui-winit",
  "glam",
- "goshenite_model_loader",
  "log",
  "memoffset",
  "raw-window-handle",
@@ -878,10 +877,6 @@ dependencies = [
  "stl_io",
  "winit",
 ]
-
-[[package]]
-name = "goshenite_model_loader"
-version = "0.1.0"
 
 [[package]]
 name = "half"

@@ -1,5 +1,6 @@
 use crate::helper::angle::Angle;
 use glam::{DVec2, DVec3};
+use winit::keyboard::KeyCode;
 
 /// If set to true, after clicking "Add primitive op" the newly created primitive op will be selected
 pub const SELECT_PRIMITIVE_OP_AFTER_ADD: bool = false;
@@ -26,3 +27,6 @@ pub const ARC_BALL_FACTOR: Angle = Angle::from_radians(0.005);
 pub const PAN_FACTOR: DVec2 = DVec2::new(0.01, 0.01);
 pub const DEFAULT_SCROLL_ZOOM_SENSITIVITY: f64 = 0.5;
 pub const MOUSE_ZOOM_FACTOR: f64 = 0.1;
+
+// Key Bindings
+pub const KEY_BINDING_COMMAND_PALETTE: KeyCode = KeyCode::KeyP;
