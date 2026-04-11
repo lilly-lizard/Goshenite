@@ -36,7 +36,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 - 1 primitive op per instance and use depth test to blend
 - make AllocationCreateInfo similar to BufferProperties. unintuitive usage of bort_vma structs, too many options
 
-- object file format (e.g. gltf)
 - object surface octree cpu code (use file format to have tests/benchmarks)
 
 - memory allocation write with bytemuck slice i.e. copy all at once rather than with iter
