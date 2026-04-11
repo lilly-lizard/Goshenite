@@ -1,7 +1,7 @@
 use super::Gui;
 use crate::{
     engine::{
-        commands::{Command, TargetPrimitiveOp, ValidationCommand},
+        commands::{Command, ValidationCommand},
         object::{
             object::{Object, ObjectId},
             object_collection::ObjectCollection,
@@ -243,19 +243,19 @@ fn existing_primitive_op_editor(
 
     let delete_clicked = ui.button("Delete").clicked();
     if delete_clicked {
-        let target_primitive_op =
-            TargetPrimitiveOp::Index(selected_object_id, selected_primitive_op_index);
-        commands.push(Command::RemovePrimitiveOp(target_primitive_op));
+        commands.push(Command::RemovePrimitiveOp(
+            selected_object_id,
+            selected_primitive_op_index,
+        ));
         return;
     }
 
     match primitive_op_edit_state {
         EditState::Modified => {
             // update the primitive op data with what we've been using
-            let target_primitive_op =
-                TargetPrimitiveOp::Index(selected_object_id, selected_primitive_op_index);
             commands.push(Command::UpdatePrimitiveOp {
-                target_primitive_op,
+                object_id: selected_object_id,
+                primitive_op_index: selected_primitive_op_index,
                 new_primitive_op: gui_state.get_primitive_op_from_editor_fields(),
             });
         }
@@ -349,7 +349,7 @@ fn primitive_type_drop_down(
 }
 
 /// Draw the primitive op list. each list element can be dragged/dropped elsewhere in the list,
-/// or selected with a button for editing.
+/// or selected for editing.
 fn primitive_op_list(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
@@ -426,8 +426,10 @@ fn primitive_op_list_item(
 
     // primitive op selected
     if dnd_response.clicked() {
-        let target_primitive_op = TargetPrimitiveOp::Index(selected_object_id, primitive_op_index);
-        commands.push(Command::SelectPrimitiveOp(target_primitive_op))
+        commands.push(Command::SelectPrimitiveOp(
+            selected_object_id,
+            primitive_op_index,
+        ))
     }
 
     if let (Some(dragging_position), Some(dragging_payload)) = (

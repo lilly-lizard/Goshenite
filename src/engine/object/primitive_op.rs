@@ -36,4 +36,9 @@ impl PrimitiveOp {
             specular,
         }
     }
+
+    #[inline]
+    pub fn center(&self) -> Vec3 {
+        self.transform.center
+    }
 }

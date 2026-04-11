@@ -3,7 +3,7 @@ use super::{
     shader_interfaces::primitive_op_buffer::{PRIMITIVE_ID_BACKGROUND, PRIMITIVE_ID_BLEND},
     vulkan_init::create_cpu_read_staging_buffer,
 };
-use crate::engine::object::object::ObjectId;
+use crate::engine::object::{object::ObjectId, primitive_op::PrimitiveOpIndex};
 use anyhow::Context;
 use ash::{khr::synchronization2, vk};
 use bort_vk::{
@@ -16,7 +16,7 @@ use std::sync::Arc;
 pub enum ElementAtPoint {
     Object {
         object_id: ObjectId,
-        primitive_op_index: usize,
+        primitive_op_index: PrimitiveOpIndex,
     },
     Background,
     BlendArea {

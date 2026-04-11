@@ -48,11 +48,12 @@ pub enum Command {
     },
 
     // ~~ Primtive Op: Selection ~~
-    SelectPrimitiveOp(TargetPrimitiveOp),
+    SelectPrimitiveOp(ObjectId, PrimitiveOpIndex),
     DeselectPrimtiveOp(),
 
     // ~~ Primitive Op: Remove ~~
-    RemovePrimitiveOp(TargetPrimitiveOp),
+    RemovePrimitiveOp(ObjectId, PrimitiveOpIndex),
+    RemoveSelectedPrimitiveOp(),
 
     // ~~ Primitive Op: Push ~~
     PushPrimitiveOp {
@@ -66,31 +67,38 @@ pub enum Command {
 
     // ~~ Primitive Op: Modify ~~
     UpdatePrimitiveOp {
-        target_primitive_op: TargetPrimitiveOp,
+        object_id: ObjectId,
+        primitive_op_index: PrimitiveOpIndex,
         new_primitive_op: PrimitiveOp,
     },
     UpdatePrimitive {
-        target_primitive_op: TargetPrimitiveOp,
+        object_id: ObjectId,
+        primitive_op_index: PrimitiveOpIndex,
         new_primitive: Primitive,
     },
     UpdatePrimitiveTransform {
-        target_primitive_op: TargetPrimitiveOp,
+        object_id: ObjectId,
+        primitive_op_index: PrimitiveOpIndex,
         new_transform: PrimitiveTransform,
     },
     UpdateOperation {
-        target_primitive_op: TargetPrimitiveOp,
+        object_id: ObjectId,
+        primitive_op_index: PrimitiveOpIndex,
         new_operation: Operation,
     },
     UpdateBlend {
-        target_primitive_op: TargetPrimitiveOp,
+        object_id: ObjectId,
+        primitive_op_index: PrimitiveOpIndex,
         new_blend: f32,
     },
     UpdateAlbedo {
-        target_primitive_op: TargetPrimitiveOp,
+        object_id: ObjectId,
+        primitive_op_index: PrimitiveOpIndex,
         new_albedo: Vec3,
     },
     UpdateSpecular {
-        target_primitive_op: TargetPrimitiveOp,
+        object_id: ObjectId,
+        primitive_op_index: PrimitiveOpIndex,
         new_specular: f32,
     },
     /// Moves a primitive op to a new index in the object's rendering order
@@ -116,12 +124,6 @@ impl From<ValidationCommand> for Command {
 }
 
 // ~~ Helper Types ~~
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum TargetPrimitiveOp {
-    Selected,
-    Index(ObjectId, PrimitiveOpIndex),
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandSource {

@@ -39,6 +39,7 @@ fn layout_camera_control(ui: &mut egui::Ui, camera: Camera) -> Vec<Command> {
             LookMode::Direction(_) => false,
             LookMode::TargetPos(_) => true,
             LookMode::TargetObject { .. } => true,
+            LookMode::TargetPrimitiveOp { .. } => true,
         };
 
         let unset_res = ui.add_enabled(target_mode_on, |ui_inner: &mut egui::Ui| {
@@ -80,10 +81,28 @@ fn layout_camera_control(ui: &mut egui::Ui, camera: Camera) -> Vec<Command> {
         }
 
         LookMode::TargetObject {
-            object_id,
+            target_object_id,
             last_known_origin,
         } => {
-            ui.label(format!("Look mode: Target object (id = {})", object_id));
+            ui.label(format!(
+                "Look mode: Target object (id = {})",
+                target_object_id
+            ));
+            ui.label(format!(
+                "Target position: [{:.2}, {:.2}, {:.2}]",
+                last_known_origin.x, last_known_origin.y, last_known_origin.z
+            ));
+        }
+
+        LookMode::TargetPrimitiveOp {
+            target_object_id,
+            target_primitive_op_index,
+            last_known_origin,
+        } => {
+            ui.label(format!(
+                "Look mode: Target primitive op index (id = {}, index = {})",
+                target_object_id, target_primitive_op_index
+            ));
             ui.label(format!(
                 "Target position: [{:.2}, {:.2}, {:.2}]",
                 last_known_origin.x, last_known_origin.y, last_known_origin.z

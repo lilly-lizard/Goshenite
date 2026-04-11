@@ -212,6 +212,28 @@ impl ObjectCollection {
         self.objects.get(&object_id)
     }
 
+    pub fn get_object_and_primitive_op(
+        &self,
+        object_id: ObjectId,
+        primitive_op_index: PrimitiveOpIndex,
+    ) -> Result<(&Object, PrimitiveOp), CollectionError> {
+        let object = self
+            .objects
+            .get(&object_id)
+            .ok_or(CollectionError::InvalidId {
+                raw_id: object_id.raw_id(),
+            })?;
+        let primitive_op =
+            object
+                .primitive_ops
+                .get(primitive_op_index)
+                .ok_or(CollectionError::OutOfBounds {
+                    index: primitive_op_index,
+                    size: object.primitive_ops.len(),
+                })?;
+        Ok((object, *primitive_op))
+    }
+
     /// Marks all objects for gpu update, regardless of wherever they've been modified since the
     /// last upload. Useful for debugging.
     pub fn force_gpu_update(&mut self) {

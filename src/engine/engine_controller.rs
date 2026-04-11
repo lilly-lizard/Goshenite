@@ -1,5 +1,5 @@
 use super::{
-    commands::{CommandWithSource, TargetPrimitiveOp},
+    commands::CommandWithSource,
     config_engine,
     object::{object::ObjectId, object_collection::ObjectCollection, operation::Operation},
     primitives::{
@@ -223,6 +223,7 @@ impl EngineController {
         Ok(())
     }
 
+    // Per frame udpates
     fn update_engine(&mut self) -> anyhow::Result<()> {
         // process recieved events for cursor state
         let cursor_event = self.cursor.process_frame();
@@ -352,8 +353,7 @@ impl EngineController {
         primitive_op_index: Option<PrimitiveOpIndex>,
     ) {
         if let Some(some_primitive_op_index) = primitive_op_index {
-            let target_primitive_op = TargetPrimitiveOp::Index(object_id, some_primitive_op_index);
-            self.select_primitive_op_and_object(target_primitive_op, None)
+            self.select_primitive_op(object_id, some_primitive_op_index, None);
         } else {
             self.select_object(object_id, None);
         }

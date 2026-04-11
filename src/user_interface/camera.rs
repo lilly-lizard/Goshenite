@@ -7,7 +7,9 @@ use super::{
 use crate::{
     config,
     engine::{
-        object::{object::ObjectId, object_collection::ObjectCollection},
+        object::{
+            object::ObjectId, object_collection::ObjectCollection, primitive_op::PrimitiveOpIndex,
+        },
         settings::Settings,
     },
     helper::angle::Angle,
@@ -24,7 +26,12 @@ pub enum LookMode {
     /// Lock on to a target position
     TargetPos(DVec3),
     TargetObject {
-        object_id: ObjectId,
+        target_object_id: ObjectId,
+        last_known_origin: Vec3,
+    },
+    TargetPrimitiveOp {
+        target_object_id: ObjectId,
+        target_primitive_op_index: PrimitiveOpIndex,
         last_known_origin: Vec3,
     },
 }
@@ -39,6 +46,8 @@ impl Default for LookMode {
 }
 
 /// Describes the orientation and properties of a camera that can be used for perspective rendering
+///
+/// Note: there is currently a restriction that the camera direction cannot be exactly vertical in order for normals to be calculated relative to the vertical axis.
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Camera {
     position: DVec3,
@@ -67,14 +76,38 @@ impl Camera {
         camera_control_mappings: CameraControlMappings,
         object_collection: &ObjectCollection,
     ) {
-        if let LookMode::TargetObject { object_id, .. } = self.look_mode() {
-            if let Some(object) = object_collection.get_object(object_id) {
-                // update camera target positi on
-                self.set_lock_on_target_object(object_id, object.origin);
-            } else {
-                // object dropped
-                self.unset_lock_on_target();
+        match self.look_mode() {
+            LookMode::TargetObject {
+                target_object_id, ..
+            } => {
+                if let Some(object) = object_collection.get_object(target_object_id) {
+                    // update camera target positi on
+                    self.set_lock_on_target_object(target_object_id, object.origin);
+                } else {
+                    // object dropped
+                    self.unset_lock_on_target();
+                }
             }
+            LookMode::TargetPrimitiveOp {
+                target_object_id,
+                target_primitive_op_index,
+                ..
+            } => {
+                match object_collection
+                    .get_object_and_primitive_op(target_object_id, target_primitive_op_index)
+                {
+                    Ok((_object, primitive_op)) => self.set_lock_on_target_primitive_op(
+                        target_object_id,
+                        target_primitive_op_index,
+                        primitive_op.center(),
+                    ),
+                    Err(_e) => {
+                        // object dropped or primitive op deleted
+                        self.unset_lock_on_target();
+                    }
+                }
+            }
+            _ => (),
         }
 
         if camera_control_mappings
@@ -135,14 +168,48 @@ impl Camera {
         self.check_for_and_recover_from_vertical_orientation_alignment();
     }
 
-    pub fn set_lock_on_target_object(&mut self, object_id: ObjectId, object_origin: Vec3) {
+    pub fn set_lock_on_target_object(&mut self, target_object_id: ObjectId, object_origin: Vec3) {
         self.look_mode = LookMode::TargetObject {
-            object_id,
+            target_object_id,
             last_known_origin: object_origin,
         };
 
         // avoid vertical alignment
         self.check_for_and_recover_from_vertical_orientation_alignment();
+    }
+
+    pub fn set_lock_on_target_primitive_op(
+        &mut self,
+        target_object_id: ObjectId,
+        target_primitive_op_index: PrimitiveOpIndex,
+        primitive_op_center: Vec3,
+    ) {
+        self.look_mode = LookMode::TargetPrimitiveOp {
+            target_object_id,
+            target_primitive_op_index,
+            last_known_origin: primitive_op_center,
+        };
+
+        // avoid vertical alignment
+        self.check_for_and_recover_from_vertical_orientation_alignment();
+    }
+
+    pub fn deselect_object(&mut self) {
+        match self.look_mode {
+            LookMode::TargetObject { .. } => {
+                self.unset_lock_on_target();
+            }
+            LookMode::TargetPrimitiveOp { .. } => {
+                self.unset_lock_on_target();
+            }
+            _ => (),
+        }
+    }
+
+    pub fn deselect_primitive_op(&mut self) {
+        if let LookMode::TargetPrimitiveOp { .. } = self.look_mode {
+            self.unset_lock_on_target();
+        }
     }
 
     pub fn unset_lock_on_target(&mut self) {
@@ -293,12 +360,15 @@ impl Camera {
                 let new_position = self.position + zoom_delta * direction;
                 self.set_position(new_position);
             }
-
             LookMode::TargetPos(target_pos) => {
                 self.scroll_zoom_target(zoom_delta, target_pos);
             }
-
             LookMode::TargetObject {
+                last_known_origin, ..
+            } => {
+                self.scroll_zoom_target(zoom_delta, last_known_origin.as_dvec3());
+            }
+            LookMode::TargetPrimitiveOp {
                 last_known_origin, ..
             } => {
                 self.scroll_zoom_target(zoom_delta, last_known_origin.as_dvec3());
@@ -314,6 +384,9 @@ impl Camera {
             LookMode::TargetObject {
                 last_known_origin, ..
             } => last_known_origin.as_dvec3() - self.position,
+            LookMode::TargetPrimitiveOp {
+                last_known_origin, ..
+            } => last_known_origin.as_dvec3() - self.position,
         }
     }
 
@@ -322,6 +395,9 @@ impl Camera {
             LookMode::Direction(direction) => self.position + direction,
             LookMode::TargetPos(target_pos) => target_pos,
             LookMode::TargetObject {
+                last_known_origin, ..
+            } => last_known_origin.as_dvec3(),
+            LookMode::TargetPrimitiveOp {
                 last_known_origin, ..
             } => last_known_origin.as_dvec3(),
         }
@@ -397,6 +473,18 @@ impl Camera {
                 );
                 self.set_position(new_position);
             }
+            LookMode::TargetPrimitiveOp {
+                last_known_origin, ..
+            } => {
+                let new_position = arcball(
+                    self.position,
+                    last_known_origin.as_dvec3(),
+                    normal,
+                    delta_angle[0],
+                    delta_angle[1],
+                );
+                self.set_position(new_position);
+            }
         }
     }
 
@@ -407,6 +495,9 @@ impl Camera {
                 Angle::from_radians(delta * config_ui::ARC_BALL_FACTOR.radians())
             }
             LookMode::TargetObject { .. } => {
+                Angle::from_radians(delta * config_ui::ARC_BALL_FACTOR.radians())
+            }
+            LookMode::TargetPrimitiveOp { .. } => {
                 Angle::from_radians(delta * config_ui::ARC_BALL_FACTOR.radians())
             }
         })
