@@ -19,4 +19,4 @@ pub const DEFAULT_ORIGIN: Vec3 = Vec3::ZERO;
 
 pub const HIDDEN_STORAGE_DIR: &str = ".goshenite";
 pub const SAVE_STATE_FILENAME_CAMERA: &str = "camera.gsave";
-pub const SAVE_STATE_FILENAME_OBJECTS: &str = "objects.gsave";
+pub const SAVE_STATE_FILENAME_SCENE: &str = "scene.gsave";

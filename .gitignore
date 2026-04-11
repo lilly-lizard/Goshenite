@@ -2,4 +2,4 @@ target
 goshenite-debug
 goshenite-release
 .goshenite
-objects.gsave
+scene.gsave

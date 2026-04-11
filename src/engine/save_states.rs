@@ -1,5 +1,5 @@
 use super::{
-    config_engine::{SAVE_STATE_FILENAME_CAMERA, SAVE_STATE_FILENAME_OBJECTS},
+    config_engine::{SAVE_STATE_FILENAME_CAMERA, SAVE_STATE_FILENAME_SCENE},
     object::{object::Object, object_collection::ObjectCollection},
 };
 use crate::{
@@ -23,11 +23,11 @@ pub fn load_state_camera() -> Result<Camera, IoError> {
 
 pub fn save_all_objects(object_collection: &ObjectCollection) -> Result<(), IoError> {
     let object_list: Vec<Object> = object_collection.objects().values().cloned().collect();
-    save_state(&object_list, SAVE_STATE_FILENAME_OBJECTS, None)
+    save_state(&object_list, SAVE_STATE_FILENAME_SCENE, None)
 }
 
 pub fn load_objects() -> Result<Vec<Object>, IoError> {
-    load_state::<Vec<Object>>(SAVE_STATE_FILENAME_OBJECTS, None)
+    load_state::<Vec<Object>>(SAVE_STATE_FILENAME_SCENE, None)
 }
 
 // ~~ Private ~~
