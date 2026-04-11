@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::{
     engine::object::primitive_op::{PrimitiveOp, PrimitiveOpIndex},
     renderer::config_renderer::RenderOptions,
@@ -129,7 +131,6 @@ impl From<ValidationCommand> for Command {
 pub enum CommandSource {
     Gui,
     CommandPalette,
-    // https://docs.rs/keyboard-types/latest/keyboard_types/struct.ShortcutMatcher.html
     KeyboardShortcut,
 }
 

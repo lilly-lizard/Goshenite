@@ -2,7 +2,6 @@ use super::{
     config_renderer::{RenderOptions, TIMEOUT_NANOSECS},
     element_id_reader::{ElementAtPoint, ElementIdReader},
     geometry_pass::GeometryPass,
-    gizmo_pass::GizmoPass,
     gui_pass::GuiPass,
     lighting_pass::LightingPass,
     overlay_pass::OverlayPass,
@@ -40,16 +39,16 @@ use winit::window::Window;
 
 /// Contains Vulkan resources and methods to manage rendering
 pub struct RenderManager {
-    instance: Arc<Instance>,
-    debug_callback: Option<Arc<DebugCallback>>,
+    _instance: Arc<Instance>,
+    _debug_callback: Option<Arc<DebugCallback>>,
     device: Arc<Device>,
 
     render_queue: Arc<Queue>,
     transfer_queue: Arc<Queue>,
 
     memory_allocator: Arc<MemoryAllocator>,
-    command_pool_render: Arc<CommandPool>,
-    command_pool_transfer: Arc<CommandPool>,
+    _command_pool_render: Arc<CommandPool>,
+    _command_pool_transfer: Arc<CommandPool>,
 
     window: Arc<Window>,
     surface: Arc<Surface>,
@@ -72,7 +71,6 @@ pub struct RenderManager {
     camera_ubo: Buffer,
 
     geometry_pass: GeometryPass,
-    gizmo_pass: GizmoPass,
     lighting_pass: LightingPass,
     overlay_pass: OverlayPass,
     gui_pass: GuiPass,
@@ -189,8 +187,6 @@ impl RenderManager {
             render_queue_family_index,
         )?;
 
-        let gizmo_pass = GizmoPass::new(memory_allocator.clone(), &render_pass, &camera_ubo)?;
-
         let lighting_pass = LightingPass::new(
             device.clone(),
             &render_pass,
@@ -231,16 +227,16 @@ impl RenderManager {
         )?;
 
         Ok(Self {
-            instance,
-            debug_callback,
+            _instance: instance,
+            _debug_callback: debug_callback,
             device,
 
             render_queue,
             transfer_queue,
 
             memory_allocator,
-            command_pool_render,
-            command_pool_transfer,
+            _command_pool_render: command_pool_render,
+            _command_pool_transfer: command_pool_transfer,
 
             window,
             surface,
@@ -259,7 +255,6 @@ impl RenderManager {
             camera_ubo,
 
             geometry_pass,
-            gizmo_pass,
             lighting_pass,
             overlay_pass,
             gui_pass,

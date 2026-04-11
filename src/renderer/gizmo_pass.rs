@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use super::{
     config_renderer::GIZMO_ARROW_STL_PATH,
     shader_interfaces::{
@@ -23,6 +24,7 @@ use bort_vma::AllocationCreateInfo;
 use std::{fs::OpenOptions, mem::size_of, path::Path};
 use std::{mem, sync::Arc};
 
+#[allow(dead_code)]
 mod descriptor {
     pub const SET_CAMERA: usize = 0;
     pub const BINDING_CAMERA: u32 = 0;

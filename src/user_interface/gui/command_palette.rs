@@ -72,7 +72,7 @@ pub fn layout_command_palette(
     // command list
     for (command_index, palette_command) in AVAILABLE_PALETTE_COMMANDS.iter().enumerate() {
         let mut highlighted = false;
-        if let Some(selected_index) = gui_state.highlighted_command_index.index() {
+        if let Some(selected_index) = gui_state.highlighted_command_index.index {
             highlighted = (selected_index == command_index);
         }
 

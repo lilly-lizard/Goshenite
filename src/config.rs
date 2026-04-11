@@ -30,9 +30,6 @@ pub const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Debug;
 #[cfg(not(debug_assertions))]
 pub const DEFAULT_LOG_LEVEL: LevelFilter = LevelFilter::Info;
 
-/// Default window size if `START_MAXIMIZED` is false
-pub const DEFAULT_WINDOW_SIZE: [u32; 2] = [1000, 700];
-
 /// Describes which direction is up in the world space coordinate system, set to Z by default
 pub const WORLD_SPACE_UP: CartesianAxis = CartesianAxis::Z;
 

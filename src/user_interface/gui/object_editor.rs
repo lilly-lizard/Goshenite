@@ -138,16 +138,6 @@ fn label_and_get_selected_object<'a>(
     Some((selected_object, some_selected_object_id))
 }
 
-fn save_load_buttons(ui: &mut egui::Ui, commands: &mut Vec<Command>, object_id: ObjectId) {
-    ui.separator();
-
-    ui.horizontal(|ui| {
-        if ui.button("Save").clicked() {
-            commands.push(todo!());
-        }
-    });
-}
-
 fn object_properties_editor(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,

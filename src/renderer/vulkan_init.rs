@@ -1085,6 +1085,7 @@ pub fn create_shader_stages_from_bytes<'a>(
     Ok(create_shader_stages_from_modules(vert_shader, frag_shader))
 }
 
+#[allow(dead_code)]
 pub fn create_shader_stages_from_path<'a>(
     device: Arc<Device>,
     vert_shader_file_path: &str,

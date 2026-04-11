@@ -14,6 +14,7 @@ use bort_vk::{
 };
 use std::sync::Arc;
 
+#[allow(dead_code)]
 mod descriptor {
     pub const SET_CAMERA: usize = 0;
     pub const BINDING_CAMERA: u32 = 0;

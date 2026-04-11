@@ -14,13 +14,6 @@ pub struct UberPrimitive {
 }
 
 impl UberPrimitive {
-    pub const fn new(dimensions: Vec4, corner_radius: Vec2) -> Self {
-        Self {
-            dimensions,
-            corner_radius,
-        }
-    }
-
     pub const DEFAULT: UberPrimitive = UberPrimitive {
         dimensions: Vec4::ZERO,
         corner_radius: Vec2::ZERO,

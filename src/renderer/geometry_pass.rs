@@ -23,6 +23,7 @@ use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
 
 // descriptor set and binding indices
+#[allow(dead_code)]
 pub(super) mod descriptor {
     pub const SET_CAMERA: usize = 0;
     pub const BINDING_CAMERA: u32 = 0;
@@ -33,8 +34,6 @@ pub(super) mod descriptor {
 
 /// Render the scene geometry and write to g-buffers
 pub struct GeometryPass {
-    device: Arc<Device>,
-
     desc_set_camera: DescriptorSet,
 
     pipeline: GraphicsPipeline,
@@ -73,7 +72,6 @@ impl GeometryPass {
         )?;
 
         Ok(Self {
-            device,
             desc_set_camera,
             pipeline,
             object_buffer_manager,

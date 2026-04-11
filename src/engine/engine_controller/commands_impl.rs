@@ -696,13 +696,6 @@ fn command_failed_warn(command: Command, failed_because: &str) {
     warn!("command {:?} failed due to: {}", command, failed_because);
 }
 
-fn command_failed_error(command: Command, failed_because: &str) {
-    error!(
-        "command {:?} critically failed due to: {}",
-        command, failed_because
-    );
-}
-
 fn failure_warn_collection_error(
     e: CollectionError,
     object_id: ObjectId,

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::user_interface::{
     camera_control::CameraControlMappings, config_ui::DEFAULT_SCROLL_ZOOM_SENSITIVITY, theme::Theme,
 };

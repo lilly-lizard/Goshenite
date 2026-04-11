@@ -103,6 +103,7 @@ fn validated_file_path(file_name: &str, directory: &str) -> Result<PathBuf, IoEr
 
 // ~~ Tests ~~
 
+#[allow(dead_code)]
 mod tests {
     #[allow(unused_imports)]
     use super::*;

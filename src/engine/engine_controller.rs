@@ -39,6 +39,7 @@ use winit::{
 mod commands_impl;
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub enum EngineCommand {
     Run,
     Pause,
@@ -396,7 +397,7 @@ impl std::error::Error for EngineError {}
 
 // ~~ Testing ~~
 
-fn create_default_cube_object(object_collection: &mut ObjectCollection) {
+fn _create_default_cube_object(object_collection: &mut ObjectCollection) {
     let mut object = Object::new(String::from("Cube"), Vec3::ZERO);
     let cube = Cube::new(Vec3::splat(1.));
     _ = object.push_primitive_op(

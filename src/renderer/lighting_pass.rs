@@ -15,6 +15,7 @@ use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
 
 /// Describes descriptor set indices
+#[allow(dead_code)]
 mod descriptor {
     pub const SET_G_BUFFERS: usize = 0;
     pub const BINDING_NORMAL: u32 = 0;
@@ -27,8 +28,6 @@ mod descriptor {
 
 /// Defines functionality for reading the g-buffers and calculating the scene color values
 pub struct LightingPass {
-    device: Arc<Device>,
-
     desc_set_camera: DescriptorSet,
     /// One per framebuffer
     desc_sets_g_buffer: Vec<DescriptorSet>,
@@ -68,7 +67,6 @@ impl LightingPass {
         let pipeline = create_pipeline(device.clone(), pipeline_layout.clone(), render_pass)?;
 
         Ok(Self {
-            device,
             desc_sets_g_buffer,
             desc_set_camera,
             pipeline,
