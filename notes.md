@@ -31,8 +31,6 @@ focus on fast iteration! **avoid premature optimization** quick and dirty first.
 
 - undo (ctrl z)
 
-- compute dispatch
-- line surface with cube meshes
 - 1 primitive op per instance and use depth test to blend
 - make AllocationCreateInfo similar to BufferProperties. unintuitive usage of bort_vma structs, too many options
 
