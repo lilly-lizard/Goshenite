@@ -13,36 +13,41 @@ use std::{fs, path::PathBuf};
 // ~~ Public ~~
 
 pub fn save_state_camera(camera: &Camera) -> Result<(), IoError> {
-    save_state(camera, SAVE_STATE_FILENAME_CAMERA)
+    save_state(camera, SAVE_STATE_FILENAME_CAMERA, true)
 }
 
 pub fn load_state_camera() -> Result<Camera, IoError> {
-    load_state::<Camera>(SAVE_STATE_FILENAME_CAMERA)
+    load_state::<Camera>(SAVE_STATE_FILENAME_CAMERA, true)
 }
 
 pub fn save_all_objects(object_collection: &ObjectCollection) -> Result<(), IoError> {
     let object_list: Vec<Object> = object_collection.objects().values().cloned().collect();
-    save_state(&object_list, SAVE_STATE_FILENAME_OBJECTS)
+    save_state(&object_list, SAVE_STATE_FILENAME_OBJECTS, false)
 }
 
 pub fn load_objects() -> Result<Vec<Object>, IoError> {
-    load_state::<Vec<Object>>(SAVE_STATE_FILENAME_OBJECTS)
+    load_state::<Vec<Object>>(SAVE_STATE_FILENAME_OBJECTS, false)
 }
 
 // ~~ Private ~~
 
-fn save_state(to_serialize: &impl Serialize, file_name: &str) -> Result<(), IoError> {
-    let encoded_bytes =
+fn save_state(
+    to_serialize: &impl Serialize,
+    file_name: &str,
+    in_hidden_dir: bool,
+) -> Result<(), IoError> {
+    let mut encoded_bytes =
         bincode::serialize(to_serialize).map_err(|e| IoError::SerializeFailed(e))?;
-    save_state_bytes(file_name, encoded_bytes)
-}
 
-fn save_state_bytes(file_name: &str, mut encoded_bytes: Vec<u8>) -> Result<(), IoError> {
     // prepend encoded bytes with engine info
     let mut write_bytes = PRECURSOR_BYTES.to_vec();
     write_bytes.append(&mut encoded_bytes);
 
-    let file_path = validated_file_path(file_name)?;
+    let file_path = if in_hidden_dir {
+        validated_file_path_in_hidden_dir(file_name)?
+    } else {
+        file_path(file_name)
+    };
     fs::write(file_path.clone(), write_bytes).map_err(|e| {
         let file_path_string = file_path.to_str().unwrap_or(file_name).to_string();
         IoError::WriteFileFailed(file_path_string, e)
@@ -50,16 +55,20 @@ fn save_state_bytes(file_name: &str, mut encoded_bytes: Vec<u8>) -> Result<(), I
     Ok(())
 }
 
-fn load_state<T>(file_path: &str) -> Result<T, IoError>
+fn load_state<T>(file_path: &str, in_hidden_dir: bool) -> Result<T, IoError>
 where
     T: DeserializeOwned,
 {
-    let encoded_bytes = load_state_bytes(file_path)?;
+    let encoded_bytes = load_state_bytes(file_path, in_hidden_dir)?;
     bincode::deserialize::<T>(&encoded_bytes).map_err(|e| IoError::DeserializeFailed(e))
 }
 
-fn load_state_bytes(file_name: &str) -> Result<Vec<u8>, IoError> {
-    let file_path = validated_file_path(file_name)?;
+fn load_state_bytes(file_name: &str, in_hidden_dir: bool) -> Result<Vec<u8>, IoError> {
+    let file_path = if in_hidden_dir {
+        validated_file_path_in_hidden_dir(file_name)?
+    } else {
+        file_path(file_name)
+    };
     let read_res = fs::read(file_path.clone());
 
     let mut read_bytes = match read_res {
@@ -76,7 +85,12 @@ fn load_state_bytes(file_name: &str) -> Result<Vec<u8>, IoError> {
 }
 
 /// Ensures containing directories exist, but not the actual file
-fn validated_file_path(file_name: &str) -> Result<PathBuf, IoError> {
+fn file_path(file_name: &str) -> PathBuf {
+    PathBuf::from(file_name)
+}
+
+/// Ensures containing directories exist, but not the actual file
+fn validated_file_path_in_hidden_dir(file_name: &str) -> Result<PathBuf, IoError> {
     // create dir if missing
     fs::create_dir_all(LOCAL_STORAGE_DIR)
         .map_err(|e| IoError::CreateDirectoryFailed(LOCAL_STORAGE_DIR.to_string(), e))?;
@@ -97,14 +111,14 @@ mod tests {
     #[test]
     fn camera_store() {
         let camera = Camera::default();
-        save_state(&camera, TEST_FILE_NAME).unwrap();
+        save_state(&camera, TEST_FILE_NAME, true).unwrap();
     }
 
     #[test]
     fn camera_save_and_load() {
         let saved_camera = Camera::default();
-        save_state(&saved_camera, TEST_FILE_NAME).unwrap();
-        let loaded_camera = load_state(TEST_FILE_NAME).unwrap();
+        save_state(&saved_camera, TEST_FILE_NAME, true).unwrap();
+        let loaded_camera = load_state(TEST_FILE_NAME, true).unwrap();
         assert_eq!(saved_camera, loaded_camera);
     }
 }
