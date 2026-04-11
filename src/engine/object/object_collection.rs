@@ -1,12 +1,14 @@
 use super::{
     object::{Object, ObjectId},
     objects_delta::{push_object_delta, ObjectDeltaOperation, ObjectsDelta},
-    operation::Operation,
-    primitive_op::PrimitiveOpId,
 };
 use crate::{
     engine::{
         config_engine::DEFAULT_ORIGIN,
+        object::{
+            operation::Operation,
+            primitive_op::{PrimitiveOp, PrimitiveOpIndex},
+        },
         primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
     },
     helper::{
@@ -86,8 +88,7 @@ impl ObjectCollection {
         object_id: ObjectId,
         new_name: String,
     ) -> Result<(), CollectionError> {
-        let object_mut_ref = self.get_object_mut(object_id)?;
-        object_mut_ref.name = new_name;
+        self.get_object_mut(object_id)?.name = new_name;
         // don't need to mark for update becuase the name isn't sent to gpu
         Ok(())
     }
@@ -97,56 +98,44 @@ impl ObjectCollection {
         object_id: ObjectId,
         new_origin: Vec3,
     ) -> Result<(), CollectionError> {
-        let object_mut_ref = self.get_object_mut(object_id)?;
-        object_mut_ref.origin = new_origin;
+        self.get_object_mut(object_id)?.origin = new_origin;
         self.mark_object_for_gpu_update(object_id)
     }
 
     pub fn push_op_to_object(
         &mut self,
         object_id: ObjectId,
-        primitive: Primitive,
-        transform: PrimitiveTransform,
-        op: Operation,
-        blend: f32,
-        albedo: Vec3,
-        specular: f32,
-    ) -> Result<PrimitiveOpId, CollectionError> {
-        let object_mut_ref = self.get_object_mut(object_id)?;
-        let primitive_op_id =
-            object_mut_ref.push_primitive_op(primitive, transform, op, blend, albedo, specular)?;
+        primitive_op: PrimitiveOp,
+    ) -> Result<PrimitiveOpIndex, CollectionError> {
+        let object_ref = self.get_object_mut(object_id)?;
+        object_ref.primitive_ops.push(primitive_op);
+        let new_index = object_ref.primitive_ops.len() - 1;
         _ = self.mark_object_for_gpu_update(object_id);
-        Ok(primitive_op_id)
+        Ok(new_index)
     }
 
-    pub fn set_primitive_op_id_in_object(
+    pub fn update_primitive_op_in_object(
         &mut self,
         object_id: ObjectId,
-        primitive_op_id: PrimitiveOpId,
-        new_primitive: Option<Primitive>,
-        new_transform: Option<PrimitiveTransform>,
-        new_operation: Option<Operation>,
-        new_blend: Option<f32>,
-        new_albedo: Option<Vec3>,
-        new_specular: Option<f32>,
+        primitive_op_index: PrimitiveOpIndex,
+        new_primitive_op: PrimitiveOp,
     ) -> Result<(), CollectionError> {
-        let object_mut_ref = self.get_object_mut(object_id)?;
-        object_mut_ref.set_primitive_op_id(
-            primitive_op_id,
-            new_primitive,
-            new_transform,
-            new_operation,
-            new_blend,
-            new_albedo,
-            new_specular,
+        let object_ref = self.get_object_mut(object_id)?;
+        let primitive_op_count = object_ref.primitive_ops.len();
+        let primitive_op_ref = object_ref.primitive_ops.get_mut(primitive_op_index).ok_or(
+            CollectionError::OutOfBounds {
+                index: primitive_op_index,
+                size: primitive_op_count,
+            },
         )?;
+        *primitive_op_ref = new_primitive_op;
         self.mark_object_for_gpu_update(object_id)
     }
 
-    pub fn set_primitive_op_index_in_object(
+    pub fn update_primitive_op_fields_in_object(
         &mut self,
         object_id: ObjectId,
-        primitive_op_index: usize,
+        primitive_op_index: PrimitiveOpIndex,
         new_primitive: Option<Primitive>,
         new_transform: Option<PrimitiveTransform>,
         new_operation: Option<Operation>,
@@ -154,8 +143,7 @@ impl ObjectCollection {
         new_albedo: Option<Vec3>,
         new_specular: Option<f32>,
     ) -> Result<(), CollectionError> {
-        let object_mut_ref = self.get_object_mut(object_id)?;
-        object_mut_ref.set_primitive_op_index(
+        self.get_object_mut(object_id)?.update_primitive_op(
             primitive_op_index,
             new_primitive,
             new_transform,
@@ -170,40 +158,25 @@ impl ObjectCollection {
     pub fn shift_primitive_ops_in_object(
         &mut self,
         object_id: ObjectId,
-        primitive_op_id: PrimitiveOpId,
-        target_index: usize,
+        source_index: PrimitiveOpIndex,
+        target_index: PrimitiveOpIndex,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let object_mut_ref = self.get_object_mut(object_id)?;
-        if let Some(source_index) = object_mut_ref.get_primitive_op_index(primitive_op_id) {
-            object_mut_ref.shift_primitive_ops(source_index, target_index)?;
-            return Ok(self.mark_object_for_gpu_update(object_id)?);
-        } else {
-            return Err(Box::new(CollectionError::InvalidId {
-                raw_id: primitive_op_id.raw_id(),
-            }));
-        }
+        self.get_object_mut(object_id)?
+            .shift_primitive_ops(source_index, target_index)?;
+        _ = self.mark_object_for_gpu_update(object_id)?;
+        return Ok(());
     }
 
-    pub fn remove_primitive_op_id_from_object(
+    pub fn remove_primitive_op_from_object(
         &mut self,
         object_id: ObjectId,
-        remove_primitive_op_id: PrimitiveOpId,
-    ) -> Result<usize, CollectionError> {
-        let object_mut_ref = self.get_object_mut(object_id)?;
-        let index = object_mut_ref.remove_primitive_op_id(remove_primitive_op_id)?;
+        primitive_op_index_to_remove: PrimitiveOpIndex,
+    ) -> Result<(), CollectionError> {
+        self.get_object_mut(object_id)?
+            .primitive_ops
+            .remove(primitive_op_index_to_remove);
         _ = self.mark_object_for_gpu_update(object_id);
-        Ok(index)
-    }
-
-    pub fn remove_primitive_op_index_from_object(
-        &mut self,
-        object_id: ObjectId,
-        remove_primitive_op_index: usize,
-    ) -> Result<PrimitiveOpId, CollectionError> {
-        let object_mut_ref = self.get_object_mut(object_id)?;
-        let id = object_mut_ref.remove_primitive_op_index(remove_primitive_op_index)?;
-        _ = self.mark_object_for_gpu_update(object_id);
-        Ok(id)
+        Ok(())
     }
 
     pub fn remove_object(&mut self, object_id: ObjectId) -> Result<Object, CollectionError> {

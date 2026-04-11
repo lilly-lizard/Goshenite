@@ -1,10 +1,8 @@
-use super::{
-    operation::Operation,
-    primitive_op::{PrimitiveOp, PrimitiveOpId},
-};
+use super::{operation::Operation, primitive_op::PrimitiveOp};
 use crate::{
     engine::{
         aabb::Aabb,
+        object::primitive_op::PrimitiveOpIndex,
         primitives::{
             primitive::{EncodablePrimitive, Primitive},
             primitive_transform::PrimitiveTransform,
@@ -13,7 +11,7 @@ use crate::{
     helper::{
         more_errors::CollectionError,
         shift_slice::{shift_slice, ShiftSliceError},
-        unique_id_gen::{UniqueId, UniqueIdError, UniqueIdGen, UniqueIdType},
+        unique_id_gen::{UniqueId, UniqueIdType},
     },
     renderer::shader_interfaces::primitive_op_buffer::{
         create_primitive_op_packet, nop_primitive_op_packet, PrimitiveOpBufferUnit,
@@ -55,8 +53,6 @@ pub struct Object {
     pub name: String,
     pub origin: Vec3,
     pub primitive_ops: Vec<PrimitiveOp>,
-
-    primitive_op_id_gen: UniqueIdGen<PrimitiveOpId>,
 }
 
 impl Object {
@@ -65,48 +61,7 @@ impl Object {
             name,
             origin,
             primitive_ops: Vec::new(),
-            primitive_op_id_gen: UniqueIdGen::new(),
         }
-    }
-
-    /// Returns the index of the removed primitive op
-    pub fn remove_primitive_op_id(
-        &mut self,
-        remove_primitive_op_id: PrimitiveOpId,
-    ) -> Result<usize, CollectionError> {
-        let index_res = self
-            .primitive_ops
-            .iter()
-            .position(|check_primitive_op| check_primitive_op.id() == remove_primitive_op_id);
-
-        _ = self.primitive_op_id_gen.recycle_id(remove_primitive_op_id);
-
-        if let Some(index) = index_res {
-            self.primitive_ops.remove(index);
-            return Ok(index);
-        } else {
-            return Err(CollectionError::InvalidId {
-                raw_id: remove_primitive_op_id.raw_id(),
-            });
-        }
-    }
-
-    pub fn remove_primitive_op_index(
-        &mut self,
-        index: usize,
-    ) -> Result<PrimitiveOpId, CollectionError> {
-        let op_count = self.primitive_ops.len();
-        if index >= op_count {
-            return Err(CollectionError::OutOfBounds {
-                index,
-                size: op_count,
-            });
-        }
-
-        let removed_prim_op = self.primitive_ops.remove(index);
-
-        _ = self.primitive_op_id_gen.recycle_id(removed_prim_op.id());
-        Ok(removed_prim_op.id())
     }
 
     /// Returns the id of the newly created primitive op
@@ -118,108 +73,25 @@ impl Object {
         blend: f32,
         albedo: Vec3,
         specular: f32,
-    ) -> Result<PrimitiveOpId, UniqueIdError> {
-        let primitive_op_id = self.primitive_op_id_gen.new_id()?;
+    ) {
         self.primitive_ops.push(PrimitiveOp::new(
-            primitive_op_id,
-            primitive,
-            transform,
-            op,
-            blend,
-            albedo,
-            specular,
+            primitive, transform, op, blend, albedo, specular,
         ));
-        Ok(primitive_op_id)
     }
 
     pub fn shift_primitive_ops(
         &mut self,
-        source_index: usize,
-        target_index: usize,
+        source_index: PrimitiveOpIndex,
+        target_index: PrimitiveOpIndex,
     ) -> Result<(), ShiftSliceError> {
         shift_slice(source_index, target_index, &mut self.primitive_ops)
     }
 
-    // Getters
+    // Setters
 
-    pub fn get_primitive_op(&self, get_primitive_op_id: PrimitiveOpId) -> Option<&PrimitiveOp> {
-        self.primitive_ops.iter().find_map(|check_primitive_op| {
-            if check_primitive_op.id() == get_primitive_op_id {
-                Some(check_primitive_op)
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn get_primitive_op_mut(
+    pub fn update_primitive_op(
         &mut self,
-        get_primitive_op_id: PrimitiveOpId,
-    ) -> Option<&mut PrimitiveOp> {
-        self.primitive_ops
-            .iter_mut()
-            .find_map(|check_primitive_op| {
-                if check_primitive_op.id() == get_primitive_op_id {
-                    Some(check_primitive_op)
-                } else {
-                    None
-                }
-            })
-    }
-
-    pub fn get_primitive_op_and_index(
-        &self,
-        get_primitive_op_id: PrimitiveOpId,
-    ) -> Option<(&PrimitiveOp, usize)> {
-        self.primitive_ops
-            .iter()
-            .enumerate()
-            .find_map(|(index, check_primitive_op)| {
-                if check_primitive_op.id() == get_primitive_op_id {
-                    Some((check_primitive_op, index))
-                } else {
-                    None
-                }
-            })
-    }
-
-    #[inline]
-    pub fn get_primitive_op_index(&self, primitive_op_id: PrimitiveOpId) -> Option<usize> {
-        self.primitive_ops
-            .iter()
-            .position(|op| op.id() == primitive_op_id)
-    }
-
-    pub fn set_primitive_op_id(
-        &mut self,
-        primitive_op_id: PrimitiveOpId,
-        new_primitive: Option<Primitive>,
-        new_transform: Option<PrimitiveTransform>,
-        new_operation: Option<Operation>,
-        new_blend: Option<f32>,
-        new_albedo: Option<Vec3>,
-        new_specular: Option<f32>,
-    ) -> Result<(), CollectionError> {
-        let primitive_op_search_res = self.get_primitive_op_mut(primitive_op_id);
-        let Some(primitive_op_ref) = primitive_op_search_res else {
-            return Err(CollectionError::InvalidId {
-                raw_id: primitive_op_id.raw_id(),
-            });
-        };
-        set_primitive_op_internal(
-            primitive_op_ref,
-            new_primitive,
-            new_transform,
-            new_operation,
-            new_blend,
-            new_albedo,
-            new_specular,
-        )
-    }
-
-    pub fn set_primitive_op_index(
-        &mut self,
-        primitive_op_index: usize,
+        primitive_op_index: PrimitiveOpIndex,
         new_primitive: Option<Primitive>,
         new_transform: Option<PrimitiveTransform>,
         new_operation: Option<Operation>,

@@ -9,7 +9,7 @@ use crate::{
         object::{
             object::ObjectId,
             object_collection::ObjectCollection,
-            primitive_op::{PrimitiveOp, PrimitiveOpId},
+            primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
     },
     renderer::config_renderer::RenderOptions,
@@ -116,9 +116,9 @@ impl Gui {
     }
 
     /// Call this when a primitive op is selected
-    pub fn primitive_op_selected(&mut self, selected_primitive_op: &PrimitiveOp) {
+    pub fn update_selected_primitive_op(&mut self, selected_primitive_op: &PrimitiveOp) {
         self.gui_state
-            .set_selected_primitive_op(selected_primitive_op);
+            .set_selected_primitive_op_fields(selected_primitive_op);
     }
 
     pub fn update_gui(
@@ -127,7 +127,7 @@ impl Gui {
         window: &Window,
         camera: Camera,
         selected_object_id: Option<ObjectId>,
-        selected_primitive_op_id: Option<PrimitiveOpId>,
+        selected_primitive_op_index: Option<PrimitiveOpIndex>,
         render_options: RenderOptions,
     ) -> anyhow::Result<Vec<CommandWithSource>> {
         let mut commands = Vec::<Command>::new();
@@ -150,7 +150,7 @@ impl Gui {
             let mut new_commands = self.draw_object_editor_window(
                 object_collection,
                 selected_object_id,
-                selected_primitive_op_id,
+                selected_primitive_op_index,
             );
             commands.append(&mut new_commands);
         }

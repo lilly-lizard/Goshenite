@@ -55,7 +55,7 @@ pub fn create_entry() -> anyhow::Result<Arc<ash::Entry>> {
     Ok(Arc::new(entry))
 }
 
-pub fn get_display_handle(window: &Window) -> anyhow::Result<DisplayHandle> {
+pub fn get_display_handle(window: &'_ Window) -> anyhow::Result<DisplayHandle<'_>> {
     match window.display_handle() {
         Ok(dh) => Ok(dh),
         Err(HandleError::Unavailable) => poll_unavailable_display_handle(window),
@@ -64,7 +64,7 @@ pub fn get_display_handle(window: &Window) -> anyhow::Result<DisplayHandle> {
 }
 
 /// See docs for `raw_window_handle::HandleError::Unavailable`
-fn poll_unavailable_display_handle(window: &Window) -> anyhow::Result<DisplayHandle> {
+fn poll_unavailable_display_handle(window: &'_ Window) -> anyhow::Result<DisplayHandle<'_>> {
     warn!("display handle unavailable, polling for 10s or until it is available...");
     for _i in 0..DISPLAY_UNAVAILABLE_TIMEOUT_NANOSECONDS {
         thread::sleep(time::Duration::from_millis(1));
@@ -80,7 +80,7 @@ fn poll_unavailable_display_handle(window: &Window) -> anyhow::Result<DisplayHan
     ))
 }
 
-pub fn get_window_handle(window: &Window) -> anyhow::Result<WindowHandle> {
+pub fn get_window_handle(window: &'_ Window) -> anyhow::Result<WindowHandle<'_>> {
     match window.window_handle() {
         Ok(wh) => Ok(wh),
         Err(HandleError::Unavailable) => poll_unavailable_window_handle(window),
@@ -89,7 +89,7 @@ pub fn get_window_handle(window: &Window) -> anyhow::Result<WindowHandle> {
 }
 
 /// See docs for `raw_window_handle::HandleError::Unavailable`
-fn poll_unavailable_window_handle(window: &Window) -> anyhow::Result<WindowHandle> {
+fn poll_unavailable_window_handle(window: &'_ Window) -> anyhow::Result<WindowHandle<'_>> {
     warn!("window handle unavailable, polling for 10s or until it is available...");
     for _i in 0..DISPLAY_UNAVAILABLE_TIMEOUT_NANOSECONDS {
         thread::sleep(time::Duration::from_millis(1));

@@ -19,7 +19,7 @@ layout (location = 2) in float in_camera_distance;
 
 layout (location = 0) out vec4 out_normal;
 layout (location = 1) out vec4 out_albedo_specular;
-layout (location = 2) out uint out_object_op_id; // upper 16 bits = object index; lower 16 bits = op index;
+layout (location = 2) out uint out_object_op_id; // upper 16 bits = object id; lower 16 bits = primitive op index;
 layout (depth_greater) out float gl_FragDepth; // https://docs.vulkan.org/guide/latest/depth.html#conservative-depth
 
 layout (set = 0, binding = 0) uniform Camera {
