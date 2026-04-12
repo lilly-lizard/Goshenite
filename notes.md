@@ -40,22 +40,51 @@
 
 stages:
 1. initial calculations of each point on grid to generate
-	a. sparse buffer cache atlas for blocks intersecting surfaces
-	b. lookup pointer table for whole volume
+	a. generate BVH for all primtives
+	b. sparse buffer cache atlas for blocks intersecting surfaces
+	c. lookup pointer table for whole volume
 		- for each block use BVH to determine relevant primitives to evaluate
 		- only store pointers for blocks with both positive and negative values (indicating a surface)
 2. each frame:
-	- determine which blocks need regenerated because of
+	- determine which blocks need regenerated because of... _(note: can be implimented later on)_
 		a. moved primitive op
 		b. LOD changed (block increased or decreased in sparseness) due to camera origin moving (note: done to blocks outside viewpoint too to avoid spikes in regeneration load)
 	- for each pixel/ray
 		- determine what grid blocks the ray intersects
-		- evaluate sdf result for each from closest to farthest until first negative d is found
+		- evaluate sdf result for each from closest to farthest
+			- option A: ❌️
+				- rasterize cubes for each grid block without backface culling
+				- fragment invocations for entry and exit points
+				- hit when first negative d is found
+				- concerns: this doesn't utilize trilinear interpolation, just bilinear...
+			- option B: ✔️
+				- rasterize cubes for each grid block with backface culling
+				- ray-march through the block
+				- hit if d < epsilom
+				- miss if d > block dimension
+				- a lot more accurate not a lot more computation
+				- only requires ray calc to determine point and then some stepping
 		- for each block:
 			- check if pointer resides in lookup table
 			- for blocks with pointers:
-				- perform tri-linear interpolation of sdf result fields: d, albedo, specular
+				- perform trilinear interpolation of sdf result fields: d, albedo, specular
 				- closest interpolation for uint id (note when generating these point values, id = closest primitive as well)
+
+gpu specifics:
+- buffers:
+	- grid lookup: 128x128x128 x 4byte (1024 / 8 = 128) = 8MB
+	- sparse cached results buffer: 3d textures, each block is a group of 8x8x8 points, ? blocks initially allocated (may allocate more memory as needed)
+		- VK_FORMAT_R16_SFLOAT
+			- for evaluated d values
+			- most often accessed as it is used during ray marching
+			- trilinear interpolation
+		- VK_FORMAT_R32G32B32A32_SFLOAT
+			- albedo (vec3)
+			- specular (float)
+			- trilinear interpolation
+		- VK_FORMAT_R16_UINT
+			- id (uint)
+			- closest interpolation
 
 - ordering options:
 	- primitive op order preserved within object
