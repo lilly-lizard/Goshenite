@@ -310,3 +310,5 @@ _"Well, if I were to use an analogy for analog and digital, analog is like a cal
 ```
 
 # DEBUGGING...
+
+09:57:31.022185 run-command.c:740            | d0 | main                     | child_start  |     |  0.003988 |           |              | [ch0] class:? argv:[gpg --status-fd=2 -bsau B5857277126B5D1C]
