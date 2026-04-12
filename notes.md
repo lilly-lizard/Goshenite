@@ -46,7 +46,7 @@ stages:
 			- get union of all AABBs to get top of tree AABB
 			- then half along x axis for next layer (equal number of primitives in each branch)
 			- next layer, half along y axis, then z, then x until you get to bottom of tree
-		- option B (fast):
+		- option B (fast): ✔️
 			- place AABB centers in interger grid of length 2^n
 			- sort by sinlge value: morton code
 				- morton code: interleave axes, interleave bits to get 3n bit uint
@@ -54,6 +54,14 @@ stages:
 			- does the exact same thing as option A [visualization](https://youtu.be/LAxHQZ8RjQ4?si=6uQRbcwBTc_KXcMp&t=480)
 			- good for regenerating entire BVH every nth frame to account for dynamic primitives
 	b. sparse buffer cache atlas for blocks intersecting surfaces
+		- cache sdf result
+			- d, id
+		- option A: cache geometry properties and calculate lighting per frame ✔️
+			- albedo, specular, normal
+			- requires 2x memory usage for vertex buffers
+		- option B: cache lighting here ❌️
+			- final color: albedo * illumination * specular * normal etc.
+			- lighting is expensive! doing it for the whole grid seems excessive, expecially given how much of it will be occluded in a forest
 	c. lookup pointer table for whole volume
 		- for each block use BVH to determine relevant primitives to evaluate
 		- only store pointers for blocks with both positive and negative values (indicating a surface)
@@ -79,24 +87,61 @@ stages:
 		- for each block:
 			- check if pointer resides in lookup table
 			- for blocks with pointers:
-				- perform trilinear interpolation of sdf result fields: d, albedo, specular
+				- perform trilinear interpolation of sdf result fields: d, albedo, specular, normal, illumination
 				- closest interpolation for uint id (note when generating these point values, id = closest primitive as well)
+
+pipeline:
+1. cache gen
+	- BVH (+ grid) -> surface pointers + vertex buffers
+2. per frame
+	- render blocks as instanced cubes
+		- option A: use pointer lookup table cpu side to determine instances
+		- option B: during surface block generation, create an indirect rendering buffer
 
 gpu specifics:
 - buffers:
+	- BVH
+		- shared between cpu and gpu
 	- grid lookup: 128x128x128 x 4byte (1024 / 8 = 128) = 8MB
-	- sparse cached results buffer: 3d textures, each block is a group of 8x8x8 points, ? blocks initially allocated (may allocate more memory as needed)
-		- VK_FORMAT_R16_SFLOAT
+	- frame draw vertex buffer:
+		1. vertex buffer
+			- positions of cube
+			- VK_FORMAT_R32G32B32_SFLOAT
+		2. index buffer
+			- indicies of cube
+			- VK_INDEX_TYPE_UINT32
+		3. instance buffer
+			- per unit grid block
+			- position, size multiple (grid id?)
+			- per stride:
+				a. VK_FORMAT_R32G32B32_SFLOAT position
+				b. VK_FORMAT_R16_UINT size multiple
+				c. VK_FORMAT_R16_UINT spare...
+	- sparse cached result 3D image buffers: 3d textures, each block is a group of 8x8x8 points, ? blocks initially allocated (may allocate more memory as needed)
+		a. VK_FORMAT_R16_SFLOAT (sampled often during ray marching)
 			- for evaluated d values
 			- most often accessed as it is used during ray marching
 			- trilinear interpolation
-		- VK_FORMAT_R32G32B32A32_SFLOAT
-			- albedo (vec3)
-			- specular (float)
-			- trilinear interpolation
-		- VK_FORMAT_R16_UINT
+		b. VK_FORMAT_R16_UINT (only sampled upon hit)
 			- id (uint)
 			- closest interpolation
+		- option A: ✔️
+			c. VK_FORMAT_R8G8B8A8_SRGB (only sampled upon hit)
+				- albedo (vec3)
+				- specular (float)
+				- trilinear interpolation
+			d. VK_FORMAT_R8G8B8A8_SNORM (only sampled upon hit)
+				- normals (vec3)
+				- ? in A channel
+				- trilinear interpolation
+		- option B: ❌️
+			- VK_FORMAT_R8G8B8A8_SRGB
+				- color (vec3)
+				- ? in A channel
+				- trilinear interpolation
+	- output framebuffers
+		1. color
+		2. VK_FORMAT_R16_UINT id
 
 - ordering options:
 	- primitive op order preserved within object
