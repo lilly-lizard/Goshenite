@@ -11,8 +11,8 @@
 		- each pixel of 3d texture atlas is a point (brick map pointer grid)
 		- brick size is 8x8x8
 		- lookup (pointer) texture size = 4 bytes (brick map pointer size) * 1024^3 (full grid dimensions) / 8^3 (grid dimensions) = 8MB
-		- pointers point to sparse buffer with actual values (brick map) in which blocks are allocated and de-allocated if surfaces change
-		- naively store everything in big buffer = 1 byte * 1024^3 = 1GB
+		- pointers point to sparse buffer with actual values (brick map) in which blocks are allocated and de-allocated if surfaces change (10:25 in video)
+		- naively store everything in big buffer (whole grid, not just surface) = 1 byte * 1024^3 = 1GB
 - all primitive ops (which he calls "sdf edits") tracked spacially via a bounding volume heirarchy (BVH)
 	- tree of AABBs (see 13:20 for visualization)
 	- BVH can be used to find all intersecting AABBs for a given ray
@@ -35,6 +35,33 @@
 	- uses marching cubes to generate low res collision mesh which is then fed into jolt
 	- simple and easily parallelised, done on multiple cpu threads
 	- [rapier 3d for rust](https://crates.io/crates/rapier3d)
+
+# renderer architecture
+
+stages:
+1. initial calculations of each point on grid to generate
+	a. sparse buffer cache atlas for blocks intersecting surfaces
+	b. lookup pointer table for whole volume
+		- for each block use BVH to determine relevant primitives to evaluate
+		- only store pointers for blocks with both positive and negative values (indicating a surface)
+2. each frame:
+	- determine which blocks need regenerated because of
+		a. moved primitive op
+		b. LOD changed (block increased or decreased in sparseness) due to camera origin moving (note: done to blocks outside viewpoint too to avoid spikes in regeneration load)
+	- for each pixel/ray
+		- determine what grid blocks the ray intersects
+		- evaluate sdf result for each from closest to farthest until first negative d is found
+		- for each block:
+			- check if pointer resides in lookup table
+			- for blocks with pointers:
+				- perform tri-linear interpolation of sdf result fields: d, albedo, specular
+				- closest interpolation for uint id (note when generating these point values, id = closest primitive as well)
+
+- ordering options:
+	- primitive op order preserved within object
+	- each object processed individually before being combined, otherwise a hole in a tree will also cut a hole into animals that crawl on it too and vice versa...
+	- downside of this is that a ray only intercepts some primitive ops within an object so how do you query primitive op order in that scenario?
+	- conclusion: no distinction between objects within rendering code. its an extra abstraction to keep track of that would significantly overcomplicate the pipeline...
 
 # webgpu
 
