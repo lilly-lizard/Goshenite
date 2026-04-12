@@ -104,6 +104,9 @@ gpu specifics:
 	- downside of this is that a ray only intercepts some primitive ops within an object so how do you query primitive op order in that scenario?
 	- conclusion: no distinction between objects within rendering code. its an extra abstraction to keep track of that would significantly overcomplicate the pipeline...
 
+plan:
+1. generate BVH and render BVH outlines
+
 # webgpu
 
 [use wesl for shader imports](https://wesl-lang.dev/)
