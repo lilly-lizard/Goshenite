@@ -41,12 +41,24 @@
 stages:
 1. initial calculations of each point on grid to generate
 	a. generate BVH for all primtives
+		- option A (simple):
+			- top down generation
+			- get union of all AABBs to get top of tree AABB
+			- then half along x axis for next layer (equal number of primitives in each branch)
+			- next layer, half along y axis, then z, then x until you get to bottom of tree
+		- option B (fast):
+			- place AABB centers in interger grid of length 2^n
+			- sort by sinlge value: morton code
+				- morton code: interleave axes, interleave bits to get 3n bit uint
+			- then half the list recursively to get tree
+			- does the exact same thing as option A [visualization](https://youtu.be/LAxHQZ8RjQ4?si=6uQRbcwBTc_KXcMp&t=480)
+			- good for regenerating entire BVH every nth frame to account for dynamic primitives
 	b. sparse buffer cache atlas for blocks intersecting surfaces
 	c. lookup pointer table for whole volume
 		- for each block use BVH to determine relevant primitives to evaluate
 		- only store pointers for blocks with both positive and negative values (indicating a surface)
 2. each frame:
-	- determine which blocks need regenerated because of... _(note: can be implimented later on)_
+	- determine which blocks need regenerated because of... _(note: can be implimented later)_
 		a. moved primitive op
 		b. LOD changed (block increased or decreased in sparseness) due to camera origin moving (note: done to blocks outside viewpoint too to avoid spikes in regeneration load)
 	- for each pixel/ray
