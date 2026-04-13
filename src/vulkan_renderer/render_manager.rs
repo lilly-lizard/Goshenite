@@ -74,7 +74,6 @@ pub struct RenderManager {
     lighting_pass: LightingPass,
     overlay_pass: OverlayPass,
     gui_pass: GuiPass,
-
     object_id_reader: ElementIdReader,
 
     /// One per framebuffer

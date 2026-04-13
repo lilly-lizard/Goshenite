@@ -31,6 +31,7 @@ use log::{debug, error, info, trace, warn};
 use std::{collections::VecDeque, env, fmt::Debug, sync::Arc};
 use winit::{
     event::{ElementState, KeyEvent, WindowEvent},
+    event_loop::OwnedDisplayHandle,
     keyboard::{KeyCode, PhysicalKey},
     window::Window,
 };
@@ -76,6 +77,7 @@ pub struct EngineController {
 
 impl EngineController {
     pub fn new(
+        display: OwnedDisplayHandle,
         window: Arc<Window>,
         window_thread_channels: WindowThreadChannels,
     ) -> anyhow::Result<Self> {
@@ -86,14 +88,21 @@ impl EngineController {
         let scale_factor = scale_factor_override.unwrap_or(window.scale_factor());
 
         let cursor = Cursor::new();
-
         let camera = Camera::new(window.inner_size().into())?;
 
-        let mut render_manager = RenderManager::new(window.clone(), scale_factor as f32)?;
+        let mut render_manager = pollster::block_on(RenderManager::new(
+            display,
+            window.clone(),
+            scale_factor as f32,
+        ))?;
         render_manager.update_camera(&camera)?;
 
         let max_texture_size = render_manager.max_2d_image_size(); //maxImageDimension2D
-        let gui = Gui::new(window.clone(), scale_factor as f32, Some(max_texture_size));
+        let gui = Gui::new(
+            window.clone(),
+            scale_factor as f32,
+            Some(max_texture_size as usize),
+        );
 
         let mut object_collection = ObjectCollection::new();
 
@@ -310,9 +319,9 @@ impl EngineController {
         }
     }
 
-    fn update_window_inner_size(&mut self, new_inner_size: winit::dpi::PhysicalSize<u32>) {
-        self.camera.set_aspect_ratio(new_inner_size.into());
-        self.render_manager.set_window_just_resized_flag();
+    fn update_window_inner_size(&mut self, new_inner_window_size: winit::dpi::PhysicalSize<u32>) {
+        self.camera.set_aspect_ratio(new_inner_window_size.into());
+        self.render_manager.resize_surface(new_inner_window_size);
     }
 
     fn set_scale_factor(&mut self, scale_factor: f64) {

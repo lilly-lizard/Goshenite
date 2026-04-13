@@ -68,6 +68,7 @@ pub fn start_main_thread() -> anyhow::Result<()> {
 
     let window = create_window(&event_loop)?;
     let primary_window_id = window.id();
+    let display = event_loop.owned_display_handle();
 
     let (engine_command_rx, engine_command_tx) = single_value_channel::channel::<EngineCommand>();
     let (window_event_tx, window_event_rx) = mpsc::channel::<WindowEvent>();
@@ -81,7 +82,7 @@ pub fn start_main_thread() -> anyhow::Result<()> {
     let _ = engine_command_tx.update(Some(EngineCommand::Run));
     let engine_thread_handle = thread::spawn(|| {
         info!("initializing engine instance");
-        let mut engine_controller = EngineController::new(window, main_thread_channels)?;
+        let mut engine_controller = EngineController::new(display, window, main_thread_channels)?;
 
         info!("starting engine loop");
         engine_controller.run()?;

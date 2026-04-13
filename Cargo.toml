@@ -28,6 +28,8 @@ winit = "0.30.13"
 raw-window-handle = "0.6"
 # graphics api
 wgpu = "29.0"
+# manage async functions from wgpu
+pollster = "0.4"
 # bit-casting crate (for cpu<->gpu buffers)
 bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
