@@ -118,6 +118,7 @@ gpu specifics:
 				b. VK_FORMAT_R16_UINT size multiple
 				c. VK_FORMAT_R16_UINT spare...
 	- sparse cached result 3D image buffers: 3d textures, each block is a group of 8x8x8 points, ? blocks initially allocated (may allocate more memory as needed)
+		- note: need to verify webgpu format features. need DeviceDescriptor.required_features: GPUFeatureName::float32-filterable for any 32bit float formats
 		a. VK_FORMAT_R16_SFLOAT (sampled often during ray marching)
 			- for evaluated d values
 			- most often accessed as it is used during ray marching
@@ -150,7 +151,12 @@ gpu specifics:
 	- conclusion: no distinction between objects within rendering code. its an extra abstraction to keep track of that would significantly overcomplicate the pipeline...
 
 plan:
-1. generate BVH and render BVH outlines
+1. render green screen ✔️
+2. triangle with wgsl ✔️
+3. triangle with slang
+4. draw AABB outlines
+5. egui
+6. generate BVH and render BVH outlines
 
 # webgpu
 

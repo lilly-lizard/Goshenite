@@ -14,6 +14,8 @@ shader-compile = ["dep:shaderc"]
 # load spirv bytecode at compile-time. if disabled, the engine will attempt to read spirv files from 'assets'
 # directory at runtime (relative to the executable location).
 include-spirv-bytes = []
+# enables compilation for a web target (currently only changes webgpu settings)
+web = []
 
 [dependencies]
 log = "0.4"

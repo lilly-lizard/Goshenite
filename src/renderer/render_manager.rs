@@ -3,10 +3,11 @@ use crate::{
     renderer::{config_renderer::RenderOptions, element_id_reader::ElementAtPoint},
     user_interface::camera::Camera,
 };
+use anyhow::Context;
 use egui::{ClippedPrimitive, TexturesDelta};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::sync::Arc;
+use std::{borrow::Cow, sync::Arc};
 use winit::{event_loop::OwnedDisplayHandle, window::Window};
 
 pub struct RenderManager {
@@ -17,6 +18,7 @@ pub struct RenderManager {
     surface_size: winit::dpi::PhysicalSize<u32>,
     surface: wgpu::Surface<'static>,
     surface_format: wgpu::TextureFormat,
+    render_pipeline: wgpu::RenderPipeline,
 
     /// Can be set to true with [`Self::set_window_just_resized_flag`] and set to false in [`Self::render_frame`]
     window_just_resized: bool,
@@ -31,20 +33,76 @@ impl RenderManager {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_with_display_handle(
             Box::new(display),
         ));
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions::default())
-            .await
-            .unwrap();
-        let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor::default())
-            .await
-            .unwrap();
 
         let surface_size = window.inner_size();
+        let surface = instance
+            .create_surface(window.clone())
+            .context("creating render surface")?;
 
-        let surface = instance.create_surface(window.clone()).unwrap();
+        // physical device
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                // Request an adapter which can render to our surface
+                compatible_surface: Some(&surface),
+                ..Default::default()
+            })
+            .await
+            .context("finding graphics device/driver")?;
+
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: None,
+                required_features: wgpu::Features::empty(),
+                // make sure we use the texture resolution limits from the adapter,
+                // so we can support images the size of the swapchain.
+                required_limits: wgpu::Limits::downlevel_webgl2_defaults()
+                    .using_resolution(adapter.limits()),
+                experimental_features: wgpu::ExperimentalFeatures::disabled(),
+                memory_hints: wgpu::MemoryHints::MemoryUsage,
+                trace: wgpu::Trace::Off,
+            })
+            .await
+            .context("creating virtual device and render queue")?;
+
         let cap = surface.get_capabilities(&adapter);
         let surface_format = cap.formats[0];
+
+        let triangle_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("triangle"),
+            source: wgpu::ShaderSource::Wgsl(Cow::Borrowed(include_str!("shader.wgsl"))),
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("triangle"),
+            bind_group_layouts: &[],
+            immediate_size: 0,
+        });
+
+        let swapchain_capabilities = surface.get_capabilities(&adapter);
+        let swapchain_format = swapchain_capabilities.formats[0];
+
+        let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("triangle"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &triangle_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &triangle_shader,
+                entry_point: Some("fs_main"),
+                compilation_options: Default::default(),
+                targets: &[Some(swapchain_format.into())],
+            }),
+            primitive: wgpu::PrimitiveState::default(),
+            depth_stencil: None,
+            multisample: wgpu::MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
 
         let mut render_manager = Self {
             instance,
@@ -55,6 +113,7 @@ impl RenderManager {
             surface,
             surface_format,
             window_just_resized: false,
+            render_pipeline,
         };
 
         render_manager.configure_surface();
@@ -92,7 +151,10 @@ impl RenderManager {
             }
             wgpu::CurrentSurfaceTexture::Lost => {
                 warn!("render surface lost, attempting to recreate");
-                self.surface = self.instance.create_surface(self.window.clone()).unwrap();
+                self.surface = self
+                    .instance
+                    .create_surface(self.window.clone())
+                    .context("recreating render surface after surface/device lost")?;
                 self.reconfigure_surface_and_framebuffers();
                 return Ok(());
             }
@@ -108,8 +170,8 @@ impl RenderManager {
 
         // begin the renderpass
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        let renderpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: None,
+        let mut renderpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("per frame render"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &surface_texture_view,
                 depth_slice: None,
@@ -126,7 +188,8 @@ impl RenderManager {
             multiview_mask: None,
         });
 
-        // If you wanted to call any drawing commands, they would go here.
+        renderpass.set_pipeline(&self.render_pipeline);
+        renderpass.draw(0..3, 0..1);
 
         // end the renderpass
         drop(renderpass);
@@ -147,7 +210,7 @@ impl RenderManager {
         let surface_config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             format: self.surface_format,
-            // Request compatibility with the sRGB-format texture view we‘re going to create later.
+            // request compatibility with the sRGB-format texture view we‘re going to create later.
             view_formats: vec![self.surface_format.add_srgb_suffix()],
             alpha_mode: wgpu::CompositeAlphaMode::Auto,
             width: self.surface_size.width,
