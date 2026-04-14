@@ -4,6 +4,8 @@ use crate::{
     user_interface::camera::Camera,
 };
 use egui::{ClippedPrimitive, TexturesDelta};
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
 use winit::{event_loop::OwnedDisplayHandle, window::Window};
 
@@ -64,53 +66,56 @@ impl RenderManager {
         self.device.limits().max_texture_dimension_2d
     }
 
-    /// todo
     pub fn render_frame(&mut self, overlay_options: RenderOptions) -> anyhow::Result<()> {
         if self.window_just_resized {
             self.window_just_resized = false;
-            self.recreate_surface_and_framebuffers();
+            self.reconfigure_surface_and_framebuffers();
         }
 
-        // Create texture view.
-        // NOTE: We must handle Timeout because the surface may be unavailable
-        // (e.g., when the window is occluded on macOS).
         let surface_texture = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(texture) => texture,
-            wgpu::CurrentSurfaceTexture::Occluded | wgpu::CurrentSurfaceTexture::Timeout => {
-                return Ok(())
+            wgpu::CurrentSurfaceTexture::Occluded => {
+                debug!("window occluded, skipping frame render");
+                return Ok(());
+            }
+            wgpu::CurrentSurfaceTexture::Timeout => {
+                debug!("get render surface framebuffer timeout");
+                return Ok(());
             }
             wgpu::CurrentSurfaceTexture::Suboptimal(_) | wgpu::CurrentSurfaceTexture::Outdated => {
-                self.recreate_surface_and_framebuffers();
+                info!("suboptimal or outdated render surface, recreating framebuffers");
+                self.reconfigure_surface_and_framebuffers();
                 return Ok(());
             }
             wgpu::CurrentSurfaceTexture::Validation => {
-                unreachable!("No error scope registered, so validation errors will panic")
+                todo!("figure out how validation errors work");
             }
             wgpu::CurrentSurfaceTexture::Lost => {
+                warn!("render surface lost, attempting to recreate");
                 self.surface = self.instance.create_surface(self.window.clone()).unwrap();
-                self.recreate_surface_and_framebuffers();
+                self.reconfigure_surface_and_framebuffers();
                 return Ok(());
             }
         };
-        let texture_view = surface_texture
-            .texture
-            .create_view(&wgpu::TextureViewDescriptor {
-                // Without add_srgb_suffix() the image we will be working with
-                // might not be "gamma correct".
-                format: Some(self.surface_format.add_srgb_suffix()),
-                ..Default::default()
-            });
 
-        // Renders a GREEN screen
+        let surface_texture_view =
+            surface_texture
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor {
+                    format: Some(self.surface_format.add_srgb_suffix()),
+                    ..Default::default()
+                });
+
+        // begin the renderpass
         let mut encoder = self.device.create_command_encoder(&Default::default());
-        // Create the renderpass which will clear the screen.
         let renderpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &texture_view,
+                view: &surface_texture_view,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
+                    // Renders a GREEN screen
                     load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
                     store: wgpu::StoreOp::Store,
                 },
@@ -123,10 +128,10 @@ impl RenderManager {
 
         // If you wanted to call any drawing commands, they would go here.
 
-        // End the renderpass.
+        // end the renderpass
         drop(renderpass);
 
-        // Submit the command in the queue to execute
+        // submit the render commands
         self.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
         surface_texture.present();
@@ -134,7 +139,7 @@ impl RenderManager {
         Ok(())
     }
 
-    fn recreate_surface_and_framebuffers(&mut self) {
+    fn reconfigure_surface_and_framebuffers(&mut self) {
         self.configure_surface();
     }
 
