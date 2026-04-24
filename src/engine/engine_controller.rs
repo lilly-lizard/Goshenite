@@ -369,7 +369,12 @@ impl EngineController {
         }
     }
 
-    fn shut_down(&mut self) {}
+    fn shut_down(&self) {
+        // save gui state
+        if let Err(e) = self.gui.save_gui_state() {
+            error!("{}", e);
+        }
+    }
 }
 
 // ~~ Engine Error ~~

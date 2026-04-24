@@ -4,9 +4,10 @@ use crate::engine::{
     primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
 };
 use glam::Vec3;
+use serde::{Deserialize, Serialize};
 
 /// Wherver or not different windows are open
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SubWindowStates {
     pub object_list: bool,
     pub object_editor: bool,

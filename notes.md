@@ -151,14 +151,7 @@ gpu specifics:
 	- conclusion: no distinction between objects within rendering code. its an extra abstraction to keep track of that would significantly overcomplicate the pipeline...
 
 plan:
-1. render green screen ✔️
-2. triangle with wgsl ✔️
-3. triangle with slang
-	a. manual compile
-	b. build.rs
-4. draw AABB outlines
-5. egui
-6. generate BVH and render BVH outlines
+1. generate BVH and render BVH outlines
 
 # webgpu
 

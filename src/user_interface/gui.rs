@@ -11,9 +11,15 @@ use crate::{
             object_collection::ObjectCollection,
             primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
+        save_states::{
+            load_state_gui_positions, load_state_gui_windows, save_state_gui_positions,
+            save_state_gui_windows,
+        },
     },
+    helper::more_errors::IoError,
     renderer::config_renderer::RenderOptions,
 };
+use anyhow::Context;
 use egui::{TextWrapMode, TexturesDelta};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
@@ -78,12 +84,32 @@ impl Gui {
             max_texture_size,
         );
 
+        match load_state_gui_positions() {
+            Ok(loaded_memory) => {
+                egui_context.memory_mut(|context_memory| *context_memory = loaded_memory);
+            }
+            Err(e) => match e {
+                IoError::FileDoesntExist(_file_path, _e) => info!("no gui window position state memory storage file found. initializing with default gui positions"),
+                _ => ()
+            }
+        };
+        let sub_window_states = match load_state_gui_windows() {
+            Ok(loaded_window_state) => loaded_window_state,
+            Err(e) => {
+                match e {
+                    IoError::FileDoesntExist(_file_path, _e) => info!("no gui window open state storage file found. initializing with default gui window state"),
+                    _ => ()
+                }
+                Default::default()
+            }
+        };
+
         Self {
             egui_context,
             window,
             winit_state,
             mesh_primitives: Default::default(),
-            sub_window_states: Default::default(),
+            sub_window_states,
             gui_state: Default::default(),
             command_palette_state: Default::default(),
             textures_delta_accumulation: Default::default(),
@@ -214,5 +240,12 @@ impl Gui {
 
     pub fn set_command_palette_visability(&mut self, is_open: bool) {
         self.sub_window_states.command_palette = is_open;
+    }
+
+    pub fn save_gui_state(&self) -> anyhow::Result<()> {
+        self.egui_context
+            .memory(save_state_gui_positions)
+            .context("saving gui positions state")?;
+        save_state_gui_windows(&self.sub_window_states).context("saving gui window state")
     }
 }

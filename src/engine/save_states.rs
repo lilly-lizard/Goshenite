@@ -4,30 +4,52 @@ use super::{
 };
 use crate::{
     config::{PRECURSOR_BYTES, PRECURSOR_BYTE_COUNT},
-    engine::config_engine::HIDDEN_STORAGE_DIR,
+    engine::config_engine::{
+        HIDDEN_STORAGE_DIR, SAVE_STATE_FILENAME_GUI_POSITIONS, SAVE_STATE_FILENAME_GUI_WINDOW,
+    },
     helper::more_errors::IoError,
-    user_interface::camera::Camera,
+    user_interface::{camera::Camera, gui_state::SubWindowStates},
 };
 use serde::{de::DeserializeOwned, Serialize};
 use std::{fs, path::PathBuf};
 
 // ~~ Public ~~
 
-pub fn save_state_camera(camera: &Camera) -> Result<(), IoError> {
-    save_state(camera, SAVE_STATE_FILENAME_CAMERA, Some(HIDDEN_STORAGE_DIR))
-}
-
-pub fn load_state_camera() -> Result<Camera, IoError> {
-    load_state::<Camera>(SAVE_STATE_FILENAME_CAMERA, Some(HIDDEN_STORAGE_DIR))
-}
-
 pub fn save_all_objects(object_collection: &ObjectCollection) -> Result<(), IoError> {
     let object_list: Vec<Object> = object_collection.objects().values().cloned().collect();
     save_state(&object_list, SAVE_STATE_FILENAME_SCENE, None)
 }
-
 pub fn load_objects() -> Result<Vec<Object>, IoError> {
     load_state::<Vec<Object>>(SAVE_STATE_FILENAME_SCENE, None)
+}
+
+pub fn save_state_camera(camera: &Camera) -> Result<(), IoError> {
+    save_state(camera, SAVE_STATE_FILENAME_CAMERA, Some(HIDDEN_STORAGE_DIR))
+}
+pub fn load_state_camera() -> Result<Camera, IoError> {
+    load_state::<Camera>(SAVE_STATE_FILENAME_CAMERA, Some(HIDDEN_STORAGE_DIR))
+}
+
+pub fn save_state_gui_positions(gui_memory: &egui::Memory) -> Result<(), IoError> {
+    save_state(
+        gui_memory,
+        SAVE_STATE_FILENAME_GUI_POSITIONS,
+        Some(HIDDEN_STORAGE_DIR),
+    )
+}
+pub fn load_state_gui_positions() -> Result<egui::Memory, IoError> {
+    load_state::<egui::Memory>(SAVE_STATE_FILENAME_GUI_POSITIONS, Some(HIDDEN_STORAGE_DIR))
+}
+
+pub fn save_state_gui_windows(sub_window_states: &SubWindowStates) -> Result<(), IoError> {
+    save_state(
+        sub_window_states,
+        SAVE_STATE_FILENAME_GUI_WINDOW,
+        Some(HIDDEN_STORAGE_DIR),
+    )
+}
+pub fn load_state_gui_windows() -> Result<SubWindowStates, IoError> {
+    load_state::<SubWindowStates>(SAVE_STATE_FILENAME_GUI_WINDOW, Some(HIDDEN_STORAGE_DIR))
 }
 
 // ~~ Private ~~

@@ -30,13 +30,18 @@ impl log::Log for ConsoleLogger {
             } else {
                 ColoredString::from(args.as_str())
             };
+            let module_path = record
+                .module_path()
+                .unwrap_or("(unknown module)")
+                .color(color);
+            if module_path.contains("winit") {
+                // certain crates bombard the log output every frame
+                return;
+            }
             println!(
                 "{} {} {} {}",
                 level_str(record.level()).color(color),
-                record
-                    .module_path()
-                    .unwrap_or("(unknown module)")
-                    .color(color),
+                module_path,
                 ">".color(color),
                 args,
             );

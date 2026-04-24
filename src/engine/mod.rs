@@ -5,6 +5,6 @@ pub mod config_engine;
 pub mod engine_controller;
 pub mod object;
 pub mod primitives;
-mod save_states;
+pub mod save_states;
 pub mod settings;
 pub mod window_thread;
