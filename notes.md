@@ -11,8 +11,8 @@
 		- each pixel of 3d texture atlas is a point (brick map pointer grid)
 		- brick size is 8x8x8
 		- lookup (pointer) texture size = 4 bytes (brick map pointer size) * 1024^3 (full grid dimensions) / 8^3 (grid dimensions) = 8MB
-		- pointers point to sparse buffer with actual values (brick map) in which blocks are allocated and de-allocated if surfaces change
-		- naively store everything in big buffer = 1 byte * 1024^3 = 1GB
+		- pointers point to sparse buffer with actual values (brick map) in which blocks are allocated and de-allocated if surfaces change (10:25 in video)
+		- naively store everything in big buffer (whole grid, not just surface) = 1 byte * 1024^3 = 1GB
 - all primitive ops (which he calls "sdf edits") tracked spacially via a bounding volume heirarchy (BVH)
 	- tree of AABBs (see 13:20 for visualization)
 	- BVH can be used to find all intersecting AABBs for a given ray
@@ -35,6 +35,130 @@
 	- uses marching cubes to generate low res collision mesh which is then fed into jolt
 	- simple and easily parallelised, done on multiple cpu threads
 	- [rapier 3d for rust](https://crates.io/crates/rapier3d)
+
+# renderer architecture
+
+stages:
+1. initial calculations of each point on grid to generate
+	a. generate BVH for all primtives
+		- option A (simple):
+			- top down generation
+			- get union of all AABBs to get top of tree AABB
+			- then half along x axis for next layer (equal number of primitives in each branch)
+			- next layer, half along y axis, then z, then x until you get to bottom of tree
+		- option B (fast): ✔️
+			- place AABB centers in interger grid of length 2^n
+			- sort by sinlge value: morton code
+				- morton code: interleave axes, interleave bits to get 3n bit uint
+			- then half the list recursively to get tree
+			- does the exact same thing as option A [visualization](https://youtu.be/LAxHQZ8RjQ4?si=6uQRbcwBTc_KXcMp&t=480)
+			- good for regenerating entire BVH every nth frame to account for dynamic primitives
+	b. sparse buffer cache atlas for blocks intersecting surfaces
+		- cache sdf result
+			- d, id
+		- option A: cache geometry properties and calculate lighting per frame ✔️
+			- albedo, specular, normal
+			- requires 2x memory usage for vertex buffers
+		- option B: cache lighting here ❌️
+			- final color: albedo * illumination * specular * normal etc.
+			- lighting is expensive! doing it for the whole grid seems excessive, expecially given how much of it will be occluded in a forest
+	c. lookup pointer table for whole volume
+		- for each block use BVH to determine relevant primitives to evaluate
+		- only store pointers for blocks with both positive and negative values (indicating a surface)
+2. each frame:
+	- determine which blocks need regenerated because of... _(note: can be implimented later)_
+		a. moved primitive op
+		b. LOD changed (block increased or decreased in sparseness) due to camera origin moving (note: done to blocks outside viewpoint too to avoid spikes in regeneration load)
+	- for each pixel/ray
+		- determine what grid blocks the ray intersects
+		- evaluate sdf result for each from closest to farthest
+			- option A: ❌️
+				- rasterize cubes for each grid block without backface culling
+				- fragment invocations for entry and exit points
+				- hit when first negative d is found
+				- concerns: this doesn't utilize trilinear interpolation, just bilinear...
+			- option B: ✔️
+				- rasterize cubes for each grid block with backface culling
+				- ray-march through the block
+				- hit if d < epsilom
+				- miss if d > block dimension
+				- a lot more accurate not a lot more computation
+				- only requires ray calc to determine point and then some stepping
+		- for each block:
+			- check if pointer resides in lookup table
+			- for blocks with pointers:
+				- perform trilinear interpolation of sdf result fields: d, albedo, specular, normal, illumination
+				- closest interpolation for uint id (note when generating these point values, id = closest primitive as well)
+
+pipeline:
+1. cache gen
+	- BVH (+ grid) -> surface pointers + vertex buffers
+2. per frame
+	- render blocks as instanced cubes
+		- option A: use pointer lookup table cpu side to determine instances
+		- option B: during surface block generation, create an indirect rendering buffer
+
+gpu specifics:
+- buffers:
+	- BVH
+		- shared between cpu and gpu
+	- grid lookup: 128x128x128 x 4byte (1024 / 8 = 128) = 8MB
+	- frame draw vertex buffer:
+		1. vertex buffer
+			- positions of cube
+			- VK_FORMAT_R32G32B32_SFLOAT
+		2. index buffer
+			- indicies of cube
+			- VK_INDEX_TYPE_UINT32
+		3. instance buffer
+			- per unit grid block
+			- position, size multiple (grid id?)
+			- per stride:
+				a. VK_FORMAT_R32G32B32_SFLOAT position
+				b. VK_FORMAT_R16_UINT size multiple
+				c. VK_FORMAT_R16_UINT spare...
+	- sparse cached result 3D image buffers: 3d textures, each block is a group of 8x8x8 points, ? blocks initially allocated (may allocate more memory as needed)
+		- note: need to verify webgpu format features. need DeviceDescriptor.required_features: GPUFeatureName::float32-filterable for any 32bit float formats
+		a. VK_FORMAT_R16_SFLOAT (sampled often during ray marching)
+			- for evaluated d values
+			- most often accessed as it is used during ray marching
+			- trilinear interpolation
+		b. VK_FORMAT_R16_UINT (only sampled upon hit)
+			- id (uint)
+			- closest interpolation
+		- option A: ✔️
+			c. VK_FORMAT_R8G8B8A8_SRGB (only sampled upon hit)
+				- albedo (vec3)
+				- specular (float)
+				- trilinear interpolation
+			d. VK_FORMAT_R8G8B8A8_SNORM (only sampled upon hit)
+				- normals (vec3)
+				- ? in A channel
+				- trilinear interpolation
+		- option B: ❌️
+			- VK_FORMAT_R8G8B8A8_SRGB
+				- color (vec3)
+				- ? in A channel
+				- trilinear interpolation
+	- output framebuffers
+		1. color
+		2. VK_FORMAT_R16_UINT id
+
+- ordering options:
+	- primitive op order preserved within object
+	- each object processed individually before being combined, otherwise a hole in a tree will also cut a hole into animals that crawl on it too and vice versa...
+	- downside of this is that a ray only intercepts some primitive ops within an object so how do you query primitive op order in that scenario?
+	- conclusion: no distinction between objects within rendering code. its an extra abstraction to keep track of that would significantly overcomplicate the pipeline...
+
+plan:
+1. render green screen ✔️
+2. triangle with wgsl ✔️
+3. triangle with slang
+	a. manual compile
+	b. build.rs
+4. draw AABB outlines
+5. egui
+6. generate BVH and render BVH outlines
 
 # webgpu
 
@@ -194,3 +318,7 @@ _"Well, if I were to use an analogy for analog and digital, analog is like a cal
 ```
 
 # DEBUGGING...
+
+09:57:31.022185 run-command.c:740            | d0 | main                     | child_start  |     |  0.003988 |           |              | [ch0] class:? argv:[gpg --status-fd=2 -bsau B5857277126B5D1C]
+_long wait..._
+09:58:02.862556 run-command.c:996            | d0 | main                     | child_exit   |     | 31.844359 | 31.840371 |              | [ch0] pid:23811 code:0
