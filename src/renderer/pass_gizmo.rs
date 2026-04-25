@@ -119,10 +119,10 @@ impl GizmoPass {
 
 fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorPool>> {
     let descriptor_pool_properties = DescriptorPoolProperties {
-        max_sets: 1,
+        max_sets: 2,
         pool_sizes: vec![vk::DescriptorPoolSize {
             ty: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: 1,
+            descriptor_count: 2,
         }],
         ..Default::default()
     };

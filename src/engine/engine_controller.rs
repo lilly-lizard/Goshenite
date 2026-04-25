@@ -305,7 +305,7 @@ impl EngineController {
                 self.render_manager.update_gizmo(None)?;
                 return Ok(());
             };
-            selected_primitive_op.center()
+            selected_object.center + selected_primitive_op.center()
         } else {
             selected_object.center
         };

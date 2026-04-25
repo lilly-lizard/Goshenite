@@ -310,7 +310,7 @@ impl RenderManager {
 
         if let Some(gizmo_center) = selected_object_center {
             self.gizmo_visible = true;
-            let write_data = [gizmo_center.x, gizmo_center.y, gizmo_center.z, 1.0];
+            let write_data = [gizmo_center.x, gizmo_center.y, gizmo_center.z, 0.0];
             self.gizmo_ubo
                 .write_struct(write_data, 0)
                 .context("uploading selected object center to gizmo rendering buffer")?;
@@ -633,8 +633,10 @@ impl RenderManager {
         self.geometry_pass
             .record_commands(command_buffer, viewport, render_area);
 
-        self.gizmo_pass
-            .record_commands(command_buffer, viewport, render_area);
+        if self.gizmo_visible {
+            self.gizmo_pass
+                .record_commands(command_buffer, viewport, render_area);
+        }
 
         command_buffer.next_subpass(vk::SubpassContents::INLINE);
 
