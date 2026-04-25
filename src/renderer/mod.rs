@@ -1,12 +1,12 @@
 pub mod config_renderer;
 mod debug_callback;
 pub mod element_id_reader;
-mod geometry_pass;
-mod gizmo_pass;
-mod gui_pass;
-mod lighting_pass;
 mod object_resource_manager;
-mod overlay_pass;
+mod pass_geometry;
+mod pass_gizmo;
+mod pass_gui;
+mod pass_lighting;
+mod pass_overlay;
 /// Renderer entry point
 pub mod render_manager;
 pub mod shader_interfaces;

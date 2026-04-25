@@ -14,7 +14,6 @@ use crate::{
         list::choose_closest_valid_index, more_errors::CollectionError,
         unique_id_gen::UniqueIdError,
     },
-    renderer::config_renderer::RenderOptions,
 };
 use glam::Vec3;
 #[allow(unused_imports)]
@@ -36,8 +35,8 @@ impl EngineController {
     pub(super) fn execute_command(&mut self, command: Command) {
         match command {
             // ~~ Renderer ~~
-            Command::SetRenderOptions(new_render_options) => {
-                self.set_render_options(new_render_options);
+            Command::SetRenderDebugOptions(new_render_debug_options) => {
+                self.render_debug_options = new_render_debug_options;
             }
 
             // ~~ Save states ~~
@@ -72,8 +71,8 @@ impl EngineController {
             Command::CreateAndSelectNewDefaultObject() => {
                 self.create_and_select_new_default_object(Some(command))
             }
-            Command::SetObjectOrigin { object_id, origin } => {
-                self.set_object_origin(object_id, origin, Some(command))
+            Command::SetObjectCenter { object_id, center } => {
+                self.set_object_center(object_id, center, Some(command))
             }
             Command::SetObjectName {
                 object_id,
@@ -221,12 +220,6 @@ impl EngineController {
 // ~~ Per-Command Processing ~~
 
 impl EngineController {
-    // ~~ Renderer ~~
-
-    fn set_render_options(&mut self, new_render_options: RenderOptions) {
-        self.render_options = new_render_options;
-    }
-
     // ~~ Save states ~~
 
     fn save_state_camera(&self, command: Command) {
@@ -299,7 +292,7 @@ impl EngineController {
         };
 
         self.camera
-            .set_lock_on_target_object(target_object_id, object.origin);
+            .set_lock_on_target_object(target_object_id, object.center);
     }
 
     // ~~ Objects: Selection ~~
@@ -317,7 +310,7 @@ impl EngineController {
         if let Some(target_object_id) = self.selected_object_id {
             if let Some(object) = self.object_collection.get_object(target_object_id) {
                 self.camera
-                    .set_lock_on_target_object(target_object_id, object.origin);
+                    .set_lock_on_target_object(target_object_id, object.center);
             }
         }
     }
@@ -379,7 +372,7 @@ impl EngineController {
         self.selected_primitive_op_index = None;
 
         self.camera
-            .set_lock_on_target_object(object_id_to_select, object.origin);
+            .set_lock_on_target_object(object_id_to_select, object.center);
     }
 
     // ~~ Objects: Removal ~~
@@ -530,15 +523,15 @@ impl EngineController {
         self.select_object(new_object_id, source_command);
     }
 
-    fn set_object_origin(
+    fn set_object_center(
         &mut self,
         object_id: ObjectId,
-        new_origin: Vec3,
+        new_center: Vec3,
         source_command: Option<Command>,
     ) {
         let update_res = self
             .object_collection
-            .set_object_origin(object_id, new_origin);
+            .set_object_center(object_id, new_center);
         if let Err(e) = update_res {
             failure_warn_collection_error(e, object_id, source_command);
         }

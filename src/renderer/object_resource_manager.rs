@@ -1,4 +1,4 @@
-use super::geometry_pass::descriptor;
+use super::pass_geometry::descriptor;
 use crate::engine::{
     aabb::AABB_VERTEX_COUNT,
     object::{

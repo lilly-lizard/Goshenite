@@ -146,21 +146,21 @@ fn object_properties_editor(
 ) {
     ui.separator();
 
-    let original_origin = object.origin;
-    let mut new_origin = original_origin;
+    let original_center = object.center;
+    let mut new_center = original_center;
 
     ui.horizontal(|ui| {
-        ui.label("Origin:");
-        ui.add(DragValue::new(&mut new_origin.x).speed(DRAG_INC))
+        ui.label("Center:");
+        ui.add(DragValue::new(&mut new_center.x).speed(DRAG_INC))
             .changed();
-        ui.add(DragValue::new(&mut new_origin.y).speed(DRAG_INC));
-        ui.add(DragValue::new(&mut new_origin.z).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut new_center.y).speed(DRAG_INC));
+        ui.add(DragValue::new(&mut new_center.z).speed(DRAG_INC));
     });
 
-    if original_origin != new_origin {
-        commands.push(Command::SetObjectOrigin {
+    if original_center != new_center {
+        commands.push(Command::SetObjectCenter {
             object_id: object_id,
-            origin: new_origin,
+            center: new_center,
         });
     }
 }

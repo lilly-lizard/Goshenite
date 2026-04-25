@@ -17,7 +17,7 @@ use crate::{
         },
     },
     helper::more_errors::IoError,
-    renderer::config_renderer::RenderOptions,
+    renderer::config_renderer::RenderDebugOptions,
 };
 use anyhow::Context;
 use egui::{TextWrapMode, TexturesDelta};
@@ -154,7 +154,7 @@ impl Gui {
         camera: Camera,
         selected_object_id: Option<ObjectId>,
         selected_primitive_op_index: Option<PrimitiveOpIndex>,
-        render_options: RenderOptions,
+        render_debug_options: RenderDebugOptions,
     ) -> anyhow::Result<Vec<CommandWithSource>> {
         let mut commands = Vec::<Command>::new();
 
@@ -196,7 +196,7 @@ impl Gui {
         }
 
         if self.sub_window_states.debug_options {
-            let mut new_commands = self.draw_debug_options_window(render_options);
+            let mut new_commands = self.draw_debug_options_window(render_debug_options);
             commands.append(&mut new_commands);
         }
 

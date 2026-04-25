@@ -13,7 +13,12 @@ layout (set = 0, binding = 0) uniform Camera {
     uint _write_linear_color;
 } cam;
 
+layout (set = 1, binding = 0) uniform GizmoParams {
+	vec4 object_center;
+} param;
+
 void main()
 {
-	gl_Position = inverse(cam.proj_inverse) * inverse(cam.view_inverse) * in_position;
+	vec4 pos = in_position + param.object_center;
+	gl_Position = inverse(cam.proj_inverse) * inverse(cam.view_inverse) * pos;
 }

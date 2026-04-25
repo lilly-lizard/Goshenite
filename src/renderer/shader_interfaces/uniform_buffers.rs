@@ -1,5 +1,5 @@
 use crate::user_interface::camera::Camera;
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, Vec4};
 
 /// Camera data read by GPU shaders
 #[repr(C)]
@@ -61,5 +61,26 @@ impl CameraUniformBuffer {
             camera.direction().as_vec3(),
             write_linear_color,
         )
+    }
+}
+
+/// Camera data read by GPU shaders
+#[repr(C)]
+#[derive(Clone, Copy, Default, Debug)]
+pub struct GizmoUniformBuffer {
+    pub object_center: [f32; 4],
+}
+
+impl GizmoUniformBuffer {
+    #[inline]
+    pub fn new(object_center: Vec4) -> Self {
+        Self {
+            object_center: [
+                object_center.x,
+                object_center.y,
+                object_center.z,
+                object_center.w,
+            ],
+        }
     }
 }

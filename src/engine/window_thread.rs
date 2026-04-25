@@ -2,11 +2,7 @@ use super::engine_controller::EngineCommand;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use single_value_channel::Updater;
-use std::{
-    mem::ManuallyDrop,
-    sync::mpsc::{self, Sender, TryRecvError},
-    thread::{self, JoinHandle},
-};
+use std::sync::mpsc::{self, Sender, TryRecvError};
 use winit::{
     application::ApplicationHandler, event::WindowEvent, event_loop::ActiveEventLoop,
     window::WindowId,
@@ -14,7 +10,6 @@ use winit::{
 
 pub struct WindowThread {
     pub primary_window_id: WindowId,
-    pub engine_thread_handle: ManuallyDrop<JoinHandle<Result<(), anyhow::Error>>>,
     pub engine_command_tx: Updater<Option<EngineCommand>>,
     pub window_event_tx: Sender<WindowEvent>,
 }
@@ -46,33 +41,7 @@ impl ApplicationHandler for WindowThread {
 
     fn resumed(&mut self, _event_loop: &ActiveEventLoop) {}
 
-    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
-        // Safety: winit guarentees event loop shutdown after returning so this should be
-        // functionally the same as Drop
-        let engine_thread_handle =
-            unsafe { ManuallyDrop::<_>::take(&mut self.engine_thread_handle) };
-        wait_for_engine_thread_closure(engine_thread_handle);
-    }
-}
-
-fn wait_for_engine_thread_closure(
-    engine_thread_handle: thread::JoinHandle<Result<(), anyhow::Error>>,
-) {
-    // check reason for engine thread closure
-    let engine_thread_join_res = engine_thread_handle.join();
-    if let Err(engine_panic_param) = &engine_thread_join_res {
-        error!("panic on engine thread! panic params:");
-        error!("{:?}", engine_panic_param);
-    }
-    if let Ok(engine_thread_res) = engine_thread_join_res {
-        match engine_thread_res {
-            Ok(()) => info!("engine thread shut down cleanly."),
-            Err(engine_thread_err) => error!(
-                "engine thread shut down due to error: {}",
-                engine_thread_err
-            ),
-        }
-    }
+    fn exiting(&mut self, _event_loop: &ActiveEventLoop) {}
 }
 
 pub struct WindowThreadChannels {

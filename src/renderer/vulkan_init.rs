@@ -6,12 +6,15 @@ use super::{
     },
     debug_callback::log_vulkan_debug_callback,
     shader_interfaces::{
-        camera_uniform_buffer::CameraUniformBuffer, primitive_op_buffer::PRIMITIVE_ID_BACKGROUND,
+        primitive_op_buffer::PRIMITIVE_ID_BACKGROUND, uniform_buffers::CameraUniformBuffer,
     },
 };
-use crate::renderer::config_renderer::{
-    required_device_extensions, required_features_1_0, DISPLAY_UNAVAILABLE_TIMEOUT_NANOSECONDS,
-    ENABLE_VULKAN_VALIDATION,
+use crate::renderer::{
+    config_renderer::{
+        required_device_extensions, required_features_1_0, DISPLAY_UNAVAILABLE_TIMEOUT_NANOSECONDS,
+        ENABLE_VULKAN_VALIDATION,
+    },
+    shader_interfaces::uniform_buffers::GizmoUniformBuffer,
 };
 use anyhow::{anyhow, Context};
 use ash::{
@@ -1013,6 +1016,16 @@ pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Resu
     let alloc_info = allocation_info_cpu_accessible();
     let buffer = Buffer::new(memory_allocator, ubo_props, alloc_info)
         .context("creating camera ubo buffer")?;
+    Ok(buffer)
+}
+
+pub fn create_gizmo_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Buffer> {
+    let ubo_size = mem::size_of::<GizmoUniformBuffer>() as vk::DeviceSize;
+    let ubo_props = BufferProperties::new_default(ubo_size, vk::BufferUsageFlags::UNIFORM_BUFFER);
+
+    let alloc_info = allocation_info_cpu_accessible();
+    let buffer = Buffer::new(memory_allocator, ubo_props, alloc_info)
+        .context("creating gizmo ubo buffer")?;
     Ok(buffer)
 }
 

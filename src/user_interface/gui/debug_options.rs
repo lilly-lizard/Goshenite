@@ -1,16 +1,16 @@
 use super::Gui;
-use crate::{engine::commands::Command, renderer::config_renderer::RenderOptions};
+use crate::{engine::commands::Command, renderer::config_renderer::RenderDebugOptions};
 use egui::Ui;
 
 impl Gui {
     pub(super) fn draw_debug_options_window(
         &mut self,
-        render_options: RenderOptions,
+        render_debug_options: RenderDebugOptions,
     ) -> Vec<Command> {
         let mut commands = Vec::<Command>::new();
 
         let add_contents = |ui: &mut egui::Ui| {
-            commands = layout_debug_options(ui, render_options);
+            commands = layout_debug_options(ui, render_debug_options);
         };
         egui::Window::new("Debug Options")
             .open(&mut self.sub_window_states.debug_options)
@@ -23,7 +23,7 @@ impl Gui {
     }
 }
 
-fn layout_debug_options(ui: &mut Ui, old_render_options: RenderOptions) -> Vec<Command> {
+fn layout_debug_options(ui: &mut Ui, old_render_options: RenderDebugOptions) -> Vec<Command> {
     let mut commands = Vec::<Command>::new();
     let mut new_render_options = old_render_options;
 
@@ -38,7 +38,7 @@ fn layout_debug_options(ui: &mut Ui, old_render_options: RenderOptions) -> Vec<C
     }
 
     if new_render_options != old_render_options {
-        commands.push(Command::SetRenderOptions(new_render_options));
+        commands.push(Command::SetRenderDebugOptions(new_render_options));
     }
     commands
 }

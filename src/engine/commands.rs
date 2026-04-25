@@ -2,7 +2,7 @@
 
 use crate::{
     engine::object::primitive_op::{PrimitiveOp, PrimitiveOpIndex},
-    renderer::config_renderer::RenderOptions,
+    renderer::config_renderer::RenderDebugOptions,
 };
 
 use super::{
@@ -16,7 +16,7 @@ use glam::{DVec3, Vec3};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
     // ~~ Renderer ~~
-    SetRenderOptions(RenderOptions),
+    SetRenderDebugOptions(RenderDebugOptions),
 
     // ~~ Save states ~~
     SaveStateCamera,
@@ -40,9 +40,9 @@ pub enum Command {
     RemoveObject(ObjectId),
     RemoveSelectedObject(),
     CreateAndSelectNewDefaultObject(),
-    SetObjectOrigin {
+    SetObjectCenter {
         object_id: ObjectId,
-        origin: Vec3,
+        center: Vec3,
     },
     SetObjectName {
         object_id: ObjectId,

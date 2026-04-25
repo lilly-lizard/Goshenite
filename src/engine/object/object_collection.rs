@@ -40,17 +40,17 @@ impl ObjectCollection {
     pub fn new_object(
         &mut self,
         name: impl Into<String>,
-        origin: Vec3,
+        center: Vec3,
     ) -> Result<(ObjectId, Object), UniqueIdError> {
         let object_id = self.unique_id_gen.new_id()?;
-        Ok(self.new_object_internal(object_id, name.into(), origin))
+        Ok(self.new_object_internal(object_id, name.into(), center))
     }
 
     pub fn new_object_default(&mut self) -> Result<(ObjectId, Object), UniqueIdError> {
         let object_id = self.unique_id_gen.new_id()?;
         let name = format!("New Object {}", object_id.raw_id());
-        let origin = DEFAULT_ORIGIN;
-        Ok(self.new_object_internal(object_id, name, origin))
+        let center = DEFAULT_ORIGIN;
+        Ok(self.new_object_internal(object_id, name, center))
     }
 
     pub fn push_object(&mut self, new_object: Object) -> Result<ObjectId, UniqueIdError> {
@@ -93,12 +93,12 @@ impl ObjectCollection {
         Ok(())
     }
 
-    pub fn set_object_origin(
+    pub fn set_object_center(
         &mut self,
         object_id: ObjectId,
-        new_origin: Vec3,
+        new_center: Vec3,
     ) -> Result<(), CollectionError> {
-        self.get_object_mut(object_id)?.origin = new_origin;
+        self.get_object_mut(object_id)?.center = new_center;
         self.mark_object_for_gpu_update(object_id)
     }
 
@@ -278,9 +278,9 @@ impl ObjectCollection {
         &mut self,
         object_id: ObjectId,
         name: String,
-        origin: Vec3,
+        center: Vec3,
     ) -> (ObjectId, Object) {
-        let object = Object::new(name, origin);
+        let object = Object::new(name, center);
         self.objects.insert(object_id, object.clone());
 
         // record changed data

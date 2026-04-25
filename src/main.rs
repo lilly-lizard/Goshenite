@@ -92,12 +92,14 @@ pub fn start_main_thread() -> anyhow::Result<()> {
     // main thread is responsible for recieving window events
     let mut window_thread = WindowThread {
         primary_window_id,
-        engine_thread_handle: ManuallyDrop::new(engine_thread_handle),
         engine_command_tx,
         window_event_tx,
     };
     event_loop.run_app(&mut window_thread)?;
 
+    wait_for_engine_thread_closure(engine_thread_handle)?;
+
+    debug!("main thread ended sucessfully...");
     Ok(())
 }
 
@@ -108,4 +110,19 @@ fn create_window(event_loop: &EventLoop<()>) -> anyhow::Result<Arc<Window>> {
         .create_window(window_attributes)
         .context("instanciating initial os window")?;
     Ok(Arc::new(window))
+}
+
+fn wait_for_engine_thread_closure(
+    engine_thread_handle: thread::JoinHandle<Result<(), anyhow::Error>>,
+) -> anyhow::Result<()> {
+    // check reason for engine thread closure
+    let engine_thread_join_res = engine_thread_handle.join();
+    match engine_thread_join_res {
+        Ok(engine_thread_res) => return engine_thread_res,
+        Err(engine_panic_param) => {
+            error!("panic on engine thread! panic params:");
+            error!("{:?}", engine_panic_param);
+            anyhow::bail!("{:?}", engine_panic_param);
+        }
+    }
 }

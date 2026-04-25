@@ -5,7 +5,7 @@ layout (location = 1) out vec4 out_albedo_specular;
 layout (location = 2) out uint out_object_op_id;
 layout (depth_less) out float gl_FragDepth; // https://docs.vulkan.org/guide/latest/depth.html#conservative-depth
 
-layout (push_constant) uniform GizmoPushConstant {
+layout (push_constant) uniform GizmoPushConstantFrag {
 	vec3 color;
 	uint object_id;
 } pc;

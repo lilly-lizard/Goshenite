@@ -13,7 +13,7 @@ use crate::{
     engine::object::{object::Object, primitive_op::PrimitiveOpIndex},
     helper::anyhow_panic::anyhow_unwrap,
     renderer::{
-        config_renderer::RenderOptions, element_id_reader::ElementAtPoint,
+        config_renderer::RenderDebugOptions, element_id_reader::ElementAtPoint,
         render_manager::RenderManager,
     },
     user_interface::{
@@ -56,7 +56,7 @@ pub struct EngineController {
     pending_commands: VecDeque<CommandWithSource>,
     selected_object_id: Option<ObjectId>,
     selected_primitive_op_index: Option<PrimitiveOpIndex>,
-    render_options: RenderOptions,
+    render_debug_options: RenderDebugOptions,
     keyboard_modifier_states: KeyboardModifierStates,
 
     // controllers
@@ -113,7 +113,7 @@ impl EngineController {
             pending_commands: VecDeque::new(),
             selected_object_id: None,
             selected_primitive_op_index: None,
-            render_options: RenderOptions::default(),
+            render_debug_options: RenderDebugOptions::default(),
             keyboard_modifier_states: KeyboardModifierStates::default(),
 
             cursor,
@@ -240,7 +240,7 @@ impl EngineController {
             self.camera,
             self.selected_object_id,
             self.selected_primitive_op_index,
-            self.render_options,
+            self.render_debug_options,
         );
         let commands_from_gui = anyhow_unwrap(update_gui_res, "update gui");
         self.pending_commands.extend(commands_from_gui.into_iter());
@@ -261,6 +261,7 @@ impl EngineController {
         // object buffer updates
         let objects_delta = self.object_collection.get_and_clear_objects_delta();
         self.render_manager.update_objects(objects_delta)?;
+        self.update_selection_gizmo()?;
 
         // submit gui texture updates
         let textures_delta = self.gui.get_and_clear_textures_delta();
@@ -275,10 +276,41 @@ impl EngineController {
             self.select_element_id_at_cursor_position()?;
         }
 
-        self.render_manager.render_frame(self.render_options)?;
+        self.render_manager
+            .render_frame(self.render_debug_options)?;
 
         self.main_thread_frame_number += 1;
 
+        Ok(())
+    }
+
+    fn update_selection_gizmo(&mut self) -> anyhow::Result<()> {
+        let Some(selected_object_id) = self.selected_object_id else {
+            self.render_manager.update_gizmo(None)?;
+            return Ok(());
+        };
+
+        let Some(selected_object) = self.object_collection.get_object(selected_object_id) else {
+            self.deselect_object();
+            self.render_manager.update_gizmo(None)?;
+            return Ok(());
+        };
+
+        let center = if let Some(selected_primitive_op_index) = self.selected_primitive_op_index {
+            let Some(selected_primitive_op) = selected_object
+                .primitive_ops
+                .get(selected_primitive_op_index)
+            else {
+                self.deselect_primitive_op();
+                self.render_manager.update_gizmo(None)?;
+                return Ok(());
+            };
+            selected_primitive_op.center()
+        } else {
+            selected_object.center
+        };
+
+        self.render_manager.update_gizmo(Some(center))?;
         Ok(())
     }
 
@@ -370,6 +402,7 @@ impl EngineController {
     }
 
     fn shut_down(&self) {
+        info!("shutting down...");
         // save gui state
         if let Err(e) = self.gui.save_gui_state() {
             error!("{}", e);

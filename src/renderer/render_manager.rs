@@ -1,11 +1,11 @@
 use super::{
-    config_renderer::{RenderOptions, TIMEOUT_NANOSECS},
+    config_renderer::{RenderDebugOptions, TIMEOUT_NANOSECS},
     element_id_reader::{ElementAtPoint, ElementIdReader},
-    geometry_pass::GeometryPass,
-    gui_pass::GuiPass,
-    lighting_pass::LightingPass,
-    overlay_pass::OverlayPass,
-    shader_interfaces::camera_uniform_buffer::CameraUniformBuffer,
+    pass_geometry::GeometryPass,
+    pass_gui::GuiPass,
+    pass_lighting::LightingPass,
+    pass_overlay::OverlayPass,
+    shader_interfaces::uniform_buffers::CameraUniformBuffer,
     vulkan_init::{
         choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
         create_depth_buffer, create_framebuffers, create_normal_buffer, create_render_pass,
@@ -16,11 +16,14 @@ use super::{
 use crate::{
     engine::object::objects_delta::ObjectsDelta,
     helper::anyhow_panic::log_anyhow_error_and_sources,
-    renderer::vulkan_init::{
-        choose_depth_buffer_format, create_albedo_buffer, create_command_pool,
-        create_debug_callback, create_device_and_queue, create_entry, create_instance,
-        create_primitive_id_buffers, create_render_command_buffers, get_display_handle,
-        get_window_handle, shaders_should_write_linear_color,
+    renderer::{
+        pass_gizmo::GizmoPass,
+        vulkan_init::{
+            choose_depth_buffer_format, create_albedo_buffer, create_command_pool,
+            create_debug_callback, create_device_and_queue, create_entry, create_gizmo_ubo,
+            create_instance, create_primitive_id_buffers, create_render_command_buffers,
+            get_display_handle, get_window_handle, shaders_should_write_linear_color,
+        },
     },
     user_interface::camera::Camera,
 };
@@ -32,6 +35,7 @@ use bort_vk::{
     Surface, Swapchain, SwapchainImage,
 };
 use egui::{ClippedPrimitive, TexturesDelta};
+use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
@@ -69,11 +73,15 @@ pub struct RenderManager {
     /// One per framebuffer
     primitive_id_buffers: Vec<Arc<ImageView<Image>>>,
     camera_ubo: Buffer,
+    gizmo_ubo: Buffer,
 
+    // render passes
     geometry_pass: GeometryPass,
     lighting_pass: LightingPass,
     overlay_pass: OverlayPass,
     gui_pass: GuiPass,
+    gizmo_pass: GizmoPass,
+    gizmo_visible: bool,
 
     object_id_reader: ElementIdReader,
 
@@ -166,6 +174,7 @@ impl RenderManager {
         )?;
 
         let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
+        let gizmo_ubo = create_gizmo_ubo(memory_allocator.clone())?;
 
         let framebuffers = create_framebuffers(
             render_pass.clone(),
@@ -186,7 +195,6 @@ impl RenderManager {
             transfer_queue_family_index,
             render_queue_family_index,
         )?;
-
         let lighting_pass = LightingPass::new(
             device.clone(),
             &render_pass,
@@ -195,15 +203,19 @@ impl RenderManager {
             &albedo_buffer,
             &primitive_id_buffers,
         )?;
-
         let overlay_pass = OverlayPass::new(&render_pass, &camera_ubo)?;
-
         let gui_pass = GuiPass::new(
             memory_allocator.clone(),
             &render_pass,
             command_pool_render.clone(),
             command_pool_transfer.clone(),
             scale_factor,
+        )?;
+        let gizmo_pass = GizmoPass::new(
+            memory_allocator.clone(),
+            &render_pass,
+            &camera_ubo,
+            &gizmo_ubo,
         )?;
 
         let render_command_buffers = create_render_command_buffers(
@@ -253,11 +265,14 @@ impl RenderManager {
             albedo_buffer,
             primitive_id_buffers,
             camera_ubo,
+            gizmo_ubo,
 
             geometry_pass,
             lighting_pass,
             overlay_pass,
             gui_pass,
+            gizmo_pass,
+            gizmo_visible: false,
 
             object_id_reader,
 
@@ -287,6 +302,21 @@ impl RenderManager {
             .write_struct(camera_data, 0)
             .context("uploading camera ubo data")?;
 
+        Ok(())
+    }
+
+    pub fn update_gizmo(&mut self, selected_object_center: Option<Vec3>) -> anyhow::Result<()> {
+        self.wait_idle_device()?;
+
+        if let Some(gizmo_center) = selected_object_center {
+            self.gizmo_visible = true;
+            let write_data = [gizmo_center.x, gizmo_center.y, gizmo_center.z, 1.0];
+            self.gizmo_ubo
+                .write_struct(write_data, 0)
+                .context("uploading selected object center to gizmo rendering buffer")?;
+        } else {
+            self.gizmo_visible = false;
+        }
         Ok(())
     }
 
@@ -321,7 +351,7 @@ impl RenderManager {
     }
 
     /// Submits Vulkan commands for rendering a frame.
-    pub fn render_frame(&mut self, overlay_options: RenderOptions) -> anyhow::Result<()> {
+    pub fn render_frame(&mut self, debug_options: RenderDebugOptions) -> anyhow::Result<()> {
         // wait for previous frame render/resource upload to finish
 
         self.wait_for_previous_frame_fence()?;
@@ -366,7 +396,7 @@ impl RenderManager {
 
         // record commands
 
-        self.record_render_commands(framebuffer_index, overlay_options)?;
+        self.record_render_commands(framebuffer_index, debug_options)?;
 
         // submit commands
 
@@ -579,7 +609,7 @@ impl RenderManager {
     fn record_render_commands(
         &mut self,
         framebuffer_index: usize,
-        overlay_options: RenderOptions,
+        debug_options: RenderDebugOptions,
     ) -> anyhow::Result<()> {
         let viewport = self.framebuffers[framebuffer_index].whole_viewport();
         let render_area = self.framebuffers[framebuffer_index].whole_rect();
@@ -602,10 +632,10 @@ impl RenderManager {
 
         self.geometry_pass
             .record_commands(command_buffer, viewport, render_area);
-        /*
+
         self.gizmo_pass
             .record_commands(command_buffer, viewport, render_area);
-        */
+
         command_buffer.next_subpass(vk::SubpassContents::INLINE);
 
         self.lighting_pass.record_commands(
@@ -615,7 +645,7 @@ impl RenderManager {
             render_area,
         );
 
-        if overlay_options.enable_aabb_wire_display {
+        if debug_options.enable_aabb_wire_display {
             self.overlay_pass.record_aabb_overlay_commands(
                 command_buffer,
                 self.geometry_pass.object_buffer_manager(),
