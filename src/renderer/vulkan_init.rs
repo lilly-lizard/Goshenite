@@ -1039,7 +1039,17 @@ pub fn create_render_command_buffers(
     Ok(command_buffers)
 }
 
-pub fn create_camera_descriptor_set_with_binding(
+pub fn camera_ubo_descriptor_set_layout(binding: u32) -> DescriptorSetLayoutProperties {
+    DescriptorSetLayoutProperties::new_default(vec![DescriptorSetLayoutBinding {
+        binding,
+        descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+        descriptor_count: 1,
+        stage_flags: vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
+        ..Default::default()
+    }])
+}
+
+pub fn _create_ubo_descriptor_set_with_binding(
     descriptor_pool: Arc<DescriptorPool>,
     binding: u32,
 ) -> VkResult<DescriptorSet> {

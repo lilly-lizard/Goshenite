@@ -1,14 +1,14 @@
-use super::vulkan_init::{
-    create_camera_descriptor_set_with_binding, render_pass_indices, write_camera_descriptor_set,
-};
+use crate::renderer::vulkan_init::camera_ubo_descriptor_set_layout;
+
+use super::vulkan_init::{render_pass_indices, write_camera_descriptor_set};
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{
-    Buffer, ColorBlendState, CommandBuffer, DescriptorPool, DescriptorPoolProperties,
-    DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
-    Device, DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties, Image,
-    ImageView, ImageViewAccess, PipelineAccess, PipelineLayout, PipelineLayoutProperties,
-    RenderPass, ShaderStage, ViewportState,
+    Buffer, ColorBlendState, CommandBuffer, DescriptorPool, DescriptorSet, DescriptorSetLayout,
+    DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
+    GraphicsPipeline, GraphicsPipelineProperties, Image, ImageView, ImageViewAccess,
+    PipelineAccess, PipelineLayout, PipelineLayoutProperties, RenderPass, ShaderStage,
+    ViewportState,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -45,13 +45,9 @@ impl LightingPass {
         primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
     ) -> anyhow::Result<Self> {
         let framebuffer_count = primitive_id_buffers.len();
-        let descriptor_pool = create_descriptor_pool(device.clone(), framebuffer_count)?;
-
-        let desc_set_camera = create_desc_set_camera(descriptor_pool.clone())?;
+        let (desc_set_camera, desc_sets_g_buffer) =
+            create_desc_sets(device.clone(), framebuffer_count)?;
         write_camera_descriptor_set(&desc_set_camera, camera_buffer, descriptor::BINDING_CAMERA);
-
-        let desc_sets_g_buffer =
-            create_desc_sets_gbuffer(descriptor_pool.clone(), framebuffer_count)?;
         write_desc_sets_gbuffer(
             &desc_sets_g_buffer,
             normal_buffer,
@@ -112,33 +108,49 @@ impl LightingPass {
     }
 }
 
-fn create_descriptor_pool(
+fn create_desc_sets(
     device: Arc<Device>,
     framebuffer_count: usize,
-) -> anyhow::Result<Arc<DescriptorPool>> {
-    let descriptor_pool_props = DescriptorPoolProperties {
-        max_sets: 8,
-        pool_sizes: vec![
-            vk::DescriptorPoolSize {
-                ty: vk::DescriptorType::INPUT_ATTACHMENT,
-                descriptor_count: 3 * framebuffer_count as u32,
-            },
-            vk::DescriptorPoolSize {
-                ty: vk::DescriptorType::UNIFORM_BUFFER,
+) -> anyhow::Result<(DescriptorSet, Vec<DescriptorSet>)> {
+    let camera_layout_properties = camera_ubo_descriptor_set_layout(descriptor::BINDING_CAMERA);
+    let g_buffer_layout_props = DescriptorSetLayoutProperties {
+        bindings: vec![
+            DescriptorSetLayoutBinding {
+                binding: descriptor::BINDING_NORMAL,
+                descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
                 descriptor_count: 1,
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                ..Default::default()
+            },
+            DescriptorSetLayoutBinding {
+                binding: descriptor::BINDING_ALBEDO,
+                descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
+                descriptor_count: 1,
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                ..Default::default()
+            },
+            DescriptorSetLayoutBinding {
+                binding: descriptor::BINDING_PRIMITIVE_ID,
+                descriptor_type: vk::DescriptorType::INPUT_ATTACHMENT,
+                descriptor_count: 1,
+                stage_flags: vk::ShaderStageFlags::FRAGMENT,
+                ..Default::default()
             },
         ],
         ..Default::default()
     };
 
-    let descriptor_pool = DescriptorPool::new(device, descriptor_pool_props)
-        .context("creating lighting pass descriptor pool")?;
-    Ok(Arc::new(descriptor_pool))
-}
+    let mut properties: Vec<DescriptorSetLayoutProperties> = Vec::new();
+    for _i in 0..framebuffer_count {
+        properties.push(g_buffer_layout_props.clone());
+    }
+    properties.push(camera_layout_properties);
 
-fn create_desc_set_camera(descriptor_pool: Arc<DescriptorPool>) -> anyhow::Result<DescriptorSet> {
-    create_camera_descriptor_set_with_binding(descriptor_pool, descriptor::BINDING_CAMERA)
-        .context("creating geometry pass descriptor set")
+    let mut sets = DescriptorSet::new_from_set_layouts(device, properties)
+        .context("creating geometry pass camera descriptor set")?;
+
+    let camera_set = sets.pop().expect("created more than one set");
+    Ok((camera_set, sets))
 }
 
 fn create_desc_sets_gbuffer(

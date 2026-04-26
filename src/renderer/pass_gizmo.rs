@@ -6,22 +6,25 @@ use super::{
         uniform_buffers::CameraUniformBuffer,
         vertex_inputs::{GizmoVertex, VulkanVertex},
     },
-    vulkan_init::{create_camera_descriptor_set_with_binding, render_pass_indices},
+    vulkan_init::render_pass_indices,
 };
 use crate::{
     helper::more_errors::IoError,
-    renderer::shader_interfaces::{
-        push_constants::GizmosPushConstant, uniform_buffers::GizmoUniformBuffer,
+    renderer::{
+        shader_interfaces::{
+            push_constants::GizmosPushConstant, uniform_buffers::GizmoUniformBuffer,
+        },
+        vulkan_init::camera_ubo_descriptor_set_layout,
     },
 };
 use anyhow::Context;
 use ash::vk::{self, BufferUsageFlags};
 use bort_vk::{
     AllocationAccess, Buffer, BufferProperties, ColorBlendState, CommandBuffer, DepthStencilState,
-    DescriptorPool, DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, Device,
-    DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties, MemoryAllocator,
-    PipelineAccess, PipelineLayout, PipelineLayoutProperties, RasterizationState, RenderPass,
-    ShaderStage, ViewportState,
+    DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
+    Device, DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties,
+    MemoryAllocator, PipelineAccess, PipelineLayout, PipelineLayoutProperties, RasterizationState,
+    RenderPass, ShaderStage, ViewportState,
 };
 use bort_vma::AllocationCreateInfo;
 use std::{fs::OpenOptions, mem::size_of, path::Path};
@@ -54,13 +57,17 @@ impl GizmoPass {
     ) -> anyhow::Result<Self> {
         let device = render_pass.device().clone();
 
-        let descriptor_pool = create_descriptor_pool(device.clone())?;
-        let desc_set_camera = create_descriptor_set_camera(descriptor_pool.clone())?;
-        let desc_set_gizmo_params = create_descriptor_set_camera(descriptor_pool)?;
-        write_camera_descriptor_set(&desc_set_camera, camera_buffer, descriptor::BINDING_CAMERA);
-        write_gizmo_descriptor_set(
+        let (desc_set_camera, desc_set_gizmo_params) = create_descriptor_sets(device.clone())?;
+        write_descriptor_set(
+            &desc_set_camera,
+            camera_buffer,
+            mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize,
+            descriptor::BINDING_CAMERA,
+        );
+        write_descriptor_set(
             &desc_set_gizmo_params,
             gizmo_params_buffer,
+            mem::size_of::<GizmoUniformBuffer>() as vk::DeviceSize,
             descriptor::BINDING_GIZMO,
         );
 
@@ -117,70 +124,46 @@ impl GizmoPass {
     }
 }
 
-fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorPool>> {
-    let descriptor_pool_properties = DescriptorPoolProperties {
-        max_sets: 2,
-        pool_sizes: vec![vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: 2,
-        }],
-        ..Default::default()
-    };
+fn create_descriptor_sets(device: Arc<Device>) -> anyhow::Result<(DescriptorSet, DescriptorSet)> {
+    let camera_layout_properties = camera_ubo_descriptor_set_layout(descriptor::BINDING_CAMERA);
+    let gizmo_layout_properties =
+        DescriptorSetLayoutProperties::new_default(vec![DescriptorSetLayoutBinding {
+            binding: descriptor::BINDING_GIZMO,
+            descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
+            descriptor_count: 1,
+            stage_flags: vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
+            ..Default::default()
+        }]);
+    let layout_properties = vec![camera_layout_properties, gizmo_layout_properties];
 
-    let descriptor_pool = DescriptorPool::new(device, descriptor_pool_properties)
-        .context("creating overlay pass descriptor pool")?;
-    Ok(Arc::new(descriptor_pool))
+    let mut sets = DescriptorSet::new_from_set_layouts(device, layout_properties)
+        .context("creating gizmo descriptor sets")?;
+
+    let gizmo_set = sets.pop().expect("should have created 2 descrpitor sets");
+    let camera_set = sets.pop().expect("should have created 2 descrpitor sets");
+    Ok((camera_set, gizmo_set))
 }
 
-fn create_descriptor_set_camera(
-    descriptor_pool: Arc<DescriptorPool>,
-) -> anyhow::Result<DescriptorSet> {
-    create_camera_descriptor_set_with_binding(descriptor_pool, descriptor::BINDING_CAMERA)
-        .context("creating gizmo pass descriptor set")
-}
-
-pub fn write_camera_descriptor_set(
-    desc_set_camera: &DescriptorSet,
-    camera_buffer: &Buffer,
+pub fn write_descriptor_set(
+    desc_set: &DescriptorSet,
+    buffer: &Buffer,
+    size: vk::DeviceSize,
     binding: u32,
 ) {
     let buffer_info = vk::DescriptorBufferInfo {
-        buffer: camera_buffer.handle(),
+        buffer: buffer.handle(),
         offset: 0,
-        range: mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize,
+        range: size,
     };
     let buffer_infos = [buffer_info];
 
     let descriptor_write = vk::WriteDescriptorSet::default()
-        .dst_set(desc_set_camera.handle())
+        .dst_set(desc_set.handle())
         .dst_binding(binding)
         .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
         .buffer_info(&buffer_infos);
 
-    desc_set_camera
-        .device()
-        .update_descriptor_sets([descriptor_write], []);
-}
-
-pub fn write_gizmo_descriptor_set(
-    desc_set_gizmo: &DescriptorSet,
-    gizmo_params_buffer: &Buffer,
-    binding: u32,
-) {
-    let buffer_info = vk::DescriptorBufferInfo {
-        buffer: gizmo_params_buffer.handle(),
-        offset: 0,
-        range: mem::size_of::<GizmoUniformBuffer>() as vk::DeviceSize,
-    };
-    let buffer_infos = [buffer_info];
-
-    let descriptor_write = vk::WriteDescriptorSet::default()
-        .dst_set(desc_set_gizmo.handle())
-        .dst_binding(binding)
-        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-        .buffer_info(&buffer_infos);
-
-    desc_set_gizmo
+    desc_set
         .device()
         .update_descriptor_sets([descriptor_write], []);
 }

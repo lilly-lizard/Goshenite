@@ -1,21 +1,21 @@
 use super::{
     object_resource_manager::ObjectResourceManager,
     shader_interfaces::vertex_inputs::BoundingBoxVertex,
-    vulkan_init::{
-        create_camera_descriptor_set_with_binding, render_pass_indices, write_camera_descriptor_set,
-    },
+    vulkan_init::{render_pass_indices, write_camera_descriptor_set},
 };
 use crate::{
     engine::object::objects_delta::ObjectsDelta,
-    renderer::shader_interfaces::vertex_inputs::VulkanVertex,
+    renderer::{
+        shader_interfaces::vertex_inputs::VulkanVertex,
+        vulkan_init::camera_ubo_descriptor_set_layout,
+    },
 };
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{
-    Buffer, ColorBlendState, CommandBuffer, DepthStencilState, DescriptorPool,
-    DescriptorPoolProperties, DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding,
-    DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState, GraphicsPipeline,
-    GraphicsPipelineProperties, MemoryAllocator, PipelineAccess, PipelineLayout,
+    Buffer, ColorBlendState, CommandBuffer, DepthStencilState, DescriptorSet, DescriptorSetLayout,
+    DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
+    GraphicsPipeline, GraphicsPipelineProperties, MemoryAllocator, PipelineAccess, PipelineLayout,
     PipelineLayoutProperties, Queue, RasterizationState, RenderPass, ShaderStage, ViewportState,
 };
 #[allow(unused_imports)]
@@ -50,9 +50,7 @@ impl GeometryPass {
         transfer_queue_family_index: u32,
         render_queue_family_index: u32,
     ) -> anyhow::Result<Self> {
-        let descriptor_pool = create_descriptor_pool(device.clone())?;
-
-        let desc_set_camera = create_desc_set_camera(descriptor_pool.clone())?;
+        let desc_set_camera = create_desc_set_camera(device.clone())?;
         write_camera_descriptor_set(&desc_set_camera, camera_buffer, descriptor::BINDING_CAMERA);
 
         let primitive_ops_desc_set_layout = create_primitive_ops_desc_set_layout(device.clone())?;
@@ -127,24 +125,10 @@ impl Drop for GeometryPass {
     }
 }
 
-fn create_descriptor_pool(device: Arc<Device>) -> anyhow::Result<Arc<DescriptorPool>> {
-    let descriptor_pool_props = DescriptorPoolProperties {
-        max_sets: 1,
-        pool_sizes: vec![vk::DescriptorPoolSize {
-            ty: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: 1,
-        }],
-        ..Default::default()
-    };
-
-    let descriptor_pool = DescriptorPool::new(device, descriptor_pool_props)
-        .context("creating geometry pass descriptor pool")?;
-    Ok(Arc::new(descriptor_pool))
-}
-
-fn create_desc_set_camera(descriptor_pool: Arc<DescriptorPool>) -> anyhow::Result<DescriptorSet> {
-    create_camera_descriptor_set_with_binding(descriptor_pool, descriptor::BINDING_CAMERA)
-        .context("creating geometry pass descriptor set")
+fn create_desc_set_camera(device: Arc<Device>) -> anyhow::Result<DescriptorSet> {
+    let camera_layout_properties = camera_ubo_descriptor_set_layout(descriptor::BINDING_CAMERA);
+    DescriptorSet::new_from_set_layout(device, camera_layout_properties)
+        .context("creating geometry pass camera descriptor set")
 }
 
 fn create_primitive_ops_desc_set_layout(
