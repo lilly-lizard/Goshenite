@@ -2,7 +2,6 @@
 use super::{
     config_renderer::GIZMO_ARROW_STL_PATH,
     shader_interfaces::{
-        primitive_op_buffer::PRIMITIVE_ID_GIZMO,
         uniform_buffers::CameraUniformBuffer,
         vertex_inputs::{GizmoVertex, VulkanVertex},
     },
@@ -12,7 +11,11 @@ use crate::{
     helper::more_errors::IoError,
     renderer::{
         shader_interfaces::{
-            push_constants::GizmosPushConstant, uniform_buffers::GizmoUniformBuffer,
+            primitive_op_buffer::{
+                PRIMITIVE_ID_GIZMO_X, PRIMITIVE_ID_GIZMO_Y, PRIMITIVE_ID_GIZMO_Z,
+            },
+            push_constants::GizmosPushConstant,
+            uniform_buffers::GizmoUniformBuffer,
         },
         vulkan_init::camera_ubo_descriptor_set_layout,
     },
@@ -101,26 +104,35 @@ impl GizmoPass {
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
     ) {
-        let color: [f32; 3] = [0.8, 0.1, 0.1];
-        let object_id = PRIMITIVE_ID_GIZMO;
-        let gizmo_push_constant = GizmosPushConstant { color, object_id };
-        let gizmo_push_constant_bytes = bytemuck::bytes_of(&gizmo_push_constant);
+        let color_red: [f32; 3] = [0.8, 0.1, 0.1];
+        let color_green: [f32; 3] = [0.1, 0.8, 0.1];
+        let color_blue: [f32; 3] = [0.1, 0.1, 0.8];
+        let data_x = GizmosPushConstant {
+            color: color_red,
+            object_id: PRIMITIVE_ID_GIZMO_X,
+        };
+        let data_y = GizmosPushConstant {
+            color: color_green,
+            object_id: PRIMITIVE_ID_GIZMO_Y,
+        };
+        let data_z = GizmosPushConstant {
+            color: color_blue,
+            object_id: PRIMITIVE_ID_GIZMO_Z,
+        };
+        let pc_bytes_x = bytemuck::bytes_of(&data_x);
+        let pc_bytes_y = bytemuck::bytes_of(&data_y);
+        let pc_bytes_z = bytemuck::bytes_of(&data_z);
 
+        let layout = self.pipeline.pipeline_layout().as_ref();
         command_buffer.bind_pipeline(&self.pipeline);
         command_buffer.set_viewport(0, &[viewport]);
         command_buffer.set_scissor(0, &[scissor]);
         command_buffer.bind_descriptor_sets(
             vk::PipelineBindPoint::GRAPHICS,
-            self.pipeline.pipeline_layout().as_ref(),
+            layout,
             0,
             [&self.desc_set_camera, &self.desc_set_gizmo_params],
             &[],
-        );
-        command_buffer.push_constants(
-            self.pipeline.pipeline_layout().as_ref(),
-            vk::ShaderStageFlags::FRAGMENT,
-            0,
-            gizmo_push_constant_bytes,
         );
         command_buffer.bind_vertex_buffers(
             0,
@@ -128,7 +140,18 @@ impl GizmoPass {
             &[0, 0],
         );
         command_buffer.bind_index_buffer(&self.arrow_index_buffer, 0, vk::IndexType::UINT32);
-        command_buffer.draw_indexed(self.arrow_index_count, 3, 0, 0, 0);
+
+        // x arrow
+        command_buffer.push_constants(layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes_x);
+        command_buffer.draw_indexed(self.arrow_index_count, 1, 0, 0, 0);
+
+        // y arrow
+        command_buffer.push_constants(layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes_y);
+        command_buffer.draw_indexed(self.arrow_index_count, 1, 0, 0, 1);
+
+        // z arrow
+        command_buffer.push_constants(layout, vk::ShaderStageFlags::FRAGMENT, 0, pc_bytes_z);
+        command_buffer.draw_indexed(self.arrow_index_count, 1, 0, 0, 2);
     }
 }
 
