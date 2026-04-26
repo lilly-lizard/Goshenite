@@ -2,17 +2,17 @@ use crate::{engine::object::object::ObjectId, helper::unique_id_gen::UniqueIdTyp
 use ash::vk;
 use bort_vk::VertexInputState;
 use bytemuck::NoUninit;
-use glam::Vec3;
+use glam::{Mat4, Vec3};
 use memoffset::offset_of;
 
 pub trait VulkanVertex {
-    fn binding_description() -> vk::VertexInputBindingDescription;
+    fn binding_descriptions() -> Vec<vk::VertexInputBindingDescription>;
     fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescription>;
     fn vertex_input_state() -> VertexInputState {
         VertexInputState {
-            vertex_binding_descriptions: vec![Self::binding_description()],
+            vertex_binding_descriptions: Self::binding_descriptions(),
             vertex_attribute_descriptions: Self::attribute_descriptions(),
-            ..Default::default()
+            flags: Default::default(),
         }
     }
 }
@@ -44,34 +44,34 @@ impl EguiVertex {
 }
 
 impl VulkanVertex for EguiVertex {
-    fn binding_description() -> vk::VertexInputBindingDescription {
-        vk::VertexInputBindingDescription {
+    fn binding_descriptions() -> Vec<vk::VertexInputBindingDescription> {
+        vec![vk::VertexInputBindingDescription {
             binding: 0,
             stride: std::mem::size_of::<Self>() as u32,
             input_rate: vk::VertexInputRate::VERTEX,
-        }
+        }]
     }
 
     fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescription> {
         vec![
             // in_position
             vk::VertexInputAttributeDescription {
-                binding: 0,
                 location: 0,
+                binding: 0,
                 format: vk::Format::R32G32_SFLOAT,
                 offset: offset_of!(Self, in_position) as u32,
             },
             // in_tex_coords
             vk::VertexInputAttributeDescription {
-                binding: 0,
                 location: 1,
+                binding: 0,
                 format: vk::Format::R32G32_SFLOAT,
                 offset: offset_of!(Self, in_tex_coords) as u32,
             },
             // in_color
             vk::VertexInputAttributeDescription {
-                binding: 0,
                 location: 2,
+                binding: 0,
                 format: vk::Format::R32G32B32A32_SFLOAT,
                 offset: offset_of!(Self, in_color) as u32,
             },
@@ -97,27 +97,27 @@ impl BoundingBoxVertex {
 }
 
 impl VulkanVertex for BoundingBoxVertex {
-    fn binding_description() -> vk::VertexInputBindingDescription {
-        vk::VertexInputBindingDescription {
+    fn binding_descriptions() -> Vec<vk::VertexInputBindingDescription> {
+        vec![vk::VertexInputBindingDescription {
             binding: 0,
             stride: std::mem::size_of::<Self>() as u32,
             input_rate: vk::VertexInputRate::VERTEX,
-        }
+        }]
     }
 
     fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescription> {
         vec![
             // in_position
             vk::VertexInputAttributeDescription {
-                binding: 0,
                 location: 0,
+                binding: 0,
                 format: vk::Format::R32G32B32A32_SFLOAT,
                 offset: offset_of!(Self, in_position) as u32,
             },
             // in_object_id
             vk::VertexInputAttributeDescription {
-                binding: 0,
                 location: 1,
+                binding: 0,
                 format: vk::Format::R32_UINT,
                 offset: offset_of!(Self, in_object_id) as u32,
             },
@@ -129,26 +129,62 @@ impl VulkanVertex for BoundingBoxVertex {
 #[repr(C)]
 #[derive(Default, Debug, Clone, Copy, NoUninit)]
 pub struct GizmoVertex {
-    pub in_position: [f32; 4],
+    // location 0: in_position: Vec4,
+    // location 1: in_orientation: Mat4,
 }
 
 impl VulkanVertex for GizmoVertex {
-    fn binding_description() -> vk::VertexInputBindingDescription {
-        vk::VertexInputBindingDescription {
-            binding: 0,
-            stride: std::mem::size_of::<Self>() as u32,
-            input_rate: vk::VertexInputRate::VERTEX,
-        }
+    fn binding_descriptions() -> Vec<vk::VertexInputBindingDescription> {
+        vec![
+            vk::VertexInputBindingDescription {
+                binding: 0,
+                stride: std::mem::size_of::<[f32; 4]>() as u32,
+                input_rate: vk::VertexInputRate::VERTEX,
+            },
+            vk::VertexInputBindingDescription {
+                binding: 1,
+                stride: std::mem::size_of::<Mat4>() as u32,
+                input_rate: vk::VertexInputRate::INSTANCE,
+            },
+        ]
     }
 
     fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescription> {
         vec![
-            // in_position
+            // in_position: Vec4
             vk::VertexInputAttributeDescription {
-                binding: 0,
                 location: 0,
+                binding: 0,
                 format: vk::Format::R32G32B32A32_SFLOAT,
-                offset: offset_of!(Self, in_position) as u32,
+                offset: 0,
+            },
+            // in_orientation: Mat4
+            // in order for a mat4 to be used as a vertex input, 4 vec4 locations are used
+            // the driver then combines these locations into 1 so the shader can access the mat4. pretty neat!
+            // https://old.reddit.com/r/vulkan/comments/8zx1hn/matrix_as_vertex_input/
+            vk::VertexInputAttributeDescription {
+                location: 1,
+                binding: 1,
+                format: vk::Format::R32G32B32A32_SFLOAT,
+                offset: 0,
+            },
+            vk::VertexInputAttributeDescription {
+                location: 2,
+                binding: 1,
+                format: vk::Format::R32G32B32A32_SFLOAT,
+                offset: std::mem::size_of::<[f32; 4]>() as u32,
+            },
+            vk::VertexInputAttributeDescription {
+                location: 3,
+                binding: 1,
+                format: vk::Format::R32G32B32A32_SFLOAT,
+                offset: std::mem::size_of::<[f32; 8]>() as u32,
+            },
+            vk::VertexInputAttributeDescription {
+                location: 4,
+                binding: 1,
+                format: vk::Format::R32G32B32A32_SFLOAT,
+                offset: std::mem::size_of::<[f32; 12]>() as u32,
             },
         ]
     }

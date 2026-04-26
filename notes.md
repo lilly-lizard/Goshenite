@@ -181,6 +181,9 @@ shader language:
 	- https://github.com/redis/redis/blob/unstable/src/acl.c
 	- https://github.com/godotengine/godot/blob/master/main/main.cpp
 
+wayland renderdoc:
+`WAYLAND_DISPLAY= XDG_SESSION_TYPE=x11 qrenderdoc`
+
 # design goals
 
 - advantages of sdf:

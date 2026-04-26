@@ -27,7 +27,8 @@ use bort_vk::{
     RenderPass, ShaderStage, ViewportState,
 };
 use bort_vma::AllocationCreateInfo;
-use std::{fs::OpenOptions, mem::size_of, path::Path};
+use glam::{Mat4, Vec3, Vec4};
+use std::{f32::consts::PI, fs::OpenOptions, mem::size_of, path::Path};
 use std::{mem, sync::Arc};
 
 #[allow(dead_code)]
@@ -43,9 +44,10 @@ pub struct GizmoPass {
     desc_set_gizmo_params: DescriptorSet,
     pipeline: GraphicsPipeline,
 
-    arrow_gizmo_vertex_buffer: Buffer,
-    arrow_gizmo_index_buffer: Buffer,
-    arrow_gizmo_index_count: u32,
+    arrow_vertex_buffer: Buffer,
+    arrow_index_buffer: Buffer,
+    arrow_index_count: u32,
+    arrow_instance_buffer: Buffer,
 }
 
 impl GizmoPass {
@@ -78,16 +80,18 @@ impl GizmoPass {
         )?;
         let pipeline = create_pipeline(device.clone(), pipeline_layout, render_pass)?;
 
-        let (arrow_gizmo_vertex_buffer, arrow_gizmo_index_buffer, arrow_gizmo_index_count) =
-            create_and_upload_gizmo_buffers(memory_allocator)?;
+        let (arrow_vertex_buffer, arrow_index_buffer, arrow_index_count) =
+            create_and_upload_gizmo_buffers(memory_allocator.clone())?;
+        let arrow_instance_buffer = create_and_upload_instance_buffer(memory_allocator)?;
 
         Ok(Self {
             desc_set_camera,
             desc_set_gizmo_params,
             pipeline,
-            arrow_gizmo_vertex_buffer,
-            arrow_gizmo_index_buffer,
-            arrow_gizmo_index_count,
+            arrow_vertex_buffer,
+            arrow_index_buffer,
+            arrow_index_count,
+            arrow_instance_buffer,
         })
     }
 
@@ -118,9 +122,13 @@ impl GizmoPass {
             0,
             gizmo_push_constant_bytes,
         );
-        command_buffer.bind_vertex_buffers(0, [&self.arrow_gizmo_vertex_buffer], &[0]);
-        command_buffer.bind_index_buffer(&self.arrow_gizmo_index_buffer, 0, vk::IndexType::UINT32);
-        command_buffer.draw_indexed(self.arrow_gizmo_index_count, 1, 0, 0, 0);
+        command_buffer.bind_vertex_buffers(
+            0,
+            [&self.arrow_vertex_buffer, &self.arrow_instance_buffer],
+            &[0, 0],
+        );
+        command_buffer.bind_index_buffer(&self.arrow_index_buffer, 0, vk::IndexType::UINT32);
+        command_buffer.draw_indexed(self.arrow_index_count, 3, 0, 0, 0);
     }
 }
 
@@ -174,12 +182,10 @@ fn create_and_upload_gizmo_buffers(
 ) -> anyhow::Result<(Buffer, Buffer, u32)> {
     let arrow_stl = load_arrow_stl().context("loading gizmo arrow stl")?;
 
-    let vertices: Vec<GizmoVertex> = arrow_stl
+    let vertices: Vec<[f32; 4]> = arrow_stl
         .vertices
         .iter()
-        .map(|vertex| GizmoVertex {
-            in_position: [vertex[0], vertex[1], vertex[2], 1.0],
-        })
+        .map(|vertex| [vertex[0], vertex[1], vertex[2], 1.0])
         .collect();
 
     let indices: Vec<u32> = arrow_stl
@@ -202,7 +208,7 @@ fn create_and_upload_gizmo_buffers(
     };
 
     let vertex_buffer_properties = BufferProperties::new_default(
-        vertices.len() as u64 * size_of::<GizmoVertex>() as u64, // 4 f32 vertices
+        vertices.len() as u64 * size_of::<[f32; 4]>() as u64,
         BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
     );
     let mut vertex_buffer = Buffer::new(
@@ -233,6 +239,54 @@ fn create_and_upload_gizmo_buffers(
         .context("uploading gizmo indices")?;
 
     Ok((vertex_buffer, index_buffer, index_count as u32))
+}
+
+fn create_and_upload_instance_buffer(
+    memory_allocator: Arc<MemoryAllocator>,
+) -> anyhow::Result<Buffer> {
+    // note that the arrow model points up (z axis)
+    #[rustfmt::skip]
+    let x_rot = Mat4::from_cols(
+        // rotate 90 around y axis
+        Vec4::new(0., 0.,-1., 0.),
+        Vec4::new(0., 1., 0., 0.),
+        Vec4::new(1., 0., 0., 0.),
+        Vec4::new(0., 0., 0., 1.),
+    );
+    #[rustfmt::skip]
+    let y_rot = Mat4::from_cols(
+        // rotate 90 around x axis
+        Vec4::new(1., 0., 0., 0.),
+        Vec4::new(0., 0.,-1., 0.),
+        Vec4::new(0., 1., 0., 0.),
+        Vec4::new(0., 0., 0., 1.),
+    );
+    let z_rot = Mat4::IDENTITY;
+    let matrices = [x_rot, y_rot, z_rot];
+
+    let instance_buffer_properties = BufferProperties::new_default(
+        3 * size_of::<Mat4>() as u64,
+        BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
+    );
+
+    let buffer_allocation_info = AllocationCreateInfo {
+        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE, // todo staging buffer
+        preferred_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        ..AllocationCreateInfo::default()
+    };
+
+    let mut instance_buffer = Buffer::new(
+        memory_allocator.clone(),
+        instance_buffer_properties,
+        buffer_allocation_info,
+    )
+    .context("creating gizmo instance buffer")?;
+
+    instance_buffer
+        .write_iter(matrices, 0)
+        .context("uploading gizmo instance vertex data")?;
+
+    Ok(instance_buffer)
 }
 
 fn load_arrow_stl() -> Result<stl_io::IndexedMesh, IoError> {

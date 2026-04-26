@@ -1,6 +1,9 @@
 #version 450
 
+// per vertex
 layout (location = 0) in vec4 in_position;
+// per instance
+layout (location = 1) in mat4 in_orientation;
 
 layout (set = 0, binding = 0) uniform Camera {
 	mat4 view_inverse;
@@ -19,6 +22,6 @@ layout (set = 1, binding = 0) uniform GizmoParams {
 
 void main()
 {
-	vec4 pos = in_position + param.object_center;
+	vec4 pos = in_orientation * in_position + param.object_center;
 	gl_Position = inverse(cam.proj_inverse) * inverse(cam.view_inverse) * pos;
 }

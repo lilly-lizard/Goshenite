@@ -239,25 +239,27 @@ impl Camera {
 
     // https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
     /// right handed, reverse z, vulkan coordinates
+    #[rustfmt::skip]
     pub fn projection_matrix(&self) -> Mat4 {
         let (w, h, a, b) = self.projection_matrix_components();
         Mat4::from_cols(
-            Vec4::new(w, 0., 0., 0.),
-            Vec4::new(0., h, 0., 0.),
-            Vec4::new(0., 0., a, -1.),
-            Vec4::new(0., 0., b, 0.),
+            Vec4::new(w , 0., 0., 0.),
+            Vec4::new(0., h , 0., 0.),
+            Vec4::new(0., 0., a ,-1.),
+            Vec4::new(0., 0., b , 0.),
         )
     }
 
     // https://vincent-p.github.io/posts/vulkan_perspective_matrix/#deriving-the-depth-projection
     /// right handed, reverse z, vulkan coordinates
+    #[rustfmt::skip]
     pub fn projection_matrix_inverse(&self) -> Mat4 {
         let (w, h, a, b) = self.projection_matrix_components();
         Mat4::from_cols(
-            Vec4::new(1. / w, 0., 0., 0.),
-            Vec4::new(0., 1. / h, 0., 0.),
-            Vec4::new(0., 0., 0., 1. / b),
-            Vec4::new(0., 0., -1., a / b),
+            Vec4::new(1./w,  0., 0.,  0.),
+            Vec4::new(  0.,1./h, 0.,  0.),
+            Vec4::new(  0.,  0., 0.,1./b),
+            Vec4::new(  0.,  0.,-1., a/b),
         )
     }
 
