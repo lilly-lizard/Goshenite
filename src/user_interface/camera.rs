@@ -96,10 +96,10 @@ impl Camera {
                 match object_collection
                     .get_object_and_primitive_op(target_object_id, target_primitive_op_index)
                 {
-                    Ok((_object, primitive_op)) => self.set_lock_on_target_primitive_op(
+                    Ok((object, primitive_op)) => self.set_lock_on_target_primitive_op(
                         target_object_id,
                         target_primitive_op_index,
-                        primitive_op.center(),
+                        primitive_op.center() + object.center,
                     ),
                     Err(_e) => {
                         // object dropped or primitive op deleted

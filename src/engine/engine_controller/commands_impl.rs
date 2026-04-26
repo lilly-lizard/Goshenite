@@ -353,7 +353,7 @@ impl EngineController {
         self.camera.set_lock_on_target_primitive_op(
             object_id_to_select,
             primitive_op_index_to_select,
-            primitive_op.center(),
+            primitive_op.center() + object.center,
         );
     }
 

@@ -18,6 +18,7 @@ use crate::{
     helper::anyhow_panic::log_anyhow_error_and_sources,
     renderer::{
         pass_gizmo::GizmoPass,
+        shader_interfaces::uniform_buffers::GizmoUniformBuffer,
         vulkan_init::{
             choose_depth_buffer_format, create_albedo_buffer, create_command_pool,
             create_debug_callback, create_device_and_queue, create_entry, create_gizmo_ubo,
@@ -35,7 +36,7 @@ use bort_vk::{
     Surface, Swapchain, SwapchainImage,
 };
 use egui::{ClippedPrimitive, TexturesDelta};
-use glam::Vec3;
+use glam::{Vec3, Vec4};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
@@ -310,9 +311,10 @@ impl RenderManager {
     pub fn update_gizmo(&mut self, selected_object_center: Option<Vec3>) -> anyhow::Result<()> {
         self.wait_idle_device()?;
 
+        let view_depth: f32 = 20.;
         if let Some(gizmo_center) = selected_object_center {
             self.gizmo_visible = true;
-            let write_data = [gizmo_center.x, gizmo_center.y, gizmo_center.z, 0.0];
+            let write_data = GizmoUniformBuffer::new(Vec4::from((gizmo_center, 0.)), view_depth);
             self.gizmo_ubo
                 .write_struct(write_data, 0)
                 .context("uploading selected object center to gizmo rendering buffer")?;

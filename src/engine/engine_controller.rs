@@ -369,8 +369,8 @@ impl EngineController {
             Some(ElementAtPoint::Object {
                 object_id,
                 primitive_op_index,
-            }) => self.object_clicked(object_id, Some(primitive_op_index)),
-            Some(ElementAtPoint::BlendArea { object_id }) => self.object_clicked(object_id, None),
+            }) => self.select_primitive_op(object_id, primitive_op_index, None),
+            Some(ElementAtPoint::BlendArea { object_id }) => self.select_object(object_id, None),
         }
 
         Ok(())
@@ -379,18 +379,6 @@ impl EngineController {
     fn background_clicked(&mut self) {
         self.deselect_primitive_op();
         self.camera.unset_lock_on_target();
-    }
-
-    fn object_clicked(
-        &mut self,
-        object_id: ObjectId,
-        primitive_op_index: Option<PrimitiveOpIndex>,
-    ) {
-        if let Some(some_primitive_op_index) = primitive_op_index {
-            self.select_primitive_op(object_id, some_primitive_op_index, None);
-        } else {
-            self.select_object(object_id, None);
-        }
     }
 
     fn is_object_id_selected(&self, compare_object_id: ObjectId) -> bool {

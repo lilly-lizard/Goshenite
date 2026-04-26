@@ -30,8 +30,8 @@ use bort_vk::{
     RenderPass, ShaderStage, ViewportState,
 };
 use bort_vma::AllocationCreateInfo;
-use glam::{Mat4, Vec3, Vec4};
-use std::{f32::consts::PI, fs::OpenOptions, mem::size_of, path::Path};
+use glam::{Mat4, Vec4};
+use std::{fs::OpenOptions, mem::size_of, path::Path};
 use std::{mem, sync::Arc};
 
 #[allow(dead_code)]

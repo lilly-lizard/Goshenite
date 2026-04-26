@@ -69,11 +69,12 @@ impl CameraUniformBuffer {
 #[derive(Clone, Copy, Default, Debug)]
 pub struct GizmoUniformBuffer {
     pub object_center: [f32; 4],
+    pub view_depth: f32,
 }
 
 impl GizmoUniformBuffer {
     #[inline]
-    pub fn new(object_center: Vec4) -> Self {
+    pub fn new(object_center: Vec4, view_depth: f32) -> Self {
         Self {
             object_center: [
                 object_center.x,
@@ -81,6 +82,7 @@ impl GizmoUniformBuffer {
                 object_center.z,
                 object_center.w,
             ],
+            view_depth,
         }
     }
 }

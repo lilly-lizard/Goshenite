@@ -18,10 +18,19 @@ layout (set = 0, binding = 0) uniform Camera {
 
 layout (set = 1, binding = 0) uniform GizmoParams {
 	vec4 object_center;
+	float view_depth;
 } param;
 
 void main()
 {
-	vec4 pos = in_orientation * in_position + param.object_center;
-	gl_Position = inverse(cam.proj_inverse) * inverse(cam.view_inverse) * pos;
+	vec4 pos = in_orientation * in_position;
+	vec4 view_pos = inverse(cam.view_inverse) * pos;
+	vec4 view_offset = inverse(cam.view_inverse) * param.object_center;
+	vec4 view_total = view_pos + view_offset;
+
+	// keep gizmo at a constant size
+	view_total.z = -param.view_depth;
+
+	vec4 proj_pos = inverse(cam.proj_inverse) * view_total;
+	gl_Position = proj_pos;
 }
