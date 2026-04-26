@@ -152,6 +152,11 @@ gpu specifics:
 
 # plan:
 
+1. generate BVH and render BVH outlines
+?. [panini projection slider](https://www.youtube.com/watch?v=LE9kxUQ-l14)
+	- [math options comparison](https://en.wikipedia.org/wiki/Fisheye_lens#Mapping_function)
+?. [fsr upscaling](https://github.com/EmbarkStudios/fsr-rs)
+
 1. draw circle at selected object center
 2. make circle consistent size relative to screen space
 2. arrows for hovered object (block colors, no shading, with slight alpha)
