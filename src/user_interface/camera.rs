@@ -99,7 +99,7 @@ impl Camera {
                     Ok((object, primitive_op)) => self.set_lock_on_target_primitive_op(
                         target_object_id,
                         target_primitive_op_index,
-                        primitive_op.center() + object.center,
+                        object.center + primitive_op.center(),
                     ),
                     Err(_e) => {
                         // object dropped or primitive op deleted

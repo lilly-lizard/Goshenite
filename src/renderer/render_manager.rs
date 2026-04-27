@@ -26,7 +26,7 @@ use crate::{
             get_display_handle, get_window_handle, shaders_should_write_linear_color,
         },
     },
-    user_interface::camera::Camera,
+    user_interface::{camera::Camera, gizmo::GizmoType},
 };
 use anyhow::Context;
 use ash::vk;
@@ -82,7 +82,6 @@ pub struct RenderManager {
     overlay_pass: OverlayPass,
     gui_pass: GuiPass,
     gizmo_pass: GizmoPass,
-    gizmo_visible: bool,
 
     object_id_reader: ElementIdReader,
 
@@ -273,7 +272,6 @@ impl RenderManager {
             overlay_pass,
             gui_pass,
             gizmo_pass,
-            gizmo_visible: false,
 
             object_id_reader,
 
@@ -292,6 +290,7 @@ impl RenderManager {
     pub fn update_camera(&mut self, camera: &Camera) -> anyhow::Result<()> {
         // todo staging buffer
         // todo fence
+        //self.wait_for_previous_frame_fence()?; // throws up semaphore validation errors?
         self.wait_idle_device()?;
 
         let dimensions = self.swapchain.properties().width_height;
@@ -308,19 +307,17 @@ impl RenderManager {
         Ok(())
     }
 
-    pub fn update_gizmo(&mut self, selected_object_center: Option<Vec3>) -> anyhow::Result<()> {
+    pub fn update_gizmo_center(&mut self, selected_object_center: Vec3) -> anyhow::Result<()> {
+        // todo fence
+        //self.wait_for_previous_frame_fence()?; // throws up semaphore validation errors?
         self.wait_idle_device()?;
 
         let view_depth: f32 = 20.;
-        if let Some(gizmo_center) = selected_object_center {
-            self.gizmo_visible = true;
-            let write_data = GizmoUniformBuffer::new(Vec4::from((gizmo_center, 0.)), view_depth);
-            self.gizmo_ubo
-                .write_struct(write_data, 0)
-                .context("uploading selected object center to gizmo rendering buffer")?;
-        } else {
-            self.gizmo_visible = false;
-        }
+        let write_data =
+            GizmoUniformBuffer::new(Vec4::from((selected_object_center, 0.)), view_depth);
+        self.gizmo_ubo
+            .write_struct(write_data, 0)
+            .context("uploading selected object center to gizmo rendering buffer")?;
         Ok(())
     }
 
@@ -355,7 +352,12 @@ impl RenderManager {
     }
 
     /// Submits Vulkan commands for rendering a frame.
-    pub fn render_frame(&mut self, debug_options: RenderDebugOptions) -> anyhow::Result<()> {
+    pub fn render_frame(
+        &mut self,
+        debug_options: RenderDebugOptions,
+        show_gizmo: Option<GizmoType>,
+        hovered_gizmo: Option<GizmoType>,
+    ) -> anyhow::Result<()> {
         // wait for previous frame render/resource upload to finish
 
         self.wait_for_previous_frame_fence()?;
@@ -400,7 +402,7 @@ impl RenderManager {
 
         // record commands
 
-        self.record_render_commands(framebuffer_index, debug_options)?;
+        self.record_render_commands(framebuffer_index, debug_options, show_gizmo, hovered_gizmo)?;
 
         // submit commands
 
@@ -614,6 +616,8 @@ impl RenderManager {
         &mut self,
         framebuffer_index: usize,
         debug_options: RenderDebugOptions,
+        show_gizmo: Option<GizmoType>,
+        hovered_gizmo: Option<GizmoType>,
     ) -> anyhow::Result<()> {
         let viewport = self.framebuffers[framebuffer_index].whole_viewport();
         let render_area = self.framebuffers[framebuffer_index].whole_rect();
@@ -637,9 +641,14 @@ impl RenderManager {
         self.geometry_pass
             .record_commands(command_buffer, viewport, render_area);
 
-        if self.gizmo_visible {
-            self.gizmo_pass
-                .record_commands(command_buffer, viewport, render_area);
+        if let Some(gizmo_type) = show_gizmo {
+            self.gizmo_pass.record_commands(
+                command_buffer,
+                viewport,
+                render_area,
+                gizmo_type,
+                hovered_gizmo,
+            );
         }
 
         command_buffer.next_subpass(vk::SubpassContents::INLINE);

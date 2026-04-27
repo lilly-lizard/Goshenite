@@ -1,18 +1,11 @@
 use crate::engine::{object::primitive_op::PrimitiveOp, primitives::primitive::EncodablePrimitive};
 use glam::Vec3;
 
+/// Data is encoded in the primitive op buffer as a long series of `u32`s
 pub type PrimitiveOpBufferUnit = u32;
 
 // this is because the shaders store the primitive op index in the lower 16 bits of a u32
 pub const MAX_PRIMITIVE_OP_COUNT: usize = u16::MAX as usize;
-
-/// Set in areas where primitives are being blended together
-pub const PRIMITIVE_ID_BLEND: PrimitiveOpBufferUnit = 0xFFFE;
-/// Inicates an unset primitive id
-pub const PRIMITIVE_ID_BACKGROUND: PrimitiveOpBufferUnit = 0xFFFFFFFF;
-pub const PRIMITIVE_ID_GIZMO_X: PrimitiveOpBufferUnit = 0xFFFFFFFE;
-pub const PRIMITIVE_ID_GIZMO_Y: PrimitiveOpBufferUnit = 0xFFFFFFFE;
-pub const PRIMITIVE_ID_GIZMO_Z: PrimitiveOpBufferUnit = 0xFFFFFFFE;
 
 #[rustfmt::skip]
 #[allow(dead_code)]

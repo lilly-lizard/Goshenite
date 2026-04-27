@@ -20,6 +20,7 @@ use crate::{
         camera::Camera,
         config_ui::KEY_BINDING_COMMAND_PALETTE,
         cursor::{Cursor, CursorEvent},
+        gizmo::{GizmoLinear, GizmoType},
         gui::Gui,
         keyboard_modifiers::KeyboardModifierStates,
         mouse_button::MouseButton,
@@ -58,6 +59,10 @@ pub struct EngineController {
     selected_primitive_op_index: Option<PrimitiveOpIndex>,
     render_debug_options: RenderDebugOptions,
     keyboard_modifier_states: KeyboardModifierStates,
+
+    show_gizmo: bool,
+    gizmo_type: GizmoType,
+    hovered_gizmo: Option<GizmoType>,
 
     // controllers
     cursor: Cursor,
@@ -115,6 +120,10 @@ impl EngineController {
             selected_primitive_op_index: None,
             render_debug_options: RenderDebugOptions::default(),
             keyboard_modifier_states: KeyboardModifierStates::default(),
+
+            show_gizmo: false,
+            gizmo_type: Default::default(),
+            hovered_gizmo: None,
 
             cursor,
             camera,
@@ -272,12 +281,19 @@ impl EngineController {
         self.render_manager.set_gui_primitives(gui_primitives);
 
         // if render area was clicked, select the element at the cursor position
-        if let CursorEvent::ClickInPlace(MouseButton::Left) = cursor_event {
-            self.select_element_id_at_cursor_position()?;
-        }
+        self.element_id_at_cursor_position(cursor_event)?;
 
-        self.render_manager
-            .render_frame(self.render_debug_options)?;
+        let show_gizmo = if self.show_gizmo {
+            Some(self.gizmo_type)
+        } else {
+            None
+        };
+
+        self.render_manager.render_frame(
+            self.render_debug_options,
+            show_gizmo,
+            self.hovered_gizmo,
+        )?;
 
         self.main_thread_frame_number += 1;
 
@@ -286,13 +302,11 @@ impl EngineController {
 
     fn update_selection_gizmo(&mut self) -> anyhow::Result<()> {
         let Some(selected_object_id) = self.selected_object_id else {
-            self.render_manager.update_gizmo(None)?;
             return Ok(());
         };
 
         let Some(selected_object) = self.object_collection.get_object(selected_object_id) else {
             self.deselect_object();
-            self.render_manager.update_gizmo(None)?;
             return Ok(());
         };
 
@@ -302,7 +316,6 @@ impl EngineController {
                 .get(selected_primitive_op_index)
             else {
                 self.deselect_primitive_op();
-                self.render_manager.update_gizmo(None)?;
                 return Ok(());
             };
             selected_object.center + selected_primitive_op.center()
@@ -310,7 +323,7 @@ impl EngineController {
             selected_object.center
         };
 
-        self.render_manager.update_gizmo(Some(center))?;
+        self.render_manager.update_gizmo_center(center)?;
         Ok(())
     }
 
@@ -353,7 +366,7 @@ impl EngineController {
         self.render_manager.set_scale_factor(scale_factor as f32);
     }
 
-    fn select_element_id_at_cursor_position(&mut self) -> anyhow::Result<()> {
+    fn element_id_at_cursor_position(&mut self, cursor_event: CursorEvent) -> anyhow::Result<()> {
         let Some(cursor_screen_coordinates_dvec2) = self.cursor.position() else {
             return Ok(());
         };
@@ -363,14 +376,23 @@ impl EngineController {
             .render_manager
             .get_element_at_screen_coordinate(cursor_screen_coordinates)?;
 
-        match element_at_point {
-            None => (),
-            Some(ElementAtPoint::Background) => self.background_clicked(),
-            Some(ElementAtPoint::Object {
-                object_id,
-                primitive_op_index,
-            }) => self.select_primitive_op(object_id, primitive_op_index, None),
-            Some(ElementAtPoint::BlendArea { object_id }) => self.select_object(object_id, None),
+        match cursor_event {
+            CursorEvent::ClickInPlace(MouseButton::Left) => match element_at_point {
+                Some(ElementAtPoint::Background) => self.background_clicked(),
+                Some(ElementAtPoint::Object {
+                    object_id,
+                    primitive_op_index,
+                }) => self.select_primitive_op(object_id, primitive_op_index, None),
+                Some(ElementAtPoint::BlendArea { object_id }) => {
+                    self.select_object(object_id, None)
+                }
+                _ => (),
+            },
+            CursorEvent::None => match element_at_point {
+                Some(ElementAtPoint::Gizmo(gizmo_type)) => self.hovered_gizmo = Some(gizmo_type),
+                _ => self.hovered_gizmo = None,
+            },
+            _ => (),
         }
 
         Ok(())

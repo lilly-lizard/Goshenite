@@ -157,10 +157,12 @@ gpu specifics:
 	- [math options comparison](https://en.wikipedia.org/wiki/Fisheye_lens#Mapping_function)
 ?. [fsr upscaling](https://github.com/EmbarkStudios/fsr-rs)
 
-1. draw circle at selected object center
-2. make circle consistent size relative to screen space
-2. arrows for hovered object (block colors, no shading, with slight alpha)
-3. generate BVH and render BVH outlines
+- gizmo arrow highlight upon hover
+- click and drag gizmo arrows
+- draw circle at selected object center
+- make circle consistent size relative to screen space
+- arrows for hovered object (block colors, no shading, with slight alpha)
+- generate BVH and render BVH outlines
 
 # webgpu?
 

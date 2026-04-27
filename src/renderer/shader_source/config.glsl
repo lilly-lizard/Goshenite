@@ -7,7 +7,7 @@ const vec3 WORLD_SPACE_UP = vec3(0., 0., 1.);
 const uint OP_UNIT_LENGTH = 24;
 
 const uint ID_BACKGROUND = 0xFFFFFFFFu;
-const uint ID_GIZMO = 0xFFFFFFFE;
+const uint GIZMO_MASK = 0xFFFFFFF0;
 /// Blend area between 2 primitive ops
 const uint ID_BLEND = 0xFFFEu;
 /// Invalid primitive op id

@@ -1,9 +1,13 @@
 use super::{
     config_renderer::TIMEOUT_NANOSECS,
-    shader_interfaces::primitive_op_buffer::{PRIMITIVE_ID_BACKGROUND, PRIMITIVE_ID_BLEND},
+    shader_interfaces::id_buffer::{ID_BACKGROUND, ID_BLEND},
     vulkan_init::create_cpu_read_staging_buffer,
 };
-use crate::engine::object::{object::ObjectId, primitive_op::PrimitiveOpIndex};
+use crate::{
+    engine::object::{object::ObjectId, primitive_op::PrimitiveOpIndex},
+    renderer::shader_interfaces::id_buffer::{EncodedId, ID_GIZMO_X, ID_GIZMO_Y, ID_GIZMO_Z},
+    user_interface::gizmo::{GizmoLinear, GizmoType},
+};
 use anyhow::Context;
 use ash::{khr::synchronization2, vk};
 use bort_vk::{
@@ -22,19 +26,22 @@ pub enum ElementAtPoint {
     BlendArea {
         object_id: ObjectId,
     },
-    // X, Y, Z manipulation ui elements
+    Gizmo(GizmoType),
 }
 
 impl ElementAtPoint {
-    pub fn from_rendered_id(rendered_id: u32) -> Self {
-        match rendered_id {
-            PRIMITIVE_ID_BACKGROUND => Self::Background,
+    pub fn from_encoded_id(encoded_id: EncodedId) -> Self {
+        match encoded_id {
+            ID_BACKGROUND => Self::Background,
+            ID_GIZMO_X => Self::Gizmo(GizmoType::Linear(GizmoLinear::X)),
+            ID_GIZMO_Y => Self::Gizmo(GizmoType::Linear(GizmoLinear::Y)),
+            ID_GIZMO_Z => Self::Gizmo(GizmoType::Linear(GizmoLinear::Z)),
             encoded_id => {
                 let object_id_u32 = encoded_id >> 16;
                 let object_id = ObjectId::from(object_id_u32 as u16);
                 let primitive_op_index = (encoded_id & 0x0000FFFF) as usize;
 
-                if primitive_op_index == PRIMITIVE_ID_BLEND as usize {
+                if primitive_op_index == ID_BLEND as usize {
                     Self::BlendArea { object_id }
                 } else {
                     Self::Object {
@@ -445,11 +452,11 @@ impl ElementIdReader {
             .wait(TIMEOUT_NANOSECS)
             .context("waiting for render id buffer copy fence")?;
 
-        let rendered_id = self
+        let encoded_id = self
             .cpu_read_staging_buffer
-            .read_struct::<u32>(0)
+            .read_struct::<EncodedId>(0)
             .context("reading render id")?;
 
-        Ok(ElementAtPoint::from_rendered_id(rendered_id))
+        Ok(ElementAtPoint::from_encoded_id(encoded_id))
     }
 }

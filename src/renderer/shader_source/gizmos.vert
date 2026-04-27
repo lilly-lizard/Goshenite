@@ -28,7 +28,7 @@ void main()
 	vec4 view_offset = inverse(cam.view_inverse) * param.object_center;
 	vec4 view_total = view_pos + view_offset;
 
-	// keep gizmo at a constant size
+	// keep gizmo at a constant size/depth
 	view_total.z = -param.view_depth;
 
 	vec4 proj_pos = inverse(cam.proj_inverse) * view_total;

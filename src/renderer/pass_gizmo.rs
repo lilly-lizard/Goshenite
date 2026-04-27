@@ -11,14 +11,13 @@ use crate::{
     helper::more_errors::IoError,
     renderer::{
         shader_interfaces::{
-            primitive_op_buffer::{
-                PRIMITIVE_ID_GIZMO_X, PRIMITIVE_ID_GIZMO_Y, PRIMITIVE_ID_GIZMO_Z,
-            },
+            id_buffer::{ID_GIZMO_X, ID_GIZMO_Y, ID_GIZMO_Z},
             push_constants::GizmosPushConstant,
             uniform_buffers::GizmoUniformBuffer,
         },
         vulkan_init::camera_ubo_descriptor_set_layout,
     },
+    user_interface::gizmo::{GizmoLinear, GizmoType},
 };
 use anyhow::Context;
 use ash::vk::{self, BufferUsageFlags};
@@ -103,22 +102,53 @@ impl GizmoPass {
         command_buffer: &CommandBuffer,
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
+        gizmo_type: GizmoType,
+        hovered_gizmo: Option<GizmoType>,
     ) {
-        let color_red: [f32; 3] = [0.8, 0.1, 0.1];
-        let color_green: [f32; 3] = [0.1, 0.8, 0.1];
-        let color_blue: [f32; 3] = [0.1, 0.1, 0.8];
-        let data_x = GizmosPushConstant {
-            color: color_red,
-            object_id: PRIMITIVE_ID_GIZMO_X,
+        match gizmo_type {
+            GizmoType::Linear(_) => {
+                self.record_command_linear(command_buffer, viewport, scissor, hovered_gizmo)
+            }
+        }
+    }
+
+    pub fn record_command_linear(
+        &self,
+        command_buffer: &CommandBuffer,
+        viewport: vk::Viewport,
+        scissor: vk::Rect2D,
+        hovered_gizmo: Option<GizmoType>,
+    ) {
+        const COLOR_RED: [f32; 3] = [0.8, 0.1, 0.1];
+        const COLOR_GREEN: [f32; 3] = [0.1, 0.8, 0.1];
+        const COLOR_BLUE: [f32; 3] = [0.1, 0.1, 0.8];
+        const COLOR_YELLOW: [f32; 3] = [0.7, 0.7, 0.1];
+
+        let mut data_x = GizmosPushConstant {
+            color: COLOR_RED,
+            object_id: ID_GIZMO_X,
         };
-        let data_y = GizmosPushConstant {
-            color: color_green,
-            object_id: PRIMITIVE_ID_GIZMO_Y,
+        let mut data_y = GizmosPushConstant {
+            color: COLOR_GREEN,
+            object_id: ID_GIZMO_Y,
         };
-        let data_z = GizmosPushConstant {
-            color: color_blue,
-            object_id: PRIMITIVE_ID_GIZMO_Z,
+        let mut data_z = GizmosPushConstant {
+            color: COLOR_BLUE,
+            object_id: ID_GIZMO_Z,
         };
+
+        if let Some(hovered_gizmo) = hovered_gizmo {
+            match hovered_gizmo {
+                GizmoType::Linear(direction) => match direction {
+                    GizmoLinear::X => data_x.color = COLOR_YELLOW,
+                    GizmoLinear::Y => data_y.color = COLOR_YELLOW,
+                    GizmoLinear::Z => data_z.color = COLOR_YELLOW,
+                    _ => (),
+                },
+                _ => (),
+            }
+        }
+
         let pc_bytes_x = bytemuck::bytes_of(&data_x);
         let pc_bytes_y = bytemuck::bytes_of(&data_y);
         let pc_bytes_z = bytemuck::bytes_of(&data_z);

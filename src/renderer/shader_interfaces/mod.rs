@@ -1,3 +1,4 @@
+pub mod id_buffer;
 pub mod primitive_op_buffer;
 pub mod push_constants;
 pub mod uniform_buffers;

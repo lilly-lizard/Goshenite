@@ -5,9 +5,7 @@ use super::{
         MIN_VULKAN_VER, SHADER_ENTRY_POINT,
     },
     debug_callback::log_vulkan_debug_callback,
-    shader_interfaces::{
-        primitive_op_buffer::PRIMITIVE_ID_BACKGROUND, uniform_buffers::CameraUniformBuffer,
-    },
+    shader_interfaces::{id_buffer::ID_BACKGROUND, uniform_buffers::CameraUniformBuffer},
 };
 use crate::renderer::{
     config_renderer::{
@@ -993,7 +991,7 @@ pub fn create_clear_values() -> Vec<vk::ClearValue> {
         render_pass_indices::ATTACHMENT_PRIMITIVE_ID,
         vk::ClearValue {
             color: vk::ClearColorValue {
-                uint32: [PRIMITIVE_ID_BACKGROUND; 4],
+                uint32: [ID_BACKGROUND; 4],
             },
         },
     );
