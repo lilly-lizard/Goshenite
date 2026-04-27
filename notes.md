@@ -1,3 +1,22 @@
+# plan:
+
+- remove arcball camera (have hidden option for it)
+	- it doesn't make sense with gizmo dragging
+	- make simple controls similar to bambu studio or smthn
+	- config for pan etc
+- make gui a side panel
+	- make object select and object edit 2 separate modes, similar to pressing tab in blender
+	- most of time you want to click on object and move it around
+	- make outline for selected object/primitive op
+	- config option to be top,left,right,bottom
+- click and drag gizmo arrows
+- draw circle at selected object center
+- generate BVH and render BVH outlines
+
+?. [panini projection slider](https://www.youtube.com/watch?v=LE9kxUQ-l14)
+	- [math options comparison](https://en.wikipedia.org/wiki/Fisheye_lens#Mapping_function)
+?. [fsr upscaling](https://github.com/EmbarkStudios/fsr-rs)
+
 # new renderer
 
 [sdf renderer optimizations](https://www.youtube.com/watch?v=il-TXbn5iMA)
@@ -149,20 +168,6 @@ gpu specifics:
 	- each object processed individually before being combined, otherwise a hole in a tree will also cut a hole into animals that crawl on it too and vice versa...
 	- downside of this is that a ray only intercepts some primitive ops within an object so how do you query primitive op order in that scenario?
 	- conclusion: no distinction between objects within rendering code. its an extra abstraction to keep track of that would significantly overcomplicate the pipeline...
-
-# plan:
-
-1. generate BVH and render BVH outlines
-?. [panini projection slider](https://www.youtube.com/watch?v=LE9kxUQ-l14)
-	- [math options comparison](https://en.wikipedia.org/wiki/Fisheye_lens#Mapping_function)
-?. [fsr upscaling](https://github.com/EmbarkStudios/fsr-rs)
-
-- gizmo arrow highlight upon hover
-- click and drag gizmo arrows
-- draw circle at selected object center
-- make circle consistent size relative to screen space
-- arrows for hovered object (block colors, no shading, with slight alpha)
-- generate BVH and render BVH outlines
 
 # webgpu?
 

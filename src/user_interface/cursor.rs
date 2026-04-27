@@ -116,11 +116,11 @@ impl Cursor {
         }
 
         if left_click_released_in_place {
-            CursorEvent::ClickInPlace(MouseButton::Left)
+            CursorEvent::ReleaseInPlace(MouseButton::Left)
         } else if right_click_released_in_place {
-            CursorEvent::ClickInPlace(MouseButton::Right)
+            CursorEvent::ReleaseInPlace(MouseButton::Right)
         } else if middle_click_released_in_place {
-            CursorEvent::ClickInPlace(MouseButton::Middle)
+            CursorEvent::ReleaseInPlace(MouseButton::Middle)
         } else {
             CursorEvent::None
         }
@@ -189,5 +189,5 @@ impl Cursor {
 #[derive(Debug, Clone, Copy)]
 pub enum CursorEvent {
     None,
-    ClickInPlace(MouseButton),
+    ReleaseInPlace(MouseButton),
 }

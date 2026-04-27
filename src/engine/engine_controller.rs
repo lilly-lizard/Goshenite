@@ -377,7 +377,7 @@ impl EngineController {
             .get_element_at_screen_coordinate(cursor_screen_coordinates)?;
 
         match cursor_event {
-            CursorEvent::ClickInPlace(MouseButton::Left) => match element_at_point {
+            CursorEvent::ReleaseInPlace(MouseButton::Left) => match element_at_point {
                 Some(ElementAtPoint::Background) => self.background_clicked(),
                 Some(ElementAtPoint::Object {
                     object_id,
