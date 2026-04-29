@@ -15,7 +15,7 @@ use anyhow::Context;
 use helper::logger::ConsoleLogger;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{mem::ManuallyDrop, sync::mpsc, sync::Arc, thread};
+use std::{sync::mpsc, sync::Arc, thread};
 use winit::{
     event::WindowEvent,
     event_loop::EventLoop,
@@ -40,14 +40,11 @@ static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
 
 fn main() -> Result<(), anyhow::Error> {
     println!("{}", SPLASH);
-
     init_logger();
-
     info!(
         "if debugging, set environment variable `RUST_BACKTRACE=1` to see anyhow error backtrace"
     );
-
-    start_main_thread()
+    start_engine()
 }
 
 fn init_logger() {
@@ -63,7 +60,7 @@ fn init_logger() {
     colored::control::set_virtual_terminal(true).expect("always Ok");
 }
 
-pub fn start_main_thread() -> anyhow::Result<()> {
+pub fn start_engine() -> anyhow::Result<()> {
     let event_loop = EventLoop::new().context("creating os event loop")?;
 
     let window = create_window(&event_loop)?;
@@ -71,22 +68,34 @@ pub fn start_main_thread() -> anyhow::Result<()> {
 
     let (engine_command_rx, engine_command_tx) = single_value_channel::channel::<EngineCommand>();
     let (window_event_tx, window_event_rx) = mpsc::channel::<WindowEvent>();
+    // ensures that the renderer shuts down before the OS window objects are destroyed
+    let (engine_closed_flag_tx, engine_closed_flag_rx) = mpsc::channel::<bool>();
 
-    let main_thread_channels = WindowThreadChannels {
+    let window_thread_channels = WindowThreadChannels {
         engine_command_rx,
         window_event_rx,
     };
 
+    // start separate thread that runs the engine
     // engine thread is separate from window event polling (so I'm not constricted by winit's loop structure which is subject to change)
     let _ = engine_command_tx.update(Some(EngineCommand::Run));
-    let engine_thread_handle = thread::spawn(|| {
-        info!("initializing engine instance");
-        let mut engine_controller = EngineController::new(window, main_thread_channels)?;
+    let engine_thread_handle = thread::spawn(move || {
+        let engine_run_res = {
+            info!("initializing engine instance");
+            let mut engine_controller = EngineController::new(window, window_thread_channels)?;
 
-        info!("starting engine loop");
-        engine_controller.run()?;
+            info!("starting engine loop");
+            engine_controller.run()
+        };
 
-        Ok::<(), anyhow::Error>(())
+        // tell the window thread that the engine controller is dropped so it is safe to start detroying the OS window objects
+        if let Err(e) = engine_closed_flag_tx.send(true) {
+            warn!(
+                "error while sending engine closed status to window thread: {:?}",
+                e
+            );
+        }
+        engine_run_res
     });
 
     // main thread is responsible for recieving window events
@@ -94,6 +103,7 @@ pub fn start_main_thread() -> anyhow::Result<()> {
         primary_window_id,
         engine_command_tx,
         window_event_tx,
+        engine_closed_flag_rx,
     };
     event_loop.run_app(&mut window_thread)?;
 

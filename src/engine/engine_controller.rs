@@ -20,7 +20,7 @@ use crate::{
         camera::Camera,
         config_ui::KEY_BINDING_COMMAND_PALETTE,
         cursor::{Cursor, CursorEvent},
-        gizmo::{GizmoLinear, GizmoType},
+        gizmo::{GizmoElement, GizmoVisibility},
         gui::Gui,
         keyboard_modifiers::KeyboardModifierStates,
         mouse_button::MouseButton,
@@ -60,9 +60,8 @@ pub struct EngineController {
     render_debug_options: RenderDebugOptions,
     keyboard_modifier_states: KeyboardModifierStates,
 
-    show_gizmo: bool,
-    gizmo_type: GizmoType,
-    hovered_gizmo: Option<GizmoType>,
+    gizmo_visibility: GizmoVisibility,
+    hovered_gizmo: Option<GizmoElement>,
 
     // controllers
     cursor: Cursor,
@@ -121,8 +120,7 @@ impl EngineController {
             render_debug_options: RenderDebugOptions::default(),
             keyboard_modifier_states: KeyboardModifierStates::default(),
 
-            show_gizmo: false,
-            gizmo_type: Default::default(),
+            gizmo_visibility: Default::default(),
             hovered_gizmo: None,
 
             cursor,
@@ -283,15 +281,9 @@ impl EngineController {
         // if render area was clicked, select the element at the cursor position
         self.element_id_at_cursor_position(cursor_event)?;
 
-        let show_gizmo = if self.show_gizmo {
-            Some(self.gizmo_type)
-        } else {
-            None
-        };
-
         self.render_manager.render_frame(
             self.render_debug_options,
-            show_gizmo,
+            self.gizmo_visibility,
             self.hovered_gizmo,
         )?;
 
@@ -417,6 +409,12 @@ impl EngineController {
         if let Err(e) = self.gui.save_gui_state() {
             error!("{}", e);
         }
+    }
+}
+
+impl Drop for EngineController {
+    fn drop(&mut self) {
+        debug!("dropping engine controller");
     }
 }
 

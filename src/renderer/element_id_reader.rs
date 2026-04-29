@@ -6,7 +6,7 @@ use super::{
 use crate::{
     engine::object::{object::ObjectId, primitive_op::PrimitiveOpIndex},
     renderer::shader_interfaces::id_buffer::{EncodedId, ID_GIZMO_X, ID_GIZMO_Y, ID_GIZMO_Z},
-    user_interface::gizmo::{GizmoLinear, GizmoType},
+    user_interface::gizmo::{GizmoElement, GizmoLinear},
 };
 use anyhow::Context;
 use ash::{khr::synchronization2, vk};
@@ -26,16 +26,16 @@ pub enum ElementAtPoint {
     BlendArea {
         object_id: ObjectId,
     },
-    Gizmo(GizmoType),
+    Gizmo(GizmoElement),
 }
 
 impl ElementAtPoint {
     pub fn from_encoded_id(encoded_id: EncodedId) -> Self {
         match encoded_id {
             ID_BACKGROUND => Self::Background,
-            ID_GIZMO_X => Self::Gizmo(GizmoType::Linear(GizmoLinear::X)),
-            ID_GIZMO_Y => Self::Gizmo(GizmoType::Linear(GizmoLinear::Y)),
-            ID_GIZMO_Z => Self::Gizmo(GizmoType::Linear(GizmoLinear::Z)),
+            ID_GIZMO_X => Self::Gizmo(GizmoElement::Linear(GizmoLinear::X)),
+            ID_GIZMO_Y => Self::Gizmo(GizmoElement::Linear(GizmoLinear::Y)),
+            ID_GIZMO_Z => Self::Gizmo(GizmoElement::Linear(GizmoLinear::Z)),
             encoded_id => {
                 let object_id_u32 = encoded_id >> 16;
                 let object_id = ObjectId::from(object_id_u32 as u16);

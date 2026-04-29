@@ -17,7 +17,7 @@ use crate::{
         },
         vulkan_init::camera_ubo_descriptor_set_layout,
     },
-    user_interface::gizmo::{GizmoLinear, GizmoType},
+    user_interface::gizmo::{GizmoElement, GizmoLinear, GizmoVisibility},
 };
 use anyhow::Context;
 use ash::vk::{self, BufferUsageFlags};
@@ -102,13 +102,11 @@ impl GizmoPass {
         command_buffer: &CommandBuffer,
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
-        gizmo_type: GizmoType,
-        hovered_gizmo: Option<GizmoType>,
+        gizmo_visibility: GizmoVisibility,
+        hovered_gizmo: Option<GizmoElement>,
     ) {
-        match gizmo_type {
-            GizmoType::Linear(_) => {
-                self.record_command_linear(command_buffer, viewport, scissor, hovered_gizmo)
-            }
+        if gizmo_visibility.linear {
+            self.record_command_linear(command_buffer, viewport, scissor, hovered_gizmo)
         }
     }
 
@@ -117,7 +115,7 @@ impl GizmoPass {
         command_buffer: &CommandBuffer,
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
-        hovered_gizmo: Option<GizmoType>,
+        hovered_gizmo: Option<GizmoElement>,
     ) {
         const COLOR_RED: [f32; 3] = [0.8, 0.1, 0.1];
         const COLOR_GREEN: [f32; 3] = [0.1, 0.8, 0.1];
@@ -139,7 +137,7 @@ impl GizmoPass {
 
         if let Some(hovered_gizmo) = hovered_gizmo {
             match hovered_gizmo {
-                GizmoType::Linear(direction) => match direction {
+                GizmoElement::Linear(direction) => match direction {
                     GizmoLinear::X => data_x.color = COLOR_YELLOW,
                     GizmoLinear::Y => data_y.color = COLOR_YELLOW,
                     GizmoLinear::Z => data_z.color = COLOR_YELLOW,

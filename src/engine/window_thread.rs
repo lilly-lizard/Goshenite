@@ -2,7 +2,7 @@ use super::engine_controller::EngineCommand;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use single_value_channel::Updater;
-use std::sync::mpsc::{self, Sender, TryRecvError};
+use std::sync::mpsc::{self, TryRecvError};
 use winit::{
     application::ApplicationHandler, event::WindowEvent, event_loop::ActiveEventLoop,
     window::WindowId,
@@ -11,7 +11,9 @@ use winit::{
 pub struct WindowThread {
     pub primary_window_id: WindowId,
     pub engine_command_tx: Updater<Option<EngineCommand>>,
-    pub window_event_tx: Sender<WindowEvent>,
+    pub window_event_tx: mpsc::Sender<WindowEvent>,
+    /// Ensures that the renderer shuts down before the OS window objects are destroyed
+    pub engine_closed_flag_rx: mpsc::Receiver<bool>,
 }
 
 impl ApplicationHandler for WindowThread {
@@ -23,6 +25,18 @@ impl ApplicationHandler for WindowThread {
     ) {
         if event == WindowEvent::CloseRequested && window_id == self.primary_window_id {
             let _ = self.engine_command_tx.update(Some(EngineCommand::Quit));
+
+            debug!("exiting winit loop...");
+            // wait until the engine thread closes
+            // ensures that the renderer destroys its objects before the OS window objects are to prevent dangling pointer access
+            if let Err(e) = self.engine_closed_flag_rx.recv() {
+                error!(
+                    "error while receiving engine closed flag from window thread: {:?}",
+                    e
+                );
+            }
+            debug!("engine closed flag received");
+
             info!("close requested by window. stopping main thread...");
             event_loop.exit();
 
@@ -44,6 +58,7 @@ impl ApplicationHandler for WindowThread {
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {}
 }
 
+/// Data channels for the engine thread to access the window thread
 pub struct WindowThreadChannels {
     /// FIFO queue
     pub engine_command_rx: single_value_channel::Receiver<Option<EngineCommand>>,

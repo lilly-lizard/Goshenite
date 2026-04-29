@@ -26,7 +26,10 @@ use crate::{
             get_display_handle, get_window_handle, shaders_should_write_linear_color,
         },
     },
-    user_interface::{camera::Camera, gizmo::GizmoType},
+    user_interface::{
+        camera::Camera,
+        gizmo::{GizmoElement, GizmoVisibility},
+    },
 };
 use anyhow::Context;
 use ash::vk;
@@ -355,8 +358,8 @@ impl RenderManager {
     pub fn render_frame(
         &mut self,
         debug_options: RenderDebugOptions,
-        show_gizmo: Option<GizmoType>,
-        hovered_gizmo: Option<GizmoType>,
+        gizmo_visibility: GizmoVisibility,
+        hovered_gizmo: Option<GizmoElement>,
     ) -> anyhow::Result<()> {
         // wait for previous frame render/resource upload to finish
 
@@ -402,7 +405,12 @@ impl RenderManager {
 
         // record commands
 
-        self.record_render_commands(framebuffer_index, debug_options, show_gizmo, hovered_gizmo)?;
+        self.record_render_commands(
+            framebuffer_index,
+            debug_options,
+            gizmo_visibility,
+            hovered_gizmo,
+        )?;
 
         // submit commands
 
@@ -616,8 +624,8 @@ impl RenderManager {
         &mut self,
         framebuffer_index: usize,
         debug_options: RenderDebugOptions,
-        show_gizmo: Option<GizmoType>,
-        hovered_gizmo: Option<GizmoType>,
+        gizmo_visibility: GizmoVisibility,
+        hovered_gizmo: Option<GizmoElement>,
     ) -> anyhow::Result<()> {
         let viewport = self.framebuffers[framebuffer_index].whole_viewport();
         let render_area = self.framebuffers[framebuffer_index].whole_rect();
@@ -641,12 +649,12 @@ impl RenderManager {
         self.geometry_pass
             .record_commands(command_buffer, viewport, render_area);
 
-        if let Some(gizmo_type) = show_gizmo {
+        if gizmo_visibility.any_visible() {
             self.gizmo_pass.record_commands(
                 command_buffer,
                 viewport,
                 render_area,
-                gizmo_type,
+                gizmo_visibility,
                 hovered_gizmo,
             );
         }

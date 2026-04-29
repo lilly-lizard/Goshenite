@@ -300,14 +300,14 @@ impl EngineController {
     pub(super) fn deselect_object(&mut self) {
         self.selected_object_id = None;
         self.selected_primitive_op_index = None;
-        self.show_gizmo = false;
+        self.gizmo_visibility.hide_all();
         self.camera.deselect_object();
     }
 
     /// Doesn't deselect object
     pub(super) fn deselect_primitive_op(&mut self) {
         self.selected_primitive_op_index = None;
-        self.show_gizmo = false;
+        self.gizmo_visibility.hide_all();
         self.camera.deselect_primitive_op();
         if let Some(target_object_id) = self.selected_object_id {
             if let Some(object) = self.object_collection.get_object(target_object_id) {
@@ -352,7 +352,7 @@ impl EngineController {
         self.selected_primitive_op_index = Some(primitive_op_index_to_select);
 
         let center = object.center + primitive_op.center();
-        self.show_gizmo = true;
+        self.gizmo_visibility.show_all();
         // note: render_manager.update_gizmo_center not called here
         self.gui.update_selected_primitive_op(&primitive_op);
         self.camera.set_lock_on_target_primitive_op(
@@ -376,7 +376,7 @@ impl EngineController {
         self.selected_object_id = Some(object_id_to_select);
         self.selected_primitive_op_index = None;
 
-        self.show_gizmo = true;
+        self.gizmo_visibility.show_all();
         // note: render_manager.update_gizmo_center not called here
         self.camera
             .set_lock_on_target_object(object_id_to_select, object.center);
