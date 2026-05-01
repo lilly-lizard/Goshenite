@@ -128,7 +128,7 @@ impl ElementIdReader {
     /// need to call this function.
     pub fn record_and_submit_pre_transfer_sync_commands(
         &self,
-        last_primitive_id_buffer: Arc<ImageView<Image>>,
+        last_id_buffer: Arc<ImageView<Image>>,
     ) -> anyhow::Result<()> {
         let semaphores_before_transfer = [self.semaphore_before_transfer.handle()];
 
@@ -141,13 +141,13 @@ impl ElementIdReader {
 
         // render queue release
         let after_render_image_barrier = vk::ImageMemoryBarrier2 {
-            src_stage_mask: vk::PipelineStageFlags2::FRAGMENT_SHADER,
+            src_stage_mask: vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT,
             dst_stage_mask: vk::PipelineStageFlags2::empty(),
-            src_access_mask: vk::AccessFlags2::INPUT_ATTACHMENT_READ,
+            src_access_mask: vk::AccessFlags2::COLOR_ATTACHMENT_WRITE,
             dst_access_mask: vk::AccessFlags2::empty(),
             old_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             new_layout: vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-            image: last_primitive_id_buffer.image().handle(),
+            image: last_id_buffer.image().handle(),
             subresource_range: image_subresource_range,
             src_queue_family_index: self.render_queue.family_index(),
             dst_queue_family_index: self.transfer_queue.family_index(),
@@ -157,6 +157,8 @@ impl ElementIdReader {
         let after_render_barriers = [after_render_image_barrier];
         let after_render_dependency =
             vk::DependencyInfo::default().image_memory_barriers(&after_render_barriers);
+
+        // record command buffer
 
         let begin_info = vk::CommandBufferBeginInfo {
             flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
@@ -238,8 +240,8 @@ impl ElementIdReader {
         };
 
         let before_transfer_image_barrier = {
-            let mut src_stage_mask = vk::PipelineStageFlags2::FRAGMENT_SHADER;
-            let mut src_access_mask = vk::AccessFlags2::INPUT_ATTACHMENT_READ;
+            let mut src_stage_mask = vk::PipelineStageFlags2::COLOR_ATTACHMENT_OUTPUT;
+            let mut src_access_mask = vk::AccessFlags2::COLOR_ATTACHMENT_WRITE;
 
             if different_queue_family_indices {
                 // this is a queue aquire operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier

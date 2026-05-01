@@ -1,8 +1,8 @@
 use super::{
     config_renderer::{
         supports_required_features_1_0, CPU_ACCESS_BUFFER_SIZE, FORMAT_ALBEDO_BUFFER,
-        FORMAT_NORMAL_BUFFER, FORMAT_PRIMITIVE_ID_BUFFER, MAX_FRAMES_IN_FLIGHT, MAX_VULKAN_VER,
-        MIN_VULKAN_VER, SHADER_ENTRY_POINT,
+        FORMAT_NORMAL_BUFFER, MAX_FRAMES_IN_FLIGHT, MAX_VULKAN_VER, MIN_VULKAN_VER,
+        SHADER_ENTRY_POINT,
     },
     debug_callback::log_vulkan_debug_callback,
     shader_interfaces::{id_buffer::ID_BACKGROUND, uniform_buffers::CameraUniformBuffer},
@@ -10,7 +10,7 @@ use super::{
 use crate::renderer::{
     config_renderer::{
         required_device_extensions, required_features_1_0, DISPLAY_UNAVAILABLE_TIMEOUT_NANOSECONDS,
-        ENABLE_VULKAN_VALIDATION,
+        ENABLE_VULKAN_VALIDATION, FORMAT_ID_BUFFER,
     },
     shader_interfaces::uniform_buffers::GizmoUniformBuffer,
 };
@@ -603,13 +603,15 @@ pub mod render_pass_indices {
     pub const ATTACHMENT_ALBEDO: usize = 2;
     pub const ATTACHMENT_PRIMITIVE_ID: usize = 3;
     pub const ATTACHMENT_DEPTH_BUFFER: usize = 4;
-    pub const NUM_ATTACHMENTS: usize = 5;
+    pub const ATTACHMENT_ID_BUFFER: usize = 5;
+    pub const NUM_ATTACHMENTS: usize = 6;
 
     pub const SUBPASS_GBUFFER: usize = 0;
     pub const SUBPASS_DEFERRED: usize = 1;
     pub const NUM_SUBPASSES: usize = 2;
 
     pub const GBUFFER_COLOR_ATTACHMENT_COUNT: usize = 3;
+    pub const DEFERRED_COLOR_ATTACHMENT_COUNT: usize = 2;
 }
 
 fn attachment_descriptions(
@@ -652,10 +654,10 @@ fn attachment_descriptions(
 
     attachment_descriptions[render_pass_indices::ATTACHMENT_PRIMITIVE_ID] =
         vk::AttachmentDescription {
-            format: FORMAT_PRIMITIVE_ID_BUFFER,
+            format: FORMAT_ID_BUFFER,
             samples: vk::SampleCountFlags::TYPE_1,
             load_op: vk::AttachmentLoadOp::CLEAR,
-            store_op: vk::AttachmentStoreOp::STORE,
+            store_op: vk::AttachmentStoreOp::DONT_CARE, // important for transient attachment optimizations
             initial_layout: vk::ImageLayout::UNDEFINED, // what it will be in at the beginning of the render pass
             final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, // what it will transition to at the end of the render pass
             ..Default::default()
@@ -672,6 +674,17 @@ fn attachment_descriptions(
             ..Default::default()
         };
 
+    attachment_descriptions[render_pass_indices::ATTACHMENT_ID_BUFFER] =
+        vk::AttachmentDescription {
+            format: FORMAT_ID_BUFFER,
+            samples: vk::SampleCountFlags::TYPE_1,
+            load_op: vk::AttachmentLoadOp::CLEAR,
+            store_op: vk::AttachmentStoreOp::STORE, // so it can be read by the cpu later
+            initial_layout: vk::ImageLayout::UNDEFINED, // what it will be in at the beginning of the render pass
+            final_layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL, // what it will transition to at the end of the render pass
+            ..Default::default()
+        };
+
     attachment_descriptions
 }
 
@@ -681,7 +694,8 @@ fn subpasses() -> [Subpass; render_pass_indices::NUM_SUBPASSES] {
 
     // g-buffer subpass
 
-    let g_buffer_color_attachments = [
+    let g_buffer_color_attachments: [vk::AttachmentReference;
+        render_pass_indices::GBUFFER_COLOR_ATTACHMENT_COUNT] = [
         vk::AttachmentReference {
             attachment: render_pass_indices::ATTACHMENT_NORMAL as u32,
             layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
@@ -713,13 +727,8 @@ fn subpasses() -> [Subpass; render_pass_indices::NUM_SUBPASSES] {
 
     // deferred subpass
 
-    let deferred_color_attachments = [vk::AttachmentReference {
-        attachment: render_pass_indices::ATTACHMENT_SWAPCHAIN as u32,
-        layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        ..Default::default()
-    }];
-
-    let deferred_input_attachments = [
+    let deferred_input_attachments: [vk::AttachmentReference;
+        render_pass_indices::GBUFFER_COLOR_ATTACHMENT_COUNT] = [
         vk::AttachmentReference {
             attachment: render_pass_indices::ATTACHMENT_NORMAL as u32,
             layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
@@ -733,6 +742,20 @@ fn subpasses() -> [Subpass; render_pass_indices::NUM_SUBPASSES] {
         vk::AttachmentReference {
             attachment: render_pass_indices::ATTACHMENT_PRIMITIVE_ID as u32,
             layout: vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+            ..Default::default()
+        },
+    ];
+
+    let deferred_color_attachments: [vk::AttachmentReference;
+        render_pass_indices::DEFERRED_COLOR_ATTACHMENT_COUNT] = [
+        vk::AttachmentReference {
+            attachment: render_pass_indices::ATTACHMENT_SWAPCHAIN as u32,
+            layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+            ..Default::default()
+        },
+        vk::AttachmentReference {
+            attachment: render_pass_indices::ATTACHMENT_ID_BUFFER as u32,
+            layout: vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
             ..Default::default()
         },
     ];
@@ -857,28 +880,68 @@ pub fn create_albedo_buffer(
     Ok(Arc::new(image_view))
 }
 
+pub fn create_primitive_id_buffer(
+    memory_allocator: Arc<MemoryAllocator>,
+    dimensions: ImageDimensions,
+) -> anyhow::Result<Arc<ImageView<Image>>> {
+    let image_properties = ImageProperties::new_default(
+        FORMAT_ID_BUFFER,
+        dimensions,
+        vk::ImageUsageFlags::COLOR_ATTACHMENT
+            | vk::ImageUsageFlags::INPUT_ATTACHMENT
+            | vk::ImageUsageFlags::TRANSIENT_ATTACHMENT,
+    );
+
+    let allocation_info_preferred = AllocationCreateInfo {
+        required_flags: vk::MemoryPropertyFlags::LAZILY_ALLOCATED,
+        ..AllocationCreateInfo::default()
+    };
+    let allocation_info_fallback = AllocationCreateInfo {
+        required_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        ..AllocationCreateInfo::default()
+    };
+
+    let image = match Image::new(
+        memory_allocator.clone(),
+        image_properties.clone(),
+        allocation_info_preferred,
+    ) {
+        Ok(image) => image,
+        Err(vk::Result::ERROR_FEATURE_NOT_PRESENT) => {
+            // dedicated gpus usually don't support lazily allocated memory
+            Image::new(memory_allocator, image_properties, allocation_info_fallback)
+                .context("creating primitive id buffer image")?
+        }
+        Err(e) => return Err(e).context("creating primitive id buffer image")?,
+    };
+
+    let image_view_properties =
+        ImageViewProperties::from_image_properties_default(image.properties());
+    let image_view = ImageView::new(Arc::new(image), image_view_properties)
+        .context("creating primitive id buffer image view")?;
+    Ok(Arc::new(image_view))
+}
+
 /// Creates `framebuffer_count` number of primitive id buffer image views
-pub fn create_primitive_id_buffers(
+pub fn create_id_buffers(
     framebuffer_count: usize,
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
 ) -> anyhow::Result<Vec<Arc<ImageView<Image>>>> {
     (0..framebuffer_count)
         .into_iter()
-        .map(|_| create_primitive_id_buffer(memory_allocator.clone(), dimensions))
+        .map(|_| create_id_buffer(memory_allocator.clone(), dimensions))
         .collect::<anyhow::Result<Vec<_>>>()
 }
 
-fn create_primitive_id_buffer(
+fn create_id_buffer(
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
 ) -> anyhow::Result<Arc<ImageView<Image>>> {
     let image_properties = ImageProperties::new_default(
-        FORMAT_PRIMITIVE_ID_BUFFER,
+        FORMAT_ID_BUFFER,
         dimensions,
-        vk::ImageUsageFlags::COLOR_ATTACHMENT
-            | vk::ImageUsageFlags::INPUT_ATTACHMENT
-            | vk::ImageUsageFlags::TRANSFER_SRC,
+        vk::ImageUsageFlags::COLOR_ATTACHMENT | vk::ImageUsageFlags::TRANSFER_SRC,
     );
 
     let allocation_info = AllocationCreateInfo {
@@ -923,8 +986,9 @@ pub fn create_framebuffers(
     swapchain_image_views: &[Arc<ImageView<SwapchainImage>>],
     normal_buffer: Arc<ImageView<Image>>,
     albedo_buffer: Arc<ImageView<Image>>,
-    primitive_id_buffers: &[Arc<ImageView<Image>>],
+    primitive_id_buffer: Arc<ImageView<Image>>,
     depth_buffer: Arc<ImageView<Image>>,
+    id_buffers: &[Arc<ImageView<Image>>],
 ) -> anyhow::Result<Vec<Framebuffer>> {
     (0..swapchain_image_views.len())
         .into_iter()
@@ -946,11 +1010,15 @@ pub fn create_framebuffers(
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_PRIMITIVE_ID,
-                primitive_id_buffers[i].clone(),
+                primitive_id_buffer.clone(),
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_DEPTH_BUFFER,
                 depth_buffer.clone(),
+            );
+            attachments.insert(
+                render_pass_indices::ATTACHMENT_ID_BUFFER,
+                id_buffers[i].clone(),
             );
 
             let framebuffer_properties = FramebufferProperties::new_default(
@@ -1001,6 +1069,14 @@ pub fn create_clear_values() -> Vec<vk::ClearValue> {
             depth_stencil: vk::ClearDepthStencilValue {
                 depth: 0.,
                 stencil: 0,
+            },
+        },
+    );
+    clear_values.insert(
+        render_pass_indices::ATTACHMENT_ID_BUFFER,
+        vk::ClearValue {
+            color: vk::ClearColorValue {
+                uint32: [ID_BACKGROUND; 4],
             },
         },
     );

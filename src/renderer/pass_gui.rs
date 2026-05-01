@@ -1090,7 +1090,10 @@ fn create_pipeline(
         color_write_mask: vk::ColorComponentFlags::RGBA,
         ..Default::default()
     };
-    let color_blend_state = ColorBlendState::new_default(vec![color_blend_attachment_state]);
+    let color_blend_state = ColorBlendState::new_default(vec![
+        color_blend_attachment_state,
+        ColorBlendState::blend_state_disabled(),
+    ]);
 
     let vertex_input_state = EguiVertex::vertex_input_state();
 

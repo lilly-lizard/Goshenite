@@ -22,11 +22,11 @@ use crate::{
 use anyhow::Context;
 use ash::vk::{self, BufferUsageFlags};
 use bort_vk::{
-    AllocationAccess, Buffer, BufferProperties, ColorBlendState, CommandBuffer, DepthStencilState,
-    DescriptorSet, DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties,
-    Device, DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties,
-    MemoryAllocator, PipelineAccess, PipelineLayout, PipelineLayoutProperties, RasterizationState,
-    RenderPass, ShaderStage, ViewportState,
+    AllocationAccess, Buffer, BufferProperties, ColorBlendState, CommandBuffer, DescriptorSet,
+    DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device,
+    DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties, MemoryAllocator,
+    PipelineAccess, PipelineLayout, PipelineLayoutProperties, RasterizationState, RenderPass,
+    ShaderStage, ViewportState,
 };
 use bort_vma::AllocationCreateInfo;
 use glam::{Mat4, Vec4};
@@ -37,8 +37,12 @@ use std::{mem, sync::Arc};
 mod descriptor {
     pub const SET_CAMERA: usize = 0;
     pub const BINDING_CAMERA: u32 = 0;
+
     pub const SET_GIZMO: usize = 1;
     pub const BINDING_GIZMO: u32 = 0;
+
+    pub const SET_G_BUFFER: usize = 2;
+    pub const BINDING_ID_BUFFER: u32 = 0;
 }
 
 pub struct GizmoPass {
@@ -143,7 +147,6 @@ impl GizmoPass {
                     GizmoLinear::Z => data_z.color = COLOR_YELLOW,
                     _ => (),
                 },
-                _ => (),
             }
         }
 
@@ -377,17 +380,8 @@ fn create_pipeline(
 ) -> anyhow::Result<GraphicsPipeline> {
     let (vert_stage, frag_stage) = create_shader_stages(device)?;
 
-    let color_blend_state = ColorBlendState::new_default(vec![
-        ColorBlendState::blend_state_disabled(
-        );
-        render_pass_indices::GBUFFER_COLOR_ATTACHMENT_COUNT
-    ]);
-
-    let depth_stencil_state = DepthStencilState {
-        depth_test_enable: false,
-        depth_write_enable: true,
-        ..Default::default()
-    };
+    let color_blend_state =
+        ColorBlendState::new_disabled(render_pass_indices::DEFERRED_COLOR_ATTACHMENT_COUNT);
 
     let dynamic_state =
         DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
@@ -403,10 +397,9 @@ fn create_pipeline(
 
     let pipeline_properties = GraphicsPipelineProperties {
         color_blend_state,
-        depth_stencil_state,
         dynamic_state,
         rasterization_state,
-        subpass_index: render_pass_indices::SUBPASS_GBUFFER as u32,
+        subpass_index: render_pass_indices::SUBPASS_DEFERRED as u32,
         vertex_input_state,
         viewport_state,
         ..Default::default()

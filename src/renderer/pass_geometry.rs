@@ -176,11 +176,8 @@ fn create_pipeline(
 
     let viewport_state = ViewportState::new_dynamic(1, 1);
 
-    let color_blend_state = ColorBlendState::new_default(vec![
-        ColorBlendState::blend_state_disabled(
-        );
-        render_pass_indices::GBUFFER_COLOR_ATTACHMENT_COUNT
-    ]);
+    let color_blend_state =
+        ColorBlendState::new_disabled(render_pass_indices::GBUFFER_COLOR_ATTACHMENT_COUNT);
 
     let depth_stencil_state = DepthStencilState {
         depth_test_enable: true,

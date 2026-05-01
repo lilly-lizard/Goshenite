@@ -100,7 +100,7 @@ fn create_aabb_pipeline(
     let viewport_state = ViewportState::new_dynamic(1, 1);
 
     let color_blend_state =
-        ColorBlendState::new_default(vec![ColorBlendState::blend_state_disabled()]);
+        ColorBlendState::new_disabled(render_pass_indices::DEFERRED_COLOR_ATTACHMENT_COUNT);
 
     let rasterization_state = RasterizationState {
         polygon_mode: vk::PolygonMode::LINE,

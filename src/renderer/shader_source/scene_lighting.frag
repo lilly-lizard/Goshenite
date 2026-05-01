@@ -13,6 +13,7 @@ layout (location = 0) in vec2 in_clip_space_uv; // clip space position [-1, 1]
 
 // output color to swapchain image
 layout (location = 0) out vec4 out_color;
+layout (location = 1) out uint out_id; // TODO may be based on renderpass.subpass.color_attachments index rather than framebuffer index (ATTACHMENT_ID_BUFFER)
 
 layout (set = 1, binding = 0) uniform Camera {
 	mat4 view_inverse;
@@ -44,6 +45,7 @@ void main()
 {
 	// decode g-buffer
 	uint object_op_id = subpassLoad(in_object_op_id).x;
+	out_id = object_op_id;
 
 	vec3 ray_d = ray_direction();
 	

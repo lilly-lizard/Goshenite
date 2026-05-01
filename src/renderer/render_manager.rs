@@ -22,8 +22,9 @@ use crate::{
         vulkan_init::{
             choose_depth_buffer_format, create_albedo_buffer, create_command_pool,
             create_debug_callback, create_device_and_queue, create_entry, create_gizmo_ubo,
-            create_instance, create_primitive_id_buffers, create_render_command_buffers,
-            get_display_handle, get_window_handle, shaders_should_write_linear_color,
+            create_id_buffers, create_instance, create_primitive_id_buffer,
+            create_render_command_buffers, get_display_handle, get_window_handle,
+            shaders_should_write_linear_color,
         },
     },
     user_interface::{
@@ -74,17 +75,18 @@ pub struct RenderManager {
     depth_buffer: Arc<ImageView<Image>>,
     normal_buffer: Arc<ImageView<Image>>,
     albedo_buffer: Arc<ImageView<Image>>,
+    primitive_id_buffer: Arc<ImageView<Image>>,
     /// One per framebuffer
-    primitive_id_buffers: Vec<Arc<ImageView<Image>>>,
+    id_buffers: Vec<Arc<ImageView<Image>>>,
     camera_ubo: Buffer,
     gizmo_ubo: Buffer,
 
     // render passes
     geometry_pass: GeometryPass,
     lighting_pass: LightingPass,
+    gizmo_pass: GizmoPass,
     overlay_pass: OverlayPass,
     gui_pass: GuiPass,
-    gizmo_pass: GizmoPass,
 
     object_id_reader: ElementIdReader,
 
@@ -170,7 +172,9 @@ impl RenderManager {
         )?;
         let normal_buffer = create_normal_buffer(memory_allocator.clone(), framebuffer_dimensions)?;
         let albedo_buffer = create_albedo_buffer(memory_allocator.clone(), framebuffer_dimensions)?;
-        let primitive_id_buffers = create_primitive_id_buffers(
+        let primitive_id_buffer =
+            create_primitive_id_buffer(memory_allocator.clone(), framebuffer_dimensions)?;
+        let id_buffers = create_id_buffers(
             framebuffer_count,
             memory_allocator.clone(),
             framebuffer_dimensions,
@@ -184,8 +188,9 @@ impl RenderManager {
             &swapchain_image_views,
             normal_buffer.clone(),
             albedo_buffer.clone(),
-            &primitive_id_buffers,
+            primitive_id_buffer.clone(),
             depth_buffer.clone(),
+            &id_buffers,
         )?;
 
         let clear_values = create_clear_values();
@@ -204,7 +209,13 @@ impl RenderManager {
             &camera_ubo,
             &normal_buffer,
             &albedo_buffer,
-            &primitive_id_buffers,
+            &primitive_id_buffer,
+        )?;
+        let gizmo_pass = GizmoPass::new(
+            memory_allocator.clone(),
+            &render_pass,
+            &camera_ubo,
+            &gizmo_ubo,
         )?;
         let overlay_pass = OverlayPass::new(&render_pass, &camera_ubo)?;
         let gui_pass = GuiPass::new(
@@ -213,12 +224,6 @@ impl RenderManager {
             command_pool_render.clone(),
             command_pool_transfer.clone(),
             scale_factor,
-        )?;
-        let gizmo_pass = GizmoPass::new(
-            memory_allocator.clone(),
-            &render_pass,
-            &camera_ubo,
-            &gizmo_ubo,
         )?;
 
         let render_command_buffers = create_render_command_buffers(
@@ -266,15 +271,16 @@ impl RenderManager {
             depth_buffer,
             normal_buffer,
             albedo_buffer,
-            primitive_id_buffers,
+            primitive_id_buffer,
+            id_buffers,
             camera_ubo,
             gizmo_ubo,
 
             geometry_pass,
             lighting_pass,
+            gizmo_pass,
             overlay_pass,
             gui_pass,
-            gizmo_pass,
 
             object_id_reader,
 
@@ -469,14 +475,20 @@ impl RenderManager {
         &mut self,
         screen_coordinate: [f32; 2],
     ) -> anyhow::Result<Option<ElementAtPoint>> {
+        let framebuffer_dimensions = self.swapchain.properties().dimensions();
+        if screen_coordinate[0] > framebuffer_dimensions.width() as f32
+            || screen_coordinate[1] > framebuffer_dimensions.height() as f32
+        {
+            return Ok(None);
+        }
+
         if let RendererState::Initialized = self.renderer_state {
             // buffer data and sync is undefined as no render commands have been submitted yet
             warn!("element at screen coordinate queried but renderer is in {:?} state. ignoring request.", self.renderer_state);
             return Ok(None);
         }
 
-        let last_primitive_id_buffer =
-            self.primitive_id_buffers[self.framebuffer_index_last_rendered_to].clone();
+        let last_id_buffer = self.id_buffers[self.framebuffer_index_last_rendered_to].clone();
 
         let different_queue_family_indices =
             self.render_queue.family_index() != self.transfer_queue.family_index();
@@ -484,19 +496,17 @@ impl RenderManager {
         if different_queue_family_indices {
             // render queue release operation
             self.object_id_reader
-                .record_and_submit_pre_transfer_sync_commands(last_primitive_id_buffer.clone())?;
+                .record_and_submit_pre_transfer_sync_commands(last_id_buffer.clone())?;
         }
 
-        self.object_id_reader.record_primitive_id_copy_commands(
-            screen_coordinate,
-            last_primitive_id_buffer.clone(),
-        )?;
+        self.object_id_reader
+            .record_primitive_id_copy_commands(screen_coordinate, last_id_buffer.clone())?;
         self.object_id_reader.submit_primitive_id_copy_commands()?;
 
         if different_queue_family_indices {
             // render queue release operation
             self.object_id_reader
-                .record_and_submit_post_transfer_sync_commands(last_primitive_id_buffer)?;
+                .record_and_submit_post_transfer_sync_commands(last_id_buffer)?;
         }
 
         let element_at_point = self.object_id_reader.read_object_id_from_buffer()?;
@@ -560,7 +570,9 @@ impl RenderManager {
             create_normal_buffer(self.memory_allocator.clone(), framebuffer_dimensions)?;
         self.albedo_buffer =
             create_albedo_buffer(self.memory_allocator.clone(), framebuffer_dimensions)?;
-        self.primitive_id_buffers = create_primitive_id_buffers(
+        self.primitive_id_buffer =
+            create_primitive_id_buffer(self.memory_allocator.clone(), framebuffer_dimensions)?;
+        self.id_buffers = create_id_buffers(
             framebuffer_count,
             self.memory_allocator.clone(),
             framebuffer_dimensions,
@@ -576,14 +588,15 @@ impl RenderManager {
             &self.swapchain_image_views,
             self.normal_buffer.clone(),
             self.albedo_buffer.clone(),
-            &self.primitive_id_buffers,
+            self.primitive_id_buffer.clone(),
             self.depth_buffer.clone(),
+            &self.id_buffers,
         )?;
 
-        self.lighting_pass.update_g_buffers(
+        self.lighting_pass.update_g_buffer(
             &self.normal_buffer,
             &self.albedo_buffer,
-            &self.primitive_id_buffers,
+            &self.primitive_id_buffer,
         )?;
 
         Ok(())
@@ -649,24 +662,10 @@ impl RenderManager {
         self.geometry_pass
             .record_commands(command_buffer, viewport, render_area);
 
-        if gizmo_visibility.any_visible() {
-            self.gizmo_pass.record_commands(
-                command_buffer,
-                viewport,
-                render_area,
-                gizmo_visibility,
-                hovered_gizmo,
-            );
-        }
-
         command_buffer.next_subpass(vk::SubpassContents::INLINE);
 
-        self.lighting_pass.record_commands(
-            framebuffer_index,
-            command_buffer,
-            viewport,
-            render_area,
-        );
+        self.lighting_pass
+            .record_commands(command_buffer, viewport, render_area);
 
         if debug_options.enable_aabb_wire_display {
             self.overlay_pass.record_aabb_overlay_commands(
@@ -674,6 +673,16 @@ impl RenderManager {
                 self.geometry_pass.object_buffer_manager(),
                 viewport,
                 render_area,
+            );
+        }
+
+        if gizmo_visibility.any_visible() {
+            self.gizmo_pass.record_commands(
+                command_buffer,
+                viewport,
+                render_area,
+                gizmo_visibility,
+                hovered_gizmo,
             );
         }
 

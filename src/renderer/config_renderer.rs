@@ -17,6 +17,7 @@ pub fn supports_required_features_1_0(supported_features: vk::PhysicalDeviceFeat
 pub fn required_features_1_0() -> vk::PhysicalDeviceFeatures {
     vk::PhysicalDeviceFeatures {
         fill_mode_non_solid: vk::TRUE,
+        independent_blend: vk::TRUE,
         ..Default::default()
     }
 }
@@ -33,7 +34,7 @@ pub const SHADER_ENTRY_POINT: &str = "main";
 // G-buffer formats. Note that the combined bit total of these should be under 128bits to fit in tile storage on many tile-based architectures.
 pub const FORMAT_NORMAL_BUFFER: vk::Format = vk::Format::R8G8B8A8_SNORM;
 pub const FORMAT_ALBEDO_BUFFER: vk::Format = vk::Format::R8G8B8A8_UNORM;
-pub const FORMAT_PRIMITIVE_ID_BUFFER: vk::Format = vk::Format::R32_UINT;
+pub const FORMAT_ID_BUFFER: vk::Format = vk::Format::R32_UINT;
 
 /// 1 second
 pub const TIMEOUT_NANOSECS: u64 = 1_000_000_000;

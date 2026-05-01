@@ -29,8 +29,7 @@ mod descriptor {
 /// Defines functionality for reading the g-buffers and calculating the scene color values
 pub struct LightingPass {
     desc_set_camera: DescriptorSet,
-    /// One per framebuffer
-    desc_sets_g_buffer: Vec<DescriptorSet>,
+    desc_set_g_buffer: DescriptorSet,
 
     pipeline: GraphicsPipeline,
 }
@@ -42,45 +41,43 @@ impl LightingPass {
         camera_buffer: &Buffer,
         normal_buffer: &ImageView<Image>,
         albedo_buffer: &ImageView<Image>,
-        primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
+        primitive_id_buffer: &ImageView<Image>,
     ) -> anyhow::Result<Self> {
-        let framebuffer_count = primitive_id_buffers.len();
-        let (desc_set_camera, desc_sets_g_buffer) =
-            create_desc_sets(device.clone(), framebuffer_count)?;
+        let (desc_set_camera, desc_set_g_buffer) = create_desc_sets(device.clone())?;
         write_camera_descriptor_set(&desc_set_camera, camera_buffer, descriptor::BINDING_CAMERA);
-        write_desc_sets_gbuffer(
-            &desc_sets_g_buffer,
+        write_desc_set_gbuffer(
+            &desc_set_g_buffer,
             normal_buffer,
             albedo_buffer,
-            primitive_id_buffers,
+            primitive_id_buffer,
         )?;
 
         let pipeline_layout = create_pipeline_layout(
             device.clone(),
             desc_set_camera.layout().clone(),
-            desc_sets_g_buffer[0].layout().clone(),
+            desc_set_g_buffer.layout().clone(),
         )?;
         let pipeline = create_pipeline(device.clone(), pipeline_layout.clone(), render_pass)?;
 
         Ok(Self {
-            desc_sets_g_buffer,
+            desc_set_g_buffer,
             desc_set_camera,
             pipeline,
         })
     }
 
     /// Call whenever the g-buffers change
-    pub fn update_g_buffers(
+    pub fn update_g_buffer(
         &mut self,
         normal_buffer: &ImageView<Image>,
         albedo_buffer: &ImageView<Image>,
-        primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
+        primitive_id_buffer: &ImageView<Image>,
     ) -> anyhow::Result<()> {
-        write_desc_sets_gbuffer(
-            &self.desc_sets_g_buffer,
+        write_desc_set_gbuffer(
+            &self.desc_set_g_buffer,
             normal_buffer,
             albedo_buffer,
-            primitive_id_buffers,
+            primitive_id_buffer,
         )
     }
 
@@ -89,7 +86,6 @@ impl LightingPass {
     /// **Assumes that the command buffer is already in a render pass state.**
     pub fn record_commands(
         &self,
-        frame_index: usize,
         command_buffer: &CommandBuffer,
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
@@ -101,17 +97,14 @@ impl LightingPass {
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline.pipeline_layout().as_ref(),
             0,
-            [&self.desc_sets_g_buffer[frame_index], &self.desc_set_camera],
+            [&self.desc_set_g_buffer, &self.desc_set_camera],
             &[],
         );
         command_buffer.draw(3, 1, 0, 0);
     }
 }
 
-fn create_desc_sets(
-    device: Arc<Device>,
-    framebuffer_count: usize,
-) -> anyhow::Result<(DescriptorSet, Vec<DescriptorSet>)> {
+fn create_desc_sets(device: Arc<Device>) -> anyhow::Result<(DescriptorSet, DescriptorSet)> {
     let camera_layout_properties = camera_ubo_descriptor_set_layout(descriptor::BINDING_CAMERA);
     let g_buffer_layout_props = DescriptorSetLayoutProperties {
         bindings: vec![
@@ -140,17 +133,15 @@ fn create_desc_sets(
         ..Default::default()
     };
 
-    let mut properties: Vec<DescriptorSetLayoutProperties> = Vec::new();
-    for _i in 0..framebuffer_count {
-        properties.push(g_buffer_layout_props.clone());
-    }
-    properties.push(camera_layout_properties);
+    let mut sets = DescriptorSet::new_from_set_layouts(
+        device,
+        vec![camera_layout_properties, g_buffer_layout_props],
+    )
+    .context("creating geometry pass camera descriptor set")?;
 
-    let mut sets = DescriptorSet::new_from_set_layouts(device, properties)
-        .context("creating geometry pass camera descriptor set")?;
-
-    let camera_set = sets.pop().expect("created more than one set");
-    Ok((camera_set, sets))
+    let g_buffer_set = sets.pop().expect("created 2 sets");
+    let camera_set = sets.pop().expect("created 2 sets");
+    Ok((camera_set, g_buffer_set))
 }
 
 fn create_desc_sets_gbuffer(
@@ -199,23 +190,6 @@ fn create_desc_set_gbuffer(descriptor_pool: Arc<DescriptorPool>) -> anyhow::Resu
         .context("allocating lighting pass g-buffer descriptor set")?;
 
     Ok(desc_set)
-}
-
-fn write_desc_sets_gbuffer(
-    desc_sets_gbuffer: &Vec<DescriptorSet>,
-    normal_buffer: &ImageView<Image>,
-    albedo_buffer: &ImageView<Image>,
-    primitive_id_buffers: &Vec<Arc<ImageView<Image>>>,
-) -> anyhow::Result<()> {
-    for i in 0..desc_sets_gbuffer.len() {
-        write_desc_set_gbuffer(
-            &desc_sets_gbuffer[i],
-            normal_buffer,
-            albedo_buffer,
-            primitive_id_buffers[i].as_ref(),
-        )?;
-    }
-    Ok(())
 }
 
 fn write_desc_set_gbuffer(
@@ -302,7 +276,7 @@ fn create_pipeline(
     let viewport_state = ViewportState::new_dynamic(1, 1);
 
     let color_blend_state =
-        ColorBlendState::new_default(vec![ColorBlendState::blend_state_disabled()]);
+        ColorBlendState::new_disabled(render_pass_indices::DEFERRED_COLOR_ATTACHMENT_COUNT);
 
     let pipeline_properties = GraphicsPipelineProperties {
         color_blend_state,
