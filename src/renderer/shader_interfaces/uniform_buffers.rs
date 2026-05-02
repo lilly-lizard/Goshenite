@@ -1,5 +1,5 @@
 use crate::user_interface::camera::Camera;
-use glam::{Mat4, Vec3, Vec4};
+use glam::{Mat4, Vec3};
 
 /// Camera data read by GPU shaders
 #[repr(C)]
@@ -69,20 +69,15 @@ impl CameraUniformBuffer {
 #[derive(Clone, Copy, Default, Debug)]
 pub struct GizmoUniformBuffer {
     pub object_center: [f32; 4],
-    pub view_depth: f32,
+    pub gizmo_scale: f32,
 }
 
 impl GizmoUniformBuffer {
     #[inline]
-    pub fn new(object_center: Vec4, view_depth: f32) -> Self {
+    pub fn new(object_center: Vec3, gizmo_scale: f32) -> Self {
         Self {
-            object_center: [
-                object_center.x,
-                object_center.y,
-                object_center.z,
-                object_center.w,
-            ],
-            view_depth,
+            object_center: [object_center.x, object_center.y, object_center.z, 1.0],
+            gizmo_scale,
         }
     }
 }

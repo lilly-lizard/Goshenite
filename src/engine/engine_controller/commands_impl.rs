@@ -1,5 +1,6 @@
 use super::EngineController;
 use crate::{
+    config,
     engine::{
         commands::{Command, CommandWithSource, ValidationCommand},
         object::{
@@ -309,10 +310,12 @@ impl EngineController {
         self.selected_primitive_op_index = None;
         self.gizmo_visibility.hide_all();
         self.camera.deselect_primitive_op();
-        if let Some(target_object_id) = self.selected_object_id {
-            if let Some(object) = self.object_collection.get_object(target_object_id) {
-                self.camera
-                    .set_lock_on_target_object(target_object_id, object.center);
+        if config::ARCBALL_ON_SELECT {
+            if let Some(target_object_id) = self.selected_object_id {
+                if let Some(object) = self.object_collection.get_object(target_object_id) {
+                    self.camera
+                        .set_lock_on_target_object(target_object_id, object.center);
+                }
             }
         }
     }
@@ -355,11 +358,13 @@ impl EngineController {
         self.gizmo_visibility.show_all();
         // note: render_manager.update_gizmo_center not called here
         self.gui.update_selected_primitive_op(&primitive_op);
-        self.camera.set_lock_on_target_primitive_op(
-            object_id_to_select,
-            primitive_op_index_to_select,
-            center,
-        );
+        if config::ARCBALL_ON_SELECT {
+            self.camera.set_lock_on_target_primitive_op(
+                object_id_to_select,
+                primitive_op_index_to_select,
+                center,
+            );
+        }
     }
 
     /// Also deselects primitive op
@@ -378,8 +383,10 @@ impl EngineController {
 
         self.gizmo_visibility.show_all();
         // note: render_manager.update_gizmo_center not called here
-        self.camera
-            .set_lock_on_target_object(object_id_to_select, object.center);
+        if config::ARCBALL_ON_SELECT {
+            self.camera
+                .set_lock_on_target_object(object_id_to_select, object.center);
+        }
     }
 
     // ~~ Objects: Removal ~~

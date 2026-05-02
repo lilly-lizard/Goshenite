@@ -14,6 +14,7 @@ use super::{
     },
 };
 use crate::{
+    config,
     engine::object::objects_delta::ObjectsDelta,
     helper::anyhow_panic::log_anyhow_error_and_sources,
     renderer::{
@@ -40,7 +41,7 @@ use bort_vk::{
     Surface, Swapchain, SwapchainImage,
 };
 use egui::{ClippedPrimitive, TexturesDelta};
-use glam::{Vec3, Vec4};
+use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::sync::Arc;
@@ -321,9 +322,7 @@ impl RenderManager {
         //self.wait_for_previous_frame_fence()?; // throws up semaphore validation errors?
         self.wait_idle_device()?;
 
-        let view_depth: f32 = 20.;
-        let write_data =
-            GizmoUniformBuffer::new(Vec4::from((selected_object_center, 0.)), view_depth);
+        let write_data = GizmoUniformBuffer::new(selected_object_center, config::GIZMO_SCALE);
         self.gizmo_ubo
             .write_struct(write_data, 0)
             .context("uploading selected object center to gizmo rendering buffer")?;
