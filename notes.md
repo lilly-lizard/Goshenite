@@ -1,16 +1,17 @@
 # plan:
 
 - note that gizmo elements will need to be translucent sometimes (e.g. plane translate)
-	- add new readable_object_id output to 2nd subpass
-	- make internal object_id buffer transient and GPU only
-	- put gizmo pass in 2nd subpass and write object_id to new buffer
-	- put gizmo id in instance buffer to free up pc for vec4 alpha color
-	- add GizmoVisibility (including center) and GizmoItem structs, note that multiple gizmo types can be on simultaneously
-- remove arcball camera (have hidden option for it)
-	- it doesn't make sense with gizmo dragging
-	- make simple controls similar to bambu studio or smthn
-	- config for pan etc
+	- add new readable_object_id output to 2nd subpass ✔️
+	- make internal object_id buffer transient and GPU only ✔️
+	- put gizmo pass in 2nd subpass and write object_id to new buffer ✔️
+	- put gizmo id in instance buffer to free up pc for vec4 alpha color ✔️
+	- add GizmoVisibility (including center) and GizmoItem structs, note that multiple gizmo types can be on simultaneously ✔️
+- remove arcball camera (have hidden option for it) ✔️
+	- it doesn't make sense with gizmo dragging ✔️
+	- make simple controls similar to bambu studio or smthn 🔨
+	- config for pan etc 🔨
 - make gui a side panel
+	- draw a basic side panel
 	- make object select and object edit 2 separate modes, similar to pressing tab in blender
 	- most of time you want to click on object and move it around
 	- make outline for selected object/primitive op
