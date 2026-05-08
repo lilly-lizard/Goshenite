@@ -12,7 +12,6 @@ impl Gui {
             commands = layout_camera_control(ui, camera);
         };
         egui::Window::new("Camera")
-            .open(&mut self.sub_window_states.camera_control)
             .resizable(true)
             .vscroll(true)
             .hscroll(true)

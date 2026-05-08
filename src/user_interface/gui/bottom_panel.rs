@@ -1,5 +1,4 @@
 use super::Gui;
-use crate::user_interface::gui_state::SubWindowStates;
 use egui::Ui;
 
 impl Gui {
@@ -10,7 +9,7 @@ impl Gui {
     }
 }
 
-fn bottom_panel_layout(ui: &mut Ui, window_states: &mut SubWindowStates) {
+fn bottom_panel_layout(ui: &mut Ui) {
     ui.horizontal_wrapped(|ui| {
         ui.visuals_mut().button_frame = false; // idk what this does tbh
 

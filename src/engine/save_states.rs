@@ -4,11 +4,9 @@ use super::{
 };
 use crate::{
     config::{PRECURSOR_BYTES, PRECURSOR_BYTE_COUNT},
-    engine::config_engine::{
-        HIDDEN_STORAGE_DIR, SAVE_STATE_FILENAME_GUI_POSITIONS, SAVE_STATE_FILENAME_GUI_WINDOW,
-    },
+    engine::config_engine::{HIDDEN_STORAGE_DIR, SAVE_STATE_FILENAME_GUI_POSITIONS},
     helper::more_errors::IoError,
-    user_interface::{camera::Camera, gui_state::SubWindowStates},
+    user_interface::camera::Camera,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use std::{fs, path::PathBuf};
@@ -39,17 +37,6 @@ pub fn save_state_gui_positions(gui_memory: &egui::Memory) -> Result<(), IoError
 }
 pub fn load_state_gui_positions() -> Result<egui::Memory, IoError> {
     load_state::<egui::Memory>(SAVE_STATE_FILENAME_GUI_POSITIONS, Some(HIDDEN_STORAGE_DIR))
-}
-
-pub fn save_state_gui_windows(sub_window_states: &SubWindowStates) -> Result<(), IoError> {
-    save_state(
-        sub_window_states,
-        SAVE_STATE_FILENAME_GUI_WINDOW,
-        Some(HIDDEN_STORAGE_DIR),
-    )
-}
-pub fn load_state_gui_windows() -> Result<SubWindowStates, IoError> {
-    load_state::<SubWindowStates>(SAVE_STATE_FILENAME_GUI_WINDOW, Some(HIDDEN_STORAGE_DIR))
 }
 
 // ~~ Private ~~

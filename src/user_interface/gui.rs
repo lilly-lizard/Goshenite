@@ -1,8 +1,5 @@
 use self::command_palette::GuiStateCommandPalette;
-use super::{
-    camera::Camera,
-    gui_state::{GuiState, SubWindowStates},
-};
+use super::{camera::Camera, gui_state::GuiState};
 use crate::{
     engine::{
         commands::{Command, CommandWithSource},
@@ -11,10 +8,7 @@ use crate::{
             object_collection::ObjectCollection,
             primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
-        save_states::{
-            load_state_gui_positions, load_state_gui_windows, save_state_gui_positions,
-            save_state_gui_windows,
-        },
+        save_states::{load_state_gui_positions, save_state_gui_positions},
     },
     helper::more_errors::IoError,
     renderer::config_renderer::RenderDebugOptions,
@@ -54,7 +48,6 @@ pub struct Gui {
     window: Arc<Window>,
     winit_state: egui_winit::State,
     mesh_primitives: Vec<egui::ClippedPrimitive>,
-    sub_window_states: SubWindowStates,
     gui_state: GuiState,
     command_palette_state: GuiStateCommandPalette,
     textures_delta_accumulation: Vec<TexturesDelta>,
@@ -93,23 +86,12 @@ impl Gui {
                 _ => ()
             }
         };
-        let sub_window_states = match load_state_gui_windows() {
-            Ok(loaded_window_state) => loaded_window_state,
-            Err(e) => {
-                match e {
-                    IoError::FileDoesntExist(_file_path, _e) => info!("no gui window open state storage file found. initializing with default gui window state"),
-                    _ => ()
-                }
-                Default::default()
-            }
-        };
 
         Self {
             egui_context,
             window,
             winit_state,
             mesh_primitives: Default::default(),
-            sub_window_states,
             gui_state: Default::default(),
             command_palette_state: Default::default(),
             textures_delta_accumulation: Default::default(),
@@ -166,40 +148,6 @@ impl Gui {
 
         self.draw_bottom_panel();
 
-        if self.sub_window_states.object_list {
-            let mut new_commands =
-                self.draw_object_list_window(object_collection, selected_object_id);
-            commands.append(&mut new_commands);
-        }
-
-        if self.sub_window_states.object_editor {
-            let mut new_commands = self.draw_object_editor_window(
-                object_collection,
-                selected_object_id,
-                selected_primitive_op_index,
-            );
-            commands.append(&mut new_commands);
-        }
-
-        if self.sub_window_states.camera_control {
-            let mut new_commands = self.draw_camera_control_window(camera);
-            commands.append(&mut new_commands);
-        }
-
-        if self.sub_window_states.command_palette {
-            let new_command = self.draw_command_palette(window);
-            if let Some(some_command) = new_command {
-                commands.push(some_command);
-                // close command palette after command has been selected
-                self.sub_window_states.command_palette = false;
-            }
-        }
-
-        if self.sub_window_states.debug_options {
-            let mut new_commands = self.draw_debug_options_window(render_debug_options);
-            commands.append(&mut new_commands);
-        }
-
         // end frame
         let egui::FullOutput {
             platform_output,
@@ -234,18 +182,9 @@ impl Gui {
         std::mem::take(&mut self.textures_delta_accumulation)
     }
 
-    pub fn toggle_command_palette_visability(&mut self) {
-        self.sub_window_states.command_palette = !self.sub_window_states.command_palette;
-    }
-
-    pub fn set_command_palette_visability(&mut self, is_open: bool) {
-        self.sub_window_states.command_palette = is_open;
-    }
-
     pub fn save_gui_state(&self) -> anyhow::Result<()> {
         self.egui_context
             .memory(save_state_gui_positions)
-            .context("saving gui positions state")?;
-        save_state_gui_windows(&self.sub_window_states).context("saving gui window state")
+            .context("saving gui positions state")
     }
 }

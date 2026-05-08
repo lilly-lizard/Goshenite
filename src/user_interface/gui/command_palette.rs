@@ -53,7 +53,6 @@ impl Gui {
             new_command = layout_command_palette(ui, &mut self.command_palette_state);
         };
         egui::Window::new("Command Palette")
-            .open(&mut self.sub_window_states.command_palette)
             .resizable(true)
             .vscroll(true)
             .fixed_size([width, height])
