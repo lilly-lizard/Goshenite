@@ -13,7 +13,6 @@ impl Gui {
             commands = layout_debug_options(ui, render_debug_options);
         };
         egui::Window::new("Debug Options")
-            .open(&mut self.sub_window_states.debug_options)
             .resizable(true)
             .vscroll(true)
             .hscroll(true)

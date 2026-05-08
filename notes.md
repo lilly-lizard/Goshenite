@@ -11,11 +11,15 @@
 	- make simple controls similar to bambu studio or smthn
 	- config for pan etc
 - make gui a side panel
-	- make object select and object edit 2 separate modes, similar to pressing tab in blender
-	- most of time you want to click on object and move it around
-	- make outline for selected object/primitive op
-	- config option to be top,left,right,bottom
-	- have settings window that pops up in the middle of the window
+	- plan:
+		- delete everything
+		- draw status bar with settings button that opens up settings menu in middle of screen (no state save)
+	- goals:
+		- make object select and object edit 2 separate modes, similar to pressing tab in blender
+		- most of time you want to click on object and move it around
+		- make outline for selected object/primitive op
+		- config option to be top,left,right,bottom
+		- have settings window that pops up in the middle of the window
 - click and drag gizmo arrows
 - draw circle at selected object center
 - generate BVH and render BVH outlines

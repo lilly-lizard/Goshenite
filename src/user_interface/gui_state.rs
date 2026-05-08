@@ -4,28 +4,6 @@ use crate::engine::{
     primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
 };
 use glam::Vec3;
-use serde::{Deserialize, Serialize};
-
-/// Wherver or not different windows are open
-#[derive(Clone, Serialize, Deserialize)]
-pub struct SubWindowStates {
-    pub object_list: bool,
-    pub object_editor: bool,
-    pub camera_control: bool,
-    pub command_palette: bool,
-    pub debug_options: bool,
-}
-impl Default for SubWindowStates {
-    fn default() -> Self {
-        Self {
-            object_list: true,
-            object_editor: true,
-            camera_control: false,
-            command_palette: false,
-            debug_options: false,
-        }
-    }
-}
 
 /// Amount to increment when modifying values via dragging
 pub const DRAG_INC: f64 = 0.02;

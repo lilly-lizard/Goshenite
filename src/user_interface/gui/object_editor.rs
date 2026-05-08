@@ -43,7 +43,6 @@ impl Gui {
             );
         };
         egui::Window::new("Object Editor")
-            .open(&mut self.sub_window_states.object_editor)
             .resizable(true)
             .vscroll(true)
             .hscroll(true)

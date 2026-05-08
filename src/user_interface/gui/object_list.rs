@@ -22,7 +22,6 @@ impl Gui {
             commands = layout_object_list(ui, selected_object_id, object_collection);
         };
         egui::Window::new("Objects")
-            .open(&mut self.sub_window_states.object_list)
             .resizable(true)
             .vscroll(true)
             .hscroll(true)
