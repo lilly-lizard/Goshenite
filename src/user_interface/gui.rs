@@ -1,5 +1,5 @@
 use self::command_palette::GuiStateCommandPalette;
-use super::{camera::Camera, gui_state::GuiState};
+use super::{camera::Camera, gui_state::ValueState};
 use crate::{
     engine::{
         commands::{Command, CommandWithSource},
@@ -29,28 +29,19 @@ mod debug_options;
 mod object_editor;
 mod object_list;
 
-/// Describes how something has been edited/added/removed by a function
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub enum EditState {
-    NoChange,
-    Modified,
-}
-
-impl EditState {
-    pub fn combine(self, other: Self) -> Self {
-        self.max(other)
-    }
-}
-
 /// Controller for an [`egui`] immediate-mode gui
 pub struct Gui {
     egui_context: egui::Context,
     window: Arc<Window>,
     winit_state: egui_winit::State,
+
     mesh_primitives: Vec<egui::ClippedPrimitive>,
-    gui_state: GuiState,
-    command_palette_state: GuiStateCommandPalette,
     textures_delta_accumulation: Vec<TexturesDelta>,
+
+    value_state: ValueState,
+    command_palette_state: GuiStateCommandPalette,
+    settings_window_visible: bool,
+    command_pallette_visible: bool,
 }
 
 // Public functions
@@ -92,7 +83,7 @@ impl Gui {
             window,
             winit_state,
             mesh_primitives: Default::default(),
-            gui_state: Default::default(),
+            value_state: Default::default(),
             command_palette_state: Default::default(),
             textures_delta_accumulation: Default::default(),
         }
@@ -125,7 +116,7 @@ impl Gui {
 
     /// Call this when a primitive op is selected
     pub fn update_selected_primitive_op(&mut self, selected_primitive_op: &PrimitiveOp) {
-        self.gui_state
+        self.value_state
             .set_selected_primitive_op_fields(selected_primitive_op);
     }
 

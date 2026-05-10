@@ -1,4 +1,4 @@
-use super::{gui::EditState, gui_state::DRAG_INC};
+use super::{gui::DataUpdateState, gui_state::DRAG_INC};
 use crate::{
     config,
     engine::{
@@ -44,25 +44,25 @@ pub fn op_drop_down(
     }
 }
 
-pub fn sphere_editor_ui(ui: &mut egui::Ui, sphere: &mut Sphere) -> EditState {
+pub fn sphere_editor_ui(ui: &mut egui::Ui, sphere: &mut Sphere) -> DataUpdateState {
     let new_radius = editable_radius_ui(ui, sphere.radius);
 
     if let Some(some_new_radius) = new_radius {
         sphere.radius = some_new_radius;
-        EditState::Modified
+        DataUpdateState::Modified
     } else {
-        EditState::NoChange
+        DataUpdateState::NoChange
     }
 }
 
-pub fn cube_editor_ui(ui: &mut egui::Ui, cube: &mut Cube) -> EditState {
+pub fn cube_editor_ui(ui: &mut egui::Ui, cube: &mut Cube) -> DataUpdateState {
     editable_dimensions_ui(ui, &mut cube.dimensions)
 }
 
 pub fn uber_primitive_editor_ui(
     ui: &mut egui::Ui,
     uber_primitive: &mut UberPrimitive,
-) -> EditState {
+) -> DataUpdateState {
     editable_uber_parameters_ui(
         ui,
         &mut uber_primitive.dimensions,
@@ -70,16 +70,16 @@ pub fn uber_primitive_editor_ui(
     )
 }
 
-pub fn blend_editor_ui(ui: &mut egui::Ui, blend: &mut f32) -> EditState {
+pub fn blend_editor_ui(ui: &mut egui::Ui, blend: &mut f32) -> DataUpdateState {
     let original_blend = *blend;
     ui.horizontal(|ui_h| {
         ui_h.label("Blend:");
         ui_h.add(DragValue::new(blend).speed(DRAG_INC));
     });
     if original_blend != *blend {
-        EditState::Modified
+        DataUpdateState::Modified
     } else {
-        EditState::NoChange
+        DataUpdateState::NoChange
     }
 }
 
@@ -87,7 +87,7 @@ pub fn color_specular_editor_ui(
     ui: &mut egui::Ui,
     color: &mut Vec3,
     specular: &mut f32,
-) -> EditState {
+) -> DataUpdateState {
     let original_color = *color;
     let original_specular = *specular;
 
@@ -102,22 +102,22 @@ pub fn color_specular_editor_ui(
     });
 
     if original_color != *color || original_specular != *specular {
-        EditState::Modified
+        DataUpdateState::Modified
     } else {
-        EditState::NoChange
+        DataUpdateState::NoChange
     }
 }
 
 pub fn primitive_transform_editor_ui(
     ui: &mut egui::Ui,
     primitive_transform: &mut PrimitiveTransform,
-) -> EditState {
-    let mut edit_state = EditState::NoChange;
+) -> DataUpdateState {
+    let mut edit_state = DataUpdateState::NoChange;
 
     let edited_center = editable_center_ui(ui, primitive_transform.center);
     if let Some(some_new_center) = edited_center {
         primitive_transform.center = some_new_center;
-        edit_state = EditState::Modified;
+        edit_state = DataUpdateState::Modified;
     }
 
     let edited_axis = editable_axis_ui(ui, primitive_transform.rotation_tentative_append().axis);
@@ -125,13 +125,13 @@ pub fn primitive_transform_editor_ui(
         // axis changed -> old tentative rotation invalid -> need to commit it before changing it
         primitive_transform.commit_tentative_rotation();
         primitive_transform.set_tentative_rotation_axis(changed_axis);
-        edit_state = EditState::Modified;
+        edit_state = DataUpdateState::Modified;
     }
 
     let edited_angle = editable_angle_ui(ui, primitive_transform.rotation_tentative_append().angle);
     if let Some(change_angle) = edited_angle {
         primitive_transform.set_tentative_rotation_angle(change_angle);
-        edit_state = EditState::Modified;
+        edit_state = DataUpdateState::Modified;
     }
 
     edit_state
@@ -247,7 +247,7 @@ pub fn editable_radius_ui(ui: &mut egui::Ui, original_radius: f32) -> Option<f32
     }
 }
 
-pub fn editable_dimensions_ui(ui: &mut egui::Ui, dimensions: &mut Vec3) -> EditState {
+pub fn editable_dimensions_ui(ui: &mut egui::Ui, dimensions: &mut Vec3) -> DataUpdateState {
     let mut something_changed: bool = false;
 
     ui.horizontal(|ui| {
@@ -264,9 +264,9 @@ pub fn editable_dimensions_ui(ui: &mut egui::Ui, dimensions: &mut Vec3) -> EditS
     });
 
     if something_changed {
-        EditState::Modified
+        DataUpdateState::Modified
     } else {
-        EditState::NoChange
+        DataUpdateState::NoChange
     }
 }
 
@@ -274,7 +274,7 @@ pub fn editable_uber_parameters_ui(
     ui: &mut egui::Ui,
     dimensions: &mut Vec4,
     corner_radius: &mut Vec2,
-) -> EditState {
+) -> DataUpdateState {
     let mut something_changed: bool = false;
 
     ui.horizontal(|ui| {
@@ -304,8 +304,8 @@ pub fn editable_uber_parameters_ui(
     });
 
     if something_changed {
-        EditState::Modified
+        DataUpdateState::Modified
     } else {
-        EditState::NoChange
+        DataUpdateState::NoChange
     }
 }

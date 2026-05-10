@@ -15,8 +15,7 @@ use crate::{
             blend_editor_ui, color_specular_editor_ui, cube_editor_ui, op_drop_down,
             primitive_transform_editor_ui, sphere_editor_ui, uber_primitive_editor_ui,
         },
-        gui::EditState,
-        gui_state::{GuiState, DRAG_INC},
+        gui_state::{DataUpdateState, ValueState, DRAG_INC},
     },
 };
 use egui::{ComboBox, DragValue, RichText, TextStyle};
@@ -36,7 +35,7 @@ impl Gui {
         let add_contents = |ui: &mut egui::Ui| {
             commands = layout_object_editor(
                 ui,
-                &mut self.gui_state,
+                &mut self.value_state,
                 object_collection,
                 selected_object_id,
                 selected_primitive_op_index,
@@ -54,7 +53,7 @@ impl Gui {
 
 fn layout_object_editor(
     ui: &mut egui::Ui,
-    gui_state: &mut GuiState,
+    value_state: &mut ValueState,
     object_collection: &ObjectCollection,
     selected_object_id: Option<ObjectId>,
     selected_primitive_op_index: Option<PrimitiveOpIndex>,
@@ -77,7 +76,7 @@ fn layout_object_editor(
     primitive_op_editor(
         ui,
         &mut commands,
-        gui_state,
+        value_state,
         selected_object,
         some_selected_object_id,
         selected_primitive_op_index,
@@ -167,7 +166,7 @@ fn object_properties_editor(
 fn primitive_op_editor(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
-    gui_state: &mut GuiState,
+    value_state: &mut ValueState,
     selected_object: &Object,
     selected_object_id: ObjectId,
     selected_primitive_op_index: Option<PrimitiveOpIndex>,
@@ -176,25 +175,25 @@ fn primitive_op_editor(
         existing_primitive_op_editor(
             ui,
             commands,
-            gui_state,
+            value_state,
             selected_object,
             selected_object_id,
             selected_primitive_op_index,
         );
     } else {
-        new_primitive_op_editor(ui, commands, gui_state, selected_object_id);
+        new_primitive_op_editor(ui, commands, value_state, selected_object_id);
     }
 }
 
 fn existing_primitive_op_editor(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
-    gui_state: &mut GuiState,
+    value_state: &mut ValueState,
     selected_object: &Object,
     selected_object_id: ObjectId,
     selected_primitive_op_index: PrimitiveOpIndex,
 ) {
-    let mut primitive_op_edit_state = EditState::NoChange;
+    let mut primitive_op_edit_state = DataUpdateState::NoChange;
 
     let selected_object_id = selected_object_id;
     let Some(selected_primitive_op) = selected_object
@@ -205,11 +204,11 @@ fn existing_primitive_op_editor(
         debug!("invalid primitive op index");
         debug!("  object id = {}", selected_object_id);
         debug!("  primitive op index = {}", selected_primitive_op_index);
-        new_primitive_op_editor(ui, commands, gui_state, selected_object_id);
+        new_primitive_op_editor(ui, commands, value_state, selected_object_id);
         return;
     };
 
-    gui_state.set_primitive_op_edit_state(selected_primitive_op);
+    value_state.set_primitive_op_edit_state(selected_primitive_op);
 
     ui.separator();
 
@@ -219,21 +218,22 @@ fn existing_primitive_op_editor(
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        let possible_updated_op = op_drop_down(ui_h, gui_state.op_edit, selected_object_id);
+        let possible_updated_op = op_drop_down(ui_h, value_state.op, selected_object_id);
         if let Some(updated_op) = possible_updated_op {
             // user edited the op via drop-down menu
-            gui_state.op_edit = updated_op;
-            primitive_op_edit_state = EditState::Modified;
+            value_state.op = updated_op;
+            primitive_op_edit_state = DataUpdateState::Modified;
         }
 
         // primitive type drop down menu
-        let primitive_type_changed = primitive_type_drop_down(ui_h, gui_state, selected_object_id);
+        let primitive_type_changed =
+            primitive_type_drop_down(ui_h, value_state, selected_object_id);
         primitive_op_edit_state = primitive_op_edit_state.combine(primitive_type_changed);
     });
 
     // primitive editor
 
-    let primitive_edit_state = primitive_editor_ui(ui, gui_state);
+    let primitive_edit_state = primitive_editor_ui(ui, value_state);
     primitive_op_edit_state = primitive_op_edit_state.combine(primitive_edit_state);
 
     // delete button
@@ -248,15 +248,15 @@ fn existing_primitive_op_editor(
     }
 
     match primitive_op_edit_state {
-        EditState::Modified => {
+        DataUpdateState::Modified => {
             // update the primitive op data with what we've been using
             commands.push(Command::UpdatePrimitiveOp {
                 object_id: selected_object_id,
                 primitive_op_index: selected_primitive_op_index,
-                new_primitive_op: gui_state.get_primitive_op_from_editor_fields(),
+                new_primitive_op: value_state.get_primitive_op_from_editor_fields(),
             });
         }
-        EditState::NoChange => (),
+        DataUpdateState::NoChange => (),
     }
 }
 
@@ -264,7 +264,7 @@ fn existing_primitive_op_editor(
 fn new_primitive_op_editor(
     ui: &mut egui::Ui,
     commands: &mut Vec<Command>,
-    gui_state: &mut GuiState,
+    value_state: &mut ValueState,
     selected_object_id: ObjectId,
 ) {
     ui.separator();
@@ -272,19 +272,19 @@ fn new_primitive_op_editor(
 
     ui.horizontal(|ui_h| {
         // op drop down menu
-        let possible_updated_op = op_drop_down(ui_h, gui_state.op_edit, selected_object_id);
+        let possible_updated_op = op_drop_down(ui_h, value_state.op, selected_object_id);
         if let Some(updated_op) = possible_updated_op {
             // user edited the op via drop-down menu
-            gui_state.op_edit = updated_op;
+            value_state.op = updated_op;
         }
 
         // primitive type drop down menu
-        primitive_type_drop_down(ui_h, gui_state, selected_object_id);
+        primitive_type_drop_down(ui_h, value_state, selected_object_id);
     });
 
     // primitive editor
 
-    primitive_editor_ui(ui, gui_state);
+    primitive_editor_ui(ui, value_state);
 
     // Add and Reset buttons
 
@@ -298,29 +298,29 @@ fn new_primitive_op_editor(
         if config_ui::SELECT_PRIMITIVE_OP_AFTER_ADD {
             commands.push(Command::PushPrimitiveOpAndSelect {
                 object_id: selected_object_id,
-                primitive_op: gui_state.get_primitive_op_from_editor_fields(),
+                primitive_op: value_state.get_primitive_op_from_editor_fields(),
             });
         } else {
             commands.push(Command::PushPrimitiveOp {
                 object_id: selected_object_id,
-                primitive_op: gui_state.get_primitive_op_from_editor_fields(),
+                primitive_op: value_state.get_primitive_op_from_editor_fields(),
             });
         }
     }
     if clicked_reset {
-        gui_state.reset_primitive_op_fields();
+        value_state.reset_primitive_op_fields();
     }
 }
 
-/// Returns true if the primitive type was changed. If this happens, gui_state.primitive_edit_state
+/// Returns true if the primitive type was changed. If this happens, value_state.primitive_edit_state
 /// gets set to the default of the chosen type.
 fn primitive_type_drop_down(
     ui: &mut egui::Ui,
-    gui_state: &mut GuiState,
+    value_state: &mut ValueState,
     selected_object_id: ObjectId,
-) -> EditState {
-    let selected_primitive_type_name: &str = gui_state.primitive_edit.type_name();
-    let mut type_has_changed = EditState::NoChange;
+) -> DataUpdateState {
+    let selected_primitive_type_name: &str = value_state.primitive.type_name();
+    let mut type_has_changed = DataUpdateState::NoChange;
 
     ComboBox::from_id_salt(format!("primitive type drop down {:?}", selected_object_id))
         .width(0_f32)
@@ -328,7 +328,7 @@ fn primitive_type_drop_down(
         .show_ui(ui, |ui_p| {
             for (variant_default_primitive, variant_type_name) in Primitive::variants_with_names() {
                 // drop-down option for each primitive type
-                let this_is_selected = discriminant(&gui_state.primitive_edit)
+                let this_is_selected = discriminant(&value_state.primitive)
                     == discriminant(&variant_default_primitive);
                 let label_clicked = ui_p
                     .selectable_label(this_is_selected, variant_type_name)
@@ -336,8 +336,8 @@ fn primitive_type_drop_down(
 
                 if label_clicked & !this_is_selected {
                     // new primitive type was selected
-                    type_has_changed = EditState::Modified;
-                    gui_state.primitive_edit = variant_default_primitive;
+                    type_has_changed = DataUpdateState::Modified;
+                    value_state.primitive = variant_default_primitive;
                 }
             }
         });
@@ -463,16 +463,16 @@ fn primitive_op_list_item(
     }
 }
 
-fn primitive_editor_ui(ui: &mut egui::Ui, gui_state: &mut GuiState) -> EditState {
-    let primitive_edit_state = match &mut gui_state.primitive_edit {
+fn primitive_editor_ui(ui: &mut egui::Ui, value_state: &mut ValueState) -> DataUpdateState {
+    let primitive_edit_state = match &mut value_state.primitive {
         Primitive::Sphere(p) => sphere_editor_ui(ui, p),
         Primitive::Cube(p) => cube_editor_ui(ui, p),
         Primitive::UberPrimitive(p) => uber_primitive_editor_ui(ui, p),
     };
-    let transform_edit_state = primitive_transform_editor_ui(ui, &mut gui_state.transform_edit);
-    let blend_edit_state = blend_editor_ui(ui, &mut gui_state.blend_edit);
+    let transform_edit_state = primitive_transform_editor_ui(ui, &mut value_state.transform);
+    let blend_edit_state = blend_editor_ui(ui, &mut value_state.blend);
     let color_specular_edit_state =
-        color_specular_editor_ui(ui, &mut gui_state.albedo_edit, &mut gui_state.specular_edit);
+        color_specular_editor_ui(ui, &mut value_state.albedo, &mut value_state.specular);
 
     transform_edit_state
         .combine(primitive_edit_state)

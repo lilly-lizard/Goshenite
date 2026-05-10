@@ -8,64 +8,71 @@ use glam::Vec3;
 /// Amount to increment when modifying values via dragging
 pub const DRAG_INC: f64 = 0.02;
 
-/// State persisting between frames
-pub struct GuiState {
-    /// Stotes the state of the fields in the gui editor
-    pub primitive_edit: Primitive,
-    /// Stores the state of the primitive transform fields in the gui editor
-    pub transform_edit: PrimitiveTransform,
-    /// Stotes the state of the op field in the gui editor
-    pub op_edit: Operation,
-    /// Stores the state of the blend field in the gui editor
-    pub blend_edit: f32,
+/// Describes how something has been edited/added/removed by a function
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DataUpdateState {
+    NoChange,
+    Modified,
+}
+impl DataUpdateState {
+    pub fn combine(self, other: Self) -> Self {
+        self.max(other)
+    }
+}
 
-    pub albedo_edit: Vec3,
-    pub specular_edit: f32,
+/// State of editable fields persisting between frames
+pub struct ValueState {
+    pub primitive: Primitive,
+    pub transform: PrimitiveTransform,
+    pub op: Operation,
+    pub blend: f32,
+    pub albedo: Vec3,
+    pub specular: f32,
 }
 
 // Setters
-impl GuiState {
+impl ValueState {
     pub fn set_selected_primitive_op_fields(&mut self, selected_primitive_op: &PrimitiveOp) {
-        self.primitive_edit = selected_primitive_op.primitive;
-        self.op_edit = selected_primitive_op.op;
-        self.albedo_edit = selected_primitive_op.albedo;
-        self.specular_edit = selected_primitive_op.specular;
+        self.primitive = selected_primitive_op.primitive;
+        self.op = selected_primitive_op.op;
+        self.albedo = selected_primitive_op.albedo;
+        self.specular = selected_primitive_op.specular;
     }
 
     pub fn reset_primitive_op_fields(&mut self) {
-        self.op_edit = Default::default();
-        self.transform_edit = Default::default();
-        self.primitive_edit = Default::default();
+        self.op = Default::default();
+        self.transform = Default::default();
+        self.primitive = Default::default();
     }
 
     pub fn set_primitive_op_edit_state(&mut self, primitive_op: &PrimitiveOp) {
-        self.primitive_edit = primitive_op.primitive;
-        self.transform_edit = primitive_op.transform;
-        self.op_edit = primitive_op.op;
-        self.blend_edit = primitive_op.blend;
+        self.primitive = primitive_op.primitive;
+        self.transform = primitive_op.transform;
+        self.op = primitive_op.op;
+        self.blend = primitive_op.blend;
     }
 
     pub fn get_primitive_op_from_editor_fields(&self) -> PrimitiveOp {
         PrimitiveOp::new(
-            self.primitive_edit,
-            self.transform_edit,
-            self.op_edit,
-            self.blend_edit,
-            self.albedo_edit,
-            self.specular_edit,
+            self.primitive,
+            self.transform,
+            self.op,
+            self.blend,
+            self.albedo,
+            self.specular,
         )
     }
 }
 
-impl Default for GuiState {
+impl Default for ValueState {
     fn default() -> Self {
         Self {
-            op_edit: Default::default(),
-            blend_edit: 0.,
-            transform_edit: Default::default(),
-            primitive_edit: Default::default(),
-            albedo_edit: DEFAULT_ALBEDO,
-            specular_edit: DEFAULT_SPECULAR,
+            op: Default::default(),
+            blend: 0.,
+            transform: Default::default(),
+            primitive: Default::default(),
+            albedo: DEFAULT_ALBEDO,
+            specular: DEFAULT_SPECULAR,
         }
     }
 }
