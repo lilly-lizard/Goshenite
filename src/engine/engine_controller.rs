@@ -340,7 +340,7 @@ impl EngineController {
             }
             KeyCode::Escape => {
                 if let ElementState::Released = key_event.state {
-                    self.gui.set_command_palette_visability(false);
+                    self.gui.hide_command_palette();
                 }
             }
             _ => (),

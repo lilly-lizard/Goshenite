@@ -1,33 +1,68 @@
 use super::Gui;
+use crate::user_interface::gui::{
+    command_palette::GuiStateCommandPalette, side_panel::SidePanelMode,
+};
 use egui::Ui;
 
 impl Gui {
-    pub(super) fn draw_bottom_panel(&mut self) {
-        egui::Panel::bottom("main top panel").show(&self.egui_context, |ui| {
-            bottom_panel_layout(ui);
+    pub(super) fn draw_bottom_panel(
+        ui: &mut egui::Ui,
+        side_panel_mode: &mut SidePanelMode,
+        settings_window_visible: &mut bool,
+        command_pallette: &mut Option<GuiStateCommandPalette>,
+    ) {
+        egui::Panel::bottom("main top panel").show_inside(ui, |ui| {
+            ui.horizontal_wrapped(|ui| {
+                bottom_panel_layout(
+                    ui,
+                    side_panel_mode,
+                    settings_window_visible,
+                    command_pallette,
+                );
+            });
         });
     }
 }
 
-fn bottom_panel_layout(ui: &mut Ui) {
-    ui.horizontal_wrapped(|ui| {
-        ui.visuals_mut().button_frame = false; // idk what this does tbh
+fn bottom_panel_layout(
+    ui: &mut Ui,
+    side_panel_mode: &mut SidePanelMode,
+    settings_window_visible: &mut bool,
+    command_pallette: &mut Option<GuiStateCommandPalette>,
+) {
+    let mut command_pallette_visible = command_pallette.is_some();
+    let (mut scene_visible, mut object_editor_visible) = side_panel_mode.bools();
+    //ui.visuals_mut().button_frame = false; // idk what this does tbh
 
-        // light/dark theme toggle
-        egui::widgets::global_theme_preference_switch(ui);
+    if ui.toggle_value(&mut scene_visible, "Scene").changed() {
+        *side_panel_mode = match scene_visible {
+            true => SidePanelMode::Scene,
+            false => SidePanelMode::Hidden,
+        };
+    };
+    if ui
+        .toggle_value(&mut object_editor_visible, "Object Editor")
+        .changed()
+    {
+        *side_panel_mode = match scene_visible {
+            true => SidePanelMode::ObjectEditor,
+            false => SidePanelMode::Hidden,
+        };
+    };
 
-        ui.separator();
+    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+        egui::warn_if_debug_build(ui);
+        egui::widgets::global_theme_preference_switch(ui); // light/dark theme toggle
 
-        // window toggles
-        ui.toggle_value(&mut window_states.object_list, "Object List");
-        ui.toggle_value(&mut window_states.object_editor, "Object Editor");
-        ui.toggle_value(&mut window_states.command_palette, "Command Pallete");
-        ui.toggle_value(&mut window_states.camera_control, "Camera Control");
-
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            egui::warn_if_debug_build(ui);
-            #[cfg(debug_assertions)]
-            ui.toggle_value(&mut window_states.debug_options, "Debug Options");
-        });
+        if ui
+            .toggle_value(&mut command_pallette_visible, "Command Pallete")
+            .changed()
+        {
+            *command_pallette = match command_pallette_visible {
+                true => Some(Default::default()),
+                false => None,
+            };
+        }
+        ui.toggle_value(settings_window_visible, "Settings");
     });
 }

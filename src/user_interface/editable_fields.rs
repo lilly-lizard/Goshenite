@@ -1,4 +1,4 @@
-use super::{gui::DataUpdateState, gui_state::DRAG_INC};
+use super::gui_state::DRAG_INC;
 use crate::{
     config,
     engine::{
@@ -12,6 +12,7 @@ use crate::{
         angle::Angle,
         axis::{Axis, CartesianAxis},
     },
+    user_interface::gui_state::DataUpdateState,
 };
 use egui::{
     color_picker::{color_edit_button_hsva, Alpha},

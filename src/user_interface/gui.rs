@@ -12,6 +12,7 @@ use crate::{
     },
     helper::more_errors::IoError,
     renderer::config_renderer::RenderDebugOptions,
+    user_interface::gui::side_panel::SidePanelMode,
 };
 use anyhow::Context;
 use egui::{TextWrapMode, TexturesDelta};
@@ -28,6 +29,7 @@ mod command_palette;
 mod debug_options;
 mod object_editor;
 mod object_list;
+mod side_panel;
 
 /// Controller for an [`egui`] immediate-mode gui
 pub struct Gui {
@@ -39,9 +41,9 @@ pub struct Gui {
     textures_delta_accumulation: Vec<TexturesDelta>,
 
     value_state: ValueState,
-    command_palette_state: GuiStateCommandPalette,
+    side_panel_mode: SidePanelMode,
     settings_window_visible: bool,
-    command_pallette_visible: bool,
+    command_pallette: Option<GuiStateCommandPalette>,
 }
 
 // Public functions
@@ -84,8 +86,10 @@ impl Gui {
             winit_state,
             mesh_primitives: Default::default(),
             value_state: Default::default(),
-            command_palette_state: Default::default(),
             textures_delta_accumulation: Default::default(),
+            side_panel_mode: Default::default(),
+            settings_window_visible: false,
+            command_pallette: None,
         }
     }
 
@@ -131,22 +135,23 @@ impl Gui {
     ) -> anyhow::Result<Vec<CommandWithSource>> {
         let mut commands = Vec::<Command>::new();
 
-        // begin frame
         let raw_input = self.winit_state.take_egui_input(window);
-        self.egui_context.begin_pass(raw_input);
 
-        // draw
-
-        self.draw_bottom_panel();
-
-        // end frame
         let egui::FullOutput {
             platform_output,
             textures_delta,
             shapes,
             pixels_per_point,
             viewport_output: _,
-        } = self.egui_context.end_pass();
+        } = self.egui_context.run_ui(raw_input, |ui| {
+            Self::draw_bottom_panel(
+                ui,
+                &mut self.side_panel_mode,
+                &mut self.settings_window_visible,
+                &mut self.command_pallette,
+            );
+        });
+
         self.winit_state
             .handle_platform_output(&self.window, platform_output);
 
@@ -177,5 +182,16 @@ impl Gui {
         self.egui_context
             .memory(save_state_gui_positions)
             .context("saving gui positions state")
+    }
+
+    pub fn toggle_command_palette_visability(&mut self) {
+        self.command_pallette = match self.command_pallette {
+            Some(_) => None,
+            None => Some(Default::default()),
+        }
+    }
+
+    pub fn hide_command_palette(&mut self) {
+        self.command_pallette = None;
     }
 }
