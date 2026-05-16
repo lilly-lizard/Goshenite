@@ -26,9 +26,9 @@ use winit::window::Window;
 mod bottom_bar;
 mod camera_control;
 mod command_palette;
-mod debug_options;
 mod object_editor;
 mod scene_editor;
+mod settings_window;
 mod side_panel;
 
 /// Controller for an [`egui`] immediate-mode gui
@@ -159,6 +159,14 @@ impl Gui {
                     object_collection,
                     selected_object_id,
                     selected_primitive_op_index,
+                );
+            }
+
+            if self.settings_window_visible {
+                Self::draw_settings_window(
+                    &self.egui_context,
+                    &mut self.settings_window_visible,
+                    render_debug_options,
                 );
             }
 

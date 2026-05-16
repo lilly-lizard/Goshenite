@@ -49,6 +49,7 @@ impl Gui {
             .min_size(MIN_SIDE_PANEL_WIDTH)
             .show_inside(ui, |ui| {
                 ui.vertical(|ui| {
+                    ui.separator();
                     commands = match side_panel_mode {
                         SidePanelMode::ObjectEditor => layout_object_editor(
                             ui,

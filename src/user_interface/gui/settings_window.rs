@@ -3,8 +3,9 @@ use crate::{engine::commands::Command, renderer::config_renderer::RenderDebugOpt
 use egui::Ui;
 
 impl Gui {
-    pub(super) fn draw_debug_options_window(
-        &mut self,
+    pub(super) fn draw_settings_window(
+        egui_context: &egui::Context,
+        settings_window_visible: &mut bool,
         render_debug_options: RenderDebugOptions,
     ) -> Vec<Command> {
         let mut commands = Vec::<Command>::new();
@@ -12,11 +13,12 @@ impl Gui {
         let add_contents = |ui: &mut egui::Ui| {
             commands = layout_debug_options(ui, render_debug_options);
         };
-        egui::Window::new("Debug Options")
+        egui::Window::new("Settings")
+            .open(settings_window_visible)
             .resizable(true)
             .vscroll(true)
             .hscroll(true)
-            .show(&self.egui_context, add_contents);
+            .show(egui_context, add_contents);
 
         commands
     }
