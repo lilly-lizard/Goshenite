@@ -20,6 +20,8 @@
 		- geometry shader draws orange line around selected object. can be seen through obscuring objects - scene mode
 		- only draw selected object in - object mode
 - click and drag gizmo arrows
+  1. apply absolute values of dragging to directions
+  2. scale based on distance from object
 - draw circle at selected object center
 - generate BVH and render BVH outlines
 

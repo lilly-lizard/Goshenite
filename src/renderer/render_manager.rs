@@ -297,24 +297,9 @@ impl RenderManager {
         })
     }
 
-    pub fn update_camera(&mut self, camera: &Camera) -> anyhow::Result<()> {
-        // todo staging buffer
-        // todo fence
-        //self.wait_for_previous_frame_fence()?; // throws up semaphore validation errors?
-        self.wait_idle_device()?;
-
-        let dimensions = self.swapchain.properties().width_height;
-        let camera_data = CameraUniformBuffer::from_camera(
-            camera,
-            [dimensions[0] as f32, dimensions[1] as f32],
-            self.shaders_write_linear_color,
-        );
-
-        self.camera_ubo
-            .write_struct(camera_data, 0)
-            .context("uploading camera ubo data")?;
-
-        Ok(())
+    /// Warning: doesn't synchronize with any previously submitted render commands
+    pub fn init_camera(&mut self, camera: &Camera) -> anyhow::Result<()> {
+        self.update_camera(camera)
     }
 
     pub fn update_gizmo_center(&mut self, selected_object_center: Vec3) -> anyhow::Result<()> {
@@ -363,6 +348,7 @@ impl RenderManager {
     pub fn render_frame(
         &mut self,
         debug_options: RenderDebugOptions,
+        camera: &Camera,
         gizmo_visibility: GizmoVisibility,
         hovered_gizmo: Option<GizmoElement>,
     ) -> anyhow::Result<()> {
@@ -407,6 +393,8 @@ impl RenderManager {
 
         let framebuffer_index = self
             .current_framebuffer_index(self.framebuffer_index_last_rendered_to, swapchain_index);
+
+        self.update_camera(camera)?;
 
         // record commands
 
@@ -597,6 +585,21 @@ impl RenderManager {
             &self.albedo_buffer,
             &self.primitive_id_buffer,
         )?;
+
+        Ok(())
+    }
+
+    fn update_camera(&mut self, camera: &Camera) -> anyhow::Result<()> {
+        let dimensions = self.swapchain.properties().width_height;
+        let camera_data = CameraUniformBuffer::from_camera(
+            camera,
+            [dimensions[0] as f32, dimensions[1] as f32],
+            self.shaders_write_linear_color,
+        );
+
+        self.camera_ubo
+            .write_struct(camera_data, 0)
+            .context("uploading camera ubo data")?;
 
         Ok(())
     }

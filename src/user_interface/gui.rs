@@ -1,5 +1,5 @@
 use self::command_palette::GuiStateCommandPalette;
-use super::{camera::Camera, gui_state::ValueState};
+use super::gui_state::ValueState;
 use crate::{
     engine::{
         commands::{Command, CommandWithSource},

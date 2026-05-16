@@ -19,7 +19,7 @@ use crate::{
     user_interface::{
         camera::Camera,
         config_ui::KEY_BINDING_COMMAND_PALETTE,
-        cursor::{Cursor, CursorEvent},
+        cursor::{Cursor, MouseButtonEvent},
         gizmo::{GizmoElement, GizmoVisibility},
         gui::Gui,
         keyboard_modifiers::KeyboardModifierStates,
@@ -94,7 +94,7 @@ impl EngineController {
         let camera = Camera::new(window.inner_size().into())?;
 
         let mut render_manager = RenderManager::new(window.clone(), scale_factor as f32)?;
-        render_manager.update_camera(&camera)?;
+        render_manager.init_camera(&camera)?;
 
         let max_texture_size = render_manager.max_2d_image_size(); //maxImageDimension2D
         let gui = Gui::new(window.clone(), scale_factor as f32, Some(max_texture_size));
@@ -239,6 +239,7 @@ impl EngineController {
         if let Some(cursor_icon) = self.cursor.cursor_icon() {
             self.gui.set_cursor_icon(cursor_icon);
         }
+        self.process_cursor_event(cursor_event)?;
 
         // process gui inputs and update layout
         let update_gui_res = self.gui.update_gui(
@@ -254,18 +255,9 @@ impl EngineController {
         // process commands from gui
         self.execute_engine_commands();
 
-        // update camera
-        self.camera.update_camera(
-            &mut self.cursor,
-            self.settings,
-            self.keyboard_modifier_states,
-            self.settings.camera_control_mappings,
-            &self.object_collection,
-        );
-        self.render_manager.update_camera(&self.camera)?;
-
         // object buffer updates
         let objects_delta = self.object_collection.get_and_clear_objects_delta();
+        self.camera.update_camera_objects(&self.object_collection);
         self.render_manager.update_objects(objects_delta)?;
         self.update_selection_gizmo()?;
 
@@ -277,11 +269,9 @@ impl EngineController {
         let gui_primitives = self.gui.mesh_primitives().clone();
         self.render_manager.set_gui_primitives(gui_primitives);
 
-        // if render area was clicked, select the element at the cursor position
-        self.element_id_at_cursor_position(cursor_event)?;
-
         self.render_manager.render_frame(
             self.render_debug_options,
+            &self.camera,
             self.gizmo_visibility,
             self.hovered_gizmo,
         )?;
@@ -357,7 +347,7 @@ impl EngineController {
         self.render_manager.set_scale_factor(scale_factor as f32);
     }
 
-    fn element_id_at_cursor_position(&mut self, cursor_event: CursorEvent) -> anyhow::Result<()> {
+    fn process_cursor_event(&mut self, cursor_event: MouseButtonEvent) -> anyhow::Result<()> {
         let Some(cursor_screen_coordinates_dvec2) = self.cursor.position() else {
             return Ok(());
         };
@@ -367,8 +357,11 @@ impl EngineController {
             .render_manager
             .get_element_at_screen_coordinate(cursor_screen_coordinates)?;
 
+        let scroll_delta = self.cursor.get_and_clear_scroll_delta();
+        self.camera.update_scroll(scroll_delta, self.settings);
+
         match cursor_event {
-            CursorEvent::ReleaseInPlace(MouseButton::Left) => match element_at_point {
+            MouseButtonEvent::ReleaseInPlace(MouseButton::Left) => match element_at_point {
                 Some(ElementAtPoint::Background) => self.background_clicked(),
                 Some(ElementAtPoint::Object {
                     object_id,
@@ -379,7 +372,16 @@ impl EngineController {
                 }
                 _ => (),
             },
-            CursorEvent::None => match element_at_point {
+            MouseButtonEvent::Dragging { button, delta } => match element_at_point {
+                Some(ElementAtPoint::Background) => self.camera.update_cursor_dragging(
+                    delta,
+                    button,
+                    self.keyboard_modifier_states,
+                    self.settings.camera_control_mappings,
+                ),
+                _ => (),
+            },
+            MouseButtonEvent::None => match element_at_point {
                 Some(ElementAtPoint::Gizmo(gizmo_type)) => self.hovered_gizmo = Some(gizmo_type),
                 _ => self.hovered_gizmo = None,
             },

@@ -25,10 +25,10 @@ pub struct MouseMapping {
 impl MouseMapping {
     pub fn mapping_active(
         &self,
-        button_states: MouseButtonStates,
+        button: MouseButton,
         modifier_states: KeyboardModifierStates,
     ) -> bool {
-        if button_states.get(self.mouse_button).is_up() {
+        if button != self.mouse_button {
             return false;
         }
         for modifier in self.modifiers {
@@ -42,6 +42,13 @@ impl MouseMapping {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum CameraAction {
+    Look,
+    Pan,
+    Zoom,
+}
+
 #[derive(Clone, Copy)]
 pub struct CameraControlMappings {
     pub look: MouseMapping,
@@ -53,45 +60,46 @@ pub struct CameraControlMappings {
 }
 
 impl CameraControlMappings {
-    pub fn mappings_active_and_dragging_look(
+    pub fn mapping_active(
         &self,
-        cursor: &Cursor,
+        action: CameraAction,
+        drag_button: MouseButton,
         modifier_states: KeyboardModifierStates,
     ) -> bool {
-        mapping_active_and_dragging_general(cursor, modifier_states, self.look, self.look_2)
-    }
-
-    pub fn mappings_active_and_dragging_pan(
-        &self,
-        cursor: &Cursor,
-        modifier_states: KeyboardModifierStates,
-    ) -> bool {
-        mapping_active_and_dragging_general(cursor, modifier_states, self.pan, self.pan_2)
-    }
-
-    pub fn mappings_active_and_dragging_zoom(
-        &self,
-        cursor: &Cursor,
-        modifier_states: KeyboardModifierStates,
-    ) -> bool {
-        mapping_active_and_dragging_general(cursor, modifier_states, self.zoom, self.zoom_2)
+        match action {
+            CameraAction::Look => mapping_active_and_dragging_general(
+                drag_button,
+                modifier_states,
+                self.look,
+                self.look_2,
+            ),
+            CameraAction::Pan => mapping_active_and_dragging_general(
+                drag_button,
+                modifier_states,
+                self.pan,
+                self.pan_2,
+            ),
+            CameraAction::Zoom => mapping_active_and_dragging_general(
+                drag_button,
+                modifier_states,
+                self.zoom,
+                self.zoom_2,
+            ),
+        }
     }
 }
 
 fn mapping_active_and_dragging_general(
-    cursor: &Cursor,
+    drag_button: MouseButton,
     modifier_states: KeyboardModifierStates,
     mapping_1: MouseMapping,
     mapping_2: Option<MouseMapping>,
 ) -> bool {
-    if mapping_1.mapping_active(cursor.mouse_button_states(), modifier_states)
-        && cursor.is_dragging(mapping_1.mouse_button)
-    {
+    if mapping_1.mapping_active(drag_button, modifier_states) {
         return true;
     }
     if let Some(some_mapping_2) = mapping_2 {
-        return some_mapping_2.mapping_active(cursor.mouse_button_states(), modifier_states)
-            && cursor.is_dragging(some_mapping_2.mouse_button);
+        return some_mapping_2.mapping_active(drag_button, modifier_states);
     }
     false
 }

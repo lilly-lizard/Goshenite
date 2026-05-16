@@ -1,7 +1,6 @@
 use super::{
     camera_control::CameraControlMappings,
     config_ui::{self, MOUSE_ZOOM_FACTOR, PAN_FACTOR},
-    cursor::Cursor,
     keyboard_modifiers::KeyboardModifierStates,
 };
 use crate::{
@@ -13,6 +12,7 @@ use crate::{
         settings::Settings,
     },
     helper::angle::Angle,
+    user_interface::{camera_control::CameraAction, mouse_button::MouseButton},
 };
 use glam::{DMat3, DVec2, DVec3, Mat4, Vec3, Vec4};
 #[allow(unused_imports)]
@@ -68,14 +68,7 @@ impl Camera {
         })
     }
 
-    pub fn update_camera(
-        &mut self,
-        cursor: &mut Cursor,
-        settings: Settings,
-        keyboard_modifier_states: KeyboardModifierStates,
-        camera_control_mappings: CameraControlMappings,
-        object_collection: &ObjectCollection,
-    ) {
+    pub fn update_camera_objects(&mut self, object_collection: &ObjectCollection) {
         match self.look_mode() {
             LookMode::TargetObject {
                 target_object_id, ..
@@ -109,27 +102,41 @@ impl Camera {
             }
             _ => (),
         }
+    }
 
-        if camera_control_mappings
-            .mappings_active_and_dragging_look(cursor, keyboard_modifier_states)
-        {
-            self.rotate_from_cursor_delta(cursor.position_frame_change_adjusted());
+    pub fn update_cursor_dragging(
+        &mut self,
+        drag_delta: DVec2,
+        drag_button: MouseButton,
+        keyboard_modifier_states: KeyboardModifierStates,
+        camera_control_mappings: CameraControlMappings,
+    ) {
+        if camera_control_mappings.mapping_active(
+            CameraAction::Look,
+            drag_button,
+            keyboard_modifier_states,
+        ) {
+            self.rotate_from_cursor_delta(drag_delta);
         }
 
-        if camera_control_mappings
-            .mappings_active_and_dragging_pan(cursor, keyboard_modifier_states)
-        {
-            self.pan_from_cursor_delta(cursor.position_frame_change_adjusted());
+        if camera_control_mappings.mapping_active(
+            CameraAction::Pan,
+            drag_button,
+            keyboard_modifier_states,
+        ) {
+            self.pan_from_cursor_delta(drag_delta);
         }
 
-        if camera_control_mappings
-            .mappings_active_and_dragging_zoom(cursor, keyboard_modifier_states)
-        {
-            self.zoom_from_cursor_delta(cursor.position_frame_change_adjusted());
+        if camera_control_mappings.mapping_active(
+            CameraAction::Zoom,
+            drag_button,
+            keyboard_modifier_states,
+        ) {
+            self.zoom_from_cursor_delta(drag_delta);
         }
+    }
 
-        // zoom in/out logic
-        let scroll_delta = cursor.get_and_clear_scroll_delta();
+    pub fn update_scroll(&mut self, scroll_delta: DVec2, settings: Settings) {
         self.zoom_from_scroll(scroll_delta.y, settings.scroll_zoom_sensitivity);
     }
 

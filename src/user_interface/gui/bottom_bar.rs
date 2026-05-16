@@ -44,15 +44,15 @@ fn bottom_bar_layout(
         .toggle_value(&mut object_editor_visible, "Object Editor")
         .changed()
     {
-        *side_panel_mode = match scene_visible {
+        *side_panel_mode = match object_editor_visible {
             true => Some(SidePanelMode::ObjectEditor),
             false => None,
         };
     };
 
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-        egui::warn_if_debug_build(ui);
         egui::widgets::global_theme_preference_switch(ui); // light/dark theme toggle
+        egui::warn_if_debug_build(ui);
 
         if ui
             .toggle_value(&mut command_pallette_visible, "Command Pallete")

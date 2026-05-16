@@ -96,7 +96,7 @@ impl Cursor {
     }
 
     /// Process events to update internal state
-    pub fn process_frame(&mut self) -> CursorEvent {
+    pub fn process_frame(&mut self) -> MouseButtonEvent {
         // position processing
         self.position_frame_change =
             self.position.unwrap_or_default() - self.position_previous.unwrap_or_default();
@@ -109,20 +109,25 @@ impl Cursor {
 
         self.mouse_button_states.increment_frame();
 
-        if self.is_any_dragging() {
+        if self.what_is_dragging().is_some() {
             self.cursor_icon = Some(egui::CursorIcon::Grabbing);
         } else {
             self.cursor_icon = None;
         }
 
         if left_click_released_in_place {
-            CursorEvent::ReleaseInPlace(MouseButton::Left)
+            MouseButtonEvent::ReleaseInPlace(MouseButton::Left)
         } else if right_click_released_in_place {
-            CursorEvent::ReleaseInPlace(MouseButton::Right)
+            MouseButtonEvent::ReleaseInPlace(MouseButton::Right)
         } else if middle_click_released_in_place {
-            CursorEvent::ReleaseInPlace(MouseButton::Middle)
+            MouseButtonEvent::ReleaseInPlace(MouseButton::Middle)
+        } else if let Some(dragging_button) = self.what_is_dragging() {
+            MouseButtonEvent::Dragging {
+                button: dragging_button,
+                delta: self.position_frame_change_adjusted(),
+            }
         } else {
-            CursorEvent::None
+            MouseButtonEvent::None
         }
     }
 
@@ -139,39 +144,39 @@ impl Cursor {
         self.cursor_icon
     }
 
-    /// Returns the change in cursor pixel position between the previous 2 [`Self::process_frame`] calls
-    pub fn position_frame_change_adjusted(&self) -> DVec2 {
-        self.position_frame_change * CURSOR_SENSITIVITY
-    }
-
     /// Returns the accumulated horizontal and vertical scrolling since the last call to this function.
     /// Clears the internal scroll delta storage.
     pub fn get_and_clear_scroll_delta(&mut self) -> DVec2 {
         std::mem::take(&mut self.scroll_delta)
-    }
-
-    /// Returns true if the mouse button is down and the position has changed since it was first
-    /// pressed down
-    pub fn is_dragging(&self, mouse_button: MouseButton) -> bool {
-        let mouse_button_state = self.mouse_button_states.get(mouse_button);
-        if mouse_button_state.is_down() {
-            let start_position = mouse_button_state
-                .start_position()
-                .expect("if `is_down` is true, can't be unheld");
-            return start_position != self.position.unwrap_or_default();
-        }
-        false
     }
 }
 
 // ~~ Private Functions ~~
 
 impl Cursor {
-    fn is_any_dragging(&self) -> bool {
+    /// Returns the change in cursor pixel position between the previous 2 [`Self::process_frame`] calls
+    fn position_frame_change_adjusted(&self) -> DVec2 {
+        self.position_frame_change * CURSOR_SENSITIVITY
+    }
+
+    fn what_is_dragging(&self) -> Option<MouseButton> {
         for mouse_button in MOUSE_BUTTONS {
             if self.is_dragging(mouse_button) {
-                return true;
+                return Some(mouse_button);
             }
+        }
+        None
+    }
+
+    /// Returns true if the mouse button is down and the position has changed since it was first
+    /// pressed down
+    fn is_dragging(&self, mouse_button: MouseButton) -> bool {
+        let mouse_button_state = self.mouse_button_states.get(mouse_button);
+        if mouse_button_state.is_down() {
+            let start_position = mouse_button_state
+                .start_position()
+                .expect("if `is_down` is true, can't be unheld");
+            return start_position != self.position.unwrap_or_default();
         }
         false
     }
@@ -187,7 +192,8 @@ impl Cursor {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum CursorEvent {
+pub enum MouseButtonEvent {
     None,
     ReleaseInPlace(MouseButton),
+    Dragging { button: MouseButton, delta: DVec2 },
 }

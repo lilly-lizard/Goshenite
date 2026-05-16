@@ -37,8 +37,8 @@ bort-vma = { path = "../bort/bort-vma", features = ["vulkan-1-2"] }
 # bit-casting crate (for cpu<->gpu buffers)
 bytemuck = { version = "1.7", features = ["derive"] }
 # egui is a simple and fast ui library
-egui = { version = "0.34.1", features = ["callstack", "persistence"] }
-egui-winit = "0.34.1"
+egui = { version = "0.34", features = ["callstack", "persistence"] }
+egui-winit = "0.34"
 # hash library used by egui (fast af boii)
 ahash = { version = "0.8", default-features = false, features = [
     "no-rng", # we don't need DOS-protection, so we let users opt-in to it instead
