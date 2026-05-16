@@ -23,7 +23,7 @@ use std::sync::Arc;
 use winit::window::Window;
 
 // various gui sections
-mod bottom_panel;
+mod bottom_bar;
 mod camera_control;
 mod command_palette;
 mod debug_options;
@@ -41,7 +41,7 @@ pub struct Gui {
     textures_delta_accumulation: Vec<TexturesDelta>,
 
     value_state: ValueState,
-    side_panel_mode: SidePanelMode,
+    side_panel_mode: Option<SidePanelMode>,
     settings_window_visible: bool,
     command_pallette: Option<GuiStateCommandPalette>,
 }
@@ -144,12 +144,16 @@ impl Gui {
             pixels_per_point,
             viewport_output: _,
         } = self.egui_context.run_ui(raw_input, |ui| {
-            Self::draw_bottom_panel(
+            Self::draw_bottom_bar(
                 ui,
                 &mut self.side_panel_mode,
                 &mut self.settings_window_visible,
                 &mut self.command_pallette,
             );
+
+            if let Some(side_panel_mode) = self.side_panel_mode {
+                Self::draw_side_panel(ui, side_panel_mode);
+            }
         });
 
         self.winit_state

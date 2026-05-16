@@ -30,3 +30,6 @@ pub const MOUSE_ZOOM_FACTOR: f64 = 0.1;
 
 // Key Bindings
 pub const KEY_BINDING_COMMAND_PALETTE: KeyCode = KeyCode::KeyP;
+
+pub const DEFAULT_SIDE_PANEL_WIDTH: f32 = 160.;
+pub const MIN_SIDE_PANEL_WIDTH: f32 = 10.;

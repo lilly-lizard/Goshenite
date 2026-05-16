@@ -5,15 +5,15 @@ use crate::user_interface::gui::{
 use egui::Ui;
 
 impl Gui {
-    pub(super) fn draw_bottom_panel(
+    pub(super) fn draw_bottom_bar(
         ui: &mut egui::Ui,
-        side_panel_mode: &mut SidePanelMode,
+        side_panel_mode: &mut Option<SidePanelMode>,
         settings_window_visible: &mut bool,
         command_pallette: &mut Option<GuiStateCommandPalette>,
     ) {
-        egui::Panel::bottom("main top panel").show_inside(ui, |ui| {
+        egui::Panel::bottom("bottom bar").show_inside(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
-                bottom_panel_layout(
+                bottom_bar_layout(
                     ui,
                     side_panel_mode,
                     settings_window_visible,
@@ -24,20 +24,20 @@ impl Gui {
     }
 }
 
-fn bottom_panel_layout(
+fn bottom_bar_layout(
     ui: &mut Ui,
-    side_panel_mode: &mut SidePanelMode,
+    side_panel_mode: &mut Option<SidePanelMode>,
     settings_window_visible: &mut bool,
     command_pallette: &mut Option<GuiStateCommandPalette>,
 ) {
     let mut command_pallette_visible = command_pallette.is_some();
-    let (mut scene_visible, mut object_editor_visible) = side_panel_mode.bools();
+    let (mut scene_visible, mut object_editor_visible) = SidePanelMode::bools(*side_panel_mode);
     //ui.visuals_mut().button_frame = false; // idk what this does tbh
 
     if ui.toggle_value(&mut scene_visible, "Scene").changed() {
         *side_panel_mode = match scene_visible {
-            true => SidePanelMode::Scene,
-            false => SidePanelMode::Hidden,
+            true => Some(SidePanelMode::Scene),
+            false => None,
         };
     };
     if ui
@@ -45,8 +45,8 @@ fn bottom_panel_layout(
         .changed()
     {
         *side_panel_mode = match scene_visible {
-            true => SidePanelMode::ObjectEditor,
-            false => SidePanelMode::Hidden,
+            true => Some(SidePanelMode::ObjectEditor),
+            false => None,
         };
     };
 
