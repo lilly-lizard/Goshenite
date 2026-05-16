@@ -128,7 +128,6 @@ impl Gui {
         &mut self,
         object_collection: &ObjectCollection,
         window: &Window,
-        camera: Camera,
         selected_object_id: Option<ObjectId>,
         selected_primitive_op_index: Option<PrimitiveOpIndex>,
         render_debug_options: RenderDebugOptions,
@@ -152,7 +151,7 @@ impl Gui {
             );
 
             if let Some(side_panel_mode) = self.side_panel_mode {
-                Self::draw_side_panel(
+                let mut new_commands = Self::draw_side_panel(
                     ui,
                     side_panel_mode,
                     &mut self.value_state,
@@ -160,6 +159,7 @@ impl Gui {
                     selected_object_id,
                     selected_primitive_op_index,
                 );
+                commands.append(&mut new_commands);
             }
 
             if self.settings_window_visible {
@@ -171,7 +171,13 @@ impl Gui {
             }
 
             if let Some(command_palette_state) = &mut self.command_pallette {
-                Self::draw_command_palette(&self.egui_context, window, command_palette_state);
+                let new_command =
+                    Self::draw_command_palette(&self.egui_context, window, command_palette_state);
+                if let Some(some_command) = new_command {
+                    commands.push(some_command);
+                    // close command palette after command has been selected
+                    self.command_pallette = None;
+                }
             }
         });
 
