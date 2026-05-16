@@ -1,4 +1,3 @@
-use super::Gui;
 use crate::{
     engine::{
         commands::Command,
@@ -10,28 +9,7 @@ use egui::{RichText, TextStyle};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 
-impl Gui {
-    pub(super) fn draw_object_list_window(
-        &mut self,
-        object_collection: &ObjectCollection,
-        selected_object_id: Option<ObjectId>,
-    ) -> Vec<Command> {
-        let mut commands = Vec::<Command>::new();
-
-        let add_contents = |ui: &mut egui::Ui| {
-            commands = layout_object_list(ui, selected_object_id, object_collection);
-        };
-        egui::Window::new("Objects")
-            .resizable(true)
-            .vscroll(true)
-            .hscroll(true)
-            .show(&self.egui_context, add_contents);
-
-        commands
-    }
-}
-
-fn layout_object_list(
+pub fn layout_scene_editor(
     ui: &mut egui::Ui,
     selected_object_id: Option<ObjectId>,
     object_collection: &ObjectCollection,

@@ -20,6 +20,9 @@
 		- make outline for selected object/primitive op
 		- config option to be top,left,right,bottom
 		- have settings window that pops up in the middle of the window
+	- scene mode vs object mode
+		- geometry shader draws orange line around selected object. can be seen through obscuring objects - scene mode
+		- only draw selected object in - object mode
 - click and drag gizmo arrows
 - draw circle at selected object center
 - generate BVH and render BVH outlines

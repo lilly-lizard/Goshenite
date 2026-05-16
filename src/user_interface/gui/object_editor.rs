@@ -1,4 +1,3 @@
-use super::Gui;
 use crate::{
     engine::{
         commands::{Command, ValidationCommand},
@@ -23,35 +22,7 @@ use egui::{ComboBox, DragValue, RichText, TextStyle};
 use log::{debug, error, info, trace, warn};
 use std::mem::discriminant;
 
-impl Gui {
-    pub(super) fn draw_object_editor_window(
-        &mut self,
-        object_collection: &ObjectCollection,
-        selected_object_id: Option<ObjectId>,
-        selected_primitive_op_index: Option<PrimitiveOpIndex>,
-    ) -> Vec<Command> {
-        let mut commands = Vec::<Command>::new();
-
-        let add_contents = |ui: &mut egui::Ui| {
-            commands = layout_object_editor(
-                ui,
-                &mut self.value_state,
-                object_collection,
-                selected_object_id,
-                selected_primitive_op_index,
-            );
-        };
-        egui::Window::new("Object Editor")
-            .resizable(true)
-            .vscroll(true)
-            .hscroll(true)
-            .show(&self.egui_context, add_contents);
-
-        commands
-    }
-}
-
-fn layout_object_editor(
+pub fn layout_object_editor(
     ui: &mut egui::Ui,
     value_state: &mut ValueState,
     object_collection: &ObjectCollection,

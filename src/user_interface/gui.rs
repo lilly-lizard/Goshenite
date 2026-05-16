@@ -28,7 +28,7 @@ mod camera_control;
 mod command_palette;
 mod debug_options;
 mod object_editor;
-mod object_list;
+mod scene_editor;
 mod side_panel;
 
 /// Controller for an [`egui`] immediate-mode gui
@@ -152,7 +152,14 @@ impl Gui {
             );
 
             if let Some(side_panel_mode) = self.side_panel_mode {
-                Self::draw_side_panel(ui, side_panel_mode);
+                Self::draw_side_panel(
+                    ui,
+                    side_panel_mode,
+                    &mut self.value_state,
+                    object_collection,
+                    selected_object_id,
+                    selected_primitive_op_index,
+                );
             }
         });
 
