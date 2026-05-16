@@ -35,12 +35,11 @@ const AVAILABLE_PALETTE_COMMANDS: [CommandPaletteEntry; 4] = [
 // ~~ Drawing fns ~~
 
 impl Gui {
-    pub(super) fn draw_command_palette(&mut self, window: &Window) -> Option<Command> {
-        let command_palette_state = match &mut self.command_pallette {
-            Some(command_palette_state) => command_palette_state,
-            None => return None,
-        };
-
+    pub(super) fn draw_command_palette(
+        egui_context: &egui::Context,
+        window: &Window,
+        command_palette_state: &mut GuiStateCommandPalette,
+    ) -> Option<Command> {
         // pos: top of window
         // max width/height but cap it if window is too small
         // caps: max width, then 0.5 of window width
@@ -58,11 +57,12 @@ impl Gui {
             new_command = layout_command_palette(ui, command_palette_state);
         };
         egui::Window::new("Command Palette")
+            .collapsible(false)
             .resizable(true)
             .vscroll(true)
             .fixed_size([width, height])
             .fixed_pos([x_pos, y_pos])
-            .show(&self.egui_context, add_contents);
+            .show(egui_context, add_contents);
 
         new_command
     }

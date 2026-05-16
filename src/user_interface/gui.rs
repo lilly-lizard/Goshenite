@@ -161,6 +161,10 @@ impl Gui {
                     selected_primitive_op_index,
                 );
             }
+
+            if let Some(command_palette_state) = &mut self.command_pallette {
+                Self::draw_command_palette(&self.egui_context, window, command_palette_state);
+            }
         });
 
         self.winit_state
