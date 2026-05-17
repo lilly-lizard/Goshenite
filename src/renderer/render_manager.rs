@@ -98,9 +98,9 @@ pub struct RenderManager {
     /// Per FRAMES_IN_FLIGHT
     render_fences: Vec<Fence>,
     /// Per FRAMES_IN_FLIGHT
-    next_frame_wait_semaphores: Vec<Semaphore>,
-    /// Per FRAMES_IN_FLIGHT
-    swapchain_image_available_semaphores: Vec<Semaphore>,
+    semaphores_swapchain_image_available: Vec<Semaphore>,
+    /// Per swapchain image
+    semaphores_present_swapchain_image: Vec<Semaphore>,
 
     renderer_state: RendererState,
     /// Indicates which framebuffer is being processed right now.
@@ -229,14 +229,18 @@ impl RenderManager {
         let render_command_buffers = create_render_command_buffers(command_pool_render.clone())?;
 
         let mut render_fences: Vec<Fence> = Vec::with_capacity(FRAMES_IN_FLIGHT);
-        let mut next_frame_wait_semaphores: Vec<Semaphore> = Vec::with_capacity(FRAMES_IN_FLIGHT);
-        let mut swapchain_image_available_semaphores: Vec<Semaphore> =
+        let mut semaphores_swapchain_image_available: Vec<Semaphore> =
             Vec::with_capacity(FRAMES_IN_FLIGHT);
         for _i in 0..FRAMES_IN_FLIGHT {
             render_fences.push(Fence::new_signalled(device.clone()).context("creating fence")?);
-            next_frame_wait_semaphores
+            semaphores_swapchain_image_available
                 .push(Semaphore::new(device.clone()).context("creating semaphore")?);
-            swapchain_image_available_semaphores
+        }
+
+        let mut semaphores_present_swapchain_image: Vec<Semaphore> =
+            Vec::with_capacity(swapchain_len);
+        for _i in 0..swapchain_len {
+            semaphores_present_swapchain_image
                 .push(Semaphore::new(device.clone()).context("creating semaphore")?);
         }
 
@@ -288,8 +292,8 @@ impl RenderManager {
 
             render_command_buffers,
             render_fences,
-            next_frame_wait_semaphores,
-            swapchain_image_available_semaphores,
+            semaphores_swapchain_image_available,
+            semaphores_present_swapchain_image,
 
             renderer_state: RendererState::Initialized,
             frame_index_currently_rendering: 0,
@@ -373,7 +377,7 @@ impl RenderManager {
         // aquire next swapchain image
         let aquire_res = self.swapchain.aquire_next_image(
             TIMEOUT_NANOSECS,
-            Some(&self.swapchain_image_available_semaphores[new_frame_index]),
+            Some(&self.semaphores_swapchain_image_available[new_frame_index]),
             None,
         );
         if let Err(aquire_err) = aquire_res {
@@ -408,16 +412,17 @@ impl RenderManager {
 
         let submit_command_buffers = [self.render_command_buffers[new_frame_index].handle()];
 
-        let wait_semaphores = [self.swapchain_image_available_semaphores[new_frame_index].handle()];
+        let wait_semaphores = [self.semaphores_swapchain_image_available[new_frame_index].handle()];
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
 
-        let signal_semaphores = [self.next_frame_wait_semaphores[new_frame_index].handle()];
+        let present_semaphores =
+            [self.semaphores_present_swapchain_image[swapchain_index].handle()];
 
         let submit_info = vk::SubmitInfo::default()
             .command_buffers(&submit_command_buffers)
             .wait_semaphores(&wait_semaphores)
             .wait_dst_stage_mask(&wait_stages)
-            .signal_semaphores(&signal_semaphores);
+            .signal_semaphores(&present_semaphores);
 
         self.render_queue
             .submit(&[submit_info], Some(&self.render_fences[new_frame_index]))
@@ -429,7 +434,7 @@ impl RenderManager {
         let swapchain_present_indices = [swapchain_index as u32];
         let swapchain_handles = [self.swapchain.handle()];
         let present_info = vk::PresentInfoKHR::default()
-            .wait_semaphores(&signal_semaphores)
+            .wait_semaphores(&present_semaphores)
             .image_indices(&swapchain_present_indices)
             .swapchains(&swapchain_handles);
 
