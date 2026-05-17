@@ -1,5 +1,6 @@
+use crate::renderer::config_renderer::SHADER_ENTRY_POINT;
 use crate::{
-    engine::object::objects_delta::ObjectsDelta,
+    engine::object::{object::ObjectId, objects_delta::ObjectsDelta},
     renderer::{
         object_resource_manager::ObjectResourceManager,
         shader_interfaces::vertex_inputs::{BoundingBoxVertex, VulkanVertex},
@@ -7,15 +8,17 @@ use crate::{
     },
 };
 use anyhow::Context;
-use ash::vk;
+use ash::vk::{self, SpecializationInfo, SpecializationMapEntry};
 use bort_vk::{
     Buffer, ColorBlendState, CommandBuffer, DepthStencilState, DescriptorSet, DescriptorSetLayout,
     DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
     GraphicsPipeline, GraphicsPipelineProperties, MemoryAllocator, PipelineAccess, PipelineLayout,
-    PipelineLayoutProperties, Queue, RasterizationState, RenderPass, ShaderStage, ViewportState,
+    PipelineLayoutProperties, Queue, RasterizationState, RenderPass, ShaderModule, ShaderStage,
+    ViewportState,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use std::ffi::CString;
 use std::sync::Arc;
 
 // descriptor set and binding indices
@@ -33,6 +36,7 @@ pub struct GeometryPass {
     desc_sets_camera: Vec<DescriptorSet>,
 
     pipeline: GraphicsPipeline,
+    pipeline_selected_object: GraphicsPipeline,
     object_buffer_manager: ObjectResourceManager,
 }
 
@@ -56,7 +60,7 @@ impl GeometryPass {
             desc_sets_camera[0].layout().clone(),
             primitive_ops_desc_set_layout.clone(),
         )?;
-        let pipeline = create_pipeline(pipeline_layout, render_pass)?;
+        let (pipeline, pipeline_selected_object) = create_pipelines(pipeline_layout, render_pass)?;
 
         let object_buffer_manager = ObjectResourceManager::new(
             memory_allocator,
@@ -68,6 +72,7 @@ impl GeometryPass {
         Ok(Self {
             desc_sets_camera,
             pipeline,
+            pipeline_selected_object,
             object_buffer_manager,
         })
     }
@@ -86,6 +91,7 @@ impl GeometryPass {
     pub fn record_commands(
         &self,
         command_buffer: &CommandBuffer,
+        selected_object_id: Option<ObjectId>,
         frame_index: usize,
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
@@ -156,10 +162,10 @@ fn create_pipeline_layout(
     Ok(Arc::new(pipeline_layout))
 }
 
-fn create_pipeline(
+fn create_pipelines(
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
-) -> anyhow::Result<GraphicsPipeline> {
+) -> anyhow::Result<(GraphicsPipeline, GraphicsPipeline)> {
     let (vert_stage, frag_stage) = create_shader_stages(pipeline_layout.device().clone())?;
 
     let dynamic_state =
@@ -200,15 +206,36 @@ fn create_pipeline(
     };
 
     let pipeline = GraphicsPipeline::new(
-        pipeline_layout,
-        pipeline_properties,
-        &[vert_stage, frag_stage],
+        pipeline_layout.clone(),
+        pipeline_properties.clone(),
+        &[vert_stage.clone(), frag_stage],
         render_pass,
         None,
     )
     .context("creating geometry pass pipeline")?;
 
-    Ok(pipeline)
+    let spec_constant_entry = [SpecializationMapEntry {
+        constant_id: 0,
+        offset: 0,
+        size: 4,
+    }];
+    let spec_constant_data: u32 = ash::vk::TRUE;
+    let spec_constant_bytes = bytemuck::bytes_of(&spec_constant_data);
+    let spec_constant = SpecializationInfo::default()
+        .map_entries(&spec_constant_entry)
+        .data(spec_constant_bytes);
+    let frag_shader_selected_object =
+        create_frag_shader_stage_selected_object(pipeline_layout.device().clone(), spec_constant)?;
+
+    let pipeline_selected_object = GraphicsPipeline::new(
+        pipeline_layout,
+        pipeline_properties,
+        &[vert_stage, frag_shader_selected_object],
+        render_pass,
+        None,
+    )
+    .context("creating geometry pass pipeline")?;
+    Ok((pipeline, pipeline_selected_object))
 }
 
 #[cfg(feature = "include-spirv-bytes")]
@@ -216,16 +243,32 @@ fn create_shader_stages<'a>(
     device: Arc<Device>,
 ) -> anyhow::Result<(ShaderStage<'a>, ShaderStage<'a>)> {
     use super::vulkan_init::create_shader_stages_from_bytes;
-
     let vertex_spv_file = std::io::Cursor::new(
         &include_bytes!("../../assets/shader_binaries/bounding_mesh.vert.spv")[..],
     );
     let frag_spv_file = std::io::Cursor::new(
         &include_bytes!("../../assets/shader_binaries/scene_geometry.frag.spv")[..],
     );
-
     create_shader_stages_from_bytes(device, vertex_spv_file, frag_spv_file)
         .context("creating geoemetry pass shaders")
+}
+
+#[cfg(feature = "include-spirv-bytes")]
+fn create_frag_shader_stage_selected_object<'a>(
+    device: Arc<Device>,
+    spec_constant: SpecializationInfo<'a>,
+) -> anyhow::Result<ShaderStage<'a>> {
+    let mut frag_spv_file = std::io::Cursor::new(
+        &include_bytes!("../../assets/shader_binaries/scene_geometry.frag.spv")[..],
+    );
+    let frag_shader = Arc::new(ShaderModule::new_from_spirv(device, &mut frag_spv_file)?);
+    let shader_stage = ShaderStage::new(
+        vk::ShaderStageFlags::FRAGMENT,
+        frag_shader,
+        CString::new(SHADER_ENTRY_POINT).expect("SHADER_ENTRY_POINT shouldn't contain null byte"),
+        Some(spec_constant),
+    );
+    Ok(shader_stage)
 }
 
 #[cfg(not(feature = "include-spirv-bytes"))]
@@ -233,10 +276,8 @@ fn create_shader_stages<'a>(
     device: Arc<Device>,
 ) -> anyhow::Result<(ShaderStage<'a>, ShaderStage<'a>)> {
     use crate::renderer::vulkan_init::create_shader_stages_from_path;
-
     const VERT_SHADER_PATH: &str = "assets/shader_binaries/bounding_mesh.vert.spv";
     const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
-
     create_shader_stages_from_path(device, VERT_SHADER_PATH, FRAG_SHADER_PATH)
         .context("creating geometry pass shaders")
 }

@@ -1,7 +1,5 @@
 //! shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
 
-use crate::renderer::config_renderer::FRAMES_IN_FLIGHT;
-
 use super::{
     config_renderer::{SHADER_ENTRY_POINT, TIMEOUT_NANOSECS},
     shader_interfaces::{

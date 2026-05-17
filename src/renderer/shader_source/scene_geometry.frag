@@ -3,10 +3,12 @@
 #extension GL_GOOGLE_include_directive : require
 #include "config.glsl"
 
+layout(constant_id = 0) const bool SELECTED_OBJECT = false;
+
 // Maximum number of ray marching steps before confirming a miss
 const uint MAX_STEPS = 100;
 // Distance required to confirm a hit todo make this dynamic with depth (like LOD)
-const float MIN_MARCH_STEP = 0.001;
+const float MIN_MARCH_D = 0.001;
 // Offset used for calculating normals.
 const float NORMAL_EPSILON = 0.001;
 const vec2 NORMAL_OFFSET = vec2(NORMAL_EPSILON, -NORMAL_EPSILON);
@@ -75,22 +77,22 @@ SdfResult op_union(SdfResult p1, SdfResult p2, float blend)
 
 	vec3 albedo = mix(p2.albedo, p1.albedo, h);
 	float specular = mix(p2.specular, p1.specular, h);
-	
+
 	SdfResult ret = { d, ID_BLEND, albedo, specular };
 	return ret;
 }
 
 // Results in the intersection (max) of 2 primitives
-SdfResult op_intersection(SdfResult p1, SdfResult p2, float blend)
+SdfResult op_intersection(SdfResult p1, SdfResult p2)
 {
 	return p1.d > p2.d ? p1 : p2;
 }
 
 // Subtracts the volume of primitive 2 (max) from primitive 1 (max inverted)
-SdfResult op_subtraction(SdfResult p1, SdfResult p2, float blend)
+SdfResult op_subtraction(SdfResult p1, SdfResult p2)
 {
 	SdfResult p2_neg = { -p2.d, p2.op_index, p2.albedo, p2.specular };
-	return op_intersection(p1, p2_neg, blend);
+	return op_intersection(p1, p2_neg);
 }
 
 // ~~~ Primitive-Op Processing ~~~
@@ -153,12 +155,12 @@ SdfResult process_primitive(uint op_index, vec3 pos)
 SdfResult process_op(uint op, float blend, SdfResult lhs, SdfResult rhs)
 {
 	SdfResult res;
-	
+
 	switch(op)
 	{
 	case OP_UNION: 			res = op_union(lhs, rhs, blend); break;
-	case OP_INTERSECTION: 	res = op_intersection(lhs, rhs, blend); break;
-	case OP_SUBTRACTION: 	res = op_subtraction(lhs, rhs, blend); break;
+	case OP_INTERSECTION: 	res = op_intersection(lhs, rhs); break;
+	case OP_SUBTRACTION: 	res = op_subtraction(lhs, rhs); break;
 	default:				res = lhs; // else do nothing e.g. OP_NULL
 	}
 
@@ -175,7 +177,7 @@ SdfResult map(vec3 pos)
 
 	// loop through the primitive operations
 	for (uint op_index = 0; op_index < object.op_count; op_index++) {
-		
+
 		SdfResult primitive_res = process_primitive(op_index, pos);
 
 		uint buffer_index = op_index * OP_UNIT_LENGTH + 22;
@@ -213,6 +215,7 @@ RayMarchHit ray_march(const vec3 ray_o, const vec3 ray_d)
 {
 	// total distance traveled. start at the frag depth
 	float dist = cam.near;
+	float min_d = 1000.;
 	const float dist_max = in_camera_distance;
 
 	for (int i = 0; dist < dist_max && i < MAX_STEPS; i++) {
@@ -222,7 +225,7 @@ RayMarchHit ray_march(const vec3 ray_o, const vec3 ray_d)
 		SdfResult closest_primitive = map(current_pos);
 
 		// ray hit
-		if (closest_primitive.d < MIN_MARCH_STEP) {
+		if (closest_primitive.d < MIN_MARCH_D) {
 			vec3 normal = calc_normal(current_pos);
 			uint object_op_id = (closest_primitive.op_index & 0xFFFF) | (in_object_id << 16);
 			return RayMarchHit (
@@ -234,8 +237,22 @@ RayMarchHit ray_march(const vec3 ray_o, const vec3 ray_d)
 			);
 		}
 
+		if (SELECTED_OBJECT)
+		    min_d = closest_primitive.d < min_d ? closest_primitive.d : min_d;
 		// incriment the distance travelled by the distance to the closest primitive
 		dist += closest_primitive.d;
+	}
+
+	if (SELECTED_OBJECT) {
+    	if (min_d < .01) {
+            return RayMarchHit (
+          		cam.near,
+          		vec3(1., 0., 0.), // normal
+          		vec3(1., 1., 1.), // albedo
+          		1., // specular
+          		(in_object_id << 16)
+           	);
+    	}
 	}
 
 	// ray miss
