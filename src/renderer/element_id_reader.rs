@@ -63,7 +63,8 @@ pub(super) struct ElementIdReader {
 
     command_buffer_transfer: CommandBuffer,
     command_buffer_post_render_sync: CommandBuffer,
-    command_buffer_pre_render_sync: CommandBuffer,
+    /// Per FRAMES_IN_FLIGHT
+    command_buffers_pre_render_sync: Vec<CommandBuffer>,
 
     completion_fence: Fence,
     semaphore_before_transfer: Semaphore,
@@ -92,9 +93,14 @@ impl ElementIdReader {
             .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
             .context("allocating buffer read render sync command buffer")?;
 
-        let command_buffer_pre_render_sync = command_pool_render_queue
-            .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
-            .context("allocating buffer read render sync command buffer")?;
+        let command_buffers_pre_render_sync = vec![
+            command_pool_render_queue
+                .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
+                .context("allocating buffer read render sync command buffer")?,
+            command_pool_render_queue
+                .allocate_command_buffer(vk::CommandBufferLevel::PRIMARY)
+                .context("allocating buffer read render sync command buffer")?,
+        ];
 
         let completion_fence = Fence::new_unsignalled(device.clone()).context("creating fence")?;
 
@@ -114,7 +120,7 @@ impl ElementIdReader {
 
             command_buffer_transfer,
             command_buffer_post_render_sync,
-            command_buffer_pre_render_sync,
+            command_buffers_pre_render_sync,
 
             completion_fence,
             semaphore_before_transfer,
@@ -381,6 +387,7 @@ impl ElementIdReader {
     pub fn record_and_submit_post_transfer_sync_commands(
         &self,
         last_primitive_id_buffer: Arc<ImageView<Image>>,
+        next_frame_index: usize,
     ) -> anyhow::Result<()> {
         let semaphores_after_transfer = [self.semaphore_after_transfer.handle()];
 
@@ -414,22 +421,23 @@ impl ElementIdReader {
             flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
             ..Default::default()
         };
-        self.command_buffer_pre_render_sync
+        self.command_buffers_pre_render_sync[next_frame_index]
             .begin(&begin_info)
             .context("beginning command buffer record_and_submit_pre_transfer_sync_commands")?;
 
         unsafe {
             self.synchronization_2_functions.cmd_pipeline_barrier2(
-                self.command_buffer_pre_render_sync.handle(),
+                self.command_buffers_pre_render_sync[next_frame_index].handle(),
                 &before_render_dependency,
             );
         }
 
-        self.command_buffer_pre_render_sync
+        self.command_buffers_pre_render_sync[next_frame_index]
             .end()
             .context("ending command buffer record_and_submit_pre_transfer_sync_commands")?;
 
-        let submit_command_buffers = [self.command_buffer_pre_render_sync.handle()];
+        let submit_command_buffers =
+            [self.command_buffers_pre_render_sync[next_frame_index].handle()];
         let submit_info = vk::SubmitInfo::default()
             .command_buffers(&submit_command_buffers)
             .wait_semaphores(&semaphores_after_transfer)

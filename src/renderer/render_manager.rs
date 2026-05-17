@@ -493,8 +493,9 @@ impl RenderManager {
 
         if different_queue_family_indices {
             // render queue release operation
+            let next_frame_index = (self.frame_index_currently_rendering + 1) % FRAMES_IN_FLIGHT;
             self.object_id_reader
-                .record_and_submit_post_transfer_sync_commands(last_id_buffer)?;
+                .record_and_submit_post_transfer_sync_commands(last_id_buffer, next_frame_index)?;
         }
 
         let element_at_point = self.object_id_reader.read_object_id_from_buffer()?;
