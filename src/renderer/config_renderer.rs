@@ -40,7 +40,7 @@ pub const FORMAT_ID_BUFFER: vk::Format = vk::Format::R32_UINT;
 pub const TIMEOUT_NANOSECS: u64 = 1_000_000_000;
 
 /// Double-buffering
-pub const MAX_FRAMES_IN_FLIGHT: usize = 2;
+pub const FRAMES_IN_FLIGHT: usize = 2;
 
 pub const CPU_ACCESS_BUFFER_SIZE: vk::DeviceSize = 1024;
 

@@ -11,11 +11,12 @@ pub struct CameraUniformBuffer {
     pub near: f32,
     pub far: f32,
     pub position: [f32; 3],
-    pub padding_0: f32,
+    pub padding_0: u32,
     pub direction: [f32; 3],
-    pub padding_1: f32,
+    pub padding_1: u32,
     /// 0 if false, 1 if true
     pub write_linear_color: u32,
+    pub padding_2: [u32; 3],
 }
 
 impl CameraUniformBuffer {
@@ -37,10 +38,11 @@ impl CameraUniformBuffer {
             near,
             far,
             position: [position.x, position.y, position.z],
-            padding_0: 0.,
+            padding_0: 0,
             direction: [direction.x, direction.y, direction.z],
-            padding_1: 0.,
+            padding_1: 0,
             write_linear_color: write_linear_color as u32,
+            padding_2: [0; 3],
         }
     }
 

@@ -18,6 +18,7 @@ use crate::{
     engine::object::objects_delta::ObjectsDelta,
     helper::anyhow_panic::log_anyhow_error_and_sources,
     renderer::{
+        config_renderer::FRAMES_IN_FLIGHT,
         pass_gizmo::GizmoPass,
         shader_interfaces::uniform_buffers::GizmoUniformBuffer,
         vulkan_init::{
@@ -44,6 +45,7 @@ use egui::{ClippedPrimitive, TexturesDelta};
 use glam::Vec3;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
+use std::mem;
 use std::sync::Arc;
 use winit::window::Window;
 
@@ -63,13 +65,13 @@ pub struct RenderManager {
     window: Arc<Window>,
     surface: Arc<Surface>,
     swapchain: Arc<Swapchain>,
+    /// Per swapchain image
     swapchain_image_views: Vec<Arc<ImageView<SwapchainImage>>>,
     shaders_write_linear_color: bool,
 
     render_pass: Arc<RenderPass>,
-    /// One per swapchain image, or two if there's only one swapchain image so we can store some
-    /// images written to in the previous render
-    framebuffers: Vec<Framebuffer>,
+    /// Outer vec: per swapchain image; Inner vec: per FRAMES_IN_FLIGHT
+    framebuffers: Vec<Vec<Framebuffer>>,
     /// One for each framebuffer attachment
     clear_values: Vec<vk::ClearValue>,
 
@@ -77,10 +79,10 @@ pub struct RenderManager {
     normal_buffer: Arc<ImageView<Image>>,
     albedo_buffer: Arc<ImageView<Image>>,
     primitive_id_buffer: Arc<ImageView<Image>>,
-    /// One per framebuffer
+    /// Per FRAMES_IN_FLIGHT
     id_buffers: Vec<Arc<ImageView<Image>>>,
-    camera_ubo: Buffer,
-    gizmo_ubo: Buffer,
+    camera_buffer: Buffer,
+    gizmo_buffer: Buffer,
 
     // render passes
     geometry_pass: GeometryPass,
@@ -91,17 +93,18 @@ pub struct RenderManager {
 
     object_id_reader: ElementIdReader,
 
-    /// One per framebuffer
+    /// Per FRAMES_IN_FLIGHT
     render_command_buffers: Vec<CommandBuffer>,
-    previous_render_fence: Fence,
-    next_frame_wait_semaphore: Semaphore,
-    swapchain_image_available_semaphore: Semaphore,
+    /// Per FRAMES_IN_FLIGHT
+    render_fences: Vec<Fence>,
+    /// Per FRAMES_IN_FLIGHT
+    next_frame_wait_semaphores: Vec<Semaphore>,
+    /// Per FRAMES_IN_FLIGHT
+    swapchain_image_available_semaphores: Vec<Semaphore>,
 
     renderer_state: RendererState,
     /// Indicates which framebuffer is being processed right now.
-    framebuffer_index_currently_rendering: usize,
-    /// Indicates which framebuffer was rendered to in the previous frame.
-    framebuffer_index_last_rendered_to: usize,
+    frame_index_currently_rendering: usize,
     /// Can be set to true with [`Self::set_window_just_resized_flag`] and set to false in [`Self::render_frame`]
     window_just_resized: bool,
 }
@@ -157,8 +160,8 @@ impl RenderManager {
             shaders_should_write_linear_color(swapchain.properties().surface_format);
 
         let swapchain_image_views = create_swapchain_image_views(&swapchain)?;
-        let framebuffer_count = swapchain_image_views.len();
-        debug!("swapchain image count = {}", framebuffer_count);
+        let swapchain_len = swapchain_image_views.len();
+        debug!("swapchain image count = {}", swapchain_len);
 
         let depth_buffer_format = choose_depth_buffer_format(&physical_device)?;
 
@@ -175,14 +178,10 @@ impl RenderManager {
         let albedo_buffer = create_albedo_buffer(memory_allocator.clone(), framebuffer_dimensions)?;
         let primitive_id_buffer =
             create_primitive_id_buffer(memory_allocator.clone(), framebuffer_dimensions)?;
-        let id_buffers = create_id_buffers(
-            framebuffer_count,
-            memory_allocator.clone(),
-            framebuffer_dimensions,
-        )?;
+        let id_buffers = create_id_buffers(memory_allocator.clone(), framebuffer_dimensions)?;
 
-        let camera_ubo = create_camera_ubo(memory_allocator.clone())?;
-        let gizmo_ubo = create_gizmo_ubo(memory_allocator.clone())?;
+        let camera_buffer = create_camera_ubo(memory_allocator.clone())?;
+        let gizmo_buffer = create_gizmo_ubo(memory_allocator.clone())?;
 
         let framebuffers = create_framebuffers(
             render_pass.clone(),
@@ -200,14 +199,14 @@ impl RenderManager {
             device.clone(),
             memory_allocator.clone(),
             &render_pass,
-            &camera_ubo,
+            &camera_buffer,
             transfer_queue_family_index,
             render_queue_family_index,
         )?;
         let lighting_pass = LightingPass::new(
             device.clone(),
             &render_pass,
-            &camera_ubo,
+            &camera_buffer,
             &normal_buffer,
             &albedo_buffer,
             &primitive_id_buffer,
@@ -215,10 +214,10 @@ impl RenderManager {
         let gizmo_pass = GizmoPass::new(
             memory_allocator.clone(),
             &render_pass,
-            &camera_ubo,
-            &gizmo_ubo,
+            &camera_buffer,
+            &gizmo_buffer,
         )?;
-        let overlay_pass = OverlayPass::new(&render_pass, &camera_ubo)?;
+        let overlay_pass = OverlayPass::new(&render_pass, &camera_buffer)?;
         let gui_pass = GuiPass::new(
             memory_allocator.clone(),
             &render_pass,
@@ -227,17 +226,19 @@ impl RenderManager {
             scale_factor,
         )?;
 
-        let render_command_buffers = create_render_command_buffers(
-            command_pool_render.clone(),
-            swapchain_image_views.len() as u32,
-        )?;
+        let render_command_buffers = create_render_command_buffers(command_pool_render.clone())?;
 
-        let previous_render_fence =
-            Fence::new_signalled(device.clone()).context("creating fence")?;
-        let next_frame_wait_semaphore =
-            Semaphore::new(device.clone()).context("creating per-frame semaphore")?;
-        let swapchain_image_available_semaphore =
-            Semaphore::new(device.clone()).context("creating per-swapchain-image semaphore")?;
+        let mut render_fences: Vec<Fence> = Vec::with_capacity(FRAMES_IN_FLIGHT);
+        let mut next_frame_wait_semaphores: Vec<Semaphore> = Vec::with_capacity(FRAMES_IN_FLIGHT);
+        let mut swapchain_image_available_semaphores: Vec<Semaphore> =
+            Vec::with_capacity(FRAMES_IN_FLIGHT);
+        for _i in 0..FRAMES_IN_FLIGHT {
+            render_fences.push(Fence::new_signalled(device.clone()).context("creating fence")?);
+            next_frame_wait_semaphores
+                .push(Semaphore::new(device.clone()).context("creating semaphore")?);
+            swapchain_image_available_semaphores
+                .push(Semaphore::new(device.clone()).context("creating semaphore")?);
+        }
 
         let object_id_reader = ElementIdReader::new(
             transfer_queue.clone(),
@@ -274,8 +275,8 @@ impl RenderManager {
             albedo_buffer,
             primitive_id_buffer,
             id_buffers,
-            camera_ubo,
-            gizmo_ubo,
+            camera_buffer,
+            gizmo_buffer,
 
             geometry_pass,
             lighting_pass,
@@ -286,20 +287,22 @@ impl RenderManager {
             object_id_reader,
 
             render_command_buffers,
-            previous_render_fence,
-            next_frame_wait_semaphore,
-            swapchain_image_available_semaphore,
+            render_fences,
+            next_frame_wait_semaphores,
+            swapchain_image_available_semaphores,
 
             renderer_state: RendererState::Initialized,
-            framebuffer_index_currently_rendering: 0,
-            framebuffer_index_last_rendered_to: 0,
+            frame_index_currently_rendering: 0,
             window_just_resized: false,
         })
     }
 
     /// Warning: doesn't synchronize with any previously submitted render commands
     pub fn init_camera(&mut self, camera: &Camera) -> anyhow::Result<()> {
-        self.update_camera(camera)
+        for i in 0..FRAMES_IN_FLIGHT {
+            self.update_camera(camera, i)?;
+        }
+        Ok(())
     }
 
     pub fn update_gizmo_center(&mut self, selected_object_center: Vec3) -> anyhow::Result<()> {
@@ -308,7 +311,7 @@ impl RenderManager {
         self.wait_idle_device()?;
 
         let write_data = GizmoUniformBuffer::new(selected_object_center, config::GIZMO_SCALE);
-        self.gizmo_ubo
+        self.gizmo_buffer
             .write_struct(write_data, 0)
             .context("uploading selected object center to gizmo rendering buffer")?;
         Ok(())
@@ -324,7 +327,8 @@ impl RenderManager {
         &mut self,
         textures_delta: Vec<TexturesDelta>,
     ) -> anyhow::Result<()> {
-        self.wait_for_previous_frame_fence()?;
+        let next_frame = (self.frame_index_currently_rendering + 1) % FRAMES_IN_FLIGHT;
+        self.wait_for_previous_frame_fence(next_frame)?;
 
         self.gui_pass
             .update_textures(textures_delta, &self.transfer_queue, &self.render_queue)?;
@@ -352,13 +356,13 @@ impl RenderManager {
         gizmo_visibility: GizmoVisibility,
         hovered_gizmo: Option<GizmoElement>,
     ) -> anyhow::Result<()> {
+        let new_frame_index = (self.frame_index_currently_rendering + 1) % FRAMES_IN_FLIGHT;
+
         // wait for previous frame render/resource upload to finish
+        self.wait_for_previous_frame_fence(new_frame_index)?;
 
-        self.wait_for_previous_frame_fence()?;
-        // previous frame confirmed finished rendering
-        self.framebuffer_index_last_rendered_to = self.framebuffer_index_currently_rendering;
-
-        self.gui_pass.free_previous_vertex_and_index_buffers();
+        self.gui_pass
+            .free_previous_vertex_and_index_buffers(new_frame_index);
 
         // note: I found that this check is needed on wayland because the later commands weren't returning 'out of date'...
         if self.window_just_resized {
@@ -367,13 +371,11 @@ impl RenderManager {
         }
 
         // aquire next swapchain image
-
         let aquire_res = self.swapchain.aquire_next_image(
             TIMEOUT_NANOSECS,
-            Some(&self.swapchain_image_available_semaphore),
+            Some(&self.swapchain_image_available_semaphores[new_frame_index]),
             None,
         );
-
         if let Err(aquire_err) = aquire_res {
             if aquire_err == vk::Result::ERROR_OUT_OF_DATE_KHR {
                 debug!("out of date swapchain on aquire");
@@ -382,7 +384,6 @@ impl RenderManager {
                 return Err(aquire_err).context("calling vkAcquireNextImageKHR");
             }
         }
-
         let (swapchain_index, swapchain_is_suboptimal) =
             aquire_res.expect("handled err case in previous lines");
         let swapchain_index = swapchain_index as usize;
@@ -391,32 +392,26 @@ impl RenderManager {
             return self.recreate_swapchain();
         }
 
-        let framebuffer_index = self
-            .current_framebuffer_index(self.framebuffer_index_last_rendered_to, swapchain_index);
-
-        self.update_camera(camera)?;
-
-        // record commands
+        self.update_camera(camera, new_frame_index)?;
 
         self.record_render_commands(
-            framebuffer_index,
+            new_frame_index,
+            swapchain_index,
             debug_options,
             gizmo_visibility,
             hovered_gizmo,
         )?;
 
-        // submit commands
-
-        self.previous_render_fence
+        self.render_fences[new_frame_index]
             .reset()
             .context("reseting previous render fence")?;
 
-        let submit_command_buffers = [self.render_command_buffers[framebuffer_index].handle()];
+        let submit_command_buffers = [self.render_command_buffers[new_frame_index].handle()];
 
-        let wait_semaphores = [self.swapchain_image_available_semaphore.handle()];
+        let wait_semaphores = [self.swapchain_image_available_semaphores[new_frame_index].handle()];
         let wait_stages = [vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT];
 
-        let signal_semaphores = [self.next_frame_wait_semaphore.handle()];
+        let signal_semaphores = [self.next_frame_wait_semaphores[new_frame_index].handle()];
 
         let submit_info = vk::SubmitInfo::default()
             .command_buffers(&submit_command_buffers)
@@ -425,10 +420,9 @@ impl RenderManager {
             .signal_semaphores(&signal_semaphores);
 
         self.render_queue
-            .submit(&[submit_info], Some(&self.previous_render_fence))
+            .submit(&[submit_info], Some(&self.render_fences[new_frame_index]))
             .context("submitting render commands")?;
-
-        self.framebuffer_index_currently_rendering = swapchain_index;
+        self.frame_index_currently_rendering = new_frame_index;
 
         // submit present instruction
 
@@ -475,7 +469,9 @@ impl RenderManager {
             return Ok(None);
         }
 
-        let last_id_buffer = self.id_buffers[self.framebuffer_index_last_rendered_to].clone();
+        let previous_frame =
+            (self.frame_index_currently_rendering + FRAMES_IN_FLIGHT - 1) % FRAMES_IN_FLIGHT;
+        let last_id_buffer = self.id_buffers[previous_frame].clone();
 
         let different_queue_family_indices =
             self.render_queue.family_index() != self.transfer_queue.family_index();
@@ -541,8 +537,8 @@ impl RenderManager {
         self.shaders_write_linear_color =
             shaders_should_write_linear_color(self.swapchain.properties().surface_format);
         self.swapchain_image_views = create_swapchain_image_views(&self.swapchain)?;
-        let framebuffer_count = self.swapchain_image_views.len();
-        trace!("swapchain image count: {}", framebuffer_count);
+        let swapchain_len = self.swapchain_image_views.len();
+        trace!("swapchain image count: {}", swapchain_len);
 
         let depth_buffer_format = self.depth_buffer.image().properties().format;
 
@@ -559,11 +555,7 @@ impl RenderManager {
             create_albedo_buffer(self.memory_allocator.clone(), framebuffer_dimensions)?;
         self.primitive_id_buffer =
             create_primitive_id_buffer(self.memory_allocator.clone(), framebuffer_dimensions)?;
-        self.id_buffers = create_id_buffers(
-            framebuffer_count,
-            self.memory_allocator.clone(),
-            framebuffer_dimensions,
-        )?;
+        self.id_buffers = create_id_buffers(self.memory_allocator.clone(), framebuffer_dimensions)?;
         self.depth_buffer = create_depth_buffer(
             self.memory_allocator.clone(),
             framebuffer_dimensions,
@@ -589,7 +581,7 @@ impl RenderManager {
         Ok(())
     }
 
-    fn update_camera(&mut self, camera: &Camera) -> anyhow::Result<()> {
+    fn update_camera(&mut self, camera: &Camera, frame_index: usize) -> anyhow::Result<()> {
         let dimensions = self.swapchain.properties().width_height;
         let camera_data = CameraUniformBuffer::from_camera(
             camera,
@@ -597,8 +589,9 @@ impl RenderManager {
             self.shaders_write_linear_color,
         );
 
-        self.camera_ubo
-            .write_struct(camera_data, 0)
+        let offset: usize = mem::size_of::<CameraUniformBuffer>() * frame_index;
+        self.camera_buffer
+            .write_struct(camera_data, offset)
             .context("uploading camera ubo data")?;
 
         Ok(())
@@ -617,8 +610,8 @@ impl RenderManager {
         Ok(())
     }
 
-    fn wait_for_previous_frame_fence(&mut self) -> anyhow::Result<()> {
-        let fence_wait_res = self.previous_render_fence.wait(TIMEOUT_NANOSECS);
+    fn wait_for_previous_frame_fence(&mut self, frame_index: usize) -> anyhow::Result<()> {
+        let fence_wait_res = self.render_fences[frame_index].wait(TIMEOUT_NANOSECS);
 
         if let Err(fence_wait_err) = fence_wait_res {
             if fence_wait_err == vk::Result::TIMEOUT {
@@ -637,14 +630,15 @@ impl RenderManager {
 
     fn record_render_commands(
         &mut self,
-        framebuffer_index: usize,
+        frame_index: usize,
+        swapchain_index: usize,
         debug_options: RenderDebugOptions,
         gizmo_visibility: GizmoVisibility,
         hovered_gizmo: Option<GizmoElement>,
     ) -> anyhow::Result<()> {
-        let viewport = self.framebuffers[framebuffer_index].whole_viewport();
-        let render_area = self.framebuffers[framebuffer_index].whole_rect();
-        let command_buffer = &self.render_command_buffers[framebuffer_index];
+        let viewport = self.framebuffers[swapchain_index][frame_index].whole_viewport();
+        let render_area = self.framebuffers[swapchain_index][frame_index].whole_rect();
+        let command_buffer = &self.render_command_buffers[frame_index];
 
         let begin_info = vk::CommandBufferBeginInfo {
             flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
@@ -656,22 +650,23 @@ impl RenderManager {
 
         let render_pass_begin = vk::RenderPassBeginInfo::default()
             .render_pass(self.render_pass.handle())
-            .framebuffer(self.framebuffers[framebuffer_index].handle())
+            .framebuffer(self.framebuffers[swapchain_index][frame_index].handle())
             .render_area(render_area)
             .clear_values(self.clear_values.as_slice());
         command_buffer.begin_render_pass(&render_pass_begin, vk::SubpassContents::INLINE);
 
         self.geometry_pass
-            .record_commands(command_buffer, viewport, render_area);
+            .record_commands(command_buffer, frame_index, viewport, render_area);
 
         command_buffer.next_subpass(vk::SubpassContents::INLINE);
 
         self.lighting_pass
-            .record_commands(command_buffer, viewport, render_area);
+            .record_commands(command_buffer, frame_index, viewport, render_area);
 
         if debug_options.enable_aabb_wire_display {
             self.overlay_pass.record_aabb_overlay_commands(
                 command_buffer,
+                frame_index,
                 self.geometry_pass.object_buffer_manager(),
                 viewport,
                 render_area,
@@ -681,6 +676,7 @@ impl RenderManager {
         if gizmo_visibility.any_visible() {
             self.gizmo_pass.record_commands(
                 command_buffer,
+                frame_index,
                 viewport,
                 render_area,
                 gizmo_visibility,
@@ -690,6 +686,7 @@ impl RenderManager {
 
         self.gui_pass.record_render_commands(
             command_buffer,
+            frame_index,
             self.shaders_write_linear_color,
             [viewport.width, viewport.height],
         )?;
@@ -701,16 +698,6 @@ impl RenderManager {
             .context("ending render command buffer recording")?;
 
         Ok(())
-    }
-
-    /// Determines the new framebuffer index
-    #[inline]
-    fn current_framebuffer_index(
-        &self,
-        _previous_framebuffer_index: usize,
-        swapchain_index: usize,
-    ) -> usize {
-        swapchain_index
     }
 }
 

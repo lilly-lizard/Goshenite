@@ -1,5 +1,7 @@
 //! shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
 
+use crate::renderer::config_renderer::FRAMES_IN_FLIGHT;
+
 use super::{
     config_renderer::{SHADER_ENTRY_POINT, TIMEOUT_NANOSECS},
     shader_interfaces::{
@@ -74,8 +76,10 @@ pub struct GuiPass {
     /// Indicates which buffer pool to use next. E.g. two buffer pools have been created, but
     /// all the buffers have just been freed, so we'll start from the first pool again.
     current_buffer_pool_index: usize,
-    vertex_buffers: Vec<Buffer>,
-    index_buffers: Vec<Buffer>,
+    /// Outer vec: per FRAMES_IN_FLIGHT; Inner vec: per gui element
+    vertex_buffers: Vec<Vec<Buffer>>,
+    /// Outer vec: per FRAMES_IN_FLIGHT; Inner vec: per gui element
+    index_buffers: Vec<Vec<Buffer>>,
     texture_upload_buffers: Vec<Buffer>,
 
     // gui state
@@ -148,8 +152,8 @@ impl GuiPass {
 
             buffer_pools: vec![initial_buffer_pool],
             current_buffer_pool_index: 0,
-            vertex_buffers: Vec::new(),
-            index_buffers: Vec::new(),
+            vertex_buffers: vec![Vec::new(), Vec::new()],
+            index_buffers: vec![Vec::new(), Vec::new()],
             texture_upload_buffers: Vec::new(),
 
             scale_factor,
@@ -261,6 +265,7 @@ impl GuiPass {
     pub fn record_render_commands(
         &mut self,
         command_buffer: &CommandBuffer,
+        frame_index: usize,
         write_linear_color: bool,
         framebuffer_dimensions: [f32; 2],
     ) -> anyhow::Result<()> {
@@ -305,6 +310,7 @@ impl GuiPass {
 
                     self.record_mesh_commands(
                         command_buffer,
+                        frame_index,
                         mesh,
                         self.scale_factor,
                         framebuffer_dimensions,
@@ -317,11 +323,11 @@ impl GuiPass {
         Ok(())
     }
 
-    /// Fress vertex and index buffers created in previous calls to `record_render_commands`.
+    /// Frees vertex and index buffers created in previous calls to `record_render_commands`.
     /// Call this when gui rendering commands from the previous frame have finished.
-    pub fn free_previous_vertex_and_index_buffers(&mut self) {
-        self.vertex_buffers.clear();
-        self.index_buffers.clear();
+    pub fn free_previous_vertex_and_index_buffers(&mut self, frame_index: usize) {
+        self.vertex_buffers[frame_index].clear();
+        self.index_buffers[frame_index].clear();
         self.current_buffer_pool_index = 0;
     }
 }
@@ -822,6 +828,7 @@ impl GuiPass {
     fn record_mesh_commands(
         &mut self,
         command_buffer: &CommandBuffer,
+        frame_index: usize,
         mesh: Mesh,
         scale_factor: f32,
         framebuffer_dimensions: [f32; 2],
@@ -854,8 +861,8 @@ impl GuiPass {
 
         command_buffer.draw_indexed(index_count, 1, 0, 0, 0);
 
-        self.vertex_buffers.push(vertex_buffer);
-        self.index_buffers.push(index_buffer);
+        self.vertex_buffers[frame_index].push(vertex_buffer);
+        self.index_buffers[frame_index].push(index_buffer);
 
         Ok(())
     }

@@ -3,7 +3,7 @@ use super::{
     shader_interfaces::vertex_inputs::{BoundingBoxVertex, VulkanVertex},
     vulkan_init::render_pass_indices,
 };
-use crate::renderer::vulkan_init::{camera_ubo_descriptor_set_layout, write_camera_descriptor_set};
+use crate::renderer::vulkan_init::{create_desc_sets_camera, write_camera_descriptor_sets};
 use anyhow::Context;
 use ash::vk;
 use bort_vk::{
@@ -21,7 +21,7 @@ mod descriptor {
 }
 
 pub struct OverlayPass {
-    desc_set_camera: DescriptorSet,
+    desc_sets_camera: Vec<DescriptorSet>,
     pipeline_aabb: GraphicsPipeline,
 }
 
@@ -29,16 +29,16 @@ impl OverlayPass {
     pub fn new(render_pass: &RenderPass, camera_buffer: &Buffer) -> anyhow::Result<Self> {
         let device = render_pass.device().clone();
 
-        let desc_set_camera = create_desc_set_camera(device.clone())?;
-        write_camera_descriptor_set(&desc_set_camera, camera_buffer, descriptor::BINDING_CAMERA);
+        let desc_sets_camera = create_desc_sets_camera(device.clone(), descriptor::BINDING_CAMERA)?;
+        write_camera_descriptor_sets(&desc_sets_camera, camera_buffer, descriptor::BINDING_CAMERA);
 
         let pipeline_layout_aabb =
-            create_aabb_pipeline_layout(device.clone(), desc_set_camera.layout().clone())?;
+            create_aabb_pipeline_layout(device.clone(), desc_sets_camera[0].layout().clone())?;
         let pipeline_aabb =
             create_aabb_pipeline(device.clone(), pipeline_layout_aabb.clone(), render_pass)?;
 
         Ok(Self {
-            desc_set_camera,
+            desc_sets_camera,
             pipeline_aabb,
         })
     }
@@ -46,6 +46,7 @@ impl OverlayPass {
     pub fn record_aabb_overlay_commands(
         &self,
         command_buffer: &CommandBuffer,
+        frame_index: usize,
         object_resource_manager: &ObjectResourceManager,
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
@@ -61,18 +62,12 @@ impl OverlayPass {
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline_aabb.pipeline_layout().as_ref(),
             0,
-            [&self.desc_set_camera],
+            [&self.desc_sets_camera[frame_index]],
             &[],
         );
 
         object_resource_manager.draw_bounding_box_commands(command_buffer);
     }
-}
-
-fn create_desc_set_camera(device: Arc<Device>) -> anyhow::Result<DescriptorSet> {
-    let camera_layout_properties = camera_ubo_descriptor_set_layout(descriptor::BINDING_CAMERA);
-    DescriptorSet::new_from_set_layout(device, camera_layout_properties)
-        .context("creating geometry pass camera descriptor set")
 }
 
 fn create_aabb_pipeline_layout(

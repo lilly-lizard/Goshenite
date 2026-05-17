@@ -13,7 +13,7 @@
 - make gui a side panel
 	- goals:
 		- most of time you want to click on object and move it around
-		- make outline for selected object/primitive op
+		- make outline for selected object/primitive op - USE SPEC CONSTANTS and separate pipeline
 		- config option to be top,left,right,bottom
 		- have settings window that pops up in the middle of the window
 	- scene mode vs object mode

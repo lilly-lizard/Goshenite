@@ -1,13 +1,9 @@
-use super::{
-    object_resource_manager::ObjectResourceManager,
-    shader_interfaces::vertex_inputs::BoundingBoxVertex,
-    vulkan_init::{render_pass_indices, write_camera_descriptor_set},
-};
 use crate::{
     engine::object::objects_delta::ObjectsDelta,
     renderer::{
-        shader_interfaces::vertex_inputs::VulkanVertex,
-        vulkan_init::camera_ubo_descriptor_set_layout,
+        object_resource_manager::ObjectResourceManager,
+        shader_interfaces::vertex_inputs::{BoundingBoxVertex, VulkanVertex},
+        vulkan_init::{create_desc_sets_camera, render_pass_indices, write_camera_descriptor_sets},
     },
 };
 use anyhow::Context;
@@ -34,7 +30,7 @@ pub(super) mod descriptor {
 
 /// Render the scene geometry and write to g-buffers
 pub struct GeometryPass {
-    desc_set_camera: DescriptorSet,
+    desc_sets_camera: Vec<DescriptorSet>,
 
     pipeline: GraphicsPipeline,
     object_buffer_manager: ObjectResourceManager,
@@ -50,14 +46,14 @@ impl GeometryPass {
         transfer_queue_family_index: u32,
         render_queue_family_index: u32,
     ) -> anyhow::Result<Self> {
-        let desc_set_camera = create_desc_set_camera(device.clone())?;
-        write_camera_descriptor_set(&desc_set_camera, camera_buffer, descriptor::BINDING_CAMERA);
+        let desc_sets_camera = create_desc_sets_camera(device.clone(), descriptor::BINDING_CAMERA)?;
+        write_camera_descriptor_sets(&desc_sets_camera, camera_buffer, descriptor::BINDING_CAMERA);
 
         let primitive_ops_desc_set_layout = create_primitive_ops_desc_set_layout(device.clone())?;
 
         let pipeline_layout = create_pipeline_layout(
             device.clone(),
-            desc_set_camera.layout().clone(),
+            desc_sets_camera[0].layout().clone(),
             primitive_ops_desc_set_layout.clone(),
         )?;
         let pipeline = create_pipeline(pipeline_layout, render_pass)?;
@@ -70,7 +66,7 @@ impl GeometryPass {
         )?;
 
         Ok(Self {
-            desc_set_camera,
+            desc_sets_camera,
             pipeline,
             object_buffer_manager,
         })
@@ -90,6 +86,7 @@ impl GeometryPass {
     pub fn record_commands(
         &self,
         command_buffer: &CommandBuffer,
+        frame_index: usize,
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
     ) {
@@ -105,7 +102,7 @@ impl GeometryPass {
             vk::PipelineBindPoint::GRAPHICS,
             self.pipeline.pipeline_layout().as_ref(),
             0,
-            [&self.desc_set_camera],
+            [&self.desc_sets_camera[frame_index]],
             &[],
         );
 
@@ -123,12 +120,6 @@ impl Drop for GeometryPass {
     fn drop(&mut self) {
         trace!("dropping geometry pass...");
     }
-}
-
-fn create_desc_set_camera(device: Arc<Device>) -> anyhow::Result<DescriptorSet> {
-    let camera_layout_properties = camera_ubo_descriptor_set_layout(descriptor::BINDING_CAMERA);
-    DescriptorSet::new_from_set_layout(device, camera_layout_properties)
-        .context("creating geometry pass camera descriptor set")
 }
 
 fn create_primitive_ops_desc_set_layout(

@@ -1,6 +1,4 @@
 use super::{
-    button_state::MouseButtonStates,
-    cursor::Cursor,
     keyboard_modifiers::{KeyboardModifier, KeyboardModifierStates},
     mouse_button::MouseButton,
 };

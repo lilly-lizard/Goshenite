@@ -1,8 +1,7 @@
 use super::{
     config_renderer::{
         supports_required_features_1_0, CPU_ACCESS_BUFFER_SIZE, FORMAT_ALBEDO_BUFFER,
-        FORMAT_NORMAL_BUFFER, MAX_FRAMES_IN_FLIGHT, MAX_VULKAN_VER, MIN_VULKAN_VER,
-        SHADER_ENTRY_POINT,
+        FORMAT_NORMAL_BUFFER, FRAMES_IN_FLIGHT, MAX_VULKAN_VER, MIN_VULKAN_VER, SHADER_ENTRY_POINT,
     },
     debug_callback::log_vulkan_debug_callback,
     shader_interfaces::{id_buffer::ID_BACKGROUND, uniform_buffers::CameraUniformBuffer},
@@ -15,19 +14,15 @@ use crate::renderer::{
     shader_interfaces::uniform_buffers::GizmoUniformBuffer,
 };
 use anyhow::{anyhow, Context};
-use ash::{
-    prelude::VkResult,
-    vk::{self, EXT_DEBUG_UTILS_NAME},
-};
+use ash::vk::{self, DescriptorBufferInfo, WriteDescriptorSet, EXT_DEBUG_UTILS_NAME};
 use bort_vk::{
     allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, Buffer,
     BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback,
-    DebugCallbackProperties, DescriptorPool, DescriptorSet, DescriptorSetLayout,
-    DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, Framebuffer,
-    FramebufferProperties, Image, ImageDimensions, ImageProperties, ImageView, ImageViewAccess,
-    ImageViewProperties, Instance, MemoryAllocator, PhysicalDevice, PhysicalDeviceFeatures, Queue,
-    RenderPass, ShaderError, ShaderModule, ShaderStage, Subpass, Surface, Swapchain,
-    SwapchainImage, SwapchainProperties,
+    DebugCallbackProperties, DescriptorSet, DescriptorSetLayoutBinding,
+    DescriptorSetLayoutProperties, Device, DeviceOwned, Framebuffer, FramebufferProperties, Image,
+    ImageDimensions, ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, Instance,
+    MemoryAllocator, PhysicalDevice, PhysicalDeviceFeatures, Queue, RenderPass, ShaderError,
+    ShaderModule, ShaderStage, Subpass, Surface, Swapchain, SwapchainImage, SwapchainProperties,
 };
 use bort_vma::AllocationCreateInfo;
 #[allow(unused_imports)]
@@ -421,7 +416,6 @@ pub fn create_device_and_queue(
             queue_infos.as_slice(),
             physical_device_features,
             extension_names,
-            vec![],
             debug_callback,
             vec![synchronization_feature],
         )?
@@ -475,7 +469,7 @@ pub fn swapchain_properties(
     surface: &Surface,
     window: &Window,
 ) -> anyhow::Result<SwapchainProperties> {
-    let preferred_image_count = MAX_FRAMES_IN_FLIGHT as u32;
+    let preferred_image_count = FRAMES_IN_FLIGHT as u32;
     let window_dimensions: [u32; 2] = window.inner_size().into();
 
     let surface_capabilities = surface
@@ -922,13 +916,11 @@ pub fn create_primitive_id_buffer(
     Ok(Arc::new(image_view))
 }
 
-/// Creates `framebuffer_count` number of primitive id buffer image views
 pub fn create_id_buffers(
-    framebuffer_count: usize,
     memory_allocator: Arc<MemoryAllocator>,
     dimensions: ImageDimensions,
 ) -> anyhow::Result<Vec<Arc<ImageView<Image>>>> {
-    (0..framebuffer_count)
+    (0..FRAMES_IN_FLIGHT)
         .into_iter()
         .map(|_| create_id_buffer(memory_allocator.clone(), dimensions))
         .collect::<anyhow::Result<Vec<_>>>()
@@ -989,16 +981,17 @@ pub fn create_framebuffers(
     primitive_id_buffer: Arc<ImageView<Image>>,
     depth_buffer: Arc<ImageView<Image>>,
     id_buffers: &[Arc<ImageView<Image>>],
-) -> anyhow::Result<Vec<Framebuffer>> {
-    (0..swapchain_image_views.len())
-        .into_iter()
-        .map(|i| {
-            let mut attachments = Vec::<Arc<dyn ImageViewAccess>>::with_capacity(
-                render_pass_indices::NUM_ATTACHMENTS,
-            );
+) -> anyhow::Result<Vec<Vec<Framebuffer>>> {
+    let mut framebuffers: Vec<Vec<Framebuffer>> = Vec::with_capacity(swapchain_image_views.len());
+    for swapchain_index in 0..swapchain_image_views.len() {
+        let mut per_swapchain_framebuffers: Vec<Framebuffer> = Vec::with_capacity(FRAMES_IN_FLIGHT);
+        for frame_index in 0..FRAMES_IN_FLIGHT {
+            let mut attachments: Vec<Arc<dyn ImageViewAccess>> =
+                Vec::with_capacity(render_pass_indices::NUM_ATTACHMENTS);
+
             attachments.insert(
                 render_pass_indices::ATTACHMENT_SWAPCHAIN,
-                swapchain_image_views[i].clone(),
+                swapchain_image_views[swapchain_index].clone(),
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_NORMAL,
@@ -1018,18 +1011,21 @@ pub fn create_framebuffers(
             );
             attachments.insert(
                 render_pass_indices::ATTACHMENT_ID_BUFFER,
-                id_buffers[i].clone(),
+                id_buffers[frame_index].clone(),
             );
 
             let framebuffer_properties = FramebufferProperties::new_default(
                 attachments,
-                swapchain_image_views[i].image().dimensions(),
+                swapchain_image_views[swapchain_index].image().dimensions(),
             );
-            let framebuffer = Framebuffer::new(render_pass.clone(), framebuffer_properties)
-                .context("creating framebuffer")?;
-            Ok(framebuffer)
-        })
-        .collect()
+            per_swapchain_framebuffers.push(
+                Framebuffer::new(render_pass.clone(), framebuffer_properties)
+                    .context("creating framebuffer")?,
+            );
+        }
+        framebuffers.push(per_swapchain_framebuffers);
+    }
+    Ok(framebuffers)
 }
 
 pub fn create_clear_values() -> Vec<vk::ClearValue> {
@@ -1084,8 +1080,11 @@ pub fn create_clear_values() -> Vec<vk::ClearValue> {
 }
 
 pub fn create_camera_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Result<Buffer> {
-    let ubo_size = mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize;
-    let ubo_props = BufferProperties::new_default(ubo_size, vk::BufferUsageFlags::UNIFORM_BUFFER);
+    let ubo_size = mem::size_of::<CameraUniformBuffer>() * FRAMES_IN_FLIGHT;
+    let ubo_props = BufferProperties::new_default(
+        ubo_size as vk::DeviceSize,
+        vk::BufferUsageFlags::UNIFORM_BUFFER,
+    );
 
     let alloc_info = allocation_info_cpu_accessible();
     let buffer = Buffer::new(memory_allocator, ubo_props, alloc_info)
@@ -1105,10 +1104,9 @@ pub fn create_gizmo_ubo(memory_allocator: Arc<MemoryAllocator>) -> anyhow::Resul
 
 pub fn create_render_command_buffers(
     render_command_pool: Arc<CommandPool>,
-    swapchain_image_count: u32,
 ) -> anyhow::Result<Vec<CommandBuffer>> {
     let command_buffers = render_command_pool
-        .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, swapchain_image_count)
+        .allocate_command_buffers(vk::CommandBufferLevel::PRIMARY, FRAMES_IN_FLIGHT as u32)
         .context("allocating per-frame command buffers")?;
     Ok(command_buffers)
 }
@@ -1123,49 +1121,48 @@ pub fn camera_ubo_descriptor_set_layout(binding: u32) -> DescriptorSetLayoutProp
     }])
 }
 
-pub fn _create_ubo_descriptor_set_with_binding(
-    descriptor_pool: Arc<DescriptorPool>,
+pub fn create_desc_sets_camera(
+    device: Arc<Device>,
     binding: u32,
-) -> VkResult<DescriptorSet> {
-    let desc_set_layout_props =
-        DescriptorSetLayoutProperties::new_default(vec![DescriptorSetLayoutBinding {
-            binding,
-            descriptor_type: vk::DescriptorType::UNIFORM_BUFFER,
-            descriptor_count: 1,
-            stage_flags: vk::ShaderStageFlags::FRAGMENT | vk::ShaderStageFlags::VERTEX,
-            ..Default::default()
-        }]);
-
-    let desc_set_layout = Arc::new(DescriptorSetLayout::new(
-        descriptor_pool.device().clone(),
-        desc_set_layout_props,
-    )?);
-
-    let desc_set = descriptor_pool.allocate_descriptor_set(desc_set_layout)?;
-    Ok(desc_set)
+) -> anyhow::Result<Vec<DescriptorSet>> {
+    let camera_layout_properties = camera_ubo_descriptor_set_layout(binding);
+    let mut layouts: Vec<DescriptorSetLayoutProperties> = Vec::new();
+    for _i in 0..FRAMES_IN_FLIGHT {
+        layouts.push(camera_layout_properties.clone());
+    }
+    DescriptorSet::new_from_set_layouts(device, layouts)
+        .context("creating geometry pass camera descriptor set")
 }
 
-pub fn write_camera_descriptor_set(
-    desc_set_camera: &DescriptorSet,
+pub fn write_camera_descriptor_sets(
+    desc_sets_camera: &Vec<DescriptorSet>,
     camera_buffer: &Buffer,
     binding: u32,
 ) {
-    let camera_buffer_info = vk::DescriptorBufferInfo {
-        buffer: camera_buffer.handle(),
-        offset: 0,
-        range: mem::size_of::<CameraUniformBuffer>() as vk::DeviceSize,
-    };
-    let camera_buffer_infos = [camera_buffer_info];
+    let mut camera_buffer_infos: Vec<[DescriptorBufferInfo; 1]> = Vec::new();
+    let mut descriptor_writes: Vec<WriteDescriptorSet> = Vec::new();
 
-    let descriptor_write = vk::WriteDescriptorSet::default()
-        .dst_set(desc_set_camera.handle())
-        .dst_binding(binding)
-        .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
-        .buffer_info(&camera_buffer_infos);
+    let ubo_size = mem::size_of::<CameraUniformBuffer>();
+    for frame_index in 0..FRAMES_IN_FLIGHT {
+        camera_buffer_infos.push([vk::DescriptorBufferInfo {
+            buffer: camera_buffer.handle(),
+            offset: (ubo_size * frame_index) as vk::DeviceSize,
+            range: ubo_size as vk::DeviceSize,
+        }]);
+    }
+    for frame_index in 0..desc_sets_camera.len() {
+        descriptor_writes.push(
+            vk::WriteDescriptorSet::default()
+                .dst_set(desc_sets_camera[frame_index].handle())
+                .dst_binding(binding)
+                .descriptor_type(vk::DescriptorType::UNIFORM_BUFFER)
+                .buffer_info(&camera_buffer_infos[frame_index]),
+        );
+    }
 
-    desc_set_camera
+    desc_sets_camera[0]
         .device()
-        .update_descriptor_sets([descriptor_write], []);
+        .update_descriptor_sets(descriptor_writes, []);
 }
 
 pub fn create_shader_stages_from_bytes<'a>(
