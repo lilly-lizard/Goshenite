@@ -274,6 +274,7 @@ impl EngineController {
             &self.camera,
             self.gizmo_visibility,
             self.hovered_gizmo,
+            self.selected_object_id,
         )?;
 
         self.main_thread_frame_number += 1;
@@ -392,7 +393,7 @@ impl EngineController {
     }
 
     fn background_clicked(&mut self) {
-        self.deselect_primitive_op();
+        self.deselect_object();
         self.camera.unset_lock_on_target();
     }
 

@@ -15,7 +15,7 @@ use super::{
 };
 use crate::{
     config,
-    engine::object::objects_delta::ObjectsDelta,
+    engine::object::{object::ObjectId, objects_delta::ObjectsDelta},
     helper::anyhow_panic::log_anyhow_error_and_sources,
     renderer::{
         config_renderer::FRAMES_IN_FLIGHT,
@@ -359,6 +359,7 @@ impl RenderManager {
         camera: &Camera,
         gizmo_visibility: GizmoVisibility,
         hovered_gizmo: Option<GizmoElement>,
+        selected_object_id: Option<ObjectId>,
     ) -> anyhow::Result<()> {
         let new_frame_index = (self.frame_index_currently_rendering + 1) % FRAMES_IN_FLIGHT;
 
@@ -404,6 +405,7 @@ impl RenderManager {
             debug_options,
             gizmo_visibility,
             hovered_gizmo,
+            selected_object_id,
         )?;
 
         self.render_fences[new_frame_index]
@@ -641,6 +643,7 @@ impl RenderManager {
         debug_options: RenderDebugOptions,
         gizmo_visibility: GizmoVisibility,
         hovered_gizmo: Option<GizmoElement>,
+        selected_object_id: Option<ObjectId>,
     ) -> anyhow::Result<()> {
         let viewport = self.framebuffers[swapchain_index][frame_index].whole_viewport();
         let render_area = self.framebuffers[swapchain_index][frame_index].whole_rect();
@@ -661,8 +664,13 @@ impl RenderManager {
             .clear_values(self.clear_values.as_slice());
         command_buffer.begin_render_pass(&render_pass_begin, vk::SubpassContents::INLINE);
 
-        self.geometry_pass
-            .record_commands(command_buffer, frame_index, viewport, render_area);
+        self.geometry_pass.record_commands(
+            command_buffer,
+            selected_object_id,
+            frame_index,
+            viewport,
+            render_area,
+        );
 
         command_buffer.next_subpass(vk::SubpassContents::INLINE);
 

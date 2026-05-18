@@ -12,7 +12,7 @@ use bort_vk::{
     allocation_info_from_flags, AllocationAccess, AllocatorAccess, Buffer, BufferProperties,
     CommandBuffer, CommandPool, CommandPoolProperties, DescriptorPool, DescriptorPoolProperties,
     DescriptorSet, DescriptorSetLayout, Device, DeviceOwned, Fence, GraphicsPipeline,
-    MemoryAllocator, PipelineAccess, Queue, Semaphore,
+    MemoryAllocator, PipelineAccess, PipelineLayout, Queue, Semaphore,
 };
 use bytemuck::NoUninit;
 #[allow(unused_imports)]
@@ -121,17 +121,40 @@ impl ObjectResourceManager {
         Ok(())
     }
 
-    pub fn draw_commands(&self, command_buffer: &CommandBuffer, pipeline: &GraphicsPipeline) {
+    pub fn draw_commands_all(
+        &self,
+        command_buffer: &CommandBuffer,
+        pipeline_layout: &PipelineLayout,
+    ) {
         for per_object_buffers in self.objects_buffers.iter() {
-            command_buffer.bind_descriptor_sets(
-                vk::PipelineBindPoint::GRAPHICS,
-                &pipeline.pipeline_layout(),
-                1,
-                [per_object_buffers.primitive_ops_descriptor_set.as_ref()],
-                &[],
-            );
-            command_buffer.bind_vertex_buffers(0, [&per_object_buffers.bounding_mesh_buffer], &[0]);
-            command_buffer.draw(per_object_buffers.bounding_mesh_vertex_count, 1, 0, 0);
+            per_object_buffers.record_draw_command(command_buffer, pipeline_layout);
+        }
+    }
+
+    pub fn draw_commands_skip_id(
+        &self,
+        command_buffer: &CommandBuffer,
+        pipeline_layout: &PipelineLayout,
+        skip_object_id: ObjectId,
+    ) {
+        for per_object_buffers in self.objects_buffers.iter() {
+            if per_object_buffers.object_id == skip_object_id {
+                continue;
+            }
+            per_object_buffers.record_draw_command(command_buffer, pipeline_layout);
+        }
+    }
+
+    pub fn draw_commands_object_id(
+        &self,
+        command_buffer: &CommandBuffer,
+        pipeline_layout: &PipelineLayout,
+        object_id: ObjectId,
+    ) {
+        for per_object_buffers in self.objects_buffers.iter() {
+            if per_object_buffers.object_id == object_id {
+                per_object_buffers.record_draw_command(command_buffer, pipeline_layout);
+            }
         }
     }
 
@@ -537,6 +560,24 @@ struct PerObjectResources {
     pub bounding_mesh_vertex_count: u32,
     pub primitive_ops_buffer: Buffer,
     pub primitive_ops_descriptor_set: Arc<DescriptorSet>,
+}
+
+impl PerObjectResources {
+    pub fn record_draw_command(
+        &self,
+        command_buffer: &CommandBuffer,
+        pipeline_layout: &PipelineLayout,
+    ) {
+        command_buffer.bind_descriptor_sets(
+            vk::PipelineBindPoint::GRAPHICS,
+            pipeline_layout,
+            1,
+            [self.primitive_ops_descriptor_set.as_ref()],
+            &[],
+        );
+        command_buffer.bind_vertex_buffers(0, [&self.bounding_mesh_buffer], &[0]);
+        command_buffer.draw(self.bounding_mesh_vertex_count, 1, 0, 0);
+    }
 }
 
 struct BufferUploadResources {
