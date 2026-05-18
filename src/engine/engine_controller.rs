@@ -1,17 +1,22 @@
-use super::{
-    commands::CommandWithSource,
-    config_engine,
-    object::{object::ObjectId, object_collection::ObjectCollection, operation::Operation},
-    primitives::{
-        cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform, sphere::Sphere,
-    },
-    settings::Settings,
-    window_thread::WindowThreadChannels,
-};
 use crate::{
     config,
-    engine::object::{object::Object, primitive_op::PrimitiveOpIndex},
-    helper::anyhow_panic::anyhow_unwrap,
+    engine::{
+        commands::CommandWithSource,
+        config_engine,
+        object::{
+            object::{Object, ObjectId},
+            object_collection::ObjectCollection,
+            operation::Operation,
+            primitive_op::PrimitiveOpIndex,
+        },
+        primitives::{
+            cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform,
+            sphere::Sphere,
+        },
+        settings::Settings,
+        window_thread::WindowThreadChannels,
+    },
+    helper::{anyhow_panic::anyhow_unwrap, more_errors::CollectionError},
     renderer::{
         config_renderer::RenderDebugOptions, element_id_reader::ElementAtPoint,
         render_manager::RenderManager,
@@ -26,10 +31,10 @@ use crate::{
         mouse_button::MouseButton,
     },
 };
-use glam::Vec3;
+use glam::{DVec2, Vec3};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{collections::VecDeque, env, fmt::Debug, sync::Arc};
+use std::{collections::VecDeque, env, sync::Arc};
 use winit::{
     event::{ElementState, KeyEvent, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
@@ -65,6 +70,7 @@ pub struct EngineController {
 
     // controllers
     cursor: Cursor,
+    dragging_source_element: Option<ElementAtPoint>,
     camera: Camera,
     gui: Gui,
     render_manager: RenderManager,
@@ -124,6 +130,7 @@ impl EngineController {
             hovered_gizmo: None,
 
             cursor,
+            dragging_source_element: None,
             camera,
             gui,
             render_manager,
@@ -172,11 +179,7 @@ impl EngineController {
         let events = self.window_thread_channels.get_events()?;
 
         for event in events {
-            let process_input_res = self.process_window_event(event);
-
-            if let Err(e) = process_input_res {
-                error!("error while processing input: {}", e);
-            }
+            self.process_window_event(event);
         }
 
         self.update_engine()?;
@@ -185,7 +188,7 @@ impl EngineController {
     }
 
     /// Process window events and update state
-    fn process_window_event(&mut self, event: WindowEvent) -> Result<(), EngineError> {
+    fn process_window_event(&mut self, event: WindowEvent) {
         trace!("winit event: {:?}", event);
 
         // egui event handling
@@ -228,8 +231,6 @@ impl EngineController {
             //WindowEvent::ThemeChanged(winit_theme)
             _ => (),
         }
-
-        Ok(())
     }
 
     // Per frame udpates
@@ -274,6 +275,7 @@ impl EngineController {
             &self.camera,
             self.gizmo_visibility,
             self.hovered_gizmo,
+            self.selected_object_id,
         )?;
 
         self.main_thread_frame_number += 1;
@@ -286,7 +288,7 @@ impl EngineController {
             return Ok(());
         };
 
-        let Some(selected_object) = self.object_collection.get_object(selected_object_id) else {
+        let Ok(selected_object) = self.object_collection.get_object(selected_object_id) else {
             self.deselect_object();
             return Ok(());
         };
@@ -360,39 +362,71 @@ impl EngineController {
         let scroll_delta = self.cursor.get_and_clear_scroll_delta();
         self.camera.update_scroll(scroll_delta, self.settings);
 
+        if let MouseButtonEvent::Dragging { .. } = cursor_event {
+            if self.dragging_source_element.is_none() {
+                // just started dragging
+                self.dragging_source_element = element_at_point;
+            }
+        } else {
+            self.dragging_source_element = None; // not dragging
+        }
+
         match cursor_event {
-            MouseButtonEvent::ReleaseInPlace(MouseButton::Left) => match element_at_point {
-                Some(ElementAtPoint::Background) => self.background_clicked(),
-                Some(ElementAtPoint::Object {
-                    object_id,
-                    primitive_op_index,
-                }) => self.select_primitive_op(object_id, primitive_op_index, None),
-                Some(ElementAtPoint::BlendArea { object_id }) => {
-                    self.select_object(object_id, None)
-                }
+            MouseButtonEvent::ReleaseInPlace(button) => match button {
+                MouseButton::Left => match element_at_point {
+                    Some(ElementAtPoint::Background) => self.background_clicked(),
+                    Some(ElementAtPoint::Object {
+                        object_id,
+                        primitive_op_index,
+                    }) => self.select_primitive_op(object_id, primitive_op_index, None),
+                    Some(ElementAtPoint::BlendArea { object_id }) => {
+                        self.select_object(object_id, None)
+                    }
+                    _ => (),
+                },
                 _ => (),
             },
-            MouseButtonEvent::Dragging { button, delta } => match element_at_point {
-                Some(ElementAtPoint::Background) => self.camera.update_cursor_dragging(
+            MouseButtonEvent::Dragging { button, delta } => match self.dragging_source_element {
+                Some(ElementAtPoint::Gizmo(gizmo_element)) => {
+                    self.gizmo_dragged(gizmo_element, button, delta)
+                }
+                _ => self.camera.update_cursor_dragging(
                     delta,
                     button,
                     self.keyboard_modifier_states,
                     self.settings.camera_control_mappings,
                 ),
-                _ => (),
             },
             MouseButtonEvent::None => match element_at_point {
                 Some(ElementAtPoint::Gizmo(gizmo_type)) => self.hovered_gizmo = Some(gizmo_type),
                 _ => self.hovered_gizmo = None,
             },
-            _ => (),
         }
 
         Ok(())
     }
 
+    fn gizmo_dragged(&mut self, gizmo_element: GizmoElement, button: MouseButton, delta: DVec2) {
+        let Some(selected_object_id) = self.selected_object_id else {
+            warn!("gizmo dragged but no object selected. how???");
+            return;
+        };
+
+        if button == MouseButton::Left {
+            let res = gizmo_element.process_dragged(
+                delta,
+                selected_object_id,
+                &mut self.object_collection,
+                &self.camera,
+            );
+            if let Err(CollectionError::InvalidId { .. }) = res {
+                self.deselect_object();
+            }
+        }
+    }
+
     fn background_clicked(&mut self) {
-        self.deselect_primitive_op();
+        self.deselect_object();
         self.camera.unset_lock_on_target();
     }
 
@@ -418,29 +452,6 @@ impl Drop for EngineController {
         debug!("dropping engine controller");
     }
 }
-
-// ~~ Engine Error ~~
-
-#[derive(Debug)]
-pub enum EngineError {
-    RenderThreadClosedPrematurely,
-    WindowThreadClosedPrematurely,
-}
-
-impl std::fmt::Display for EngineError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match *self {
-            Self::RenderThreadClosedPrematurely => {
-                write!(f, "render thread was closed prematurely")
-            }
-            Self::WindowThreadClosedPrematurely => {
-                write!(f, "window thread was closed prematurely")
-            }
-        }
-    }
-}
-
-impl std::error::Error for EngineError {}
 
 // ~~ Testing ~~
 

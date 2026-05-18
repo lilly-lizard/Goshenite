@@ -66,6 +66,7 @@ pub enum Axis {
 
 impl Axis {
     /// Normalizes `direction_vec` before returning `Self::Direction`
+    #[allow(dead_code)]
     pub fn new_direction(direction: Vec3) -> Result<Self, AxisError> {
         let normalized_vec = direction
             .try_normalize()
@@ -73,6 +74,7 @@ impl Axis {
         Ok(Self::Direction(normalized_vec))
     }
 
+    #[allow(dead_code)]
     pub fn to_vec3(&self) -> Vec3 {
         match self {
             Self::Cartesian(axis) => axis.as_vec3(),
@@ -80,6 +82,7 @@ impl Axis {
         }
     }
 
+    #[allow(dead_code)]
     pub fn to_dvec3(&self) -> DVec3 {
         match self {
             Self::Cartesian(axis) => axis.as_dvec3(),
@@ -97,6 +100,7 @@ impl Axis {
         Ok(vec)
     }
 
+    #[allow(dead_code)]
     pub fn to_dvec3_normalized(&self) -> Result<DVec3, AxisError> {
         let vec = match self {
             Self::Cartesian(axis) => axis.as_dvec3(),
@@ -151,6 +155,7 @@ impl AxisRotation {
         Ok(Quat::from_axis_angle(axis, angle))
     }
 
+    #[allow(dead_code)]
     pub fn to_dquat(&self) -> Result<DQuat, AxisError> {
         let axis = self.axis.to_dvec3_normalized()?;
         let angle = self.angle.radians();

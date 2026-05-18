@@ -68,20 +68,12 @@ impl PrimitiveTransform {
         self.rotation_tentative_append = AxisRotation::DEFAULT;
     }
 
-    pub fn set_tentative_rotation(&mut self, new_rotation: AxisRotation) {
-        self.rotation_tentative_append = new_rotation;
-    }
-
     pub fn set_tentative_rotation_axis(&mut self, new_axis: Axis) {
         self.rotation_tentative_append.axis = new_axis;
     }
 
     pub fn set_tentative_rotation_angle(&mut self, new_angle: Angle) {
         self.rotation_tentative_append.angle = new_angle;
-    }
-
-    pub fn reset_tentative_rotation(&mut self) {
-        self.rotation_tentative_append = AxisRotation::DEFAULT;
     }
 
     pub const DEFAULT: PrimitiveTransform = PrimitiveTransform {

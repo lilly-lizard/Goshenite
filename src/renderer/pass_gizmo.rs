@@ -5,7 +5,7 @@ use super::{
     vulkan_init::render_pass_indices,
 };
 use crate::{
-    helper::more_errors::IoError,
+    helper::{axis::CartesianAxis, more_errors::IoError},
     renderer::{
         shader_interfaces::{
             id_buffer::{ID_GIZMO_X, ID_GIZMO_Y, ID_GIZMO_Z},
@@ -14,7 +14,7 @@ use crate::{
         },
         vulkan_init::{create_desc_sets_camera, write_camera_descriptor_sets},
     },
-    user_interface::gizmo::{GizmoElement, GizmoLinear, GizmoVisibility},
+    user_interface::gizmo::{GizmoElement, GizmoVisibility},
 };
 use anyhow::Context;
 use ash::vk::{self, BufferUsageFlags};
@@ -143,10 +143,9 @@ impl GizmoPass {
         if let Some(hovered_gizmo) = hovered_gizmo {
             match hovered_gizmo {
                 GizmoElement::Linear(direction) => match direction {
-                    GizmoLinear::X => data_x.color = COLOR_YELLOW,
-                    GizmoLinear::Y => data_y.color = COLOR_YELLOW,
-                    GizmoLinear::Z => data_z.color = COLOR_YELLOW,
-                    _ => (),
+                    CartesianAxis::X => data_x.color = COLOR_YELLOW,
+                    CartesianAxis::Y => data_y.color = COLOR_YELLOW,
+                    CartesianAxis::Z => data_z.color = COLOR_YELLOW,
                 },
             }
         }

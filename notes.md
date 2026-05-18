@@ -8,6 +8,8 @@
 	- add GizmoVisibility (including center) and GizmoItem structs, note that multiple gizmo types can be on simultaneously ✔️
 - remove arcball camera (have hidden option for it) ✔️
 	- it doesn't make sense with gizmo dragging ✔️
+	- make arcball around invisible marker on ground plane?
+  	- render the ground plane?
 	- make simple controls similar to bambu studio or smthn 🔨
 	- config for pan etc 🔨
 - make gui a side panel

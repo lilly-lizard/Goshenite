@@ -112,8 +112,23 @@ impl GeometryPass {
             &[],
         );
 
-        self.object_buffer_manager
-            .draw_commands(command_buffer, &self.pipeline);
+        if let Some(selected_object_id) = selected_object_id {
+            self.object_buffer_manager.draw_commands_skip_id(
+                command_buffer,
+                &self.pipeline.pipeline_layout(),
+                selected_object_id,
+            );
+
+            command_buffer.bind_pipeline(&self.pipeline_selected_object);
+            self.object_buffer_manager.draw_commands_object_id(
+                command_buffer,
+                &self.pipeline_selected_object.pipeline_layout(),
+                selected_object_id,
+            );
+        } else {
+            self.object_buffer_manager
+                .draw_commands_all(command_buffer, &self.pipeline.pipeline_layout());
+        }
     }
 
     #[inline]

@@ -1,11 +1,9 @@
-use super::{
-    object::{Object, ObjectId},
-    objects_delta::{push_object_delta, ObjectDeltaOperation, ObjectsDelta},
-};
 use crate::{
     engine::{
         config_engine::DEFAULT_ORIGIN,
         object::{
+            object::{Object, ObjectId},
+            objects_delta::{push_object_delta, ObjectDeltaOperation, ObjectsDelta},
             operation::Operation,
             primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
@@ -37,15 +35,6 @@ impl ObjectCollection {
         }
     }
 
-    pub fn new_object(
-        &mut self,
-        name: impl Into<String>,
-        center: Vec3,
-    ) -> Result<(ObjectId, Object), UniqueIdError> {
-        let object_id = self.unique_id_gen.new_id()?;
-        Ok(self.new_object_internal(object_id, name.into(), center))
-    }
-
     pub fn new_object_default(&mut self) -> Result<(ObjectId, Object), UniqueIdError> {
         let object_id = self.unique_id_gen.new_id()?;
         let name = format!("New Object {}", object_id.raw_id());
@@ -73,16 +62,6 @@ impl ObjectCollection {
         Ok(new_object_ids)
     }
 
-    pub fn set_object(
-        &mut self,
-        object_id: ObjectId,
-        new_object: Object,
-    ) -> Result<(), CollectionError> {
-        let object_mut_ref = self.get_object_mut(object_id)?;
-        *object_mut_ref = new_object;
-        self.mark_object_for_gpu_update(object_id)
-    }
-
     pub fn set_object_name(
         &mut self,
         object_id: ObjectId,
@@ -99,6 +78,15 @@ impl ObjectCollection {
         new_center: Vec3,
     ) -> Result<(), CollectionError> {
         self.get_object_mut(object_id)?.center = new_center;
+        self.mark_object_for_gpu_update(object_id)
+    }
+
+    pub fn translate_object(
+        &mut self,
+        object_id: ObjectId,
+        translation: Vec3,
+    ) -> Result<(), CollectionError> {
+        self.get_object_mut(object_id)?.center += translation;
         self.mark_object_for_gpu_update(object_id)
     }
 
@@ -208,8 +196,12 @@ impl ObjectCollection {
         &self.objects
     }
 
-    pub fn get_object(&self, object_id: ObjectId) -> Option<&Object> {
-        self.objects.get(&object_id)
+    pub fn get_object(&self, object_id: ObjectId) -> Result<&Object, CollectionError> {
+        self.objects
+            .get(&object_id)
+            .ok_or(CollectionError::InvalidId {
+                raw_id: object_id.raw_id(),
+            })
     }
 
     pub fn get_object_and_primitive_op(
@@ -232,14 +224,6 @@ impl ObjectCollection {
                     size: object.primitive_ops.len(),
                 })?;
         Ok((object, *primitive_op))
-    }
-
-    /// Marks all objects for gpu update, regardless of wherever they've been modified since the
-    /// last upload. Useful for debugging.
-    pub fn force_gpu_update(&mut self) {
-        for (object_id, object) in self.objects.clone() {
-            self.push_object_delta(object_id, ObjectDeltaOperation::Update(object));
-        }
     }
 }
 
