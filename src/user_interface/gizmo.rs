@@ -12,6 +12,7 @@ pub struct GizmoVisibility {
     // linear_plane
     // scale
 }
+
 impl GizmoVisibility {
     pub fn any_visible(&self) -> bool {
         return self.linear; // || self.rotate || ...
@@ -31,13 +32,34 @@ pub enum GizmoElement {
     // LinearPlane
     // Scale
 }
+
 impl Default for GizmoElement {
     fn default() -> Self {
         Self::Linear(Default::default())
     }
 }
 
-pub fn gizmo_translate(
+impl GizmoElement {
+    pub fn process_dragged(
+        &self,
+        cursor_delta: DVec2,
+        selected_object_id: ObjectId,
+        object_collection: &mut ObjectCollection,
+        camera: &Camera,
+    ) -> Result<(), CollectionError> {
+        match *self {
+            Self::Linear(axis) => process_translate(
+                axis,
+                cursor_delta,
+                selected_object_id,
+                object_collection,
+                camera,
+            ),
+        }
+    }
+}
+
+fn process_translate(
     axis: CartesianAxis,
     cursor_delta: DVec2,
     selected_object_id: ObjectId,

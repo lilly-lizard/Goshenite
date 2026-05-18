@@ -25,7 +25,7 @@ use crate::{
         camera::Camera,
         config_ui::KEY_BINDING_COMMAND_PALETTE,
         cursor::{Cursor, MouseButtonEvent},
-        gizmo::{gizmo_translate, GizmoElement, GizmoVisibility},
+        gizmo::{GizmoElement, GizmoVisibility},
         gui::Gui,
         keyboard_modifiers::KeyboardModifierStates,
         mouse_button::MouseButton,
@@ -412,19 +412,15 @@ impl EngineController {
             return;
         };
 
-        match gizmo_element {
-            GizmoElement::Linear(axis) => {
-                if button == MouseButton::Left {
-                    if let Err(CollectionError::InvalidId { .. }) = gizmo_translate(
-                        axis,
-                        delta,
-                        selected_object_id,
-                        &mut self.object_collection,
-                        &self.camera,
-                    ) {
-                        self.deselect_object();
-                    }
-                }
+        if button == MouseButton::Left {
+            let res = gizmo_element.process_dragged(
+                delta,
+                selected_object_id,
+                &mut self.object_collection,
+                &self.camera,
+            );
+            if let Err(CollectionError::InvalidId { .. }) = res {
+                self.deselect_object();
             }
         }
     }
