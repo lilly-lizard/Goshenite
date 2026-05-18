@@ -65,6 +65,7 @@ pub struct EngineController {
 
     // controllers
     cursor: Cursor,
+    dragging_source_element: Option<ElementAtPoint>,
     camera: Camera,
     gui: Gui,
     render_manager: RenderManager,
@@ -124,6 +125,7 @@ impl EngineController {
             hovered_gizmo: None,
 
             cursor,
+            dragging_source_element: None,
             camera,
             gui,
             render_manager,
@@ -361,19 +363,31 @@ impl EngineController {
         let scroll_delta = self.cursor.get_and_clear_scroll_delta();
         self.camera.update_scroll(scroll_delta, self.settings);
 
+        if let MouseButtonEvent::Dragging { .. } = cursor_event {
+            if self.dragging_source_element.is_none() {
+                // just started dragging
+                self.dragging_source_element = element_at_point;
+            }
+        } else {
+            self.dragging_source_element = None; // not dragging
+        }
+
         match cursor_event {
-            MouseButtonEvent::ReleaseInPlace(MouseButton::Left) => match element_at_point {
-                Some(ElementAtPoint::Background) => self.background_clicked(),
-                Some(ElementAtPoint::Object {
-                    object_id,
-                    primitive_op_index,
-                }) => self.select_primitive_op(object_id, primitive_op_index, None),
-                Some(ElementAtPoint::BlendArea { object_id }) => {
-                    self.select_object(object_id, None)
-                }
+            MouseButtonEvent::ReleaseInPlace(button) => match button {
+                MouseButton::Left => match element_at_point {
+                    Some(ElementAtPoint::Background) => self.background_clicked(),
+                    Some(ElementAtPoint::Object {
+                        object_id,
+                        primitive_op_index,
+                    }) => self.select_primitive_op(object_id, primitive_op_index, None),
+                    Some(ElementAtPoint::BlendArea { object_id }) => {
+                        self.select_object(object_id, None)
+                    }
+                    _ => (),
+                },
                 _ => (),
             },
-            MouseButtonEvent::Dragging { button, delta } => match element_at_point {
+            MouseButtonEvent::Dragging { button, delta } => match self.dragging_source_element {
                 Some(ElementAtPoint::Background) => self.camera.update_cursor_dragging(
                     delta,
                     button,
@@ -386,7 +400,6 @@ impl EngineController {
                 Some(ElementAtPoint::Gizmo(gizmo_type)) => self.hovered_gizmo = Some(gizmo_type),
                 _ => self.hovered_gizmo = None,
             },
-            _ => (),
         }
 
         Ok(())
