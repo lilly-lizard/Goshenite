@@ -196,8 +196,12 @@ impl ObjectCollection {
         &self.objects
     }
 
-    pub fn get_object(&self, object_id: ObjectId) -> Option<&Object> {
-        self.objects.get(&object_id)
+    pub fn get_object(&self, object_id: ObjectId) -> Result<&Object, CollectionError> {
+        self.objects
+            .get(&object_id)
+            .ok_or(CollectionError::InvalidId {
+                raw_id: object_id.raw_id(),
+            })
     }
 
     pub fn get_object_and_primitive_op(

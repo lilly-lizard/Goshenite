@@ -287,7 +287,7 @@ impl EngineController {
         target_object_id: ObjectId,
         source_command: Option<Command>,
     ) {
-        let Some(object) = self.object_collection.get_object(target_object_id) else {
+        let Ok(object) = self.object_collection.get_object(target_object_id) else {
             failure_warn_invalid_object_id(target_object_id, source_command);
             return;
         };
@@ -312,7 +312,7 @@ impl EngineController {
         self.camera.deselect_primitive_op();
         if config::ARCBALL_ON_SELECT {
             if let Some(target_object_id) = self.selected_object_id {
-                if let Some(object) = self.object_collection.get_object(target_object_id) {
+                if let Ok(object) = self.object_collection.get_object(target_object_id) {
                     self.camera
                         .set_lock_on_target_object(target_object_id, object.center);
                 }
@@ -326,7 +326,7 @@ impl EngineController {
         primitive_op_index_to_select: PrimitiveOpIndex,
         source_command: Option<Command>,
     ) {
-        let Some(object) = self.object_collection.get_object(object_id_to_select) else {
+        let Ok(object) = self.object_collection.get_object(object_id_to_select) else {
             failure_warn_invalid_object_id(object_id_to_select, source_command);
             return;
         };
@@ -373,7 +373,7 @@ impl EngineController {
         object_id_to_select: ObjectId,
         source_command: Option<Command>,
     ) {
-        let Some(object) = self.object_collection.get_object(object_id_to_select) else {
+        let Ok(object) = self.object_collection.get_object(object_id_to_select) else {
             failure_warn_invalid_object_id(object_id_to_select, source_command);
             return;
         };
@@ -630,7 +630,7 @@ impl EngineController {
     ) {
         // check early to ensure if `remove_primitive_op_id_from_object` or `failure_warn_invalid_primitive_op_index`
         // fails it is because of invalid primitive op id/index
-        if let None = self.object_collection.get_object(object_id) {
+        if let Err(_e) = self.object_collection.get_object(object_id) {
             failure_warn_invalid_object_id(object_id, source_command);
             return;
         };
@@ -659,7 +659,7 @@ impl EngineController {
         command: Command,
     ) {
         // check early to ensure that later failure is because of invalid primitive op indices
-        if let None = self.object_collection.get_object(object_id) {
+        if let Err(_e) = self.object_collection.get_object(object_id) {
             failure_warn_invalid_object_id(object_id, Some(command));
             return;
         };
@@ -688,7 +688,7 @@ impl EngineController {
             let object_exists = self
                 .object_collection
                 .get_object(some_selected_object_id)
-                .is_some();
+                .is_ok();
 
             if !object_exists {
                 self.selected_object_id = None;

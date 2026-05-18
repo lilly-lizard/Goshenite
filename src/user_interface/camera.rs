@@ -73,7 +73,7 @@ impl Camera {
             LookMode::TargetObject {
                 target_object_id, ..
             } => {
-                if let Some(object) = object_collection.get_object(target_object_id) {
+                if let Ok(object) = object_collection.get_object(target_object_id) {
                     // update camera target positi on
                     self.set_lock_on_target_object(target_object_id, object.center);
                 } else {

@@ -1,6 +1,6 @@
 use crate::{
     engine::{
-        commands::Command,
+        commands::{Command, ValidationCommand},
         object::{object::ObjectId, object_collection::ObjectCollection},
     },
     helper::unique_id_gen::UniqueIdType,
@@ -25,7 +25,7 @@ pub fn layout_scene_editor(
 
         // delete object button
         if let Some(selected_object_id) = selected_object_id {
-            if let Some(selected_object) = object_collection.get_object(selected_object_id) {
+            if let Ok(selected_object) = object_collection.get_object(selected_object_id) {
                 let delete_clicked = ui_h
                     .button(format!("Delete: \"{}\"", selected_object.name))
                     .clicked();
@@ -34,7 +34,8 @@ pub fn layout_scene_editor(
                     commands.push(Command::RemoveObject(selected_object_id));
                 }
             } else {
-                debug!("selected object dropped. deselecting object...");
+                debug!("selected object dropped...");
+                commands.push(ValidationCommand::SelectedObject().into());
             }
         }
     });

@@ -81,8 +81,8 @@ fn label_and_get_selected_object<'a>(
     };
 
     let selected_object = match object_collection.get_object(some_selected_object_id) {
-        Some(o) => o,
-        None => {
+        Ok(o) => o,
+        Err(_e) => {
             // invalid object id
             debug!("selected object {} dropped", some_selected_object_id);
             commands.push(ValidationCommand::SelectedObject().into());

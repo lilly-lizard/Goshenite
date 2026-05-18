@@ -4,8 +4,10 @@ use crate::{
         commands::CommandWithSource,
         config_engine,
         object::{
-            object::Object, object::ObjectId, object_collection::ObjectCollection,
-            operation::Operation, primitive_op::PrimitiveOpIndex,
+            object::{Object, ObjectId},
+            object_collection::ObjectCollection,
+            operation::Operation,
+            primitive_op::PrimitiveOpIndex,
         },
         primitives::{
             cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform,
@@ -23,13 +25,13 @@ use crate::{
         camera::Camera,
         config_ui::KEY_BINDING_COMMAND_PALETTE,
         cursor::{Cursor, MouseButtonEvent},
-        gizmo::{GizmoElement, GizmoVisibility},
+        gizmo::{gizmo_translate, GizmoElement, GizmoVisibility},
         gui::Gui,
         keyboard_modifiers::KeyboardModifierStates,
         mouse_button::MouseButton,
     },
 };
-use glam::{DVec2, Vec3, Vec4, Vec4Swizzles};
+use glam::{DVec2, Vec3};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{collections::VecDeque, env, sync::Arc};
@@ -286,7 +288,7 @@ impl EngineController {
             return Ok(());
         };
 
-        let Some(selected_object) = self.object_collection.get_object(selected_object_id) else {
+        let Ok(selected_object) = self.object_collection.get_object(selected_object_id) else {
             self.deselect_object();
             return Ok(());
         };
@@ -385,16 +387,15 @@ impl EngineController {
                 _ => (),
             },
             MouseButtonEvent::Dragging { button, delta } => match self.dragging_source_element {
-                Some(ElementAtPoint::Background) => self.camera.update_cursor_dragging(
+                Some(ElementAtPoint::Gizmo(gizmo_element)) => {
+                    self.gizmo_dragged(gizmo_element, button, delta)
+                }
+                _ => self.camera.update_cursor_dragging(
                     delta,
                     button,
                     self.keyboard_modifier_states,
                     self.settings.camera_control_mappings,
                 ),
-                Some(ElementAtPoint::Gizmo(gizmo_element)) => {
-                    self.gizmo_dragged(gizmo_element, button, delta)
-                }
-                _ => (),
             },
             MouseButtonEvent::None => match element_at_point {
                 Some(ElementAtPoint::Gizmo(gizmo_type)) => self.hovered_gizmo = Some(gizmo_type),
@@ -414,20 +415,17 @@ impl EngineController {
         match gizmo_element {
             GizmoElement::Linear(axis) => {
                 if button == MouseButton::Left {
-                    let axis_projected = self.camera.projection_matrix()
-                        * self.camera.view_matrix()
-                        * Vec4::from((axis.as_vec3(), 0.));
-                    let translation_abs = delta.dot(axis_projected.xy().as_dvec2()) / 100.;
-                    let translation_vec = axis.as_vec3() * translation_abs as f32;
-                    let res = self
-                        .object_collection
-                        .translate_object(selected_object_id, translation_vec);
-                    if let Err(CollectionError::InvalidId { .. }) = res {
+                    if let Err(CollectionError::InvalidId { .. }) = gizmo_translate(
+                        axis,
+                        delta,
+                        selected_object_id,
+                        &mut self.object_collection,
+                        &self.camera,
+                    ) {
                         self.deselect_object();
                     }
                 }
             }
-            _ => (),
         }
     }
 
