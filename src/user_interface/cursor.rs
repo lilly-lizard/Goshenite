@@ -136,10 +136,6 @@ impl Cursor {
         self.position
     }
 
-    pub fn mouse_button_states(&self) -> MouseButtonStates {
-        self.mouse_button_states
-    }
-
     pub fn cursor_icon(&self) -> Option<egui::CursorIcon> {
         self.cursor_icon
     }

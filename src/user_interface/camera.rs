@@ -161,6 +161,7 @@ impl Camera {
     }
 
     /// Changes the look mode to direction.
+    #[allow(dead_code)]
     pub fn set_direction(&mut self, direction: DVec3) {
         self.look_mode = LookMode::Direction(direction);
 

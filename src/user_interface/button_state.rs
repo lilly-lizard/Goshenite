@@ -166,6 +166,7 @@ impl MouseButtonStates {
         }
     }
 
+    #[allow(dead_code)]
     pub fn get_previous(&self, button: MouseButton) -> ButtonState {
         match button {
             MouseButton::Left => self.previous_left,
@@ -174,35 +175,5 @@ impl MouseButtonStates {
             MouseButton::Back => self.previous_back,
             MouseButton::Forward => self.previous_forward,
         }
-    }
-
-    #[inline]
-    pub fn is_just_released(&self, button: MouseButton) -> bool {
-        self.get(button).is_just_released()
-    }
-
-    #[inline]
-    pub fn is_unheld(&self, button: MouseButton) -> bool {
-        self.get(button).is_unheld()
-    }
-
-    #[inline]
-    pub fn is_just_clicked(&self, button: MouseButton) -> bool {
-        self.get(button).is_just_clicked()
-    }
-
-    #[inline]
-    pub fn is_held(&self, button: MouseButton) -> bool {
-        self.get(button).is_held()
-    }
-
-    #[inline]
-    pub fn is_up(&self, button: MouseButton) -> bool {
-        self.get(button).is_up()
-    }
-
-    #[inline]
-    pub fn is_down(&self, button: MouseButton) -> bool {
-        self.get(button).is_down()
     }
 }

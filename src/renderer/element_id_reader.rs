@@ -5,8 +5,9 @@ use super::{
 };
 use crate::{
     engine::object::{object::ObjectId, primitive_op::PrimitiveOpIndex},
+    helper::axis::CartesianAxis,
     renderer::shader_interfaces::id_buffer::{EncodedId, ID_GIZMO_X, ID_GIZMO_Y, ID_GIZMO_Z},
-    user_interface::gizmo::{GizmoElement, GizmoLinear},
+    user_interface::gizmo::GizmoElement,
 };
 use anyhow::Context;
 use ash::{khr::synchronization2, vk};
@@ -33,9 +34,9 @@ impl ElementAtPoint {
     pub fn from_encoded_id(encoded_id: EncodedId) -> Self {
         match encoded_id {
             ID_BACKGROUND => Self::Background,
-            ID_GIZMO_X => Self::Gizmo(GizmoElement::Linear(GizmoLinear::X)),
-            ID_GIZMO_Y => Self::Gizmo(GizmoElement::Linear(GizmoLinear::Y)),
-            ID_GIZMO_Z => Self::Gizmo(GizmoElement::Linear(GizmoLinear::Z)),
+            ID_GIZMO_X => Self::Gizmo(GizmoElement::Linear(CartesianAxis::X)),
+            ID_GIZMO_Y => Self::Gizmo(GizmoElement::Linear(CartesianAxis::Y)),
+            ID_GIZMO_Z => Self::Gizmo(GizmoElement::Linear(CartesianAxis::Z)),
             encoded_id => {
                 let object_id_u32 = encoded_id >> 16;
                 let object_id = ObjectId::from(object_id_u32 as u16);

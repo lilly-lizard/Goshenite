@@ -11,8 +11,8 @@ use ash::{khr::synchronization2, prelude::VkResult, vk};
 use bort_vk::{
     allocation_info_from_flags, AllocationAccess, AllocatorAccess, Buffer, BufferProperties,
     CommandBuffer, CommandPool, CommandPoolProperties, DescriptorPool, DescriptorPoolProperties,
-    DescriptorSet, DescriptorSetLayout, Device, DeviceOwned, Fence, GraphicsPipeline,
-    MemoryAllocator, PipelineAccess, PipelineLayout, Queue, Semaphore,
+    DescriptorSet, DescriptorSetLayout, Device, DeviceOwned, Fence, MemoryAllocator,
+    PipelineLayout, Queue, Semaphore,
 };
 use bytemuck::NoUninit;
 #[allow(unused_imports)]

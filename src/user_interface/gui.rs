@@ -110,6 +110,7 @@ impl Gui {
         &self.mesh_primitives
     }
 
+    #[allow(dead_code)]
     pub fn scale_factor(&self, window: &Window) -> f32 {
         egui_winit::pixels_per_point(&self.egui_context, window)
     }

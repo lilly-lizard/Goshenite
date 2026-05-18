@@ -1,3 +1,5 @@
+use crate::helper::axis::CartesianAxis;
+
 #[derive(Default, Debug, Clone, Copy)]
 pub struct GizmoVisibility {
     pub linear: bool,
@@ -19,7 +21,7 @@ impl GizmoVisibility {
 
 #[derive(Debug, Clone, Copy)]
 pub enum GizmoElement {
-    Linear(GizmoLinear),
+    Linear(CartesianAxis),
     // Rotate
     // LinearPlane
     // Scale
@@ -27,18 +29,5 @@ pub enum GizmoElement {
 impl Default for GizmoElement {
     fn default() -> Self {
         Self::Linear(Default::default())
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum GizmoLinear {
-    ALL,
-    X,
-    Y,
-    Z,
-}
-impl Default for GizmoLinear {
-    fn default() -> Self {
-        Self::ALL
     }
 }

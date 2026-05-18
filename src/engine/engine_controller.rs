@@ -1,17 +1,20 @@
-use super::{
-    commands::CommandWithSource,
-    config_engine,
-    object::{object::ObjectId, object_collection::ObjectCollection, operation::Operation},
-    primitives::{
-        cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform, sphere::Sphere,
-    },
-    settings::Settings,
-    window_thread::WindowThreadChannels,
-};
 use crate::{
     config,
-    engine::object::{object::Object, primitive_op::PrimitiveOpIndex},
-    helper::anyhow_panic::anyhow_unwrap,
+    engine::{
+        commands::CommandWithSource,
+        config_engine,
+        object::{
+            object::Object, object::ObjectId, object_collection::ObjectCollection,
+            operation::Operation, primitive_op::PrimitiveOpIndex,
+        },
+        primitives::{
+            cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform,
+            sphere::Sphere,
+        },
+        settings::Settings,
+        window_thread::WindowThreadChannels,
+    },
+    helper::{anyhow_panic::anyhow_unwrap, more_errors::CollectionError},
     renderer::{
         config_renderer::RenderDebugOptions, element_id_reader::ElementAtPoint,
         render_manager::RenderManager,
@@ -26,10 +29,10 @@ use crate::{
         mouse_button::MouseButton,
     },
 };
-use glam::Vec3;
+use glam::{DVec2, Vec3, Vec4, Vec4Swizzles};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::{collections::VecDeque, env, fmt::Debug, sync::Arc};
+use std::{collections::VecDeque, env, sync::Arc};
 use winit::{
     event::{ElementState, KeyEvent, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
@@ -174,11 +177,7 @@ impl EngineController {
         let events = self.window_thread_channels.get_events()?;
 
         for event in events {
-            let process_input_res = self.process_window_event(event);
-
-            if let Err(e) = process_input_res {
-                error!("error while processing input: {}", e);
-            }
+            self.process_window_event(event);
         }
 
         self.update_engine()?;
@@ -187,7 +186,7 @@ impl EngineController {
     }
 
     /// Process window events and update state
-    fn process_window_event(&mut self, event: WindowEvent) -> Result<(), EngineError> {
+    fn process_window_event(&mut self, event: WindowEvent) {
         trace!("winit event: {:?}", event);
 
         // egui event handling
@@ -230,8 +229,6 @@ impl EngineController {
             //WindowEvent::ThemeChanged(winit_theme)
             _ => (),
         }
-
-        Ok(())
     }
 
     // Per frame udpates
@@ -394,6 +391,9 @@ impl EngineController {
                     self.keyboard_modifier_states,
                     self.settings.camera_control_mappings,
                 ),
+                Some(ElementAtPoint::Gizmo(gizmo_element)) => {
+                    self.gizmo_dragged(gizmo_element, button, delta)
+                }
                 _ => (),
             },
             MouseButtonEvent::None => match element_at_point {
@@ -403,6 +403,32 @@ impl EngineController {
         }
 
         Ok(())
+    }
+
+    fn gizmo_dragged(&mut self, gizmo_element: GizmoElement, button: MouseButton, delta: DVec2) {
+        let Some(selected_object_id) = self.selected_object_id else {
+            warn!("gizmo dragged but no object selected. how???");
+            return;
+        };
+
+        match gizmo_element {
+            GizmoElement::Linear(axis) => {
+                if button == MouseButton::Left {
+                    let axis_projected = self.camera.projection_matrix()
+                        * self.camera.view_matrix()
+                        * Vec4::from((axis.as_vec3(), 0.));
+                    let translation_abs = delta.dot(axis_projected.xy().as_dvec2()) / 100.;
+                    let translation_vec = axis.as_vec3() * translation_abs as f32;
+                    let res = self
+                        .object_collection
+                        .translate_object(selected_object_id, translation_vec);
+                    if let Err(CollectionError::InvalidId { .. }) = res {
+                        self.deselect_object();
+                    }
+                }
+            }
+            _ => (),
+        }
     }
 
     fn background_clicked(&mut self) {
@@ -432,29 +458,6 @@ impl Drop for EngineController {
         debug!("dropping engine controller");
     }
 }
-
-// ~~ Engine Error ~~
-
-#[derive(Debug)]
-pub enum EngineError {
-    RenderThreadClosedPrematurely,
-    WindowThreadClosedPrematurely,
-}
-
-impl std::fmt::Display for EngineError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match *self {
-            Self::RenderThreadClosedPrematurely => {
-                write!(f, "render thread was closed prematurely")
-            }
-            Self::WindowThreadClosedPrematurely => {
-                write!(f, "window thread was closed prematurely")
-            }
-        }
-    }
-}
-
-impl std::error::Error for EngineError {}
 
 // ~~ Testing ~~
 
