@@ -13,10 +13,11 @@
 - make gui a side panel
 	- goals:
 		- most of time you want to click on object and move it around
-		- make outline for selected object/primitive op - USE SPEC CONSTANTS and separate pipeline
+		- make outline for selected object/primitive op - USE SPEC CONSTANTS and separate pipeline 🔨
+			- TODO lighting shader -> if normal = vec3(0.), skip lighting
 		- config option to be top,left,right,bottom
 		- have settings window that pops up in the middle of the window
-	- scene mode vs object mode
+	- scene mode vs object mode 🔨
 		- geometry shader draws orange line around selected object. can be seen through obscuring objects - scene mode
 		- only draw selected object in - object mode
 - click and drag gizmo arrows
