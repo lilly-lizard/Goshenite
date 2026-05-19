@@ -247,10 +247,10 @@ RayMarchHit ray_march(const vec3 ray_o, const vec3 ray_d)
     	if (min_d < .01) {
             return RayMarchHit (
           		cam.near,
-          		vec3(1., 0., 0.), // normal
-          		vec3(1., 1., 1.), // albedo
-          		1., // specular
-          		(in_object_id << 16)
+          		vec3(0.), // normal (ignored)
+          		vec3(1., 1., 1.), // albedo (out_color: rgb)
+          		1., // specular (out_color: a)
+          		(in_object_id << 16) | 0x0000FFFF
            	);
     	}
 	}

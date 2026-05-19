@@ -8,6 +8,7 @@ const uint OP_UNIT_LENGTH = 24;
 
 const uint ID_BACKGROUND = 0xFFFFFFFFu;
 const uint GIZMO_MASK = 0xFFFFFFF0;
+const uint OUTLINE_MASK = 0x0000FFFF;
 /// Blend area between 2 primitive ops
 const uint ID_BLEND = 0xFFFEu;
 /// Invalid primitive op id
