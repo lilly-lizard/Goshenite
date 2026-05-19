@@ -12,7 +12,10 @@ use crate::{
         settings::Settings,
     },
     helper::angle::Angle,
-    user_interface::{camera_control::CameraAction, mouse_button::MouseButton},
+    user_interface::{
+        camera_control::CameraAction, config_ui::CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH,
+        mouse_button::MouseButton,
+    },
 };
 use glam::{DMat3, DVec2, DVec3, Mat4, Vec3, Vec4};
 #[allow(unused_imports)]
@@ -21,10 +24,12 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Copy, Debug, PartialEq, Deserialize, Serialize)]
 pub enum LookMode {
-    /// Look in a given direction
-    Direction(DVec3),
+    /// Arcball around an invisible point in the center of the screen, `depth` far in front of the camera
+    ArcballHovering,
+    /// Look in a given direction and rotate from a fixed camera position
+    PoV,
     /// Lock on to a target position
-    TargetPos(DVec3),
+    TargetPos { target_pos: DVec3 },
     TargetObject {
         target_object_id: ObjectId,
         last_known_origin: Vec3,
@@ -38,10 +43,19 @@ pub enum LookMode {
 
 impl Default for LookMode {
     fn default() -> Self {
-        let position = config_ui::CAMERA_DEFAULT_POSITION;
-        let target_pos = config_ui::CAMERA_DEFAULT_TARGET;
-        let direction = target_pos - position;
-        Self::Direction(direction)
+        Self::PoV
+    }
+}
+
+impl LookMode {
+    pub fn display_name(&self) -> &str {
+        match self {
+            Self::ArcballHovering { .. } => "Arcball Hovering",
+            Self::PoV { .. } => "POV",
+            Self::TargetPos { .. } => "Target Position",
+            Self::TargetObject { .. } => "Target Object",
+            Self::TargetPrimitiveOp { .. } => "Target Primitive Op",
+        }
     }
 }
 
@@ -51,11 +65,31 @@ impl Default for LookMode {
 #[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq)]
 pub struct Camera {
     position: DVec3,
+    direction: DVec3,
     look_mode: LookMode,
     fov: Angle,
     aspect_ratio: f32,
     near_plane: f64,
     far_plane: f64,
+    /// Note: only used for `LookMode::ArcballHovering`
+    arcball_target_depth: f64,
+}
+
+impl Default for Camera {
+    fn default() -> Self {
+        let position = config_ui::CAMERA_DEFAULT_POSITION;
+        let target_pos = config_ui::CAMERA_DEFAULT_TARGET;
+        Self {
+            position,
+            direction: target_pos - position,
+            look_mode: LookMode::default(),
+            fov: config_ui::CAMERA_DEFAULT_FOV,
+            aspect_ratio: 1_f32,
+            near_plane: config_ui::CAMERA_NEAR_PLANE,
+            far_plane: config_ui::CAMERA_FAR_PLANE,
+            arcball_target_depth: CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH,
+        }
+    }
 }
 
 // Public functions
@@ -160,18 +194,8 @@ impl Camera {
         self.aspect_ratio = calc_aspect_ratio(resolution);
     }
 
-    /// Changes the look mode to direction.
-    #[allow(dead_code)]
-    pub fn set_direction(&mut self, direction: DVec3) {
-        self.look_mode = LookMode::Direction(direction);
-
-        // avoid vertical alignment
-        self.check_for_and_recover_from_vertical_orientation_alignment();
-    }
-
-    pub fn set_lock_on_target_pos(&mut self, target_pos: DVec3) {
-        self.look_mode = LookMode::TargetPos(target_pos);
-
+    pub fn set_mode_with_values(&mut self, look_mode: LookMode) {
+        self.look_mode = look_mode;
         // avoid vertical alignment
         self.check_for_and_recover_from_vertical_orientation_alignment();
     }
@@ -222,7 +246,7 @@ impl Camera {
 
     pub fn unset_lock_on_target(&mut self) {
         let target_pos = match self.look_mode {
-            LookMode::TargetPos(target_pos) => target_pos,
+            LookMode::TargetPos { target_pos } => target_pos,
             LookMode::TargetObject {
                 last_known_origin, ..
             } => last_known_origin.as_dvec3(),
@@ -230,7 +254,7 @@ impl Camera {
         };
 
         let direction = target_pos - self.position;
-        self.look_mode = LookMode::Direction(direction);
+        self.look_mode = LookMode::PoV;
     }
 
     // Getters
@@ -295,6 +319,11 @@ impl Camera {
         self.position
     }
 
+    #[inline]
+    pub fn arcball_target_depth(&self) -> f64 {
+        self.arcball_target_depth
+    }
+
     /// Normalized
     pub fn direction(&self) -> DVec3 {
         self.look_direction().normalize()
@@ -313,19 +342,6 @@ impl Camera {
     #[inline]
     pub fn far_plane(&self) -> f64 {
         self.far_plane
-    }
-}
-
-impl Default for Camera {
-    fn default() -> Self {
-        Self {
-            position: config_ui::CAMERA_DEFAULT_POSITION,
-            look_mode: LookMode::default(),
-            fov: config_ui::CAMERA_DEFAULT_FOV,
-            aspect_ratio: 1_f32,
-            near_plane: config_ui::CAMERA_NEAR_PLANE,
-            far_plane: config_ui::CAMERA_FAR_PLANE,
-        }
     }
 }
 
@@ -366,11 +382,15 @@ impl Camera {
 
     fn zoom(&mut self, zoom_delta: f64) {
         match self.look_mode {
-            LookMode::Direction(direction) => {
-                let new_position = self.position + zoom_delta * direction;
+            LookMode::ArcballHovering => {
+                let new_position = self.position + zoom_delta * self.direction;
                 self.set_position(new_position);
             }
-            LookMode::TargetPos(target_pos) => {
+            LookMode::PoV => {
+                let new_position = self.position + zoom_delta * self.direction;
+                self.set_position(new_position);
+            }
+            LookMode::TargetPos { target_pos } => {
                 self.scroll_zoom_target(zoom_delta, target_pos);
             }
             LookMode::TargetObject {
@@ -388,9 +408,11 @@ impl Camera {
 
     /// Not necessarily normalized
     fn look_direction(&self) -> DVec3 {
+        todo!("put this elsewhere? rename to update_direction?");
         match self.look_mode {
-            LookMode::Direction(direction) => direction,
-            LookMode::TargetPos(target_pos) => target_pos - self.position,
+            LookMode::ArcballHovering { direction, .. } => direction,
+            LookMode::PoV { direction } => direction,
+            LookMode::TargetPos { target_pos } => target_pos - self.position,
             LookMode::TargetObject {
                 last_known_origin, ..
             } => last_known_origin.as_dvec3() - self.position,
@@ -402,8 +424,11 @@ impl Camera {
 
     fn target_pos(&self) -> DVec3 {
         match self.look_mode {
-            LookMode::Direction(direction) => self.position + direction,
-            LookMode::TargetPos(target_pos) => target_pos,
+            LookMode::ArcballHovering { direction } => {
+                self.position + direction * self.arcball_target_depth
+            }
+            LookMode::PoV { direction } => self.position + direction,
+            LookMode::TargetPos { target_pos } => target_pos,
             LookMode::TargetObject {
                 last_known_origin, ..
             } => last_known_origin.as_dvec3(),
@@ -451,15 +476,29 @@ impl Camera {
 
     fn rotate_from_angle_delta(&mut self, normal: DVec3, delta_angle: [Angle; 2]) {
         match self.look_mode {
+            LookMode::ArcballHovering { direction } => {
+                let target_pos = self.position + direction * self.arcball_target_depth;
+                let new_position = arcball(
+                    self.position,
+                    target_pos,
+                    normal,
+                    delta_angle[0],
+                    delta_angle[1],
+                );
+                self.set_position(new_position);
+            }
+
             // no lock-on target so maintain position adjust looking direction
-            LookMode::Direction(direction) => {
+            LookMode::PoV { direction } => {
                 let new_direction =
                     rotate_fixed_pos(direction, normal, delta_angle[0], delta_angle[1]);
-                self.look_mode = LookMode::Direction(new_direction);
+                self.look_mode = LookMode::PoV {
+                    direction: new_direction,
+                };
             }
 
             // lock on target stays the same but camera position rotates around it
-            LookMode::TargetPos(target_pos) => {
+            LookMode::TargetPos { target_pos } => {
                 let new_position = arcball(
                     self.position,
                     target_pos,
@@ -500,8 +539,11 @@ impl Camera {
 
     fn delta_cursor_to_angle(&self, delta_cursor_position: [f64; 2]) -> [Angle; 2] {
         delta_cursor_position.map(|delta| match self.look_mode {
-            LookMode::Direction(_) => Angle::from_radians(delta * config_ui::LOOK_FACTOR.radians()),
-            LookMode::TargetPos(_) => {
+            LookMode::ArcballHovering { .. } => {
+                Angle::from_radians(delta * config_ui::ARC_BALL_FACTOR.radians())
+            }
+            LookMode::PoV { .. } => Angle::from_radians(delta * config_ui::LOOK_FACTOR.radians()),
+            LookMode::TargetPos { .. } => {
                 Angle::from_radians(delta * config_ui::ARC_BALL_FACTOR.radians())
             }
             LookMode::TargetObject { .. } => {

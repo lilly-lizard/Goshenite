@@ -17,6 +17,7 @@ pub const CAMERA_FAR_PLANE: f64 = 1000.;
 pub const CAMERA_MAX_TARGET_DISTANCE: f64 = 10_000.;
 /// Minumum distance between the camera position and the camera target. Ensures valid results for view matrix
 pub const CAMERA_MIN_TARGET_DISTANCE: f64 = 0.001;
+pub const CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH: f64 = 5.;
 
 /// Sensitivity multiplier for cursor movement.
 pub const CURSOR_SENSITIVITY: f64 = 1.;

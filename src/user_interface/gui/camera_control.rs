@@ -35,8 +35,9 @@ fn layout_camera_control(ui: &mut egui::Ui, camera: Camera) -> Vec<Command> {
     // unset button
     ui.horizontal(|ui| {
         let target_mode_on = match camera.look_mode() {
-            LookMode::Direction(_) => false,
-            LookMode::TargetPos(_) => true,
+            LookMode::ArcballHovering { .. } => false,
+            LookMode::PoV { .. } => false,
+            LookMode::TargetPos { .. } => true,
             LookMode::TargetObject { .. } => true,
             LookMode::TargetPrimitiveOp { .. } => true,
         };
@@ -59,8 +60,16 @@ fn layout_camera_control(ui: &mut egui::Ui, camera: Camera) -> Vec<Command> {
 
     // look mode
     match camera.look_mode() {
-        LookMode::Direction(look_direction) => {
-            let look_direction_normalized = look_direction.normalize();
+        LookMode::ArcballHovering { .. } => {
+            ui.label("Look mode: Arcball Hovering");
+            ui.label(format!(
+                "Rotation target depth: {:.2}",
+                camera.arcball_target_depth(),
+            ));
+        }
+
+        LookMode::PoV { direction } => {
+            let look_direction_normalized = direction.normalize();
 
             ui.label("Look mode: Direction");
             ui.label(format!(
@@ -71,7 +80,7 @@ fn layout_camera_control(ui: &mut egui::Ui, camera: Camera) -> Vec<Command> {
             ));
         }
 
-        LookMode::TargetPos(target_pos) => {
+        LookMode::TargetPos { target_pos } => {
             ui.label("Look mode: Target position");
             ui.label(format!(
                 "Target position: [{:.2}, {:.2}, {:.2}]",
