@@ -1,8 +1,13 @@
 use super::Gui;
-use crate::user_interface::gui::{
-    command_palette::GuiStateCommandPalette, side_panel::SidePanelMode,
+use crate::{
+    engine::commands::Command,
+    user_interface::{
+        camera::{Camera, LookMode},
+        gui::{command_palette::GuiStateCommandPalette, side_panel::SidePanelMode},
+        gui_state::DRAG_INC,
+    },
 };
-use egui::Ui;
+use egui::{DragValue, Ui};
 
 impl Gui {
     pub(super) fn draw_bottom_bar(
@@ -10,17 +15,21 @@ impl Gui {
         side_panel_mode: &mut Option<SidePanelMode>,
         settings_window_visible: &mut bool,
         command_pallette: &mut Option<GuiStateCommandPalette>,
-    ) {
+        camera: &Camera,
+    ) -> Vec<Command> {
+        let mut commands = Vec::<Command>::new();
         egui::Panel::bottom("bottom bar").show_inside(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
-                bottom_bar_layout(
+                commands = bottom_bar_layout(
                     ui,
                     side_panel_mode,
                     settings_window_visible,
                     command_pallette,
+                    camera,
                 );
             });
         });
+        commands
     }
 }
 
@@ -29,11 +38,14 @@ fn bottom_bar_layout(
     side_panel_mode: &mut Option<SidePanelMode>,
     settings_window_visible: &mut bool,
     command_pallette: &mut Option<GuiStateCommandPalette>,
-) {
+    camera: &Camera,
+) -> Vec<Command> {
+    let mut commands = Vec::<Command>::new();
     let mut command_pallette_visible = command_pallette.is_some();
     let (mut scene_visible, mut object_editor_visible) = SidePanelMode::bools(*side_panel_mode);
     //ui.visuals_mut().button_frame = false; // idk what this does tbh
 
+    // left hand side
     if ui.toggle_value(&mut scene_visible, "Scene").changed() {
         *side_panel_mode = match scene_visible {
             true => Some(SidePanelMode::Scene),
@@ -50,9 +62,18 @@ fn bottom_bar_layout(
         };
     };
 
+    // right hand side (ui order right to left)
     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
         egui::widgets::global_theme_preference_switch(ui); // light/dark theme toggle
         egui::warn_if_debug_build(ui);
+
+        if camera.look_mode() == LookMode::ArcballHovering {
+            let mut new_arball_depth = camera.arcball_target_depth();
+            ui.add(DragValue::new(&mut new_arball_depth).speed(DRAG_INC));
+            if new_arball_depth != camera.arcball_target_depth() {
+                commands.push(Command::SetArcballTargetDepth(new_arball_depth));
+            }
+        }
 
         if ui
             .toggle_value(&mut command_pallette_visible, "Command Pallete")
@@ -65,4 +86,6 @@ fn bottom_bar_layout(
         }
         ui.toggle_value(settings_window_visible, "Settings");
     });
+
+    commands
 }

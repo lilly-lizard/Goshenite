@@ -1,7 +1,7 @@
 pub mod button_state;
 pub mod camera;
-pub mod camera_control;
 pub mod config_ui;
+pub mod controls_camera;
 pub mod cursor;
 pub mod editable_fields;
 pub mod gizmo;

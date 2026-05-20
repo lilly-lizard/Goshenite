@@ -246,6 +246,7 @@ impl EngineController {
         let update_gui_res = self.gui.update_gui(
             &self.object_collection,
             &self.window,
+            &self.camera,
             self.selected_object_id,
             self.selected_primitive_op_index,
             self.render_debug_options,

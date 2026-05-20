@@ -3,9 +3,9 @@ use super::{
     mouse_button::MouseButton,
 };
 use crate::engine::settings::{
-    SETTING_NAME_LOOK_MAPPING, SETTING_NAME_LOOK_MAPPING_2, SETTING_NAME_MODIFIERS,
-    SETTING_NAME_MOUSE_BUTTON, SETTING_NAME_PAN_MAPPING, SETTING_NAME_PAN_MAPPING_2,
-    SETTING_NAME_ZOOM_MAPPING, SETTING_NAME_ZOOM_MAPPING_2,
+    SETTING_NAME_ARCBALL_TARGET_MAPPING, SETTING_NAME_LOOK_MAPPING, SETTING_NAME_LOOK_MAPPING_2,
+    SETTING_NAME_MODIFIERS, SETTING_NAME_MOUSE_BUTTON, SETTING_NAME_PAN_MAPPING,
+    SETTING_NAME_PAN_MAPPING_2, SETTING_NAME_ZOOM_MAPPING, SETTING_NAME_ZOOM_MAPPING_2,
 };
 
 // ~~ Camera Control Mouse Mapping ~~
@@ -45,16 +45,16 @@ pub enum CameraAction {
     Look,
     Pan,
     Zoom,
+    ArcballTarget,
 }
 
 #[derive(Clone, Copy)]
 pub struct CameraControlMappings {
     pub look: MouseMapping,
-    pub look_2: Option<MouseMapping>,
     pub pan: MouseMapping,
-    pub pan_2: Option<MouseMapping>,
     pub zoom: MouseMapping,
-    pub zoom_2: Option<MouseMapping>,
+    /// To be combined with the scroll wheel to adjust the arcball target. Mapping is disabled if set to `None`
+    pub arcball_target_modifier: Option<KeyboardModifier>,
 }
 
 impl CameraControlMappings {
@@ -65,41 +65,15 @@ impl CameraControlMappings {
         modifier_states: KeyboardModifierStates,
     ) -> bool {
         match action {
-            CameraAction::Look => mapping_active_and_dragging_general(
-                drag_button,
-                modifier_states,
-                self.look,
-                self.look_2,
-            ),
-            CameraAction::Pan => mapping_active_and_dragging_general(
-                drag_button,
-                modifier_states,
-                self.pan,
-                self.pan_2,
-            ),
-            CameraAction::Zoom => mapping_active_and_dragging_general(
-                drag_button,
-                modifier_states,
-                self.zoom,
-                self.zoom_2,
-            ),
+            CameraAction::Look => self.look.mapping_active(drag_button, modifier_states),
+            CameraAction::Pan => self.pan.mapping_active(drag_button, modifier_states),
+            CameraAction::Zoom => self.zoom.mapping_active(drag_button, modifier_states),
+            CameraAction::ArcballTarget => match self.arcball_target_modifier {
+                Some(arball_modifier) => modifier_states.is_pressed(arball_modifier),
+                None => false,
+            },
         }
     }
-}
-
-fn mapping_active_and_dragging_general(
-    drag_button: MouseButton,
-    modifier_states: KeyboardModifierStates,
-    mapping_1: MouseMapping,
-    mapping_2: Option<MouseMapping>,
-) -> bool {
-    if mapping_1.mapping_active(drag_button, modifier_states) {
-        return true;
-    }
-    if let Some(some_mapping_2) = mapping_2 {
-        return some_mapping_2.mapping_active(drag_button, modifier_states);
-    }
-    false
 }
 
 impl Default for CameraControlMappings {
@@ -109,17 +83,15 @@ impl Default for CameraControlMappings {
                 mouse_button: MouseButton::Left,
                 ..Default::default()
             },
-            look_2: None,
             pan: MouseMapping {
                 mouse_button: MouseButton::Right,
                 ..Default::default()
             },
-            pan_2: None,
             zoom: MouseMapping {
                 mouse_button: MouseButton::Middle,
                 ..Default::default()
             },
-            zoom_2: None,
+            arcball_target_modifier: Some(KeyboardModifier::Shift),
         }
     }
 }
@@ -140,33 +112,19 @@ fn update_camera_control_mappings_from_json_settings(
         camera_control_mappings.look = mouse_mapping;
     }
     if let Some(mouse_mapping) =
-        parse_mouse_mapping_setting(json_settings, &SETTING_NAME_LOOK_MAPPING_2)
-    {
-        camera_control_mappings.look_2 = Some(mouse_mapping);
-    }
-
-    // pan camera mapping
-    if let Some(mouse_mapping) =
         parse_mouse_mapping_setting(json_settings, &SETTING_NAME_PAN_MAPPING)
     {
         camera_control_mappings.pan = mouse_mapping;
     }
-    if let Some(mouse_mapping) =
-        parse_mouse_mapping_setting(json_settings, &SETTING_NAME_PAN_MAPPING_2)
-    {
-        camera_control_mappings.pan_2 = Some(mouse_mapping);
-    }
-
-    // zoom camera mapping
     if let Some(mouse_mapping) =
         parse_mouse_mapping_setting(json_settings, &SETTING_NAME_ZOOM_MAPPING)
     {
         camera_control_mappings.zoom = mouse_mapping;
     }
     if let Some(mouse_mapping) =
-        parse_mouse_mapping_setting(json_settings, &SETTING_NAME_ZOOM_MAPPING_2)
+        parse_mouse_mapping_setting(json_settings, &SETTING_NAME_ARCBALL_TARGET_MODIFIER)
     {
-        camera_control_mappings.zoom_2 = Some(mouse_mapping);
+        camera_control_mappings.arcball_target = mouse_mapping;
     }
 }
 
@@ -191,15 +149,12 @@ fn parse_mouse_mapping_setting(
 
 fn get_mouse_mapping_from_mapping_settings(
     mut mapping_settings: JsonSettings,
-    camera_json_setting_name: &'static str,
+    json_setting_name: &'static str,
 ) -> Option<MouseMapping> {
     let mut mouse_mapping = MouseMapping::default();
 
     // todo test each warning
-    println!(
-        "todo mention {} in all warnings...",
-        camera_json_setting_name
-    );
+    println!("todo mention {} in all warnings...", json_setting_name);
 
     // mouse button
     if let Some(mouse_button) = get_mouse_button_from_mapping_settings(&mut mapping_settings) {
@@ -218,7 +173,7 @@ fn get_mouse_mapping_from_mapping_settings(
             set_mouse_mapping_modifiers_from_mapping_settings(
                 modifiers_array,
                 &mut mouse_mapping,
-                camera_json_setting_name,
+                json_setting_name,
             );
         } else {
             println!("invalid format for {} setting", SETTING_NAME_MODIFIERS);
@@ -233,25 +188,22 @@ fn get_mouse_mapping_from_mapping_settings(
     Some(mouse_mapping)
 }
 
-fn get_mouse_button_from_mapping_settings(
-    mapping_settings: &mut serde_json::Map<String, serde_json::Value>,
-) -> Option<MouseButton> {
-    if let Some(possible_mouse_button_setting) = mapping_settings.remove(SETTING_NAME_MOUSE_BUTTON)
-    {
-        if let serde_json::Value::String(mouse_button_string) = possible_mouse_button_setting {
-            if let Some(mouse_button) = MouseButton::from_setting_name(&mouse_button_string) {
-                return Some(mouse_button);
-            }
-
-            println!(
-                "invalid {} property: {}",
-                SETTING_NAME_MOUSE_BUTTON, mouse_button_string
+fn get_modifier_from_mapping_settings(
+    mut mapping_settings: JsonSettings,
+    json_setting_name: &'static str,
+) -> Option<KeyboardModifier> {
+    // modifiers
+    if let Some(possible_modifiers_setting) = mapping_settings.remove(SETTING_NAME_MODIFIERS) {
+        if let serde_json::Value::Array(modifiers_array) = possible_modifiers_setting {
+            set_mouse_mapping_modifiers_from_mapping_settings(
+                modifiers_array,
+                &mut mouse_mapping,
+                json_setting_name,
             );
         } else {
-            println!("invalid format for {} setting", SETTING_NAME_MOUSE_BUTTON);
+            println!("invalid format for {} setting", SETTING_NAME_MODIFIERS);
         }
     }
-    None
 }
 
 fn set_mouse_mapping_modifiers_from_mapping_settings(
@@ -291,6 +243,26 @@ fn set_mouse_mapping_modifiers_from_mapping_settings(
                 "invalid property found in {} array: {}",
                 SETTING_NAME_MODIFIERS, modifier_setting
             );
+        }
+    }
+}
+
+fn get_mouse_button_from_mapping_settings(
+    mapping_settings: &mut serde_json::Map<String, serde_json::Value>,
+) -> Option<MouseButton> {
+    if let Some(possible_mouse_button_setting) = mapping_settings.remove(SETTING_NAME_MOUSE_BUTTON)
+    {
+        if let serde_json::Value::String(mouse_button_string) = possible_mouse_button_setting {
+            if let Some(mouse_button) = MouseButton::from_setting_name(&mouse_button_string) {
+                return Some(mouse_button);
+            }
+
+            println!(
+                "invalid {} property: {}",
+                SETTING_NAME_MOUSE_BUTTON, mouse_button_string
+            );
+        } else {
+            println!("invalid format for {} setting", SETTING_NAME_MOUSE_BUTTON);
         }
     }
 }

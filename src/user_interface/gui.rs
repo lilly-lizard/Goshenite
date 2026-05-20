@@ -12,7 +12,7 @@ use crate::{
     },
     helper::more_errors::IoError,
     renderer::config_renderer::RenderDebugOptions,
-    user_interface::gui::side_panel::SidePanelMode,
+    user_interface::{camera::Camera, gui::side_panel::SidePanelMode},
 };
 use anyhow::Context;
 use egui::{TextWrapMode, TexturesDelta};
@@ -24,7 +24,6 @@ use winit::window::Window;
 
 // various gui sections
 mod bottom_bar;
-mod camera_control;
 mod command_palette;
 mod object_editor;
 mod scene_editor;
@@ -129,6 +128,7 @@ impl Gui {
         &mut self,
         object_collection: &ObjectCollection,
         window: &Window,
+        camera: &Camera,
         selected_object_id: Option<ObjectId>,
         selected_primitive_op_index: Option<PrimitiveOpIndex>,
         render_debug_options: RenderDebugOptions,
@@ -149,6 +149,7 @@ impl Gui {
                 &mut self.side_panel_mode,
                 &mut self.settings_window_visible,
                 &mut self.command_pallette,
+                camera,
             );
 
             if let Some(side_panel_mode) = self.side_panel_mode {

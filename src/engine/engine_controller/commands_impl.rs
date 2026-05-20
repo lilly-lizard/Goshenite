@@ -53,14 +53,14 @@ impl EngineController {
             Command::ResetScrollZoomSensitivity => self.reset_scroll_zoom_sensitivity(),
 
             // ~~ Camera ~~
-            Command::SetCameraLockOnPos(target_pos) => {
-                self.camera.set_lock_on_target_pos(target_pos)
-            }
             Command::SetCameraLockOnObject(object_id) => {
                 self.set_camera_lock_on_object(object_id, Some(command))
             }
             Command::UnsetCameraLockOn => self.camera.unset_lock_on_target(),
             Command::ResetCamera => self.camera.reset(),
+            Command::SetArcballTargetDepth(new_depth) => {
+                self.camera.set_arcball_target_depth(new_depth)
+            }
 
             // ~~ Object ~~
             Command::SelectObject(object_id) => {
