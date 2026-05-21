@@ -14,6 +14,7 @@ pub const SETTING_NAME_ARCBALL_TARGET_MODIFIER: &str = "arcballTargetModifier";
 
 pub const SETTING_NAME_MOUSE_BUTTON: &str = "mouseButton";
 pub const SETTING_NAME_MODIFIERS: &str = "modifiers";
+pub const SETTING_NAME_MODIFIER: &str = "modifier";
 
 pub const SETTING_NAME_MOUSE_LEFT: &str = "left";
 pub const SETTING_NAME_MOUSE_RIGHT: &str = "right";

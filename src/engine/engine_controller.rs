@@ -29,6 +29,7 @@ use crate::{
         gui::Gui,
         keyboard_modifiers::KeyboardModifierStates,
         mouse_button::MouseButton,
+        view_modes::ViewMode,
     },
 };
 use glam::{DVec2, Vec3};
@@ -73,6 +74,7 @@ pub struct EngineController {
     dragging_source_element: Option<ElementAtPoint>,
     camera: Camera,
     gui: Gui,
+    view_mode: ViewMode,
     render_manager: RenderManager,
 
     // settings
@@ -133,6 +135,7 @@ impl EngineController {
             dragging_source_element: None,
             camera,
             gui,
+            view_mode: ViewMode::Scene,
             render_manager,
 
             settings: Settings::default(),
@@ -271,6 +274,7 @@ impl EngineController {
         let gui_primitives = self.gui.mesh_primitives().clone();
         self.render_manager.set_gui_primitives(gui_primitives);
 
+        // renderer
         self.render_manager.render_frame(
             self.render_debug_options,
             &self.camera,
@@ -294,17 +298,21 @@ impl EngineController {
             return Ok(());
         };
 
-        let center = if let Some(selected_primitive_op_index) = self.selected_primitive_op_index {
-            let Some(selected_primitive_op) = selected_object
-                .primitive_ops
-                .get(selected_primitive_op_index)
-            else {
-                self.deselect_primitive_op();
-                return Ok(());
-            };
-            selected_object.center + selected_primitive_op.center()
-        } else {
-            selected_object.center
+        let center = match self.view_mode {
+            ViewMode::Scene => selected_object.center,
+            ViewMode::ObjectEditor => {
+                let Some(selected_primitive_op_index) = self.selected_primitive_op_index else {
+                    return Ok(());
+                };
+                let Some(selected_primitive_op) = selected_object
+                    .primitive_ops
+                    .get(selected_primitive_op_index)
+                else {
+                    self.deselect_primitive_op();
+                    return Ok(());
+                };
+                selected_object.center + selected_primitive_op.center()
+            }
         };
 
         self.render_manager.update_gizmo_center(center)?;

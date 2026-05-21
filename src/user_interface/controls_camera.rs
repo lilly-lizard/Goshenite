@@ -3,9 +3,9 @@ use super::{
     mouse_button::MouseButton,
 };
 use crate::engine::settings::{
-    SETTING_NAME_ARCBALL_TARGET_MAPPING, SETTING_NAME_LOOK_MAPPING, SETTING_NAME_LOOK_MAPPING_2,
+    SETTING_NAME_ARCBALL_TARGET_MODIFIER, SETTING_NAME_LOOK_MAPPING, SETTING_NAME_MODIFIER,
     SETTING_NAME_MODIFIERS, SETTING_NAME_MOUSE_BUTTON, SETTING_NAME_PAN_MAPPING,
-    SETTING_NAME_PAN_MAPPING_2, SETTING_NAME_ZOOM_MAPPING, SETTING_NAME_ZOOM_MAPPING_2,
+    SETTING_NAME_ZOOM_MAPPING,
 };
 
 // ~~ Camera Control Mouse Mapping ~~
@@ -121,10 +121,10 @@ fn update_camera_control_mappings_from_json_settings(
     {
         camera_control_mappings.zoom = mouse_mapping;
     }
-    if let Some(mouse_mapping) =
-        parse_mouse_mapping_setting(json_settings, &SETTING_NAME_ARCBALL_TARGET_MODIFIER)
+    if let Some(modifier) =
+        get_modifier_from_mapping_settings(json_settings, &SETTING_NAME_ARCBALL_TARGET_MODIFIER)
     {
-        camera_control_mappings.arcball_target = mouse_mapping;
+        camera_control_mappings.arcball_target_modifier = Some(modifier);
     }
 }
 
@@ -189,21 +189,30 @@ fn get_mouse_mapping_from_mapping_settings(
 }
 
 fn get_modifier_from_mapping_settings(
-    mut mapping_settings: JsonSettings,
+    json_settings: &mut JsonSettings,
     json_setting_name: &'static str,
 ) -> Option<KeyboardModifier> {
-    // modifiers
-    if let Some(possible_modifiers_setting) = mapping_settings.remove(SETTING_NAME_MODIFIERS) {
-        if let serde_json::Value::Array(modifiers_array) = possible_modifiers_setting {
-            set_mouse_mapping_modifiers_from_mapping_settings(
-                modifiers_array,
-                &mut mouse_mapping,
-                json_setting_name,
-            );
-        } else {
-            println!("invalid format for {} setting", SETTING_NAME_MODIFIERS);
+    if let Some(possible_setting) = json_settings.remove(json_setting_name) {
+        if let serde_json::Value::Object(mut json_settings) = possible_setting {
+            if let Some(modifier_setting) = json_settings.remove(SETTING_NAME_MODIFIER) {
+                if let serde_json::Value::String(modifier_string) = modifier_setting {
+                    if let Some(modifier) = KeyboardModifier::from_setting_name(&modifier_string) {
+                        return Some(modifier);
+                    } else {
+                        println!("invalid keyboard modifier name: {}", modifier_string);
+                    }
+                }
+                todo!();
+            } else {
+                println!("invalid format for {} setting", SETTING_NAME_MODIFIERS);
+            }
         }
+        println!(
+            "invalid format for camera control setting: {}",
+            json_setting_name
+        );
     }
+    None
 }
 
 fn set_mouse_mapping_modifiers_from_mapping_settings(
@@ -265,4 +274,5 @@ fn get_mouse_button_from_mapping_settings(
             println!("invalid format for {} setting", SETTING_NAME_MOUSE_BUTTON);
         }
     }
+    None
 }

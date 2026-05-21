@@ -1,17 +1,15 @@
 #![allow(dead_code)]
-use super::{
-    config_renderer::GIZMO_ARROW_STL_PATH,
-    shader_interfaces::vertex_inputs::{GizmoVertex, VulkanVertex},
-    vulkan_init::render_pass_indices,
-};
 use crate::{
     helper::{axis::CartesianAxis, more_errors::IoError},
     renderer::{
+        config_renderer::GIZMO_ARROW_STL_PATH,
+        shader_interfaces::vertex_inputs::{GizmoVertex, VulkanVertex},
         shader_interfaces::{
             id_buffer::{ID_GIZMO_X, ID_GIZMO_Y, ID_GIZMO_Z},
             push_constants::GizmosPushConstant,
             uniform_buffers::GizmoUniformBuffer,
         },
+        vulkan_init::render_pass_indices,
         vulkan_init::{create_desc_sets_camera, write_camera_descriptor_sets},
     },
     user_interface::gizmo::{GizmoElement, GizmoVisibility},
@@ -202,7 +200,7 @@ fn create_desc_set_gizmo_params(device: Arc<Device>) -> anyhow::Result<Descripto
         .context("creating gizmo descriptor sets")
 }
 
-pub fn write_gizmo_descriptor_set(
+fn write_gizmo_descriptor_set(
     desc_set: &DescriptorSet,
     buffer: &Buffer,
     size: vk::DeviceSize,
