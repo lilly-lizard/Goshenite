@@ -24,6 +24,7 @@ use crate::{
     user_interface::{
         camera::Camera,
         config_ui::KEY_BINDING_COMMAND_PALETTE,
+        controls_camera::CameraControlMappings,
         cursor::{Cursor, MouseButtonEvent},
         gizmo::{GizmoElement, GizmoVisibility},
         gui::Gui,
@@ -79,6 +80,7 @@ pub struct EngineController {
 
     // settings
     settings: Settings,
+    camera_control_mappings: CameraControlMappings,
 
     // window thread (main thread)
     window_thread_channels: WindowThreadChannels,
@@ -139,6 +141,7 @@ impl EngineController {
             render_manager,
 
             settings: Settings::default(),
+            camera_control_mappings: Default::default(),
 
             window_thread_channels,
         })
@@ -403,7 +406,7 @@ impl EngineController {
                     delta,
                     button,
                     self.keyboard_modifier_states,
-                    self.settings.camera_control_mappings,
+                    self.camera_control_mappings,
                 ),
             },
             MouseButtonEvent::None => match element_at_point {

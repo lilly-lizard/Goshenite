@@ -1,8 +1,9 @@
-#![allow(dead_code)]
-
-use crate::user_interface::{
-    config_ui::DEFAULT_SCROLL_ZOOM_SENSITIVITY, controls_camera::CameraControlMappings,
-    theme::Theme,
+use crate::{
+    engine::engine_controller::EngineController,
+    user_interface::{
+        config_ui::DEFAULT_SCROLL_ZOOM_SENSITIVITY, controls_camera::CameraControlMappings,
+        theme::Theme,
+    },
 };
 
 // ~~ Json Setting Names ~~
@@ -30,41 +31,23 @@ pub const SETTING_NAME_SCROLL_ZOOM_SENSITIVITY: &str = "scrollZoomSensitivity";
 
 // ~~ Settings Struct ~~
 
-#[derive(Clone, Copy)]
+pub trait SettingDataType: ToString {
+    fn process_update(&self, engine: &mut EngineController) {}
+    fn from_string(self: &mut Self, string: String);
+    fn ui(self: &mut Self, ui: egui::Ui); // have helper functions for Enum, String, Bool and Number
+}
+
+pub struct Setting {
+    pub name: String,
+    pub data: Box<dyn SettingDataType>,
+    pub updated: bool,
+}
+
+pub struct SettingCategory {
+    pub name: String,
+    pub settings: Vec<Setting>,
+}
+
 pub struct Settings {
-    pub scroll_zoom_sensitivity: f64,
-    pub theme: Theme,
-    pub camera_control_mappings: CameraControlMappings,
-}
-
-impl Settings {
-    pub fn reset_all(&mut self) {
-        *self = Self::default()
-    }
-
-    pub fn set_theme(&mut self, theme: Theme) {
-        self.theme = theme;
-        // todo does egui update automatically from winit::event?
-        // may add color schemes in future -> egui::set_visuals_of
-    }
-
-    pub fn reset_scroll_zoom_sensitivity(&mut self) {
-        self.scroll_zoom_sensitivity = DEFAULT_SCROLL_ZOOM_SENSITIVITY;
-    }
-}
-
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            scroll_zoom_sensitivity: DEFAULT_SCROLL_ZOOM_SENSITIVITY,
-            theme: Default::default(),
-            camera_control_mappings: Default::default(),
-        }
-    }
-}
-
-// ~~ Json Encoding/Decoding Functions ~~
-
-impl Settings {
-    pub fn update_from_json(&mut self) {}
+    categories: Vec<SettingCategory>,
 }

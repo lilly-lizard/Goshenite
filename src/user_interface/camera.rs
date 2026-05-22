@@ -5,11 +5,8 @@ use super::{
 };
 use crate::{
     config,
-    engine::{
-        object::{
-            object::ObjectId, object_collection::ObjectCollection, primitive_op::PrimitiveOpIndex,
-        },
-        settings::Settings,
+    engine::object::{
+        object::ObjectId, object_collection::ObjectCollection, primitive_op::PrimitiveOpIndex,
     },
     helper::angle::Angle,
     user_interface::{
