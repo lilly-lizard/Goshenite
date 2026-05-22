@@ -1,5 +1,10 @@
 # plan:
 
+- skybox
+- archive camera controls json loading
+- generalize settings so that its easy to add new ones
+- code editor for skybox shader glsl. run on the fly
+
 - note that gizmo elements will need to be translucent sometimes (e.g. plane translate)
 	- add new readable_object_id output to 2nd subpass ✔️
 	- make internal object_id buffer transient and GPU only ✔️
