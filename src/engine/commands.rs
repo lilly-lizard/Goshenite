@@ -9,7 +9,7 @@ use super::{
     object::{object::ObjectId, operation::Operation},
     primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
 };
-use glam::{DVec3, Vec3};
+use glam::Vec3;
 
 // ~~ Commands ~~
 
@@ -29,10 +29,10 @@ pub enum Command {
     ResetScrollZoomSensitivity,
 
     // ~~ Camera ~~
-    SetCameraLockOnPos(DVec3),
     SetCameraLockOnObject(ObjectId),
     UnsetCameraLockOn,
     ResetCamera,
+    SetArcballTargetDepth(f64),
 
     // ~~ Object ~~
     SelectObject(ObjectId),

@@ -1,20 +1,20 @@
 #![allow(dead_code)]
 
 use crate::user_interface::{
-    camera_control::CameraControlMappings, config_ui::DEFAULT_SCROLL_ZOOM_SENSITIVITY, theme::Theme,
+    config_ui::DEFAULT_SCROLL_ZOOM_SENSITIVITY, controls_camera::CameraControlMappings,
+    theme::Theme,
 };
 
 // ~~ Json Setting Names ~~
 
 pub const SETTING_NAME_LOOK_MAPPING: &str = "cameraLookMapping";
-pub const SETTING_NAME_LOOK_MAPPING_2: &str = "cameraLookMapping2";
 pub const SETTING_NAME_PAN_MAPPING: &str = "cameraPanMapping";
-pub const SETTING_NAME_PAN_MAPPING_2: &str = "cameraPanMapping2";
 pub const SETTING_NAME_ZOOM_MAPPING: &str = "cameraZoomMapping";
-pub const SETTING_NAME_ZOOM_MAPPING_2: &str = "cameraZoomMapping2";
+pub const SETTING_NAME_ARCBALL_TARGET_MODIFIER: &str = "arcballTargetModifier";
 
 pub const SETTING_NAME_MOUSE_BUTTON: &str = "mouseButton";
 pub const SETTING_NAME_MODIFIERS: &str = "modifiers";
+pub const SETTING_NAME_MODIFIER: &str = "modifier";
 
 pub const SETTING_NAME_MOUSE_LEFT: &str = "left";
 pub const SETTING_NAME_MOUSE_RIGHT: &str = "right";

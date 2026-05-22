@@ -34,11 +34,34 @@ vec3 background(const vec3 ray_d)
 }
 
 /// Normalized ray direction in world space
-vec3 ray_direction() {
+vec3 ray_direction()
+{
 	vec4 origin = cam.view_inverse * vec4(0, 0, 0, 1);
 	vec4 target = cam.proj_inverse * vec4(in_clip_space_uv, 1, 1);
 	vec4 direction = cam.view_inverse * vec4(normalize(target.xyz / target.w), 0);
 	return normalize(direction.xyz); // todo what changes when normalize is removed here?
+}
+
+vec4 lighting_color(const vec3 ray_d)
+{
+    const vec3 SUN_DIR = vec3(-0.57735, -0.57735, -0.57735); // normalized
+	const vec3 SUN_COLOR = vec3(1., 1., 0.8);
+	const float AMBIENT_STRENGTH = 0.18;
+
+	vec3 normal = (subpassLoad(in_normal).xyz - 0.5) * 2.;
+	vec4 albedo_specular = subpassLoad(in_albedo_specular);
+	vec3 albedo = albedo_specular.xyz;
+	float specular_strength = albedo_specular.w;
+
+	vec3 ambient = AMBIENT_STRENGTH * SUN_COLOR;
+	float diffuse_factor = max(dot(normal, -SUN_DIR), 0.);
+	vec3 diffuse = diffuse_factor * SUN_COLOR;
+
+	vec3 reflect_d = reflect(-SUN_DIR, normal);
+	float specular_factor = pow(max(dot(ray_d, reflect_d), 0.), 32);
+	vec3 specular = specular_strength * specular_factor * SUN_COLOR;
+
+	return vec4(albedo * (ambient + diffuse + specular), 1.);
 }
 
 void main()
@@ -48,34 +71,17 @@ void main()
 	out_id = object_op_id;
 
 	vec3 ray_d = ray_direction();
-	
+
 	if (object_op_id == ID_BACKGROUND) {
 		// ray miss: draw background
 		out_color = vec4(background(ray_d), 1.);
 	} else if ((object_op_id & GIZMO_MASK) == GIZMO_MASK) {
 		out_color = subpassLoad(in_albedo_specular);
+	} else if ((object_op_id & OUTLINE_MASK) == OUTLINE_MASK) {
+	    out_color = subpassLoad(in_albedo_specular);
 	} else {
 		// ray hit: calculate color (https://learnopengl.com/Lighting/Basic-Lighting)
-
-		const vec3 SUN_DIR = vec3(-0.57735, -0.57735, -0.57735); // normalized
-		const vec3 SUN_COLOR = vec3(1., 1., 0.8);
-		const float AMBIENT_STRENGTH = 0.18;
-
-		vec3 normal = (subpassLoad(in_normal).xyz - 0.5) * 2.;
-		vec4 albedo_specular = subpassLoad(in_albedo_specular);
-		vec3 albedo = albedo_specular.xyz;
-		float specular_strength = albedo_specular.w;
-
-		vec3 ambient = AMBIENT_STRENGTH * SUN_COLOR;
-		
-		float diffuse_factor = max(dot(normal, -SUN_DIR), 0.);
-		vec3 diffuse = diffuse_factor * SUN_COLOR;
-
-		vec3 reflect_d = reflect(-SUN_DIR, normal);
-		float specular_factor = pow(max(dot(ray_d, reflect_d), 0.), 32);
-		vec3 specular = specular_strength * specular_factor * SUN_COLOR;
-
-		out_color = vec4(albedo * (ambient + diffuse + specular), 1.);
+		out_color = lighting_color(ray_d);
 	}
 
     if (cam.write_linear_color == 1) {
