@@ -31,10 +31,12 @@ pub const SETTING_NAME_SCROLL_ZOOM_SENSITIVITY: &str = "scrollZoomSensitivity";
 
 // ~~ Settings Struct ~~
 
-pub trait SettingDataType: ToString {
-    fn process_update(&self, engine: &mut EngineController) {}
-    fn from_string(self: &mut Self, string: String);
-    fn ui(self: &mut Self, ui: egui::Ui); // have helper functions for Enum, String, Bool and Number
+pub trait SettingDataType {
+    fn process_update(&self, _engine: &mut EngineController) {}
+    //fn from_string(self: &mut Self, string: String);
+    fn display_name(&self) -> &str;
+    fn from_string(&self, string: &str) -> Option<Box<dyn SettingDataType>>;
+    fn ui(&mut self, ui: egui::Ui); // have helper functions for Enum, String, Bool and Number
 }
 
 pub struct Setting {
@@ -48,6 +50,7 @@ pub struct SettingCategory {
     pub settings: Vec<Setting>,
 }
 
+#[derive(Default)]
 pub struct Settings {
     categories: Vec<SettingCategory>,
 }

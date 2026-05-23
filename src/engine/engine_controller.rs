@@ -71,12 +71,12 @@ pub struct EngineController {
     hovered_gizmo: Option<GizmoElement>,
 
     // controllers
-    cursor: Cursor,
-    dragging_source_element: Option<ElementAtPoint>,
-    camera: Camera,
-    gui: Gui,
-    view_mode: ViewMode,
-    render_manager: RenderManager,
+    pub cursor: Cursor,
+    pub dragging_source_element: Option<ElementAtPoint>,
+    pub camera: Camera,
+    pub gui: Gui,
+    pub view_mode: ViewMode,
+    pub render_manager: RenderManager,
 
     // settings
     settings: Settings,
@@ -372,7 +372,7 @@ impl EngineController {
             .get_element_at_screen_coordinate(cursor_screen_coordinates)?;
 
         let scroll_delta = self.cursor.get_and_clear_scroll_delta();
-        self.camera.update_scroll(scroll_delta, self.settings);
+        self.camera.update_scroll(scroll_delta);
 
         if let MouseButtonEvent::Dragging { .. } = cursor_event {
             if self.dragging_source_element.is_none() {

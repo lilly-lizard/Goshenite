@@ -24,10 +24,6 @@ pub enum Command {
     SaveScene,
     LoadScene,
 
-    // ~~ Settings ~~
-    SetScrollZoomSensitivity(f64),
-    ResetScrollZoomSensitivity,
-
     // ~~ Camera ~~
     SetCameraLockOnObject(ObjectId),
     UnsetCameraLockOn,

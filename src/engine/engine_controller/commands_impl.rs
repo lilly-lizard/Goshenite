@@ -46,12 +46,6 @@ impl EngineController {
             Command::SaveScene => self.save_all_objects(command),
             Command::LoadScene => self.load_objects(command),
 
-            // ~~ Settings ~~
-            Command::SetScrollZoomSensitivity(new_sensitivity) => {
-                self.set_scroll_zoom_sensitivity(new_sensitivity)
-            }
-            Command::ResetScrollZoomSensitivity => self.reset_scroll_zoom_sensitivity(),
-
             // ~~ Camera ~~
             Command::SetCameraLockOnObject(object_id) => {
                 self.set_camera_lock_on_object(object_id, Some(command))
@@ -268,16 +262,6 @@ impl EngineController {
             let failed_because = format!("error while inserting loaded objects: {}", e);
             command_failed_warn(command, &failed_because);
         }
-    }
-
-    // ~~ Settings ~~
-
-    fn set_scroll_zoom_sensitivity(&mut self, new_sensitivity: f64) {
-        self.settings.scroll_zoom_sensitivity = new_sensitivity;
-    }
-
-    fn reset_scroll_zoom_sensitivity(&mut self) {
-        self.settings.reset_scroll_zoom_sensitivity();
     }
 
     // ~~ Camera ~~

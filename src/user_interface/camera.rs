@@ -5,12 +5,17 @@ use super::{
 };
 use crate::{
     config,
-    engine::object::{
-        object::ObjectId, object_collection::ObjectCollection, primitive_op::PrimitiveOpIndex,
+    engine::{
+        engine_controller::EngineController,
+        object::{
+            object::ObjectId, object_collection::ObjectCollection, primitive_op::PrimitiveOpIndex,
+        },
+        settings::SettingDataType,
     },
     helper::angle::Angle,
     user_interface::{
-        config_ui::CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH, controls_camera::CameraAction,
+        config_ui::{CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH, DEFAULT_SCROLL_ZOOM_SENSITIVITY},
+        controls_camera::CameraAction,
         mouse_button::MouseButton,
     },
 };
@@ -25,17 +30,8 @@ pub enum LookMode {
     ArcballHovering,
     /// Look in a given direction and rotate from a fixed camera position
     PoV,
-    /// Lock on to a target position
-    TargetPos { target_pos: DVec3 },
-    TargetObject {
-        target_object_id: ObjectId,
-        last_known_origin: Vec3,
-    },
-    TargetPrimitiveOp {
-        target_object_id: ObjectId,
-        target_primitive_op_index: PrimitiveOpIndex,
-        last_known_origin: Vec3,
-    },
+    SelectedObject,
+    SelectedPrimitiveOp,
 }
 
 impl Default for LookMode {
@@ -44,15 +40,32 @@ impl Default for LookMode {
     }
 }
 
-impl LookMode {
-    pub fn display_name(&self) -> &str {
+impl SettingDataType for LookMode {
+    fn process_update(&self, engine: &mut EngineController) {
+        engine.camera.set_look_mode(*self);
+    }
+
+    fn from_string(&self, string: &str) -> Option<Box<dyn SettingDataType>> {
+        Some(Box::new(match string {
+            "Arcball Hovering" => LookMode::ArcballHovering,
+            "POV" => LookMode::PoV,
+            "Selected Object" => LookMode::SelectedObject,
+            "Selected Primitive Op" => LookMode::SelectedPrimitiveOp,
+            _ => return None,
+        }))
+    }
+
+    fn display_name(&self) -> &str {
         match self {
-            Self::ArcballHovering { .. } => "Arcball Hovering",
-            Self::PoV { .. } => "POV",
-            Self::TargetPos { .. } => "Target Position",
-            Self::TargetObject { .. } => "Target Object",
-            Self::TargetPrimitiveOp { .. } => "Target Primitive Op",
+            Self::ArcballHovering => "Arcball Hovering",
+            Self::PoV => "POV",
+            Self::SelectedObject => "Selected Object",
+            Self::SelectedPrimitiveOp => "Selected Primitive Op",
         }
+    }
+
+    fn ui(&mut self, ui: egui::Ui) {
+        todo!("helper fns for enum, number etc");
     }
 }
 
@@ -70,6 +83,8 @@ pub struct Camera {
     far_plane: f64,
     /// Note: only used for `LookMode::ArcballHovering`
     arcball_target_depth: f64,
+    /// Note: only used for `LookMode::SelectedObject` and `LookMode::SelectedPrimitiveOp`
+    last_known_origin: Vec3,
 }
 
 impl Default for Camera {
@@ -85,6 +100,7 @@ impl Default for Camera {
             near_plane: config_ui::CAMERA_NEAR_PLANE,
             far_plane: config_ui::CAMERA_FAR_PLANE,
             arcball_target_depth: CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH,
+            last_known_origin: Default::default(),
         }
     }
 }
@@ -165,8 +181,8 @@ impl Camera {
         }
     }
 
-    pub fn update_scroll(&mut self, scroll_delta: DVec2, settings: Settings) {
-        self.zoom_from_scroll(scroll_delta.y, settings.scroll_zoom_sensitivity);
+    pub fn update_scroll(&mut self, scroll_delta: DVec2) {
+        self.zoom_from_scroll(scroll_delta.y, DEFAULT_SCROLL_ZOOM_SENSITIVITY);
     }
 
     /// Resets the following properties to their defaults:
@@ -189,7 +205,7 @@ impl Camera {
         self.aspect_ratio = calc_aspect_ratio(resolution);
     }
 
-    pub fn set_mode(&mut self, look_mode: LookMode) {
+    pub fn set_look_mode(&mut self, look_mode: LookMode) {
         self.look_mode = look_mode;
         // avoid vertical alignment
         self.check_for_and_recover_from_vertical_orientation_alignment();
