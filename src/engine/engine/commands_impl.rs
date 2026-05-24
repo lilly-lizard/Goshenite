@@ -1,4 +1,4 @@
-use super::EngineController;
+use super::Engine;
 use crate::{
     config,
     engine::{
@@ -23,7 +23,7 @@ use log::{debug, error, info, trace, warn};
 
 // ~~ Commands ~~
 
-impl EngineController {
+impl Engine {
     pub(super) fn execute_engine_commands(&mut self) {
         while let Some(CommandWithSource {
             command,
@@ -36,11 +36,6 @@ impl EngineController {
 
     pub(super) fn execute_command(&mut self, command: Command) {
         match command {
-            // ~~ Renderer ~~
-            Command::SetRenderDebugOptions(new_render_debug_options) => {
-                self.render_debug_options = new_render_debug_options;
-            }
-
             // ~~ Save states ~~
             Command::SaveStateCamera => self.save_state_camera(command),
             Command::LoadStateCamera => self.load_state_camera(command),
@@ -48,10 +43,10 @@ impl EngineController {
             Command::LoadScene => self.load_objects(command),
 
             // ~~ Camera ~~
-            Command::UnsetCameraLockOn => self.camera.unset_lock_on_target(),
-            Command::ResetCamera => self.camera.reset(),
+            Command::UnsetCameraLockOn => self.controllers.camera.unset_lock_on_target(),
+            Command::ResetCamera => self.controllers.camera.reset(),
             Command::SetArcballTargetDepth(new_depth) => {
-                self.camera.set_arcball_target_depth(new_depth)
+                self.controllers.camera.set_arcball_target_depth(new_depth)
             }
 
             // ~~ Object ~~
@@ -212,11 +207,11 @@ impl EngineController {
 
 // ~~ Per-Command Processing ~~
 
-impl EngineController {
+impl Engine {
     // ~~ Save states ~~
 
     fn save_state_camera(&self, command: Command) {
-        let save_state_res = save_state_camera(&self.camera);
+        let save_state_res = save_state_camera(&self.controllers.camera);
         if let Err(e) = save_state_res {
             let failed_because = format!("error while saving camera state: {}", e);
             command_failed_warn(command, &failed_because);
@@ -233,7 +228,7 @@ impl EngineController {
                 return;
             }
         };
-        self.camera = loaded_camera;
+        self.controllers.camera = loaded_camera;
     }
 
     fn save_all_objects(&self, command: Command) {
@@ -268,16 +263,16 @@ impl EngineController {
         self.selected_object_id = None;
         self.selected_primitive_op_index = None;
         self.gizmo_visibility.hide_all();
-        self.camera.deselect_object();
+        self.controllers.camera.deselect_object();
     }
 
     /// Doesn't deselect object
     pub(super) fn deselect_primitive_op(&mut self) {
         self.selected_primitive_op_index = None;
         self.gizmo_visibility.hide_all();
-        self.camera.deselect_primitive_op();
+        self.controllers.camera.deselect_primitive_op();
         if config::ARCBALL_ON_SELECT {
-            self.camera.deselect_primitive_op();
+            self.controllers.camera.deselect_primitive_op();
         }
     }
 
@@ -317,9 +312,13 @@ impl EngineController {
 
         self.gizmo_visibility.show_all();
         // note: render_manager.update_gizmo_center not called here
-        self.gui.update_selected_primitive_op(&primitive_op);
+        self.controllers
+            .gui
+            .update_selected_primitive_op(&primitive_op);
         if config::ARCBALL_ON_SELECT {
-            self.camera.set_look_mode(LookMode::SelectedPrimitiveOp);
+            self.controllers
+                .camera
+                .set_look_mode(LookMode::SelectedPrimitiveOp);
         }
     }
 
@@ -340,7 +339,9 @@ impl EngineController {
         self.gizmo_visibility.show_all();
         // note: render_manager.update_gizmo_center not called here
         if config::ARCBALL_ON_SELECT {
-            self.camera.set_look_mode(LookMode::SelectedObject);
+            self.controllers
+                .camera
+                .set_look_mode(LookMode::SelectedObject);
         }
     }
 

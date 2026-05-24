@@ -1,5 +1,5 @@
 use super::{
-    config_renderer::{RenderDebugOptions, TIMEOUT_NANOSECS},
+    config_renderer::TIMEOUT_NANOSECS,
     element_id_reader::{ElementAtPoint, ElementIdReader},
     pass_geometry::GeometryPass,
     pass_gui::GuiPass,
@@ -15,7 +15,10 @@ use super::{
 };
 use crate::{
     config,
-    engine::object::{object::ObjectId, objects_delta::ObjectsDelta},
+    engine::{
+        object::{object::ObjectId, objects_delta::ObjectsDelta},
+        settings::{Setting, SettingData, SettingPrimitive, SettingsCategory},
+    },
     helper::anyhow_panic::log_anyhow_error_and_sources,
     renderer::{
         config_renderer::FRAMES_IN_FLIGHT,
@@ -355,7 +358,7 @@ impl RenderManager {
     /// Submits Vulkan commands for rendering a frame.
     pub fn render_frame(
         &mut self,
-        debug_options: RenderDebugOptions,
+        render_settings: &SettingsCategory,
         camera: &Camera,
         gizmo_visibility: GizmoVisibility,
         hovered_gizmo: Option<GizmoElement>,
@@ -402,7 +405,7 @@ impl RenderManager {
         self.record_render_commands(
             new_frame_index,
             swapchain_index,
-            debug_options,
+            render_settings,
             gizmo_visibility,
             hovered_gizmo,
             selected_object_id,
@@ -640,7 +643,7 @@ impl RenderManager {
         &mut self,
         frame_index: usize,
         swapchain_index: usize,
-        debug_options: RenderDebugOptions,
+        render_settings: &SettingsCategory,
         gizmo_visibility: GizmoVisibility,
         hovered_gizmo: Option<GizmoElement>,
         selected_object_id: Option<ObjectId>,
@@ -677,14 +680,24 @@ impl RenderManager {
         self.lighting_pass
             .record_commands(command_buffer, frame_index, viewport, render_area);
 
-        if debug_options.enable_aabb_wire_display {
-            self.overlay_pass.record_aabb_overlay_commands(
-                command_buffer,
-                frame_index,
-                self.geometry_pass.object_buffer_manager(),
-                viewport,
-                render_area,
-            );
+        if let Some(Setting {
+            data:
+                SettingData::Primitive {
+                    data: SettingPrimitive::Bool(enable_aabb_wire_display),
+                    ..
+                },
+            ..
+        }) = render_settings.get_setting("Enable AABB Wire Display".into())
+        {
+            if *enable_aabb_wire_display {
+                self.overlay_pass.record_aabb_overlay_commands(
+                    command_buffer,
+                    frame_index,
+                    self.geometry_pass.object_buffer_manager(),
+                    viewport,
+                    render_area,
+                );
+            }
         }
 
         if gizmo_visibility.any_visible() {

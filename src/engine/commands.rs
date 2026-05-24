@@ -1,9 +1,6 @@
 #![allow(dead_code)]
 
-use crate::{
-    engine::object::primitive_op::{PrimitiveOp, PrimitiveOpIndex},
-    renderer::config_renderer::RenderDebugOptions,
-};
+use crate::engine::object::primitive_op::{PrimitiveOp, PrimitiveOpIndex};
 
 use super::{
     object::{object::ObjectId, operation::Operation},
@@ -15,9 +12,6 @@ use glam::Vec3;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Command {
-    // ~~ Renderer ~~
-    SetRenderDebugOptions(RenderDebugOptions),
-
     // ~~ Save states ~~
     SaveStateCamera,
     LoadStateCamera,

@@ -6,7 +6,7 @@ use super::{
 use crate::{
     config,
     engine::{
-        engine_controller::EngineController,
+        engine::EngineControllers,
         object::{
             object::ObjectId, object_collection::ObjectCollection, primitive_op::PrimitiveOpIndex,
         },
@@ -65,8 +65,8 @@ impl SettingDataType for LookMode {
         setting_ui_enum(ui, self, &Self::VARIANTS, updated);
     }
 
-    fn process_update(&self, engine: &mut EngineController) {
-        engine.camera.set_look_mode(*self);
+    fn process_update(&self, engine_controllers: &mut EngineControllers) {
+        engine_controllers.camera.set_look_mode(*self);
     }
 }
 

@@ -44,11 +44,6 @@ pub const FRAMES_IN_FLIGHT: usize = 2;
 
 pub const CPU_ACCESS_BUFFER_SIZE: vk::DeviceSize = 1024;
 
-#[derive(Default, Clone, Copy, Debug, PartialEq)]
-pub struct RenderDebugOptions {
-    pub enable_aabb_wire_display: bool,
-}
-
 pub const GIZMO_ARROW_STL_PATH: &str = "./assets/models/gizmo-arrow.stl";
 
 pub const DISPLAY_UNAVAILABLE_TIMEOUT_NANOSECONDS: i32 = 10000;

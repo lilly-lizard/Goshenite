@@ -1,4 +1,4 @@
-use super::engine_controller::EngineCommand;
+use super::engine::EngineCommand;
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use single_value_channel::Updater;

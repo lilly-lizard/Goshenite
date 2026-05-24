@@ -9,9 +9,9 @@ use crate::{
             primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
         save_states::{load_state_gui_positions, save_state_gui_positions},
+        settings::Settings,
     },
     helper::more_errors::IoError,
-    renderer::config_renderer::RenderDebugOptions,
     user_interface::{camera::Camera, gui::side_panel::SidePanelMode},
 };
 use anyhow::Context;
@@ -126,12 +126,12 @@ impl Gui {
 
     pub fn update_gui(
         &mut self,
+        settings: &mut Settings,
         object_collection: &ObjectCollection,
         window: &Window,
         camera: &Camera,
         selected_object_id: Option<ObjectId>,
         selected_primitive_op_index: Option<PrimitiveOpIndex>,
-        render_debug_options: RenderDebugOptions,
     ) -> anyhow::Result<Vec<CommandWithSource>> {
         let mut commands = Vec::<Command>::new();
 
@@ -169,7 +169,7 @@ impl Gui {
                 Self::draw_settings_window(
                     &self.egui_context,
                     &mut self.settings_window_visible,
-                    render_debug_options,
+                    settings,
                 );
             }
 

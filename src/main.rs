@@ -7,7 +7,7 @@ mod renderer;
 mod user_interface;
 
 use crate::engine::{
-    engine_controller::{EngineCommand, EngineController},
+    engine::{Engine, EngineCommand},
     window_thread::{WindowThread, WindowThreadChannels},
 };
 use anyhow::Context;
@@ -81,7 +81,7 @@ pub fn start_engine() -> anyhow::Result<()> {
     let engine_thread_handle = thread::spawn(move || {
         let engine_run_res = {
             info!("initializing engine instance");
-            let mut engine_controller = EngineController::new(window, window_thread_channels)?;
+            let mut engine_controller = Engine::new(window, window_thread_channels)?;
 
             info!("starting engine loop");
             engine_controller.run()

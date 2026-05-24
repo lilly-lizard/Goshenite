@@ -17,10 +17,7 @@ use crate::{
         window_thread::WindowThreadChannels,
     },
     helper::{anyhow_panic::anyhow_unwrap, more_errors::CollectionError},
-    renderer::{
-        config_renderer::RenderDebugOptions, element_id_reader::ElementAtPoint,
-        render_manager::RenderManager,
-    },
+    renderer::{element_id_reader::ElementAtPoint, render_manager::RenderManager},
     user_interface::{
         camera::Camera,
         config_ui::KEY_BINDING_COMMAND_PALETTE,
@@ -54,29 +51,32 @@ pub enum EngineCommand {
     Quit,
 }
 
-pub struct EngineController {
+/// So that settings and controllers can be (conveniently) mutated at the same
+pub struct EngineControllers {
+    pub cursor: Cursor,
+    pub camera: Camera,
+    pub gui: Gui,
+    pub renderer: RenderManager,
+}
+
+pub struct Engine {
     window: Arc<Window>,
 
     // state
+    view_mode: ViewMode,
     scale_factor: f64,
-    object_collection: ObjectCollection, // note: some engine code written on the assumtion that there is only one object collection
-    main_thread_frame_number: u64,
+    object_collection: ObjectCollection, // note: some engine code may have been written on the assumtion that there is only one object collection...
+    main_thread_frame_number: u64, // TODO what is this used for? wrap around to handle overflow??
     pending_commands: VecDeque<CommandWithSource>,
     selected_object_id: Option<ObjectId>,
     selected_primitive_op_index: Option<PrimitiveOpIndex>,
-    render_debug_options: RenderDebugOptions,
     keyboard_modifier_states: KeyboardModifierStates,
-
+    dragging_source_element: Option<ElementAtPoint>,
     gizmo_visibility: GizmoVisibility,
     hovered_gizmo: Option<GizmoElement>,
 
     // controllers
-    pub cursor: Cursor,
-    pub dragging_source_element: Option<ElementAtPoint>,
-    pub camera: Camera,
-    pub gui: Gui,
-    pub view_mode: ViewMode,
-    pub render_manager: RenderManager,
+    controllers: EngineControllers,
 
     // settings
     settings: Settings,
@@ -88,7 +88,7 @@ pub struct EngineController {
 
 // ~~ Public Functions ~~
 
-impl EngineController {
+impl Engine {
     pub fn new(
         window: Arc<Window>,
         window_thread_channels: WindowThreadChannels,
@@ -103,10 +103,10 @@ impl EngineController {
 
         let camera = Camera::new(window.inner_size().into())?;
 
-        let mut render_manager = RenderManager::new(window.clone(), scale_factor as f32)?;
-        render_manager.init_camera(&camera)?;
+        let mut renderer = RenderManager::new(window.clone(), scale_factor as f32)?;
+        renderer.init_camera(&camera)?;
 
-        let max_texture_size = render_manager.max_2d_image_size(); //maxImageDimension2D
+        let max_texture_size = renderer.max_2d_image_size(); //maxImageDimension2D
         let gui = Gui::new(window.clone(), scale_factor as f32, Some(max_texture_size));
 
         let mut object_collection = ObjectCollection::new();
@@ -118,27 +118,27 @@ impl EngineController {
 
         // ~~ TESTING OBJECTS END ~~
 
-        Ok(EngineController {
+        Ok(Engine {
             window,
 
+            view_mode: ViewMode::default(),
             scale_factor,
             object_collection,
             main_thread_frame_number: 0,
             pending_commands: VecDeque::new(),
             selected_object_id: None,
             selected_primitive_op_index: None,
-            render_debug_options: RenderDebugOptions::default(),
             keyboard_modifier_states: KeyboardModifierStates::default(),
-
-            gizmo_visibility: Default::default(),
+            gizmo_visibility: GizmoVisibility::default(),
             hovered_gizmo: None,
-
-            cursor,
             dragging_source_element: None,
-            camera,
-            gui,
-            view_mode: ViewMode::Scene,
-            render_manager,
+
+            controllers: EngineControllers {
+                cursor,
+                camera,
+                gui,
+                renderer,
+            },
 
             settings: Settings::default(),
             camera_control_mappings: Default::default(),
@@ -179,7 +179,7 @@ impl EngineController {
 
 // ~~ Private Functions ~~
 
-impl EngineController {
+impl Engine {
     /// The main loop of the engine thread
     fn run_frame(&mut self) -> anyhow::Result<EngineCommand> {
         let events = self.window_thread_channels.get_events()?;
@@ -198,26 +198,30 @@ impl EngineController {
         trace!("winit event: {:?}", event);
 
         // egui event handling
-        let captured_by_gui = self.gui.process_event(&event).consumed;
+        let captured_by_gui = self.controllers.gui.process_event(&event).consumed;
 
         // engine event handling
         match event {
             // cursor moved. triggered when cursor is in window or if currently dragging and started in the window (on linux at least)
-            WindowEvent::CursorMoved { position, .. } => self.cursor.set_position(position.into()),
+            WindowEvent::CursorMoved { position, .. } => {
+                self.controllers.cursor.set_position(position.into())
+            }
 
             // send mouse button events to cursor state
-            WindowEvent::MouseInput { state, button, .. } => {
-                self.cursor.set_click_state(button, state, captured_by_gui)
-            }
-            WindowEvent::MouseWheel { delta, .. } => {
-                self.cursor.accumulate_scroll_delta(delta, captured_by_gui)
-            }
+            WindowEvent::MouseInput { state, button, .. } => self
+                .controllers
+                .cursor
+                .set_click_state(button, state, captured_by_gui),
+            WindowEvent::MouseWheel { delta, .. } => self
+                .controllers
+                .cursor
+                .accumulate_scroll_delta(delta, captured_by_gui),
 
             // cursor entered window
-            WindowEvent::CursorEntered { .. } => self.cursor.set_in_window_state(true),
+            WindowEvent::CursorEntered { .. } => self.controllers.cursor.set_in_window_state(true),
 
             // cursor left window
-            WindowEvent::CursorLeft { .. } => self.cursor.set_in_window_state(false),
+            WindowEvent::CursorLeft { .. } => self.controllers.cursor.set_in_window_state(false),
 
             // keyboard
             WindowEvent::KeyboardInput { event, .. } => {
@@ -242,21 +246,22 @@ impl EngineController {
     // Per frame udpates
     fn update_engine(&mut self) -> anyhow::Result<()> {
         // process recieved events for cursor state
-        let cursor_event = self.cursor.process_frame();
-        if let Some(cursor_icon) = self.cursor.cursor_icon() {
-            self.gui.set_cursor_icon(cursor_icon);
+        let cursor_event = self.controllers.cursor.process_frame();
+        if let Some(cursor_icon) = self.controllers.cursor.cursor_icon() {
+            self.controllers.gui.set_cursor_icon(cursor_icon);
         }
         self.process_cursor_event(cursor_event)?;
 
         // process gui inputs and update layout
-        let update_gui_res = self.gui.update_gui(
+        let update_gui_res = self.controllers.gui.update_gui(
+            &mut self.settings,
             &self.object_collection,
             &self.window,
-            &self.camera,
+            &self.controllers.camera,
             self.selected_object_id,
             self.selected_primitive_op_index,
-            self.render_debug_options,
         );
+        self.settings.update_engine(&mut self.controllers);
         let commands_from_gui = anyhow_unwrap(update_gui_res, "update gui");
         self.pending_commands.extend(commands_from_gui.into_iter());
 
@@ -265,26 +270,28 @@ impl EngineController {
 
         // object buffer updates
         let objects_delta = self.object_collection.get_and_clear_objects_delta();
-        self.camera.update_camera_objects(
+        self.controllers.camera.update_camera_objects(
             &self.object_collection,
             self.selected_object_id,
             self.selected_primitive_op_index,
         );
-        self.render_manager.update_objects(objects_delta)?;
+        self.controllers.renderer.update_objects(objects_delta)?;
         self.update_selection_gizmo()?;
 
         // submit gui texture updates
-        let textures_delta = self.gui.get_and_clear_textures_delta();
-        self.render_manager.update_gui_textures(textures_delta)?;
+        let textures_delta = self.controllers.gui.get_and_clear_textures_delta();
+        self.controllers
+            .renderer
+            .update_gui_textures(textures_delta)?;
 
         // submit gui primitive updates
-        let gui_primitives = self.gui.mesh_primitives().clone();
-        self.render_manager.set_gui_primitives(gui_primitives);
+        let gui_primitives = self.controllers.gui.mesh_primitives().clone();
+        self.controllers.renderer.set_gui_primitives(gui_primitives);
 
         // renderer
-        self.render_manager.render_frame(
-            self.render_debug_options,
-            &self.camera,
+        self.controllers.renderer.render_frame(
+            self.settings.get_settings_render(),
+            &self.controllers.camera,
             self.gizmo_visibility,
             self.hovered_gizmo,
             self.selected_object_id,
@@ -306,7 +313,7 @@ impl EngineController {
         };
 
         let center = match self.view_mode {
-            ViewMode::Scene => selected_object.center,
+            ViewMode::SceneEditor => selected_object.center,
             ViewMode::ObjectEditor => {
                 let Some(selected_primitive_op_index) = self.selected_primitive_op_index else {
                     return Ok(());
@@ -322,7 +329,7 @@ impl EngineController {
             }
         };
 
-        self.render_manager.update_gizmo_center(center)?;
+        self.controllers.renderer.update_gizmo_center(center)?;
         Ok(())
     }
 
@@ -342,12 +349,12 @@ impl EngineController {
         match key_code {
             KEY_BINDING_COMMAND_PALETTE => {
                 if let ElementState::Released = key_event.state {
-                    self.gui.toggle_command_palette_visability();
+                    self.controllers.gui.toggle_command_palette_visability();
                 }
             }
             KeyCode::Escape => {
                 if let ElementState::Released = key_event.state {
-                    self.gui.hide_command_palette();
+                    self.controllers.gui.hide_command_palette();
                 }
             }
             _ => (),
@@ -355,28 +362,33 @@ impl EngineController {
     }
 
     fn update_window_inner_size(&mut self, new_inner_size: winit::dpi::PhysicalSize<u32>) {
-        self.camera.set_aspect_ratio(new_inner_size.into());
-        self.render_manager.set_window_just_resized_flag();
+        self.controllers
+            .camera
+            .set_aspect_ratio(new_inner_size.into());
+        self.controllers.renderer.set_window_just_resized_flag();
     }
 
     fn set_scale_factor(&mut self, scale_factor: f64) {
         self.scale_factor = scale_factor;
-        self.gui.set_scale_factor(scale_factor as f32);
-        self.render_manager.set_scale_factor(scale_factor as f32);
+        self.controllers.gui.set_scale_factor(scale_factor as f32);
+        self.controllers
+            .renderer
+            .set_scale_factor(scale_factor as f32);
     }
 
     fn process_cursor_event(&mut self, cursor_event: MouseButtonEvent) -> anyhow::Result<()> {
-        let Some(cursor_screen_coordinates_dvec2) = self.cursor.position() else {
+        let Some(cursor_screen_coordinates_dvec2) = self.controllers.cursor.position() else {
             return Ok(());
         };
         let cursor_screen_coordinates = cursor_screen_coordinates_dvec2.as_vec2().to_array();
 
         let element_at_point = self
-            .render_manager
+            .controllers
+            .renderer
             .get_element_at_screen_coordinate(cursor_screen_coordinates)?;
 
-        let scroll_delta = self.cursor.get_and_clear_scroll_delta();
-        self.camera.update_scroll(scroll_delta);
+        let scroll_delta = self.controllers.cursor.get_and_clear_scroll_delta();
+        self.controllers.camera.update_scroll(scroll_delta);
 
         if let MouseButtonEvent::Dragging { .. } = cursor_event {
             if self.dragging_source_element.is_none() {
@@ -406,7 +418,7 @@ impl EngineController {
                 Some(ElementAtPoint::Gizmo(gizmo_element)) => {
                     self.gizmo_dragged(gizmo_element, button, delta)
                 }
-                _ => self.camera.update_cursor_dragging(
+                _ => self.controllers.camera.update_cursor_dragging(
                     delta,
                     button,
                     self.keyboard_modifier_states,
@@ -433,7 +445,7 @@ impl EngineController {
                 delta,
                 selected_object_id,
                 &mut self.object_collection,
-                &self.camera,
+                &self.controllers.camera,
             );
             if let Err(CollectionError::InvalidId { .. }) = res {
                 self.deselect_object();
@@ -443,7 +455,7 @@ impl EngineController {
 
     fn background_clicked(&mut self) {
         self.deselect_object();
-        self.camera.unset_lock_on_target();
+        self.controllers.camera.unset_lock_on_target();
     }
 
     fn is_object_id_selected(&self, compare_object_id: ObjectId) -> bool {
@@ -457,13 +469,13 @@ impl EngineController {
     fn shut_down(&self) {
         info!("shutting down...");
         // save gui state
-        if let Err(e) = self.gui.save_gui_state() {
+        if let Err(e) = self.controllers.gui.save_gui_state() {
             error!("{}", e);
         }
     }
 }
 
-impl Drop for EngineController {
+impl Drop for Engine {
     fn drop(&mut self) {
         debug!("dropping engine controller");
     }
