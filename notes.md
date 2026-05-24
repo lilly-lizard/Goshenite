@@ -2,13 +2,20 @@
 
 - archive camera controls json loading ✔️
 - generalize settings so that its easy to add new ones ✔️
-- skybox 🔨
-- code editor for skybox shader glsl. run on the fly
+- skybox ✔️
+	- load background skyboxes via file selector
+	- code editor for skybox shader glsl. run on the fly
+- settings redo:
+	- make each setting a static member, easily accessible by engine
+	- means you don't need `process_update` or `EngineControllers`, just send `settings` to all the controllers rather than keeping track of duplicate variables
+	- keep `SettingPrimitive` for ui helper function
 - editor view modes
+	- SceneEditor: render ground grid
+	- ObjectEditor: grey background
 - remove `include-spirv-bytes` feature
   - make common `create_shader_stages` fn in `vulkan_init`
 
-- note that gizmo elements will need to be translucent sometimes (e.g. plane translate)
+- note that gizmo elements will need to be translucent sometimes (e.g. plane translate) ✔️
 	- add new readable_object_id output to 2nd subpass ✔️
 	- make internal object_id buffer transient and GPU only ✔️
 	- put gizmo pass in 2nd subpass and write object_id to new buffer ✔️
@@ -16,23 +23,21 @@
 	- add GizmoVisibility (including center) and GizmoItem structs, note that multiple gizmo types can be on simultaneously ✔️
 - remove arcball camera (have hidden option for it) ✔️
 	- it doesn't make sense with gizmo dragging ✔️
-	- make arcball around invisible marker on ground plane? 🔨
-  	- render the ground plane like blender
-	- make simple controls similar to bambu studio or smthn
-	- config for pan etc
-- make gui a side panel
+	- make arcball around invisible marker on ground plane? ✔️
+	- make simple controls similar to bambu studio or smthn ✔️
+- make gui a side panel ✔️
 	- goals:
-		- most of time you want to click on object and move it around
+		- most of time you want to click on object and move it around ✔️
 		- make outline for selected object/primitive op - USE SPEC CONSTANTS and separate pipeline ✔️
-			- TODO lighting shader -> if normal = vec3(0.), skip lighting
-		- config option to be top,left,right,bottom
-		- have settings window that pops up in the middle of the window 🔨
+			- TODO lighting shader -> if normal = vec3(0.), skip lighting ✔️
+		- config option to be top,left,right,bottom 🔨
+		- have settings window that pops up in the middle of the window ✔️
 	- scene mode vs object mode 🔨
-		- geometry shader draws orange line around selected object. can be seen through obscuring objects - scene mode
-		- only draw selected object in - object mode
-- click and drag gizmo arrows
-  1. apply absolute values of dragging to directions
-  2. scale based on distance from object
+		- geometry shader draws orange line around selected object. can be seen through obscuring objects - scene mode ✔️
+		- only draw selected object in - object mode 🔨
+- click and drag gizmo arrows ✔️
+  1. apply absolute values of dragging to directions ✔️
+  2. scale based on distance from object ✔️
 - draw circle at selected object center
 - generate BVH and render BVH outlines
 
