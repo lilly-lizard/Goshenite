@@ -1,8 +1,8 @@
 # plan:
 
-- generalize settings so that its easy to add new ones
-- archive camera controls json loading
-- skybox
+- archive camera controls json loading ✔️
+- generalize settings so that its easy to add new ones ✔️
+- skybox 🔨
 - code editor for skybox shader glsl. run on the fly
 
 - note that gizmo elements will need to be translucent sometimes (e.g. plane translate)
