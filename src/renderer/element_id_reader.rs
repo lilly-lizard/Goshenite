@@ -227,8 +227,10 @@ impl ElementIdReader {
         };
 
         let image_offset = vk::Offset3D {
-            x: screen_coordinate[0].round() as i32,
-            y: screen_coordinate[1].round() as i32,
+            // note: floor is used instead of round for when cursor is on the bottom or right edge of the window
+            // so that a pixel isn't requested that is outside the framebuffer dimensions
+            x: screen_coordinate[0].floor() as i32,
+            y: screen_coordinate[1].floor() as i32,
             z: 0,
         };
 
