@@ -43,18 +43,3 @@ fn layout_debug_options(ui: &mut Ui, old_render_options: RenderDebugOptions) -> 
     }
     commands
 }
-
-// fn layout_camera_settings(ui: &mut Ui, camera: &Camera) -> Vec<Command> {
-//     let mut new_mode = camera.look_mode();
-//     egui::ComboBox::from_label("Camera mode")
-//         .selected_text(camera.look_mode().display_name())
-//         .show_ui(ui, |ui| {
-//             ui.selectable_value(&mut new_mode, LookMode::ArcballHovering { direction })
-//         });
-//
-// let mut new_arball_depth = camera.arcball_target_depth();
-// ui.add(DragValue::new(&mut new_arball_depth).speed(DRAG_INC));
-// if new_arball_depth != camera.arcball_target_depth() {
-
-// }
-// }

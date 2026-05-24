@@ -10,7 +10,7 @@ use crate::{
         object::{
             object::ObjectId, object_collection::ObjectCollection, primitive_op::PrimitiveOpIndex,
         },
-        settings::SettingDataType,
+        settings::{setting_ui_enum, SettingDataType},
     },
     helper::angle::Angle,
     user_interface::{
@@ -34,28 +34,25 @@ pub enum LookMode {
     SelectedPrimitiveOp,
 }
 
+impl LookMode {
+    const VARIANTS: [LookMode; 4] = [
+        LookMode::ArcballHovering,
+        LookMode::PoV,
+        LookMode::SelectedObject,
+        LookMode::SelectedPrimitiveOp,
+    ];
+}
 impl Default for LookMode {
     fn default() -> Self {
         Self::ArcballHovering
     }
 }
-
 impl SettingDataType for LookMode {
-    fn process_update(&self, engine: &mut EngineController) {
-        engine.camera.set_look_mode(*self);
+    fn setting_name(&self) -> &str {
+        "Camera Look Mode"
     }
 
-    fn from_string(&self, string: &str) -> Option<Box<dyn SettingDataType>> {
-        Some(Box::new(match string {
-            "Arcball Hovering" => LookMode::ArcballHovering,
-            "POV" => LookMode::PoV,
-            "Selected Object" => LookMode::SelectedObject,
-            "Selected Primitive Op" => LookMode::SelectedPrimitiveOp,
-            _ => return None,
-        }))
-    }
-
-    fn display_name(&self) -> &str {
+    fn value_display_name(&self) -> &str {
         match self {
             Self::ArcballHovering => "Arcball Hovering",
             Self::PoV => "POV",
@@ -64,8 +61,12 @@ impl SettingDataType for LookMode {
         }
     }
 
-    fn ui(&mut self, ui: egui::Ui) {
-        todo!("helper fns for enum, number etc");
+    fn ui(&mut self, ui: &mut egui::Ui, updated: &mut bool) {
+        setting_ui_enum(ui, self, &Self::VARIANTS, updated);
+    }
+
+    fn process_update(&self, engine: &mut EngineController) {
+        engine.camera.set_look_mode(*self);
     }
 }
 
