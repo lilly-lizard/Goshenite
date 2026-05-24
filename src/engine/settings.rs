@@ -33,7 +33,6 @@ pub const SETTING_NAME_SCROLL_ZOOM_SENSITIVITY: &str = "scrollZoomSensitivity";
 
 pub trait SettingDataType {
     fn process_update(&self, _engine: &mut EngineController) {}
-    //fn from_string(self: &mut Self, string: String);
     fn display_name(&self) -> &str;
     fn from_string(&self, string: &str) -> Option<Box<dyn SettingDataType>>;
     fn ui(&mut self, ui: egui::Ui); // have helper functions for Enum, String, Bool and Number

@@ -1,9 +1,5 @@
 use super::Gui;
-use crate::{
-    engine::commands::Command,
-    renderer::config_renderer::RenderDebugOptions,
-    user_interface::camera::{Camera, LookMode},
-};
+use crate::{engine::commands::Command, renderer::config_renderer::RenderDebugOptions};
 use egui::Ui;
 
 impl Gui {

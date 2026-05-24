@@ -15,6 +15,7 @@ use crate::{
         list::choose_closest_valid_index, more_errors::CollectionError,
         unique_id_gen::UniqueIdError,
     },
+    user_interface::camera::LookMode,
 };
 use glam::Vec3;
 #[allow(unused_imports)]
@@ -47,9 +48,6 @@ impl EngineController {
             Command::LoadScene => self.load_objects(command),
 
             // ~~ Camera ~~
-            Command::SetCameraLockOnObject(object_id) => {
-                self.set_camera_lock_on_object(object_id, Some(command))
-            }
             Command::UnsetCameraLockOn => self.camera.unset_lock_on_target(),
             Command::ResetCamera => self.camera.reset(),
             Command::SetArcballTargetDepth(new_depth) => {
@@ -264,22 +262,6 @@ impl EngineController {
         }
     }
 
-    // ~~ Camera ~~
-
-    fn set_camera_lock_on_object(
-        &mut self,
-        target_object_id: ObjectId,
-        source_command: Option<Command>,
-    ) {
-        let Ok(object) = self.object_collection.get_object(target_object_id) else {
-            failure_warn_invalid_object_id(target_object_id, source_command);
-            return;
-        };
-
-        self.camera
-            .set_lock_on_target_object(target_object_id, object.center);
-    }
-
     // ~~ Objects: Selection ~~
 
     pub(super) fn deselect_object(&mut self) {
@@ -295,12 +277,7 @@ impl EngineController {
         self.gizmo_visibility.hide_all();
         self.camera.deselect_primitive_op();
         if config::ARCBALL_ON_SELECT {
-            if let Some(target_object_id) = self.selected_object_id {
-                if let Ok(object) = self.object_collection.get_object(target_object_id) {
-                    self.camera
-                        .set_lock_on_target_object(target_object_id, object.center);
-                }
-            }
+            self.camera.deselect_primitive_op();
         }
     }
 
@@ -338,16 +315,11 @@ impl EngineController {
         self.selected_object_id = Some(object_id_to_select);
         self.selected_primitive_op_index = Some(primitive_op_index_to_select);
 
-        let center = object.center + primitive_op.center();
         self.gizmo_visibility.show_all();
         // note: render_manager.update_gizmo_center not called here
         self.gui.update_selected_primitive_op(&primitive_op);
         if config::ARCBALL_ON_SELECT {
-            self.camera.set_lock_on_target_primitive_op(
-                object_id_to_select,
-                primitive_op_index_to_select,
-                center,
-            );
+            self.camera.set_look_mode(LookMode::SelectedPrimitiveOp);
         }
     }
 
@@ -357,7 +329,7 @@ impl EngineController {
         object_id_to_select: ObjectId,
         source_command: Option<Command>,
     ) {
-        let Ok(object) = self.object_collection.get_object(object_id_to_select) else {
+        if let Err(_e) = self.object_collection.get_object(object_id_to_select) {
             failure_warn_invalid_object_id(object_id_to_select, source_command);
             return;
         };
@@ -368,8 +340,7 @@ impl EngineController {
         self.gizmo_visibility.show_all();
         // note: render_manager.update_gizmo_center not called here
         if config::ARCBALL_ON_SELECT {
-            self.camera
-                .set_lock_on_target_object(object_id_to_select, object.center);
+            self.camera.set_look_mode(LookMode::SelectedObject);
         }
     }
 

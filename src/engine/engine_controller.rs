@@ -265,7 +265,11 @@ impl EngineController {
 
         // object buffer updates
         let objects_delta = self.object_collection.get_and_clear_objects_delta();
-        self.camera.update_camera_objects(&self.object_collection);
+        self.camera.update_camera_objects(
+            &self.object_collection,
+            self.selected_object_id,
+            self.selected_primitive_op_index,
+        );
         self.render_manager.update_objects(objects_delta)?;
         self.update_selection_gizmo()?;
 

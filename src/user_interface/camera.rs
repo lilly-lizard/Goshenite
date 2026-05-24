@@ -115,36 +115,45 @@ impl Camera {
         })
     }
 
-    pub fn update_camera_objects(&mut self, object_collection: &ObjectCollection) {
+    pub fn update_camera_objects(
+        &mut self,
+        object_collection: &ObjectCollection,
+        selected_object_id: Option<ObjectId>,
+        selected_primitive_op_index: Option<PrimitiveOpIndex>,
+    ) {
         match self.look_mode() {
-            LookMode::TargetObject {
-                target_object_id, ..
-            } => {
-                if let Ok(object) = object_collection.get_object(target_object_id) {
-                    // update camera target positi on
-                    self.set_lock_on_target_object(target_object_id, object.center);
+            LookMode::SelectedObject => {
+                let Some(selected_object_id) = selected_object_id else {
+                    self.unset_lock_on_target();
+                    return;
+                };
+                if let Ok(object) = object_collection.get_object(selected_object_id) {
+                    self.last_known_origin = object.center;
+                    // avoid vertical alignment
+                    self.check_for_and_recover_from_vertical_orientation_alignment();
                 } else {
                     // object dropped
                     self.unset_lock_on_target();
                 }
             }
-            LookMode::TargetPrimitiveOp {
-                target_object_id,
-                target_primitive_op_index,
-                ..
-            } => {
-                match object_collection
-                    .get_object_and_primitive_op(target_object_id, target_primitive_op_index)
+            LookMode::SelectedPrimitiveOp => {
+                let Some(selected_object_id) = selected_object_id else {
+                    self.unset_lock_on_target();
+                    return;
+                };
+                let Some(selected_primitive_op_index) = selected_primitive_op_index else {
+                    self.unset_lock_on_target();
+                    return;
+                };
+                if let Ok((object, primitive_op)) = object_collection
+                    .get_object_and_primitive_op(selected_object_id, selected_primitive_op_index)
                 {
-                    Ok((object, primitive_op)) => self.set_lock_on_target_primitive_op(
-                        target_object_id,
-                        target_primitive_op_index,
-                        object.center + primitive_op.center(),
-                    ),
-                    Err(_e) => {
-                        // object dropped or primitive op deleted
-                        self.unset_lock_on_target();
-                    }
+                    self.last_known_origin = object.center + primitive_op.center();
+                    // avoid vertical alignment
+                    self.check_for_and_recover_from_vertical_orientation_alignment();
+                } else {
+                    // object dropped or primitive op deleted
+                    self.unset_lock_on_target();
                 }
             }
             _ => (),
@@ -211,64 +220,25 @@ impl Camera {
         self.check_for_and_recover_from_vertical_orientation_alignment();
     }
 
-    pub fn set_lock_on_target_object(&mut self, target_object_id: ObjectId, object_origin: Vec3) {
-        self.look_mode = LookMode::TargetObject {
-            target_object_id,
-            last_known_origin: object_origin,
-        };
-
-        // avoid vertical alignment
-        self.check_for_and_recover_from_vertical_orientation_alignment();
-    }
-
-    pub fn set_lock_on_target_primitive_op(
-        &mut self,
-        target_object_id: ObjectId,
-        target_primitive_op_index: PrimitiveOpIndex,
-        primitive_op_center: Vec3,
-    ) {
-        self.look_mode = LookMode::TargetPrimitiveOp {
-            target_object_id,
-            target_primitive_op_index,
-            last_known_origin: primitive_op_center,
-        };
-
-        // avoid vertical alignment
-        self.check_for_and_recover_from_vertical_orientation_alignment();
-    }
-
     pub fn set_arcball_target_depth(&mut self, new_depth: f64) {
         self.arcball_target_depth = new_depth;
     }
 
     pub fn deselect_object(&mut self) {
         match self.look_mode {
-            LookMode::TargetObject { .. } => {
-                self.unset_lock_on_target();
-            }
-            LookMode::TargetPrimitiveOp { .. } => {
-                self.unset_lock_on_target();
-            }
+            LookMode::SelectedObject => self.unset_lock_on_target(),
+            LookMode::SelectedPrimitiveOp => self.unset_lock_on_target(),
             _ => (),
         }
     }
 
     pub fn deselect_primitive_op(&mut self) {
-        if let LookMode::TargetPrimitiveOp { .. } = self.look_mode {
+        if let LookMode::SelectedPrimitiveOp = self.look_mode {
             self.unset_lock_on_target();
         }
     }
 
     pub fn unset_lock_on_target(&mut self) {
-        let target_pos = match self.look_mode {
-            LookMode::TargetPos { target_pos } => target_pos,
-            LookMode::TargetObject {
-                last_known_origin, ..
-            } => last_known_origin.as_dvec3(),
-            _ => return,
-        };
-
-        let direction = target_pos - self.position;
         self.look_mode = LookMode::PoV;
     }
 
@@ -400,18 +370,11 @@ impl Camera {
                 let new_position = self.position + zoom_delta * self.direction;
                 self.set_position(new_position);
             }
-            LookMode::TargetPos { target_pos } => {
-                self.scroll_zoom_target(zoom_delta, target_pos);
+            LookMode::SelectedObject => {
+                self.scroll_zoom_target(zoom_delta, self.last_known_origin.as_dvec3());
             }
-            LookMode::TargetObject {
-                last_known_origin, ..
-            } => {
-                self.scroll_zoom_target(zoom_delta, last_known_origin.as_dvec3());
-            }
-            LookMode::TargetPrimitiveOp {
-                last_known_origin, ..
-            } => {
-                self.scroll_zoom_target(zoom_delta, last_known_origin.as_dvec3());
+            LookMode::SelectedPrimitiveOp => {
+                self.scroll_zoom_target(zoom_delta, self.last_known_origin.as_dvec3());
             }
         }
     }
@@ -420,13 +383,8 @@ impl Camera {
         match self.look_mode {
             LookMode::ArcballHovering => self.position + self.direction * self.arcball_target_depth,
             LookMode::PoV => self.position + self.direction,
-            LookMode::TargetPos { target_pos } => target_pos,
-            LookMode::TargetObject {
-                last_known_origin, ..
-            } => last_known_origin.as_dvec3(),
-            LookMode::TargetPrimitiveOp {
-                last_known_origin, ..
-            } => last_known_origin.as_dvec3(),
+            LookMode::SelectedObject => self.last_known_origin.as_dvec3(),
+            LookMode::SelectedPrimitiveOp => self.last_known_origin.as_dvec3(),
         }
     }
 
@@ -486,44 +444,27 @@ impl Camera {
             }
 
             // lock on target stays the same but camera position rotates around it
-            LookMode::TargetPos { target_pos } => {
+            LookMode::SelectedObject => {
                 let new_position = arcball(
                     self.position,
-                    target_pos,
+                    self.last_known_origin.as_dvec3(),
                     normal,
                     delta_angle[0],
                     delta_angle[1],
                 );
                 self.set_position(new_position);
-                self.direction = target_pos - self.position;
+                self.direction = self.last_known_origin.as_dvec3() - self.position;
             }
-
-            // lock on target stays the same but camera position rotates around it
-            LookMode::TargetObject {
-                last_known_origin, ..
-            } => {
+            LookMode::SelectedPrimitiveOp => {
                 let new_position = arcball(
                     self.position,
-                    last_known_origin.as_dvec3(),
+                    self.last_known_origin.as_dvec3(),
                     normal,
                     delta_angle[0],
                     delta_angle[1],
                 );
                 self.set_position(new_position);
-                self.direction = last_known_origin.as_dvec3() - self.position;
-            }
-            LookMode::TargetPrimitiveOp {
-                last_known_origin, ..
-            } => {
-                let new_position = arcball(
-                    self.position,
-                    last_known_origin.as_dvec3(),
-                    normal,
-                    delta_angle[0],
-                    delta_angle[1],
-                );
-                self.set_position(new_position);
-                self.direction = last_known_origin.as_dvec3() - self.position;
+                self.direction = self.last_known_origin.as_dvec3() - self.position;
             }
         }
         self.direction = self.direction.normalize();
@@ -531,17 +472,15 @@ impl Camera {
 
     fn delta_cursor_to_angle(&self, delta_cursor_position: [f64; 2]) -> [Angle; 2] {
         delta_cursor_position.map(|delta| match self.look_mode {
-            LookMode::ArcballHovering { .. } => {
+            LookMode::ArcballHovering => {
                 Angle::from_radians(delta * config_ui::ARC_BALL_FACTOR.radians())
             }
-            LookMode::PoV { .. } => Angle::from_radians(delta * config_ui::LOOK_FACTOR.radians()),
-            LookMode::TargetPos { .. } => {
+
+            LookMode::PoV => Angle::from_radians(delta * config_ui::LOOK_FACTOR.radians()),
+            LookMode::SelectedObject => {
                 Angle::from_radians(delta * config_ui::ARC_BALL_FACTOR.radians())
             }
-            LookMode::TargetObject { .. } => {
-                Angle::from_radians(delta * config_ui::ARC_BALL_FACTOR.radians())
-            }
-            LookMode::TargetPrimitiveOp { .. } => {
+            LookMode::SelectedPrimitiveOp => {
                 Angle::from_radians(delta * config_ui::ARC_BALL_FACTOR.radians())
             }
         })

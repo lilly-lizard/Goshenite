@@ -25,7 +25,6 @@ pub enum Command {
     LoadScene,
 
     // ~~ Camera ~~
-    SetCameraLockOnObject(ObjectId),
     UnsetCameraLockOn,
     ResetCamera,
     SetArcballTargetDepth(f64),

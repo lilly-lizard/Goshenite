@@ -1,9 +1,8 @@
-use super::Gui;
 use crate::{
     engine::commands::Command,
     user_interface::{
         camera::{Camera, LookMode},
-        gui::{command_palette::GuiStateCommandPalette, side_panel::SidePanelMode},
+        gui::{command_palette::GuiStateCommandPalette, side_panel::SidePanelMode, Gui},
         gui_state::DRAG_INC,
     },
 };
@@ -43,7 +42,6 @@ fn bottom_bar_layout(
     let mut commands = Vec::<Command>::new();
     let mut command_pallette_visible = command_pallette.is_some();
     let (mut scene_visible, mut object_editor_visible) = SidePanelMode::bools(*side_panel_mode);
-    //ui.visuals_mut().button_frame = false; // idk what this does tbh
 
     // left hand side
     if ui.toggle_value(&mut scene_visible, "Scene").changed() {
@@ -69,8 +67,8 @@ fn bottom_bar_layout(
 
         if camera.look_mode() == LookMode::ArcballHovering {
             let mut new_arball_depth = camera.arcball_target_depth();
-            ui.add(DragValue::new(&mut new_arball_depth).speed(DRAG_INC));
-            if new_arball_depth != camera.arcball_target_depth() {
+            let res = ui.add(DragValue::new(&mut new_arball_depth).speed(DRAG_INC));
+            if res.changed() {
                 commands.push(Command::SetArcballTargetDepth(new_arball_depth));
             }
         }

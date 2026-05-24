@@ -144,13 +144,14 @@ impl Gui {
             pixels_per_point,
             viewport_output: _,
         } = self.egui_context.run_ui(raw_input, |ui| {
-            Self::draw_bottom_bar(
+            let mut new_commands = Self::draw_bottom_bar(
                 ui,
                 &mut self.side_panel_mode,
                 &mut self.settings_window_visible,
                 &mut self.command_pallette,
                 camera,
             );
+            commands.append(&mut new_commands);
 
             if let Some(side_panel_mode) = self.side_panel_mode {
                 let mut new_commands = Self::draw_side_panel(
