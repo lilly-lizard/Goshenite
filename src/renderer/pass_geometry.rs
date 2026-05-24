@@ -10,11 +10,11 @@ use crate::{
 use anyhow::Context;
 use ash::vk::{self, SpecializationInfo, SpecializationMapEntry};
 use bort_vk::{
-    Buffer, ColorBlendState, CommandBuffer, DepthStencilState, DescriptorSet, DescriptorSetLayout,
-    DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
-    GraphicsPipeline, GraphicsPipelineProperties, MemoryAllocator, PipelineAccess, PipelineLayout,
-    PipelineLayoutProperties, Queue, RasterizationState, RenderPass, ShaderModule, ShaderStage,
-    ViewportState,
+    AllocatorAccess, Buffer, ColorBlendState, CommandBuffer, DepthStencilState, DescriptorSet,
+    DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device,
+    DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties, MemoryAllocator,
+    PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue, RasterizationState,
+    RenderPass, ShaderModule, ShaderStage, ViewportState,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -43,13 +43,13 @@ pub struct GeometryPass {
 // Public functions
 impl GeometryPass {
     pub fn new(
-        device: Arc<Device>,
         memory_allocator: Arc<MemoryAllocator>,
         render_pass: &RenderPass,
         camera_buffer: &Buffer,
         transfer_queue_family_index: u32,
         render_queue_family_index: u32,
     ) -> anyhow::Result<Self> {
+        let device = render_pass.device().clone();
         let desc_sets_camera = create_desc_sets_camera(device.clone(), descriptor::BINDING_CAMERA)?;
         write_camera_descriptor_sets(&desc_sets_camera, camera_buffer, descriptor::BINDING_CAMERA);
 

@@ -4,6 +4,9 @@
 - generalize settings so that its easy to add new ones ✔️
 - skybox 🔨
 - code editor for skybox shader glsl. run on the fly
+- editor view modes
+- remove `include-spirv-bytes` feature
+  - make common `create_shader_stages` fn in `vulkan_init`
 
 - note that gizmo elements will need to be translucent sometimes (e.g. plane translate)
 	- add new readable_object_id output to 2nd subpass ✔️

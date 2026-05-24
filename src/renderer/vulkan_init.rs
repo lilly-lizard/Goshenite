@@ -6,18 +6,23 @@ use super::{
     debug_callback::log_vulkan_debug_callback,
     shader_interfaces::{id_buffer::ID_BACKGROUND, uniform_buffers::CameraUniformBuffer},
 };
-use crate::renderer::{
-    config_renderer::{
-        required_device_extensions, required_features_1_0, DISPLAY_UNAVAILABLE_TIMEOUT_NANOSECONDS,
-        ENABLE_VULKAN_VALIDATION, FORMAT_ID_BUFFER,
+use crate::{
+    helper::more_errors::IoError,
+    renderer::{
+        config_renderer::{
+            required_device_extensions, required_features_1_0,
+            DISPLAY_UNAVAILABLE_TIMEOUT_NANOSECONDS, ENABLE_VULKAN_VALIDATION, FORMAT_ID_BUFFER,
+        },
+        shader_interfaces::uniform_buffers::GizmoUniformBuffer,
     },
-    shader_interfaces::uniform_buffers::GizmoUniformBuffer,
 };
 use anyhow::{anyhow, Context};
-use ash::vk::{self, DescriptorBufferInfo, WriteDescriptorSet, EXT_DEBUG_UTILS_NAME};
+use ash::vk::{
+    self, BufferUsageFlags, DescriptorBufferInfo, WriteDescriptorSet, EXT_DEBUG_UTILS_NAME,
+};
 use bort_vk::{
-    allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, Buffer,
-    BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback,
+    allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, AllocationAccess,
+    Buffer, BufferProperties, CommandBuffer, CommandPool, CommandPoolProperties, DebugCallback,
     DebugCallbackProperties, DescriptorSet, DescriptorSetLayoutBinding,
     DescriptorSetLayoutProperties, Device, DeviceOwned, Framebuffer, FramebufferProperties, Image,
     ImageDimensions, ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, Instance,
@@ -32,7 +37,9 @@ use raw_window_handle::{
 };
 use std::{
     ffi::{CStr, CString},
+    fs::OpenOptions,
     mem,
+    path::Path,
     sync::Arc,
     thread, time,
 };
@@ -1163,6 +1170,81 @@ pub fn write_camera_descriptor_sets(
     desc_sets_camera[0]
         .device()
         .update_descriptor_sets(descriptor_writes, []);
+}
+
+/// Returns `(vertex_buffer, index_buffer, index_count)`
+pub fn create_vertex_buffers_from_stl(
+    memory_allocator: Arc<MemoryAllocator>,
+    stl_file_path: &str,
+) -> anyhow::Result<(Buffer, Buffer, u32)> {
+    let loaded_stl = load_stl(stl_file_path).context("loading stl")?;
+
+    let vertices: Vec<[f32; 4]> = loaded_stl
+        .vertices
+        .iter()
+        .map(|vertex| [vertex[0], vertex[1], vertex[2], 1.0])
+        .collect();
+
+    let indices: Vec<u32> = loaded_stl
+        .faces
+        .iter()
+        .flat_map(|indexed_triangle| {
+            [
+                // these are called vertices but are actually indices
+                indexed_triangle.vertices[0] as u32,
+                indexed_triangle.vertices[1] as u32,
+                indexed_triangle.vertices[2] as u32,
+            ]
+        })
+        .collect();
+
+    let buffer_allocation_info = AllocationCreateInfo {
+        required_flags: vk::MemoryPropertyFlags::HOST_VISIBLE, // todo staging buffer
+        preferred_flags: vk::MemoryPropertyFlags::DEVICE_LOCAL,
+        ..AllocationCreateInfo::default()
+    };
+
+    let vertex_buffer_properties = BufferProperties::new_default(
+        vertices.len() as u64 * size_of::<[f32; 4]>() as u64,
+        BufferUsageFlags::VERTEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
+    );
+    let mut vertex_buffer = Buffer::new(
+        memory_allocator.clone(),
+        vertex_buffer_properties,
+        buffer_allocation_info.clone(),
+    )
+    .context("creating skybox vertex buffer")?;
+
+    vertex_buffer
+        .write_iter(vertices, 0)
+        .context("uploading skybox vertices")?;
+
+    let index_count = indices.len();
+    let index_buffer_properties = BufferProperties::new_default(
+        index_count as u64 * 4, // u32 indices
+        BufferUsageFlags::INDEX_BUFFER | BufferUsageFlags::TRANSFER_DST,
+    );
+    let mut index_buffer = Buffer::new(
+        memory_allocator,
+        index_buffer_properties,
+        buffer_allocation_info,
+    )
+    .context("creating vertex buffer")?;
+
+    index_buffer
+        .write_iter(indices, 0)
+        .context("uploading indices")?;
+
+    Ok((vertex_buffer, index_buffer, index_count as u32))
+}
+
+fn load_stl(file_path: &str) -> Result<stl_io::IndexedMesh, IoError> {
+    let stl_path = Path::new(file_path);
+    let mut stl_file = OpenOptions::new()
+        .read(true)
+        .open(stl_path)
+        .map_err(|e| IoError::read_file_error(e, file_path.to_string()))?;
+    stl_io::read_stl(&mut stl_file).map_err(IoError::ReadBufferFailed)
 }
 
 pub fn create_shader_stages_from_bytes<'a>(

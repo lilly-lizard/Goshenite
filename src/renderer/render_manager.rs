@@ -1,18 +1,3 @@
-use super::{
-    config_renderer::TIMEOUT_NANOSECS,
-    element_id_reader::{ElementAtPoint, ElementIdReader},
-    pass_geometry::GeometryPass,
-    pass_gui::GuiPass,
-    pass_lighting::LightingPass,
-    pass_overlay::OverlayPass,
-    shader_interfaces::uniform_buffers::CameraUniformBuffer,
-    vulkan_init::{
-        choose_physical_device_and_queue_families, create_camera_ubo, create_clear_values,
-        create_depth_buffer, create_framebuffers, create_normal_buffer, create_render_pass,
-        create_swapchain, create_swapchain_image_views, swapchain_properties,
-        ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
-    },
-};
 use crate::{
     config,
     engine::{
@@ -21,15 +6,24 @@ use crate::{
     },
     helper::anyhow_panic::log_anyhow_error_and_sources,
     renderer::{
-        config_renderer::FRAMES_IN_FLIGHT,
+        config_renderer::{FRAMES_IN_FLIGHT, TIMEOUT_NANOSECS},
+        element_id_reader::{ElementAtPoint, ElementIdReader},
+        pass_geometry::GeometryPass,
         pass_gizmo::GizmoPass,
-        shader_interfaces::uniform_buffers::GizmoUniformBuffer,
+        pass_gui::GuiPass,
+        pass_lighting::LightingPass,
+        pass_overlay::OverlayPass,
+        pass_skybox::SkyboxPass,
+        shader_interfaces::uniform_buffers::{CameraUniformBuffer, GizmoUniformBuffer},
         vulkan_init::{
-            choose_depth_buffer_format, create_albedo_buffer, create_command_pool,
-            create_debug_callback, create_device_and_queue, create_entry, create_gizmo_ubo,
-            create_id_buffers, create_instance, create_primitive_id_buffer,
-            create_render_command_buffers, get_display_handle, get_window_handle,
-            shaders_should_write_linear_color,
+            choose_depth_buffer_format, choose_physical_device_and_queue_families,
+            create_albedo_buffer, create_camera_ubo, create_clear_values, create_command_pool,
+            create_debug_callback, create_depth_buffer, create_device_and_queue, create_entry,
+            create_framebuffers, create_gizmo_ubo, create_id_buffers, create_instance,
+            create_normal_buffer, create_primitive_id_buffer, create_render_command_buffers,
+            create_render_pass, create_swapchain, create_swapchain_image_views, get_display_handle,
+            get_window_handle, shaders_should_write_linear_color, swapchain_properties,
+            ChoosePhysicalDeviceReturn, CreateDeviceAndQueuesReturn,
         },
     },
     user_interface::{
@@ -88,6 +82,7 @@ pub struct RenderManager {
     gizmo_buffer: Buffer,
 
     // render passes
+    skybox_pass: SkyboxPass,
     geometry_pass: GeometryPass,
     lighting_pass: LightingPass,
     gizmo_pass: GizmoPass,
@@ -198,8 +193,8 @@ impl RenderManager {
 
         let clear_values = create_clear_values();
 
+        let skybox_pass = SkyboxPass::new(memory_allocator.clone(), &render_pass, &camera_buffer)?;
         let geometry_pass = GeometryPass::new(
-            device.clone(),
             memory_allocator.clone(),
             &render_pass,
             &camera_buffer,
@@ -207,7 +202,6 @@ impl RenderManager {
             render_queue_family_index,
         )?;
         let lighting_pass = LightingPass::new(
-            device.clone(),
             &render_pass,
             &camera_buffer,
             &normal_buffer,
@@ -285,6 +279,7 @@ impl RenderManager {
             camera_buffer,
             gizmo_buffer,
 
+            skybox_pass,
             geometry_pass,
             lighting_pass,
             gizmo_pass,
@@ -666,6 +661,9 @@ impl RenderManager {
             .render_area(render_area)
             .clear_values(self.clear_values.as_slice());
         command_buffer.begin_render_pass(&render_pass_begin, vk::SubpassContents::INLINE);
+
+        self.skybox_pass
+            .record_commands(command_buffer, frame_index, viewport, render_area);
 
         self.geometry_pass.record_commands(
             command_buffer,

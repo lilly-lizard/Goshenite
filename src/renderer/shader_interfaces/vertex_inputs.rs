@@ -189,3 +189,32 @@ impl VulkanVertex for GizmoVertex {
         ]
     }
 }
+
+/// Should match inputs in `skybox.vert`
+#[repr(C)]
+#[derive(Default, Debug, Clone, Copy, NoUninit)]
+pub struct SkyboxVertex {
+    // location 0: in_position: Vec4,
+}
+
+impl VulkanVertex for SkyboxVertex {
+    fn binding_descriptions() -> Vec<vk::VertexInputBindingDescription> {
+        vec![vk::VertexInputBindingDescription {
+            binding: 0,
+            stride: std::mem::size_of::<[f32; 4]>() as u32,
+            input_rate: vk::VertexInputRate::VERTEX,
+        }]
+    }
+
+    fn attribute_descriptions() -> Vec<vk::VertexInputAttributeDescription> {
+        vec![
+            // in_position: Vec4
+            vk::VertexInputAttributeDescription {
+                location: 0,
+                binding: 0,
+                format: vk::Format::R32G32B32A32_SFLOAT,
+                offset: 0,
+            },
+        ]
+    }
+}

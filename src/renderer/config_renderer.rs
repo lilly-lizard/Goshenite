@@ -2,26 +2,6 @@ use ash::vk::{self, KHR_MAINTENANCE4_NAME, KHR_SWAPCHAIN_NAME, KHR_SYNCHRONIZATI
 use bort_vk::ApiVersion;
 use std::ffi::CString;
 
-pub fn required_device_extensions() -> [CString; 3] {
-    // VK_KHR_swapchain, VK_KHR_synchronization2
-    [
-        KHR_SWAPCHAIN_NAME.to_owned(),
-        KHR_SYNCHRONIZATION2_NAME.to_owned(),
-        KHR_MAINTENANCE4_NAME.to_owned(), // core in 1.3
-    ]
-}
-
-pub fn supports_required_features_1_0(supported_features: vk::PhysicalDeviceFeatures) -> bool {
-    supported_features.fill_mode_non_solid != vk::FALSE
-}
-pub fn required_features_1_0() -> vk::PhysicalDeviceFeatures {
-    vk::PhysicalDeviceFeatures {
-        fill_mode_non_solid: vk::TRUE,
-        independent_blend: vk::TRUE,
-        ..Default::default()
-    }
-}
-
 pub const MAX_VULKAN_VER: ApiVersion = ApiVersion::V1_2;
 pub const MIN_VULKAN_VER: ApiVersion = ApiVersion::V1_2;
 /// If true, the renderer will attempt to enable khronos valication layer. If VK_LAYER_KHRONOS_validation
@@ -44,6 +24,29 @@ pub const FRAMES_IN_FLIGHT: usize = 2;
 
 pub const CPU_ACCESS_BUFFER_SIZE: vk::DeviceSize = 1024;
 
+pub const SKYBOX_SIZE: f32 = 400.;
+
 pub const GIZMO_ARROW_STL_PATH: &str = "./assets/models/gizmo-arrow.stl";
+pub const BOX_INSIDE_STL_PATH: &str = "./assets/models/box-inside.stl";
 
 pub const DISPLAY_UNAVAILABLE_TIMEOUT_NANOSECONDS: i32 = 10000;
+
+pub fn required_device_extensions() -> [CString; 3] {
+    // VK_KHR_swapchain, VK_KHR_synchronization2
+    [
+        KHR_SWAPCHAIN_NAME.to_owned(),
+        KHR_SYNCHRONIZATION2_NAME.to_owned(),
+        KHR_MAINTENANCE4_NAME.to_owned(), // core in 1.3
+    ]
+}
+
+pub fn supports_required_features_1_0(supported_features: vk::PhysicalDeviceFeatures) -> bool {
+    supported_features.fill_mode_non_solid != vk::FALSE
+}
+pub fn required_features_1_0() -> vk::PhysicalDeviceFeatures {
+    vk::PhysicalDeviceFeatures {
+        fill_mode_non_solid: vk::TRUE,
+        independent_blend: vk::TRUE,
+        ..Default::default()
+    }
+}

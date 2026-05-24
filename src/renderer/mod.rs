@@ -7,6 +7,7 @@ mod pass_gizmo;
 mod pass_gui;
 mod pass_lighting;
 mod pass_overlay;
+mod pass_skybox;
 /// Renderer entry point
 pub mod render_manager;
 pub mod shader_interfaces;

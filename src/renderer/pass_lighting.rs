@@ -35,13 +35,13 @@ pub struct LightingPass {
 
 impl LightingPass {
     pub fn new(
-        device: Arc<Device>,
         render_pass: &RenderPass,
         camera_buffer: &Buffer,
         normal_buffer: &ImageView<Image>,
         albedo_buffer: &ImageView<Image>,
         primitive_id_buffer: &ImageView<Image>,
     ) -> anyhow::Result<Self> {
+        let device = render_pass.device().clone();
         let desc_set_g_buffer = create_desc_set_gbuffer(device.clone())?;
         let desc_sets_camera = create_desc_sets_camera(device.clone(), descriptor::BINDING_CAMERA)?;
         write_camera_descriptor_sets(&desc_sets_camera, camera_buffer, descriptor::BINDING_CAMERA);

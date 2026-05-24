@@ -26,13 +26,6 @@ layout (set = 1, binding = 0) uniform Camera {
     uint write_linear_color;
 } cam;
 
-/// Returns a sky color for a ray miss
-/// * `ray_d` - ray direction
-vec3 background(const vec3 ray_d)
-{
-	return vec3(0.45, 0.55, 0.7) + 0.3 * dot(ray_d, WORLD_SPACE_UP);
-}
-
 /// Normalized ray direction in world space
 vec3 ray_direction()
 {
@@ -42,14 +35,13 @@ vec3 ray_direction()
 	return normalize(direction.xyz); // todo what changes when normalize is removed here?
 }
 
-vec4 lighting_color(const vec3 ray_d)
+vec4 lighting_color(const vec3 ray_d, const vec4 albedo_specular)
 {
     const vec3 SUN_DIR = vec3(-0.57735, -0.57735, -0.57735); // normalized
 	const vec3 SUN_COLOR = vec3(1., 1., 0.8);
 	const float AMBIENT_STRENGTH = 0.18;
 
 	vec3 normal = (subpassLoad(in_normal).xyz - 0.5) * 2.;
-	vec4 albedo_specular = subpassLoad(in_albedo_specular);
 	vec3 albedo = albedo_specular.xyz;
 	float specular_strength = albedo_specular.w;
 
@@ -71,17 +63,17 @@ void main()
 	out_id = object_op_id;
 
 	vec3 ray_d = ray_direction();
+	vec4 albedo_specular = subpassLoad(in_albedo_specular);
 
 	if (object_op_id == ID_BACKGROUND) {
-		// ray miss: draw background
-		out_color = vec4(background(ray_d), 1.);
+		out_color = albedo_specular;
 	} else if ((object_op_id & GIZMO_MASK) == GIZMO_MASK) {
-		out_color = subpassLoad(in_albedo_specular);
+		out_color = albedo_specular;
 	} else if ((object_op_id & OUTLINE_MASK) == OUTLINE_MASK) {
-	    out_color = subpassLoad(in_albedo_specular);
+	    out_color = albedo_specular;
 	} else {
 		// ray hit: calculate color (https://learnopengl.com/Lighting/Basic-Lighting)
-		out_color = lighting_color(ray_d);
+		out_color = lighting_color(ray_d, albedo_specular);
 	}
 
     if (cam.write_linear_color == 1) {

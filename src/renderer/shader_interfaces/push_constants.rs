@@ -25,3 +25,10 @@ pub struct GizmosPushConstant {
     pub color: [f32; 3],
     pub object_id: u32,
 }
+
+/// Should match definition in `skybox.vert`
+#[repr(C)]
+#[derive(Clone, Copy, Default, Pod, Zeroable)]
+pub struct SkyboxPushConstant {
+    pub size: f32,
+}
