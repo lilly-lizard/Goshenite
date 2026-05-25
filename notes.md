@@ -5,6 +5,8 @@
 - skybox ✔️
 	- load background skyboxes via file selector
 	- code editor for skybox shader glsl. run on the fly
+    - remove `include-spirv-bytes` feature
+    - make common `create_shader_stages` fn in `vulkan_init`
 - settings redo:
 	- make each setting a static member, easily accessible by engine
 	- means you don't need `process_update` or `EngineControllers`, just send `settings` to all the controllers rather than keeping track of duplicate variables
@@ -17,8 +19,6 @@
 - remove commands (all of them) and pass mutable references to gui
 	- remove command palette, if you want to reimliment it later, do it properly
 - json settings stored in ~/.config/goshentite (if linux or mac?)
-- remove `include-spirv-bytes` feature
-  - make common `create_shader_stages` fn in `vulkan_init`
 
 - note that gizmo elements will need to be translucent sometimes (e.g. plane translate) ✔️
 	- add new readable_object_id output to 2nd subpass ✔️
