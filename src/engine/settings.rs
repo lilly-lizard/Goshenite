@@ -7,29 +7,6 @@ use crate::{
     },
 };
 
-// ~~ Json Setting Names ~~
-
-pub const SETTING_NAME_LOOK_MAPPING: &str = "cameraLookMapping";
-pub const SETTING_NAME_PAN_MAPPING: &str = "cameraPanMapping";
-pub const SETTING_NAME_ZOOM_MAPPING: &str = "cameraZoomMapping";
-pub const SETTING_NAME_ARCBALL_TARGET_MODIFIER: &str = "arcballTargetModifier";
-
-pub const SETTING_NAME_MOUSE_BUTTON: &str = "mouseButton";
-pub const SETTING_NAME_MODIFIERS: &str = "modifiers";
-pub const SETTING_NAME_MODIFIER: &str = "modifier";
-
-pub const SETTING_NAME_MOUSE_LEFT: &str = "left";
-pub const SETTING_NAME_MOUSE_RIGHT: &str = "right";
-pub const SETTING_NAME_MOUSE_MIDDLE: &str = "middle";
-pub const SETTING_NAME_MOUSE_BACK: &str = "back";
-pub const SETTING_NAME_MOUSE_FORWARD: &str = "forward";
-
-pub const SETTING_NAME_SHIFT: &str = "shift";
-pub const SETTING_NAME_CONTROL: &str = "control";
-pub const SETTING_NAME_ALT: &str = "alt";
-
-pub const SETTING_NAME_SCROLL_ZOOM_SENSITIVITY: &str = "scrollZoomSensitivity";
-
 // ~~ Available Settings~~
 
 pub struct CameraSettings {
@@ -65,6 +42,11 @@ impl Default for RendererSettings {
 
 // ~~ Gui and JSON Definitions ~~
 
+// General recomendations for writing `gui_fn`
+// - bool => ui.checkbox(data, setting_name);
+// - string => ui.text_edit_singleline(data);
+// - float => ui.add(egui::DragValue::new(data).speed(DRAG_INC));
+// - int => ui.add(egui::DragValue::new(data).speed(1));
 impl Default for SettingsIO {
     fn default() -> Self {
         SettingsIO {
@@ -121,6 +103,32 @@ impl Default for SettingsIO {
 }
 
 // ~~ Setting structs ~~
+
+pub struct Settings {
+    pub camera: CameraSettings,
+    pub render: RendererSettings,
+}
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            camera: CameraSettings::default(),
+            render: RendererSettings::default(),
+        }
+    }
+}
+
+pub struct SettingsIO {
+    pub categories: Vec<SettingsCategory>,
+}
+pub struct SettingsCategory {
+    pub name: String,
+    pub settings: Vec<SettingIOEntry>,
+}
+pub struct SettingIOEntry {
+    pub name: String,
+    pub description: String,
+    pub gui_fn: fn(&mut egui::Ui, &mut Settings, &str),
+}
 
 impl CameraSettings {
     pub fn enabled_look_modes(&self) -> &Vec<LookMode> {
@@ -186,32 +194,6 @@ impl CameraSettings {
     }
 }
 
-pub struct Settings {
-    pub camera: CameraSettings,
-    pub render: RendererSettings,
-}
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            camera: CameraSettings::default(),
-            render: RendererSettings::default(),
-        }
-    }
-}
-
-pub struct SettingsIO {
-    pub categories: Vec<SettingsCategory>,
-}
-pub struct SettingsCategory {
-    pub name: String,
-    pub settings: Vec<SettingIOEntry>,
-}
-pub struct SettingIOEntry {
-    pub name: String,
-    pub description: String,
-    pub gui_fn: fn(&mut egui::Ui, &mut Settings, &str),
-}
-
 // ~~ UI Template Functions ~~
 
 pub trait SettingEnum {
@@ -263,12 +245,25 @@ pub fn setting_ui_enum_some_disabled<T>(
         });
 }
 
-// ~~~~~~~~~~~~~~~~~~ DEAD CODE ~~~~~~~~~~~~~~~~~~
+// ~~ Json Setting Names ~~
 
-/*
-    *updated |= match setting_data {
-        SettingPrimitive::Bool(data) => ui.checkbox(data, setting_name),
-        SettingPrimitive::String(data) => ui.text_edit_singleline(data),
-        SettingPrimitive::Float(data) => ui.add(egui::DragValue::new(data).speed(DRAG_INC)),
-        SettingPrimitive::Int(data) => ui.add(egui::DragValue::new(data).speed(1)),
-*/
+pub const SETTING_NAME_LOOK_MAPPING: &str = "cameraLookMapping";
+pub const SETTING_NAME_PAN_MAPPING: &str = "cameraPanMapping";
+pub const SETTING_NAME_ZOOM_MAPPING: &str = "cameraZoomMapping";
+pub const SETTING_NAME_ARCBALL_TARGET_MODIFIER: &str = "arcballTargetModifier";
+
+pub const SETTING_NAME_MOUSE_BUTTON: &str = "mouseButton";
+pub const SETTING_NAME_MODIFIERS: &str = "modifiers";
+pub const SETTING_NAME_MODIFIER: &str = "modifier";
+
+pub const SETTING_NAME_MOUSE_LEFT: &str = "left";
+pub const SETTING_NAME_MOUSE_RIGHT: &str = "right";
+pub const SETTING_NAME_MOUSE_MIDDLE: &str = "middle";
+pub const SETTING_NAME_MOUSE_BACK: &str = "back";
+pub const SETTING_NAME_MOUSE_FORWARD: &str = "forward";
+
+pub const SETTING_NAME_SHIFT: &str = "shift";
+pub const SETTING_NAME_CONTROL: &str = "control";
+pub const SETTING_NAME_ALT: &str = "alt";
+
+pub const SETTING_NAME_SCROLL_ZOOM_SENSITIVITY: &str = "scrollZoomSensitivity";
