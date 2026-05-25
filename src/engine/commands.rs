@@ -18,11 +18,6 @@ pub enum Command {
     SaveScene,
     LoadScene,
 
-    // ~~ Camera ~~
-    UnsetCameraLockOn,
-    ResetCamera,
-    SetArcballTargetDepth(f64),
-
     // ~~ Object ~~
     SelectObject(ObjectId),
     DeselectObject(),

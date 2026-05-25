@@ -13,7 +13,7 @@ use crate::{
             cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform,
             sphere::Sphere,
         },
-        settings::Settings,
+        settings::{Settings, SettingsIO},
         window_thread::WindowThreadChannels,
     },
     helper::{anyhow_panic::anyhow_unwrap, more_errors::CollectionError},
@@ -80,6 +80,7 @@ pub struct Engine {
 
     // settings
     settings: Settings,
+    settings_io: SettingsIO,
     camera_control_mappings: CameraControlMappings,
 
     // window thread (main thread)
@@ -93,6 +94,9 @@ impl Engine {
         window: Arc<Window>,
         window_thread_channels: WindowThreadChannels,
     ) -> anyhow::Result<Self> {
+        let settings = Settings::default();
+        let settings_io = SettingsIO::default();
+
         let scale_factor_override: Option<f64> = match env::var(config::ENV::SCALE_FACTOR) {
             Ok(s) => s.parse::<f64>().ok(),
             _ => None,
@@ -100,11 +104,10 @@ impl Engine {
         let scale_factor = scale_factor_override.unwrap_or(window.scale_factor());
 
         let cursor = Cursor::new();
-
         let camera = Camera::new(window.inner_size().into())?;
 
         let mut renderer = RenderManager::new(window.clone(), scale_factor as f32)?;
-        renderer.init_camera(&camera)?;
+        renderer.init_camera(&camera, &settings.camera)?;
 
         let max_texture_size = renderer.max_2d_image_size(); //maxImageDimension2D
         let gui = Gui::new(window.clone(), scale_factor as f32, Some(max_texture_size));
@@ -140,7 +143,8 @@ impl Engine {
                 renderer,
             },
 
-            settings: Settings::default(),
+            settings,
+            settings_io,
             camera_control_mappings: Default::default(),
 
             window_thread_channels,
@@ -255,13 +259,12 @@ impl Engine {
         // process gui inputs and update layout
         let update_gui_res = self.controllers.gui.update_gui(
             &mut self.settings,
+            &self.settings_io,
             &self.object_collection,
             &self.window,
-            &self.controllers.camera,
             self.selected_object_id,
             self.selected_primitive_op_index,
         );
-        self.settings.update_engine(&mut self.controllers);
         let commands_from_gui = anyhow_unwrap(update_gui_res, "update gui");
         self.pending_commands.extend(commands_from_gui.into_iter());
 
@@ -271,6 +274,7 @@ impl Engine {
         // object buffer updates
         let objects_delta = self.object_collection.get_and_clear_objects_delta();
         self.controllers.camera.update_camera_objects(
+            &mut self.settings.camera,
             &self.object_collection,
             self.selected_object_id,
             self.selected_primitive_op_index,
@@ -290,8 +294,9 @@ impl Engine {
 
         // renderer
         self.controllers.renderer.render_frame(
-            self.settings.get_settings_render(),
+            &self.settings.render,
             &self.controllers.camera,
+            &self.settings.camera,
             self.gizmo_visibility,
             self.hovered_gizmo,
             self.selected_object_id,
@@ -388,7 +393,9 @@ impl Engine {
             .get_element_at_screen_coordinate(cursor_screen_coordinates)?;
 
         let scroll_delta = self.controllers.cursor.get_and_clear_scroll_delta();
-        self.controllers.camera.update_scroll(scroll_delta);
+        self.controllers
+            .camera
+            .update_scroll(&self.settings.camera, scroll_delta);
 
         if let MouseButtonEvent::Dragging { .. } = cursor_event {
             if self.dragging_source_element.is_none() {
@@ -419,6 +426,7 @@ impl Engine {
                     self.gizmo_dragged(gizmo_element, button, delta)
                 }
                 _ => self.controllers.camera.update_cursor_dragging(
+                    &self.settings.camera,
                     delta,
                     button,
                     self.keyboard_modifier_states,
@@ -446,6 +454,7 @@ impl Engine {
                 selected_object_id,
                 &mut self.object_collection,
                 &self.controllers.camera,
+                &self.settings.camera,
             );
             if let Err(CollectionError::InvalidId { .. }) = res {
                 self.deselect_object();
@@ -455,7 +464,7 @@ impl Engine {
 
     fn background_clicked(&mut self) {
         self.deselect_object();
-        self.controllers.camera.unset_lock_on_target();
+        self.settings.camera.unset_lock_on_target();
     }
 
     fn is_object_id_selected(&self, compare_object_id: ObjectId) -> bool {

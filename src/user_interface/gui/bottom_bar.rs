@@ -1,7 +1,7 @@
 use crate::{
-    engine::commands::Command,
+    engine::settings::CameraSettings,
     user_interface::{
-        camera::{Camera, LookMode},
+        camera::LookMode,
         gui::{command_palette::GuiStateCommandPalette, side_panel::SidePanelMode, Gui},
         gui_state::DRAG_INC,
     },
@@ -14,21 +14,19 @@ impl Gui {
         side_panel_mode: &mut Option<SidePanelMode>,
         settings_window_visible: &mut bool,
         command_pallette: &mut Option<GuiStateCommandPalette>,
-        camera: &Camera,
-    ) -> Vec<Command> {
-        let mut commands = Vec::<Command>::new();
+        camera_settings: &mut CameraSettings,
+    ) {
         egui::Panel::bottom("bottom bar").show_inside(ui, |ui| {
             ui.horizontal_wrapped(|ui| {
-                commands = bottom_bar_layout(
+                bottom_bar_layout(
                     ui,
                     side_panel_mode,
                     settings_window_visible,
                     command_pallette,
-                    camera,
+                    camera_settings,
                 );
             });
         });
-        commands
     }
 }
 
@@ -37,9 +35,8 @@ fn bottom_bar_layout(
     side_panel_mode: &mut Option<SidePanelMode>,
     settings_window_visible: &mut bool,
     command_pallette: &mut Option<GuiStateCommandPalette>,
-    camera: &Camera,
-) -> Vec<Command> {
-    let mut commands = Vec::<Command>::new();
+    camera_settings: &mut CameraSettings,
+) {
     let mut command_pallette_visible = command_pallette.is_some();
     let (mut scene_visible, mut object_editor_visible) = SidePanelMode::bools(*side_panel_mode);
 
@@ -65,12 +62,8 @@ fn bottom_bar_layout(
         egui::widgets::global_theme_preference_switch(ui); // light/dark theme toggle
         egui::warn_if_debug_build(ui);
 
-        if camera.look_mode() == LookMode::ArcballHovering {
-            let mut new_arball_depth = camera.arcball_target_depth();
-            let res = ui.add(DragValue::new(&mut new_arball_depth).speed(DRAG_INC));
-            if res.changed() {
-                commands.push(Command::SetArcballTargetDepth(new_arball_depth));
-            }
+        if camera_settings.look_mode == LookMode::ArcballHovering {
+            ui.add(DragValue::new(&mut camera_settings.arcball_target_depth).speed(DRAG_INC));
         }
 
         if ui
@@ -84,6 +77,4 @@ fn bottom_bar_layout(
         }
         ui.toggle_value(settings_window_visible, "Settings");
     });
-
-    commands
 }

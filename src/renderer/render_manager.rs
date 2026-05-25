@@ -2,7 +2,7 @@ use crate::{
     config,
     engine::{
         object::{object::ObjectId, objects_delta::ObjectsDelta},
-        settings::{Setting, SettingData, SettingPrimitive, SettingsCategory},
+        settings::{CameraSettings, RendererSettings},
     },
     helper::anyhow_panic::log_anyhow_error_and_sources,
     renderer::{
@@ -300,9 +300,13 @@ impl RenderManager {
     }
 
     /// Warning: doesn't synchronize with any previously submitted render commands
-    pub fn init_camera(&mut self, camera: &Camera) -> anyhow::Result<()> {
+    pub fn init_camera(
+        &mut self,
+        camera: &Camera,
+        camera_settings: &CameraSettings,
+    ) -> anyhow::Result<()> {
         for i in 0..FRAMES_IN_FLIGHT {
-            self.update_camera(camera, i)?;
+            self.update_camera(camera, camera_settings, i)?;
         }
         Ok(())
     }
@@ -353,8 +357,9 @@ impl RenderManager {
     /// Submits Vulkan commands for rendering a frame.
     pub fn render_frame(
         &mut self,
-        render_settings: &SettingsCategory,
+        render_settings: &RendererSettings,
         camera: &Camera,
+        camera_settings: &CameraSettings,
         gizmo_visibility: GizmoVisibility,
         hovered_gizmo: Option<GizmoElement>,
         selected_object_id: Option<ObjectId>,
@@ -395,7 +400,7 @@ impl RenderManager {
             return self.recreate_swapchain();
         }
 
-        self.update_camera(camera, new_frame_index)?;
+        self.update_camera(camera, camera_settings, new_frame_index)?;
 
         self.record_render_commands(
             new_frame_index,
@@ -587,10 +592,16 @@ impl RenderManager {
         Ok(())
     }
 
-    fn update_camera(&mut self, camera: &Camera, frame_index: usize) -> anyhow::Result<()> {
+    fn update_camera(
+        &mut self,
+        camera: &Camera,
+        camera_settings: &CameraSettings,
+        frame_index: usize,
+    ) -> anyhow::Result<()> {
         let dimensions = self.swapchain.properties().width_height;
         let camera_data = CameraUniformBuffer::from_camera(
             camera,
+            camera_settings,
             [dimensions[0] as f32, dimensions[1] as f32],
             self.shaders_write_linear_color,
         );
@@ -638,7 +649,7 @@ impl RenderManager {
         &mut self,
         frame_index: usize,
         swapchain_index: usize,
-        render_settings: &SettingsCategory,
+        render_settings: &RendererSettings,
         gizmo_visibility: GizmoVisibility,
         hovered_gizmo: Option<GizmoElement>,
         selected_object_id: Option<ObjectId>,
@@ -678,24 +689,14 @@ impl RenderManager {
         self.lighting_pass
             .record_commands(command_buffer, frame_index, viewport, render_area);
 
-        if let Some(Setting {
-            data:
-                SettingData::Primitive {
-                    data: SettingPrimitive::Bool(enable_aabb_wire_display),
-                    ..
-                },
-            ..
-        }) = render_settings.get_setting("Enable AABB Wire Display".into())
-        {
-            if *enable_aabb_wire_display {
-                self.overlay_pass.record_aabb_overlay_commands(
-                    command_buffer,
-                    frame_index,
-                    self.geometry_pass.object_buffer_manager(),
-                    viewport,
-                    render_area,
-                );
-            }
+        if render_settings.show_aabb_wireframe {
+            self.overlay_pass.record_aabb_overlay_commands(
+                command_buffer,
+                frame_index,
+                self.geometry_pass.object_buffer_manager(),
+                viewport,
+                render_area,
+            );
         }
 
         if gizmo_visibility.any_visible() {

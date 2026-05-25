@@ -9,10 +9,10 @@ use crate::{
             primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
         save_states::{load_state_gui_positions, save_state_gui_positions},
-        settings::Settings,
+        settings::{Settings, SettingsIO},
     },
     helper::more_errors::IoError,
-    user_interface::{camera::Camera, gui::side_panel::SidePanelMode},
+    user_interface::gui::side_panel::SidePanelMode,
 };
 use anyhow::Context;
 use egui::{TextWrapMode, TexturesDelta};
@@ -127,9 +127,9 @@ impl Gui {
     pub fn update_gui(
         &mut self,
         settings: &mut Settings,
+        settings_io: &SettingsIO,
         object_collection: &ObjectCollection,
         window: &Window,
-        camera: &Camera,
         selected_object_id: Option<ObjectId>,
         selected_primitive_op_index: Option<PrimitiveOpIndex>,
     ) -> anyhow::Result<Vec<CommandWithSource>> {
@@ -144,14 +144,13 @@ impl Gui {
             pixels_per_point,
             viewport_output: _,
         } = self.egui_context.run_ui(raw_input, |ui| {
-            let mut new_commands = Self::draw_bottom_bar(
+            Self::draw_bottom_bar(
                 ui,
                 &mut self.side_panel_mode,
                 &mut self.settings_window_visible,
                 &mut self.command_pallette,
-                camera,
+                &mut settings.camera,
             );
-            commands.append(&mut new_commands);
 
             if let Some(side_panel_mode) = self.side_panel_mode {
                 let mut new_commands = Self::draw_side_panel(
@@ -170,6 +169,7 @@ impl Gui {
                     &self.egui_context,
                     &mut self.settings_window_visible,
                     settings,
+                    settings_io,
                 );
             }
 

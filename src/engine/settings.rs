@@ -1,7 +1,9 @@
 use crate::{
-    engine::engine::EngineControllers,
+    config,
     user_interface::{
-        camera::LookMode, config_ui::CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH, gui_state::DRAG_INC,
+        camera::LookMode,
+        config_ui::{CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH, DEFAULT_SCROLL_ZOOM_SENSITIVITY},
+        gui_state::DRAG_INC,
     },
 };
 
@@ -28,199 +30,245 @@ pub const SETTING_NAME_ALT: &str = "alt";
 
 pub const SETTING_NAME_SCROLL_ZOOM_SENSITIVITY: &str = "scrollZoomSensitivity";
 
-// ~~ Default Settings ~~
+// ~~ Available Settings~~
 
-impl Default for Settings {
+pub struct CameraSettings {
+    pub look_mode: LookMode,
+    enabled_look_modes: Vec<LookMode>,
+    /// Note: only used for `LookMode::ArcballHovering`
+    pub arcball_target_depth: f64,
+    pub scroll_zoom_sensitivity: f64,
+}
+pub struct RendererSettings {
+    pub show_aabb_wireframe: bool,
+}
+
+// ~~ Defaults ~~
+
+impl Default for CameraSettings {
     fn default() -> Self {
-        let settings_camera = vec![
-            Setting::new_type::<LookMode>(),
-            Setting::new_primitive(
-                "Arcball Target Depth",
-                SettingPrimitive::Float(CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH),
-                Some(|data, engine| {
-                    if let SettingPrimitive::Float(depth) = data {
-                        engine.camera.set_arcball_target_depth(depth);
+        CameraSettings {
+            look_mode: LookMode::default(),
+            enabled_look_modes: vec![LookMode::ArcballHovering, LookMode::PoV],
+            arcball_target_depth: CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH,
+            scroll_zoom_sensitivity: DEFAULT_SCROLL_ZOOM_SENSITIVITY,
+        }
+    }
+}
+impl Default for RendererSettings {
+    fn default() -> Self {
+        RendererSettings {
+            show_aabb_wireframe: false,
+        }
+    }
+}
+
+// ~~ Gui and JSON Definitions ~~
+
+impl Default for SettingsIO {
+    fn default() -> Self {
+        SettingsIO {
+            categories: vec![SettingsCategory {
+                name: "Camera".into(),
+                settings: vec![SettingIOEntry {
+                    name: "Look Mode".into(),
+                    description: "Available Modes:\n
+- Arcball Hovering: an arcball that rotates around an invisible point in front of camera.\n
+  Use setting `Arcball Target Depth` to control how far in front this point is.\n
+- POV: turn around while camera remains in fixed position.\n
+- Selected Object: arcball around the selected object.\n
+- Selected Primitive Op: arcball around the selected primitive op.\n"
+                        .into(),
+                    gui_fn: |ui, settings, setting_name| {
+                        let enabled_modes = settings.camera.enabled_look_modes().clone();
+                        setting_ui_enum_some_disabled(ui, setting_name, &mut settings.camera.look_mode, &LookMode::VARIANTS, &enabled_modes);
+                    },
+                },
+                SettingIOEntry {
+                    name: "Arcball Target Depth".into(),
+                    description: "Distance from the camera to the arcball focus point when camera is in `Look Mode` == `Arcball Hovering`"
+                        .into(),
+                    gui_fn: |ui, settings, setting_name| {
+                        ui.label(setting_name);
+                        ui.add(egui::DragValue::new(&mut settings.camera.arcball_target_depth).speed(DRAG_INC));
+                    },
+                },
+                SettingIOEntry {
+                    name: "Zoom Scroll Sensitivity".into(),
+                    description: "Sensitivity when zooming via the scroll wheel."
+                        .into(),
+                    gui_fn: |ui, settings, setting_name| {
+                        ui.label(setting_name);
+                        ui.add(egui::DragValue::new(&mut settings.camera.scroll_zoom_sensitivity).speed(DRAG_INC));
+                    },
+                }],
+            },
+            SettingsCategory {
+                name: "Camera".into(),
+                settings: vec![
+                    SettingIOEntry {
+                        name: "Show AABB Wireframe".into(),
+                        description: "Render lines to show locations of axis aligned bounding boxes for every object."
+                            .into(),
+                        gui_fn: |ui, settings, setting_name| {
+                            ui.checkbox(&mut settings.render.show_aabb_wireframe, setting_name);
+                        },
                     }
-                }),
-            ),
-        ];
-
-        let settings_render = vec![Setting::new_primitive(
-            "Enable AABB Wire Display",
-            SettingPrimitive::Bool(false),
-            None,
-        )];
-
-        Settings {
-            categories: vec![
-                SettingsCategory {
-                    name: "Camera".to_string(),
-                    settings: settings_camera,
-                },
-                SettingsCategory {
-                    name: "Render".to_string(),
-                    settings: settings_render,
-                },
+                ]},
             ],
         }
     }
 }
 
-// ~~ Settings Structs ~~
+// ~~ Setting structs ~~
+
+impl CameraSettings {
+    pub fn enabled_look_modes(&self) -> &Vec<LookMode> {
+        &self.enabled_look_modes
+    }
+
+    pub fn unset_lock_on_target(&mut self) {
+        if self.look_mode == LookMode::SelectedObject
+            || self.look_mode == LookMode::SelectedPrimitiveOp
+        {
+            self.look_mode = LookMode::default();
+        }
+    }
+
+    pub fn object_selected(&mut self) {
+        if !self.enabled_look_modes.contains(&LookMode::SelectedObject) {
+            self.enabled_look_modes.push(LookMode::SelectedObject);
+        }
+        if config::ARCBALL_ON_SELECT {
+            self.look_mode == LookMode::SelectedObject;
+        }
+    }
+
+    pub fn primitive_op_selected(&mut self) {
+        self.object_selected();
+        if !self
+            .enabled_look_modes
+            .contains(&LookMode::SelectedPrimitiveOp)
+        {
+            self.enabled_look_modes.push(LookMode::SelectedPrimitiveOp);
+        }
+        if config::ARCBALL_ON_SELECT {
+            self.look_mode == LookMode::SelectedPrimitiveOp;
+        }
+    }
+
+    pub fn object_deselected(&mut self) {
+        self.primitive_op_deselected();
+        if self.look_mode == LookMode::SelectedObject {
+            self.look_mode = LookMode::default();
+        }
+        if let Some(index) = self
+            .enabled_look_modes
+            .iter()
+            .position(|&x| x == LookMode::SelectedObject)
+        {
+            self.enabled_look_modes.remove(index);
+        }
+    }
+
+    pub fn primitive_op_deselected(&mut self) {
+        if self.look_mode == LookMode::SelectedPrimitiveOp {
+            // assume object still selected
+            self.look_mode = LookMode::SelectedObject;
+        }
+        if let Some(index) = self
+            .enabled_look_modes
+            .iter()
+            .position(|&x| x == LookMode::SelectedPrimitiveOp)
+        {
+            self.enabled_look_modes.remove(index);
+        }
+    }
+}
 
 pub struct Settings {
+    pub camera: CameraSettings,
+    pub render: RendererSettings,
+}
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            camera: CameraSettings::default(),
+            render: RendererSettings::default(),
+        }
+    }
+}
+
+pub struct SettingsIO {
     pub categories: Vec<SettingsCategory>,
 }
-impl Settings {
-    pub fn update_engine(&mut self, engine_controllers: &mut EngineControllers) {
-        for category in &mut self.categories {
-            for setting in &mut category.settings {
-                if !setting.updated {
-                    continue;
-                }
-
-                match &setting.data {
-                    SettingData::DefinedType(data) => data.process_update(engine_controllers),
-                    SettingData::Primitive {
-                        data, update_fn, ..
-                    } => {
-                        if let Some(update_fn) = update_fn {
-                            update_fn(data.clone(), engine_controllers);
-                        }
-                    }
-                }
-                setting.updated = false;
-            }
-        }
-    }
-    pub fn get_settings_render(&self) -> &SettingsCategory {
-        for category in &self.categories {
-            if category.name == "Render" {
-                return category;
-            }
-        }
-        panic!("Why is there no render settings category???");
-    }
-    pub fn get_settings_camera(&self) -> &SettingsCategory {
-        for category in &self.categories {
-            if category.name == "Camera" {
-                return category;
-            }
-        }
-        panic!("Why is there no camera settings category???");
-    }
-}
-
 pub struct SettingsCategory {
     pub name: String,
-    pub settings: Vec<Setting>,
+    pub settings: Vec<SettingIOEntry>,
 }
-impl SettingsCategory {
-    pub fn get_setting(&self, name: String) -> Option<&Setting> {
-        for setting in &self.settings {
-            match &setting.data {
-                SettingData::DefinedType(data) => {
-                    if data.setting_name() == name {
-                        return Some(setting);
-                    }
-                }
-                SettingData::Primitive { setting_name, .. } => {
-                    if *setting_name == name {
-                        return Some(setting);
-                    }
-                }
-            }
-        }
-        None
-    }
-}
-
-pub struct Setting {
-    pub data: SettingData,
-    pub updated: bool,
-}
-impl Setting {
-    pub fn new_type<T: Default + SettingDataType + 'static>() -> Self {
-        Self {
-            data: SettingData::DefinedType(Box::new(T::default())),
-            updated: false,
-        }
-    }
-    pub fn new_primitive(
-        setting_name: &'static str,
-        data: SettingPrimitive,
-        update_fn: Option<fn(data: SettingPrimitive, engine_controllers: &mut EngineControllers)>,
-    ) -> Self {
-        Self {
-            data: SettingData::Primitive {
-                setting_name,
-                data,
-                update_fn,
-            },
-            updated: false,
-        }
-    }
-}
-
-#[derive(Clone, PartialEq)]
-pub enum SettingPrimitive {
-    Bool(bool),
-    String(String),
-    Float(f64),
-    Int(i32),
-}
-pub enum SettingData {
-    DefinedType(Box<dyn SettingDataType>),
-    Primitive {
-        setting_name: &'static str,
-        data: SettingPrimitive,
-        update_fn: Option<fn(data: SettingPrimitive, engine_controllers: &mut EngineControllers)>,
-    },
-}
-
-pub trait SettingDataType {
-    /// E.g. "Camera Look Mode"
-    fn setting_name(&self) -> &str;
-    /// E.g. "Arcball Hovering"
-    fn value_display_name(&self) -> &str;
-    /// Can use helper functions found below e.g. `setting_ui_enum()`
-    fn ui(&mut self, ui: &mut egui::Ui, updated: &mut bool);
-    /// Optionally implement if the engine's state needs to be changed when this setting is changed
-    fn process_update(&self, _engine_controllers: &mut EngineControllers) {}
+pub struct SettingIOEntry {
+    pub name: String,
+    pub description: String,
+    pub gui_fn: fn(&mut egui::Ui, &mut Settings, &str),
 }
 
 // ~~ UI Template Functions ~~
 
-pub fn setting_ui_primitive(
+pub trait SettingEnum {
+    fn value_display_name(&self) -> &str;
+}
+
+pub fn setting_ui_enum<T>(
     ui: &mut egui::Ui,
-    setting_name: &'static str,
-    setting_data: &mut SettingPrimitive,
-    updated: &mut bool,
-) {
+    setting_name: &str,
+    setting_data: &mut T,
+    variants: &[T],
+) where
+    T: SettingEnum + PartialEq + Clone,
+{
+    egui::ComboBox::from_label(setting_name)
+        .selected_text(setting_data.value_display_name())
+        .show_ui(ui, |ui| {
+            for variant in variants {
+                ui.selectable_value(setting_data, variant.clone(), variant.value_display_name());
+            }
+        });
+}
+
+pub fn setting_ui_enum_some_disabled<T>(
+    ui: &mut egui::Ui,
+    setting_name: &str,
+    setting_data: &mut T,
+    variants: &[T],
+    enabled_variants: &[T],
+) where
+    T: SettingEnum + PartialEq + Clone,
+{
+    egui::ComboBox::from_label(setting_name)
+        .selected_text(setting_data.value_display_name())
+        .show_ui(ui, |ui| {
+            for variant in variants {
+                if enabled_variants.contains(variant) {
+                    // selectable option
+                    ui.selectable_value(
+                        setting_data,
+                        variant.clone(),
+                        variant.value_display_name(),
+                    );
+                } else {
+                    // disabled option
+                    ui.add_enabled(false, egui::Button::new(variant.value_display_name()));
+                }
+            }
+        });
+}
+
+// ~~~~~~~~~~~~~~~~~~ DEAD CODE ~~~~~~~~~~~~~~~~~~
+
+/*
     *updated |= match setting_data {
         SettingPrimitive::Bool(data) => ui.checkbox(data, setting_name),
         SettingPrimitive::String(data) => ui.text_edit_singleline(data),
         SettingPrimitive::Float(data) => ui.add(egui::DragValue::new(data).speed(DRAG_INC)),
         SettingPrimitive::Int(data) => ui.add(egui::DragValue::new(data).speed(1)),
-    }
-    .changed();
-}
-
-pub fn setting_ui_enum<T>(
-    ui: &mut egui::Ui,
-    setting_data: &mut T,
-    variants: &[T],
-    updated: &mut bool,
-) where
-    T: SettingDataType + PartialEq + Clone,
-{
-    egui::ComboBox::from_label(setting_data.setting_name())
-        .selected_text(setting_data.value_display_name())
-        .show_ui(ui, |ui| {
-            for variant in variants {
-                *updated |= ui
-                    .selectable_value(setting_data, variant.clone(), variant.value_display_name())
-                    .changed();
-            }
-        });
-}
+*/

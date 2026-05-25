@@ -10,7 +10,6 @@
 - settings redo:
 	- make each setting a static member, easily accessible by engine
 	- means you don't need `process_update` or `EngineControllers`, just send `settings` to all the controllers rather than keeping track of duplicate variables
-	- keep `SettingPrimitive` for ui helper function
 	- 2 separate structs: `Settings` that stores all the variables and `SettingsIO` which has gui and json functionality and accesses members of `Settings`
 	- don't stress if members of `Settings` aren't accessed by `SettingsIO`. allows for hidden internal settings
 - editor view modes

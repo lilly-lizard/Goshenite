@@ -6,18 +6,13 @@ use super::{
 use crate::{
     config,
     engine::{
-        engine::EngineControllers,
         object::{
             object::ObjectId, object_collection::ObjectCollection, primitive_op::PrimitiveOpIndex,
         },
-        settings::{setting_ui_enum, SettingDataType},
+        settings::{CameraSettings, SettingEnum},
     },
-    helper::angle::Angle,
-    user_interface::{
-        config_ui::{CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH, DEFAULT_SCROLL_ZOOM_SENSITIVITY},
-        controls_camera::CameraAction,
-        mouse_button::MouseButton,
-    },
+    helper::{angle::Angle, more_errors::CollectionError},
+    user_interface::{controls_camera::CameraAction, mouse_button::MouseButton},
 };
 use glam::{DMat3, DVec2, DVec3, Mat4, Vec3, Vec4};
 #[allow(unused_imports)]
@@ -35,7 +30,7 @@ pub enum LookMode {
 }
 
 impl LookMode {
-    const VARIANTS: [LookMode; 4] = [
+    pub const VARIANTS: [LookMode; 4] = [
         LookMode::ArcballHovering,
         LookMode::PoV,
         LookMode::SelectedObject,
@@ -47,11 +42,7 @@ impl Default for LookMode {
         Self::ArcballHovering
     }
 }
-impl SettingDataType for LookMode {
-    fn setting_name(&self) -> &str {
-        "Camera Look Mode"
-    }
-
+impl SettingEnum for LookMode {
     fn value_display_name(&self) -> &str {
         match self {
             Self::ArcballHovering => "Arcball Hovering",
@@ -59,14 +50,6 @@ impl SettingDataType for LookMode {
             Self::SelectedObject => "Selected Object",
             Self::SelectedPrimitiveOp => "Selected Primitive Op",
         }
-    }
-
-    fn ui(&mut self, ui: &mut egui::Ui, updated: &mut bool) {
-        setting_ui_enum(ui, self, &Self::VARIANTS, updated);
-    }
-
-    fn process_update(&self, engine_controllers: &mut EngineControllers) {
-        engine_controllers.camera.set_look_mode(*self);
     }
 }
 
@@ -77,13 +60,10 @@ impl SettingDataType for LookMode {
 pub struct Camera {
     position: DVec3,
     direction: DVec3,
-    look_mode: LookMode,
     fov: Angle,
     aspect_ratio: f32,
     near_plane: f64,
     far_plane: f64,
-    /// Note: only used for `LookMode::ArcballHovering`
-    arcball_target_depth: f64,
     /// Note: only used for `LookMode::SelectedObject` and `LookMode::SelectedPrimitiveOp`
     last_known_origin: Vec3,
 }
@@ -95,12 +75,10 @@ impl Default for Camera {
         Self {
             position,
             direction: target_pos - position,
-            look_mode: LookMode::default(),
             fov: config_ui::CAMERA_DEFAULT_FOV,
             aspect_ratio: 1_f32,
             near_plane: config_ui::CAMERA_NEAR_PLANE,
             far_plane: config_ui::CAMERA_FAR_PLANE,
-            arcball_target_depth: CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH,
             last_known_origin: Default::default(),
         }
     }
@@ -118,44 +96,55 @@ impl Camera {
 
     pub fn update_camera_objects(
         &mut self,
+        settings: &mut CameraSettings,
         object_collection: &ObjectCollection,
         selected_object_id: Option<ObjectId>,
         selected_primitive_op_index: Option<PrimitiveOpIndex>,
     ) {
-        match self.look_mode() {
+        match settings.look_mode {
             LookMode::SelectedObject => {
                 let Some(selected_object_id) = selected_object_id else {
-                    self.unset_lock_on_target();
+                    settings.object_deselected();
                     return;
                 };
                 if let Ok(object) = object_collection.get_object(selected_object_id) {
                     self.last_known_origin = object.center;
                     // avoid vertical alignment
-                    self.check_for_and_recover_from_vertical_orientation_alignment();
+                    self.check_for_and_recover_from_vertical_orientation_alignment(settings);
                 } else {
                     // object dropped
-                    self.unset_lock_on_target();
+                    settings.object_deselected();
                 }
             }
             LookMode::SelectedPrimitiveOp => {
                 let Some(selected_object_id) = selected_object_id else {
-                    self.unset_lock_on_target();
+                    settings.object_deselected();
                     return;
                 };
                 let Some(selected_primitive_op_index) = selected_primitive_op_index else {
-                    self.unset_lock_on_target();
+                    settings.primitive_op_deselected();
                     return;
                 };
-                if let Ok((object, primitive_op)) = object_collection
+                match object_collection
                     .get_object_and_primitive_op(selected_object_id, selected_primitive_op_index)
                 {
-                    self.last_known_origin = object.center + primitive_op.center();
-                    // avoid vertical alignment
-                    self.check_for_and_recover_from_vertical_orientation_alignment();
-                } else {
-                    // object dropped or primitive op deleted
-                    self.unset_lock_on_target();
-                }
+                    Ok((object, primitive_op)) => {
+                        self.last_known_origin = object.center + primitive_op.center();
+                        // avoid vertical alignment
+                        self.check_for_and_recover_from_vertical_orientation_alignment(settings);
+                    }
+                    Err(e) => match e {
+                        CollectionError::InvalidId { .. } => {
+                            // object dropped
+                            settings.object_deselected();
+                        }
+                        CollectionError::OutOfBounds { .. } => {
+                            // invalid primitive op index
+                            settings.primitive_op_deselected();
+                        }
+                        _ => (),
+                    },
+                };
             }
             _ => (),
         }
@@ -163,6 +152,7 @@ impl Camera {
 
     pub fn update_cursor_dragging(
         &mut self,
+        settings: &CameraSettings,
         drag_delta: DVec2,
         drag_button: MouseButton,
         keyboard_modifier_states: KeyboardModifierStates,
@@ -173,7 +163,7 @@ impl Camera {
             drag_button,
             keyboard_modifier_states,
         ) {
-            self.rotate_from_cursor_delta(drag_delta);
+            self.rotate_from_cursor_delta(settings, drag_delta);
         }
         if camera_control_mappings.mapping_active(
             CameraAction::Pan,
@@ -187,26 +177,12 @@ impl Camera {
             drag_button,
             keyboard_modifier_states,
         ) {
-            self.zoom_from_cursor_delta(drag_delta);
+            self.zoom_from_cursor_delta(settings, drag_delta);
         }
     }
 
-    pub fn update_scroll(&mut self, scroll_delta: DVec2) {
-        self.zoom_from_scroll(scroll_delta.y, DEFAULT_SCROLL_ZOOM_SENSITIVITY);
-    }
-
-    /// Resets the following properties to their defaults:
-    /// - position
-    /// - direction (and normal)
-    /// - look_mode
-    /// - fov
-    /// - near/far plane limits
-    pub fn reset(&mut self) {
-        self.position = config_ui::CAMERA_DEFAULT_POSITION;
-        self.look_mode = LookMode::default();
-        self.fov = config_ui::CAMERA_DEFAULT_FOV;
-        self.near_plane = config_ui::CAMERA_NEAR_PLANE;
-        self.far_plane = config_ui::CAMERA_FAR_PLANE;
+    pub fn update_scroll(&mut self, settings: &CameraSettings, scroll_delta: DVec2) {
+        self.zoom_from_scroll(settings, scroll_delta.y, settings.scroll_zoom_sensitivity);
     }
 
     // Setters
@@ -215,38 +191,10 @@ impl Camera {
         self.aspect_ratio = calc_aspect_ratio(resolution);
     }
 
-    pub fn set_look_mode(&mut self, look_mode: LookMode) {
-        self.look_mode = look_mode;
-        // avoid vertical alignment
-        self.check_for_and_recover_from_vertical_orientation_alignment();
-    }
-
-    pub fn set_arcball_target_depth(&mut self, new_depth: f64) {
-        self.arcball_target_depth = new_depth;
-    }
-
-    pub fn deselect_object(&mut self) {
-        match self.look_mode {
-            LookMode::SelectedObject => self.unset_lock_on_target(),
-            LookMode::SelectedPrimitiveOp => self.unset_lock_on_target(),
-            _ => (),
-        }
-    }
-
-    pub fn deselect_primitive_op(&mut self) {
-        if let LookMode::SelectedPrimitiveOp = self.look_mode {
-            self.unset_lock_on_target();
-        }
-    }
-
-    pub fn unset_lock_on_target(&mut self) {
-        self.look_mode = LookMode::PoV;
-    }
-
     // Getters
 
-    pub fn view_matrix(&self) -> Mat4 {
-        let target_pos = self.target_pos();
+    pub fn view_matrix(&self, settings: &CameraSettings) -> Mat4 {
+        let target_pos = self.target_pos(settings);
 
         Mat4::look_at_rh(
             self.position.as_vec3(),
@@ -305,16 +253,8 @@ impl Camera {
         self.position
     }
     #[inline]
-    pub fn arcball_target_depth(&self) -> f64 {
-        self.arcball_target_depth
-    }
-    #[inline]
     pub fn direction(&self) -> DVec3 {
         self.direction
-    }
-    #[inline]
-    pub fn look_mode(&self) -> LookMode {
-        self.look_mode
     }
     #[inline]
     pub fn near_plane(&self) -> f64 {
@@ -330,19 +270,23 @@ impl Camera {
 
 impl Camera {
     /// Changes the viewing direction based on the pixel amount the cursor has moved
-    fn rotate_from_cursor_delta(&mut self, delta_cursor_position: DVec2) {
-        let delta_angle = self.delta_cursor_to_angle(delta_cursor_position.into());
+    fn rotate_from_cursor_delta(
+        &mut self,
+        settings: &CameraSettings,
+        delta_cursor_position: DVec2,
+    ) {
+        let delta_angle = self.delta_cursor_to_angle(settings, delta_cursor_position.into());
 
         // orientation shouldn't be vertical
         let normal = match self.normal_with_vertical_check() {
             Ok(normal) => normal,
             Err(CameraError::VerticalCameraDirection) => {
-                self.recover_from_vertical_orientation_alignment();
+                self.recover_from_vertical_orientation_alignment(settings);
                 self.normal()
             }
         };
 
-        self.rotate_from_angle_delta(normal, delta_angle);
+        self.rotate_from_angle_delta(settings, normal, delta_angle);
     }
 
     fn pan_from_cursor_delta(&mut self, delta_cursor_position: DVec2) {
@@ -353,16 +297,21 @@ impl Camera {
         self.position += delta_position;
     }
 
-    fn zoom_from_scroll(&mut self, scroll_delta: f64, scroll_zoom_sensitivity: f64) {
-        self.zoom(scroll_delta * scroll_zoom_sensitivity)
+    fn zoom_from_scroll(
+        &mut self,
+        settings: &CameraSettings,
+        scroll_delta: f64,
+        scroll_zoom_sensitivity: f64,
+    ) {
+        self.zoom(settings, scroll_delta * scroll_zoom_sensitivity)
     }
 
-    fn zoom_from_cursor_delta(&mut self, delta_cursor_position: DVec2) {
-        self.zoom(-delta_cursor_position.y * MOUSE_ZOOM_FACTOR)
+    fn zoom_from_cursor_delta(&mut self, settings: &CameraSettings, delta_cursor_position: DVec2) {
+        self.zoom(settings, -delta_cursor_position.y * MOUSE_ZOOM_FACTOR)
     }
 
-    fn zoom(&mut self, zoom_delta: f64) {
-        match self.look_mode {
+    fn zoom(&mut self, settings: &CameraSettings, zoom_delta: f64) {
+        match settings.look_mode {
             LookMode::ArcballHovering => {
                 let new_position = self.position + zoom_delta * self.direction;
                 self.set_position(new_position);
@@ -380,9 +329,11 @@ impl Camera {
         }
     }
 
-    fn target_pos(&self) -> DVec3 {
-        match self.look_mode {
-            LookMode::ArcballHovering => self.position + self.direction * self.arcball_target_depth,
+    fn target_pos(&self, settings: &CameraSettings) -> DVec3 {
+        match settings.look_mode {
+            LookMode::ArcballHovering => {
+                self.position + self.direction * settings.arcball_target_depth
+            }
             LookMode::PoV => self.position + self.direction,
             LookMode::SelectedObject => self.last_known_origin.as_dvec3(),
             LookMode::SelectedPrimitiveOp => self.last_known_origin.as_dvec3(),
@@ -408,25 +359,33 @@ impl Camera {
 
     /// If required, adjust the camera so that it isn't looking vertically. Allows a normal to be
     /// calculated.
-    fn check_for_and_recover_from_vertical_orientation_alignment(&mut self) {
+    fn check_for_and_recover_from_vertical_orientation_alignment(
+        &mut self,
+        settings: &CameraSettings,
+    ) {
         if let Err(CameraError::VerticalCameraDirection) = self.normal_with_vertical_check() {
-            self.recover_from_vertical_orientation_alignment();
+            self.recover_from_vertical_orientation_alignment(settings);
         }
     }
 
     /// Adjust the camera so that it isn't looking vertically. Allows a normal to be calculated.
-    fn recover_from_vertical_orientation_alignment(&mut self) {
+    fn recover_from_vertical_orientation_alignment(&mut self, settings: &CameraSettings) {
         let recovery_delta_v =
             clamp_vertical_angle_delta(config::WORLD_SPACE_UP.as_dvec3(), Angle::ZERO);
         let normal = DVec3::X;
 
-        self.rotate_from_angle_delta(normal, [Angle::ZERO, recovery_delta_v]);
+        self.rotate_from_angle_delta(settings, normal, [Angle::ZERO, recovery_delta_v]);
     }
 
-    fn rotate_from_angle_delta(&mut self, normal: DVec3, delta_angle: [Angle; 2]) {
-        match self.look_mode {
+    fn rotate_from_angle_delta(
+        &mut self,
+        settings: &CameraSettings,
+        normal: DVec3,
+        delta_angle: [Angle; 2],
+    ) {
+        match settings.look_mode {
             LookMode::ArcballHovering => {
-                let target_pos = self.position + self.direction * self.arcball_target_depth;
+                let target_pos = self.position + self.direction * settings.arcball_target_depth;
                 let new_position = arcball(
                     self.position,
                     target_pos,
@@ -471,8 +430,12 @@ impl Camera {
         self.direction = self.direction.normalize();
     }
 
-    fn delta_cursor_to_angle(&self, delta_cursor_position: [f64; 2]) -> [Angle; 2] {
-        delta_cursor_position.map(|delta| match self.look_mode {
+    fn delta_cursor_to_angle(
+        &self,
+        settings: &CameraSettings,
+        delta_cursor_position: [f64; 2],
+    ) -> [Angle; 2] {
+        delta_cursor_position.map(|delta| match settings.look_mode {
             LookMode::ArcballHovering => {
                 Angle::from_radians(delta * config_ui::ARC_BALL_FACTOR.radians())
             }

@@ -1,6 +1,5 @@
 use super::Engine;
 use crate::{
-    config,
     engine::{
         commands::{Command, CommandWithSource, ValidationCommand},
         object::{
@@ -15,7 +14,6 @@ use crate::{
         list::choose_closest_valid_index, more_errors::CollectionError,
         unique_id_gen::UniqueIdError,
     },
-    user_interface::camera::LookMode,
 };
 use glam::Vec3;
 #[allow(unused_imports)]
@@ -41,13 +39,6 @@ impl Engine {
             Command::LoadStateCamera => self.load_state_camera(command),
             Command::SaveScene => self.save_all_objects(command),
             Command::LoadScene => self.load_objects(command),
-
-            // ~~ Camera ~~
-            Command::UnsetCameraLockOn => self.controllers.camera.unset_lock_on_target(),
-            Command::ResetCamera => self.controllers.camera.reset(),
-            Command::SetArcballTargetDepth(new_depth) => {
-                self.controllers.camera.set_arcball_target_depth(new_depth)
-            }
 
             // ~~ Object ~~
             Command::SelectObject(object_id) => {
@@ -263,17 +254,14 @@ impl Engine {
         self.selected_object_id = None;
         self.selected_primitive_op_index = None;
         self.gizmo_visibility.hide_all();
-        self.controllers.camera.deselect_object();
+        self.settings.camera.object_deselected();
     }
 
     /// Doesn't deselect object
     pub(super) fn deselect_primitive_op(&mut self) {
         self.selected_primitive_op_index = None;
         self.gizmo_visibility.hide_all();
-        self.controllers.camera.deselect_primitive_op();
-        if config::ARCBALL_ON_SELECT {
-            self.controllers.camera.deselect_primitive_op();
-        }
+        self.settings.camera.primitive_op_deselected();
     }
 
     pub(super) fn select_primitive_op(
@@ -315,11 +303,7 @@ impl Engine {
         self.controllers
             .gui
             .update_selected_primitive_op(&primitive_op);
-        if config::ARCBALL_ON_SELECT {
-            self.controllers
-                .camera
-                .set_look_mode(LookMode::SelectedPrimitiveOp);
-        }
+        self.settings.camera.primitive_op_selected();
     }
 
     /// Also deselects primitive op
@@ -338,11 +322,7 @@ impl Engine {
 
         self.gizmo_visibility.show_all();
         // note: render_manager.update_gizmo_center not called here
-        if config::ARCBALL_ON_SELECT {
-            self.controllers
-                .camera
-                .set_look_mode(LookMode::SelectedObject);
-        }
+        self.settings.camera.object_selected();
     }
 
     // ~~ Objects: Removal ~~

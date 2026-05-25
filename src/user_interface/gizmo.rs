@@ -1,5 +1,8 @@
 use crate::{
-    engine::object::{object::ObjectId, object_collection::ObjectCollection},
+    engine::{
+        object::{object::ObjectId, object_collection::ObjectCollection},
+        settings::CameraSettings,
+    },
     helper::{axis::CartesianAxis, more_errors::CollectionError},
     user_interface::camera::Camera,
 };
@@ -46,6 +49,7 @@ impl GizmoElement {
         selected_object_id: ObjectId,
         object_collection: &mut ObjectCollection,
         camera: &Camera,
+        camera_settings: &CameraSettings,
     ) -> Result<(), CollectionError> {
         match *self {
             Self::Linear(axis) => process_translate(
@@ -54,6 +58,7 @@ impl GizmoElement {
                 selected_object_id,
                 object_collection,
                 camera,
+                camera_settings,
             ),
         }
     }
@@ -65,13 +70,15 @@ fn process_translate(
     selected_object_id: ObjectId,
     object_collection: &mut ObjectCollection,
     camera: &Camera,
+    camera_settings: &CameraSettings,
 ) -> Result<(), CollectionError> {
     let object_center = object_collection.get_object(selected_object_id)?.center;
-    let center_projected = camera.view_matrix() * Vec4::from((object_center, 1.));
+    let center_projected = camera.view_matrix(camera_settings) * Vec4::from((object_center, 1.));
     let depth = -center_projected.z; // distance from camera to object center
 
-    let axis_projected =
-        camera.projection_matrix() * camera.view_matrix() * Vec4::from((axis.as_vec3(), 1.));
+    let axis_projected = camera.projection_matrix()
+        * camera.view_matrix(camera_settings)
+        * Vec4::from((axis.as_vec3(), 1.));
     let translation_abs = cursor_delta.dot(axis_projected.xy().as_dvec2()) as f32 * depth / 2000.;
     let translation_vec = axis.as_vec3() * translation_abs;
 

@@ -1,4 +1,4 @@
-use crate::user_interface::camera::Camera;
+use crate::{engine::settings::CameraSettings, user_interface::camera::Camera};
 use glam::{Mat4, Vec3};
 
 /// Camera data read by GPU shaders
@@ -48,11 +48,12 @@ impl CameraUniformBuffer {
 
     pub fn from_camera(
         camera: &Camera,
+        camera_settings: &CameraSettings,
         framebuffer_dimensions: [f32; 2],
         write_linear_color: bool,
     ) -> Self {
         let proj_inverse = camera.projection_matrix_inverse();
-        let view_inverse = camera.view_matrix().inverse();
+        let view_inverse = camera.view_matrix(camera_settings).inverse();
         Self::new(
             view_inverse,
             proj_inverse,
