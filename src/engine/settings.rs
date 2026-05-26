@@ -72,8 +72,10 @@ impl Default for SettingsIO {
                         .into(),
                     gui_fn: |ui, settings, setting_name| {
                         let enabled = settings.camera.look_mode == LookMode::ArcballHovering;
-                        ui.add_enabled(enabled, egui::Label::new(setting_name));
-                        ui.add_enabled(enabled, egui::DragValue::new(&mut settings.camera.arcball_target_depth).speed(DRAG_INC));
+                        ui.horizontal(|ui| {
+                            ui.add_enabled(enabled, egui::DragValue::new(&mut settings.camera.arcball_target_depth).speed(DRAG_INC));
+                            ui.add_enabled(enabled, egui::Label::new(setting_name));
+                        });
                     },
                 },
                 SettingsIOEntry {
@@ -81,8 +83,10 @@ impl Default for SettingsIO {
                     description: "Sensitivity when zooming via the scroll wheel."
                         .into(),
                     gui_fn: |ui, settings, setting_name| {
-                        ui.label(setting_name);
-                        ui.add(egui::DragValue::new(&mut settings.camera.scroll_zoom_sensitivity).speed(DRAG_INC));
+                        ui.horizontal(|ui| {
+                            ui.add(egui::DragValue::new(&mut settings.camera.scroll_zoom_sensitivity).speed(DRAG_INC));
+                            ui.label(setting_name);
+                        });
                     },
                 },
                 SettingsIOEntry {
@@ -133,7 +137,8 @@ pub struct SettingsCategory {
     pub name: String,
     pub settings: Vec<SettingsIOEntry>,
 }
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
+#[allow(unpredictable_function_pointer_comparisons)]
 pub struct SettingsIOEntry {
     pub name: String,
     pub description: String,

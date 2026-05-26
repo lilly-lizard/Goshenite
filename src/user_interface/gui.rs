@@ -181,6 +181,7 @@ impl Gui {
                     &mut self.settings_window_visible,
                     settings,
                     settings_io,
+                    &mut self.quick_access_settings,
                 );
             }
 

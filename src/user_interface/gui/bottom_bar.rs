@@ -59,6 +59,7 @@ fn bottom_bar_layout(
 
     ui.separator();
 
+    // quick access settings
     for maybe_setting in quick_access_settings {
         if let Some(setting) = maybe_setting {
             (setting.gui_fn)(ui, settings, &setting.name);
