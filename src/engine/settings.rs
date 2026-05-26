@@ -1,10 +1,7 @@
-use crate::{
-    config,
-    user_interface::{
-        camera::LookMode,
-        config_ui::{CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH, DEFAULT_SCROLL_ZOOM_SENSITIVITY},
-        gui_state::DRAG_INC,
-    },
+use crate::user_interface::{
+    camera::LookMode,
+    config_ui::{CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH, DEFAULT_SCROLL_ZOOM_SENSITIVITY},
+    gui_state::DRAG_INC,
 };
 
 // ~~ Available Settings~~
@@ -15,6 +12,8 @@ pub struct CameraSettings {
     /// Note: only used for `LookMode::ArcballHovering`
     pub arcball_target_depth: f64,
     pub scroll_zoom_sensitivity: f64,
+    /// If true, camera enters arcball mode when an object or primitive op is selected
+    pub arcball_on_select: bool,
 }
 pub struct RendererSettings {
     pub show_aabb_wireframe: bool,
@@ -29,6 +28,7 @@ impl Default for CameraSettings {
             enabled_look_modes: vec![LookMode::ArcballHovering, LookMode::PoV],
             arcball_target_depth: CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH,
             scroll_zoom_sensitivity: DEFAULT_SCROLL_ZOOM_SENSITIVITY,
+            arcball_on_select: false,
         }
     }
 }
@@ -82,6 +82,14 @@ impl Default for SettingsIO {
                     gui_fn: |ui, settings, setting_name| {
                         ui.label(setting_name);
                         ui.add(egui::DragValue::new(&mut settings.camera.scroll_zoom_sensitivity).speed(DRAG_INC));
+                    },
+                },
+                SettingIOEntry {
+                    name: "Arcball on Select".into(),
+                    description: "If enabled, camera enters arcball mode when an object or primitive op is selected."
+                        .into(),
+                    gui_fn: |ui, settings, setting_name| {
+                        ui.checkbox(&mut settings.camera.arcball_on_select, setting_name);
                     },
                 }],
             },
@@ -147,8 +155,8 @@ impl CameraSettings {
         if !self.enabled_look_modes.contains(&LookMode::SelectedObject) {
             self.enabled_look_modes.push(LookMode::SelectedObject);
         }
-        if config::ARCBALL_ON_SELECT {
-            self.look_mode == LookMode::SelectedObject;
+        if self.arcball_on_select {
+            self.look_mode = LookMode::SelectedObject;
         }
     }
 
@@ -160,8 +168,8 @@ impl CameraSettings {
         {
             self.enabled_look_modes.push(LookMode::SelectedPrimitiveOp);
         }
-        if config::ARCBALL_ON_SELECT {
-            self.look_mode == LookMode::SelectedPrimitiveOp;
+        if self.arcball_on_select {
+            self.look_mode = LookMode::SelectedPrimitiveOp;
         }
     }
 
@@ -200,6 +208,7 @@ pub trait SettingEnum {
     fn value_display_name(&self) -> &str;
 }
 
+#[allow(unused)]
 pub fn setting_ui_enum<T>(
     ui: &mut egui::Ui,
     setting_name: &str,

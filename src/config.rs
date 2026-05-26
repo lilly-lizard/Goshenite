@@ -35,7 +35,4 @@ pub const WORLD_SPACE_UP: CartesianAxis = CartesianAxis::Z;
 
 pub const MAX_SPHERE_RADIUS: u32 = 100;
 
-/// If true, camera enters arcball mode when an object or primitive op is selected
-pub const ARCBALL_ON_SELECT: bool = false;
-
 pub const GIZMO_SCALE: f32 = 0.0005;
