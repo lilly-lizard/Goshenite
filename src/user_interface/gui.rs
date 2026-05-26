@@ -9,10 +9,10 @@ use crate::{
             primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
         save_states::{load_state_gui_positions, save_state_gui_positions},
-        settings::{Settings, SettingsIO},
+        settings::{Settings, SettingsIO, SettingsIOEntry},
     },
     helper::more_errors::IoError,
-    user_interface::gui::side_panel::SidePanelMode,
+    user_interface::{config_ui::MAX_QUICK_ACCESS_SETTINGS, gui::side_panel::SidePanelMode},
 };
 use anyhow::Context;
 use egui::{TextWrapMode, TexturesDelta};
@@ -43,6 +43,7 @@ pub struct Gui {
     side_panel_mode: Option<SidePanelMode>,
     settings_window_visible: bool,
     command_pallette: Option<GuiStateCommandPalette>,
+    quick_access_settings: [Option<SettingsIOEntry>; MAX_QUICK_ACCESS_SETTINGS],
 }
 
 // Public functions
@@ -52,7 +53,12 @@ impl Gui {
     /// * `window`: [`winit`] window
     /// * `max_texture_size`: maximum size of a texture. Corresponds to
     ///   VkPhysicalDeviceLimits.maxImageDimension2D
-    pub fn new(window: Arc<Window>, scale_factor: f32, max_texture_size: Option<usize>) -> Self {
+    pub fn new(
+        window: Arc<Window>,
+        settings_io: &SettingsIO,
+        scale_factor: f32,
+        max_texture_size: Option<usize>,
+    ) -> Self {
         let egui_context = egui::Context::default();
         egui_context.set_global_style(egui::Style {
             // disable sentance wrap by default (horizontal scroll instead)
@@ -79,6 +85,9 @@ impl Gui {
             }
         };
 
+        let arcball_depth_setting = settings_io.get_setting_entry_from_name("Arcball Target Depth");
+        let quick_access_settings = [arcball_depth_setting, None, None];
+
         Self {
             egui_context,
             window,
@@ -89,6 +98,7 @@ impl Gui {
             side_panel_mode: Default::default(),
             settings_window_visible: false,
             command_pallette: None,
+            quick_access_settings,
         }
     }
 
@@ -149,7 +159,8 @@ impl Gui {
                 &mut self.side_panel_mode,
                 &mut self.settings_window_visible,
                 &mut self.command_pallette,
-                &mut settings.camera,
+                settings,
+                &mut self.quick_access_settings,
             );
 
             if let Some(side_panel_mode) = self.side_panel_mode {

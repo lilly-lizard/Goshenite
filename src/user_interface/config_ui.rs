@@ -7,7 +7,6 @@ pub const SELECT_PRIMITIVE_OP_AFTER_ADD: bool = false;
 
 /// Limits how close camera vertical direction can get to world space up
 pub const VERTICAL_ANGLE_CLAMP: Angle = Angle::Degrees(1.);
-
 pub const CAMERA_DEFAULT_FOV: Angle = Angle::from_radians(std::f64::consts::FRAC_PI_4);
 pub const CAMERA_DEFAULT_POSITION: DVec3 = DVec3::splat(3.);
 pub const CAMERA_DEFAULT_TARGET: DVec3 = DVec3::ZERO;
@@ -19,14 +18,15 @@ pub const CAMERA_MAX_TARGET_DISTANCE: f64 = 10_000.;
 pub const CAMERA_MIN_TARGET_DISTANCE: f64 = 0.001;
 pub const CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH: f64 = 5.;
 
-/// Sensitivity multiplier for cursor movement.
-pub const CURSOR_SENSITIVITY: f64 = 1.;
 /// Sensitivity rotating the camera in [`ViewMode::Direction`](crate::camera::ViewMode::Direction) = angle / pixels
 pub const LOOK_FACTOR: Angle = Angle::from_radians(0.001);
 /// Sensitivity rotating the camera in [`ViewMode::Target`](crate::camera::ViewMode::Target) = angle / pixels
 pub const ARC_BALL_FACTOR: Angle = Angle::from_radians(0.005);
-pub const PAN_FACTOR: DVec2 = DVec2::new(0.01, 0.01);
 pub const DEFAULT_SCROLL_ZOOM_SENSITIVITY: f64 = 0.5;
+
+/// Sensitivity multiplier for cursor movement.
+pub const CURSOR_SENSITIVITY: f64 = 1.;
+pub const PAN_FACTOR: DVec2 = DVec2::new(0.01, 0.01);
 pub const MOUSE_ZOOM_FACTOR: f64 = 0.1;
 
 // Key Bindings
@@ -34,3 +34,4 @@ pub const KEY_BINDING_COMMAND_PALETTE: KeyCode = KeyCode::KeyP;
 
 pub const DEFAULT_SIDE_PANEL_WIDTH: f32 = 160.;
 pub const MIN_SIDE_PANEL_WIDTH: f32 = 10.;
+pub const MAX_QUICK_ACCESS_SETTINGS: usize = 3;

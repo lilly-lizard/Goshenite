@@ -110,7 +110,12 @@ impl Engine {
         renderer.init_camera(&camera, &settings.camera)?;
 
         let max_texture_size = renderer.max_2d_image_size(); //maxImageDimension2D
-        let gui = Gui::new(window.clone(), scale_factor as f32, Some(max_texture_size));
+        let gui = Gui::new(
+            window.clone(),
+            &settings_io,
+            scale_factor as f32,
+            Some(max_texture_size),
+        );
 
         let mut object_collection = ObjectCollection::new();
 

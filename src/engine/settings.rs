@@ -52,7 +52,7 @@ impl Default for SettingsIO {
         SettingsIO {
             categories: vec![SettingsCategory {
                 name: "Camera".into(),
-                settings: vec![SettingIOEntry {
+                settings: vec![SettingsIOEntry {
                     name: "Look Mode".into(),
                     description: "Available Modes:\n
 - Arcball Hovering: an arcball that rotates around an invisible point in front of camera.\n
@@ -66,16 +66,17 @@ impl Default for SettingsIO {
                         setting_ui_enum_some_disabled(ui, setting_name, &mut settings.camera.look_mode, &LookMode::VARIANTS, &enabled_modes);
                     },
                 },
-                SettingIOEntry {
+                SettingsIOEntry {
                     name: "Arcball Target Depth".into(),
                     description: "Distance from the camera to the arcball focus point when camera is in `Look Mode` == `Arcball Hovering`"
                         .into(),
                     gui_fn: |ui, settings, setting_name| {
-                        ui.label(setting_name);
-                        ui.add(egui::DragValue::new(&mut settings.camera.arcball_target_depth).speed(DRAG_INC));
+                        let enabled = settings.camera.look_mode == LookMode::ArcballHovering;
+                        ui.add_enabled(enabled, egui::Label::new(setting_name));
+                        ui.add_enabled(enabled, egui::DragValue::new(&mut settings.camera.arcball_target_depth).speed(DRAG_INC));
                     },
                 },
-                SettingIOEntry {
+                SettingsIOEntry {
                     name: "Zoom Scroll Sensitivity".into(),
                     description: "Sensitivity when zooming via the scroll wheel."
                         .into(),
@@ -84,7 +85,7 @@ impl Default for SettingsIO {
                         ui.add(egui::DragValue::new(&mut settings.camera.scroll_zoom_sensitivity).speed(DRAG_INC));
                     },
                 },
-                SettingIOEntry {
+                SettingsIOEntry {
                     name: "Arcball on Select".into(),
                     description: "If enabled, camera enters arcball mode when an object or primitive op is selected."
                         .into(),
@@ -96,7 +97,7 @@ impl Default for SettingsIO {
             SettingsCategory {
                 name: "Camera".into(),
                 settings: vec![
-                    SettingIOEntry {
+                    SettingsIOEntry {
                         name: "Show AABB Wireframe".into(),
                         description: "Render lines to show locations of axis aligned bounding boxes for every object."
                             .into(),
@@ -130,12 +131,26 @@ pub struct SettingsIO {
 }
 pub struct SettingsCategory {
     pub name: String,
-    pub settings: Vec<SettingIOEntry>,
+    pub settings: Vec<SettingsIOEntry>,
 }
-pub struct SettingIOEntry {
+#[derive(Clone)]
+pub struct SettingsIOEntry {
     pub name: String,
     pub description: String,
     pub gui_fn: fn(&mut egui::Ui, &mut Settings, &str),
+}
+
+impl SettingsIO {
+    pub fn get_setting_entry_from_name(&self, setting_name: &str) -> Option<SettingsIOEntry> {
+        for category in &self.categories {
+            for setting in &category.settings {
+                if &setting.name == setting_name {
+                    return Some(setting.clone());
+                }
+            }
+        }
+        None
+    }
 }
 
 impl CameraSettings {
