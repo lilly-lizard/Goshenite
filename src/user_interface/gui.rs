@@ -2,7 +2,7 @@ use self::command_palette::GuiStateCommandPalette;
 use super::gui_state::ValueState;
 use crate::{
     engine::{
-        commands::{Command, CommandWithSource},
+        commands::Command,
         object::{
             object::ObjectId,
             object_collection::ObjectCollection,
@@ -142,7 +142,7 @@ impl Gui {
         window: &Window,
         selected_object_id: Option<ObjectId>,
         selected_primitive_op_index: Option<PrimitiveOpIndex>,
-    ) -> anyhow::Result<Vec<CommandWithSource>> {
+    ) -> Vec<Command> {
         let mut commands = Vec::<Command>::new();
 
         let raw_input = self.winit_state.take_egui_input(window);
@@ -207,10 +207,7 @@ impl Gui {
             self.textures_delta_accumulation.push(textures_delta);
         }
 
-        Ok(commands
-            .into_iter()
-            .map(|command| CommandWithSource::new_from_gui(command))
-            .collect())
+        commands
     }
 
     pub fn set_cursor_icon(&self, cursor_icon: egui::CursorIcon) {

@@ -1,7 +1,5 @@
 # plan:
 
-- archive camera controls json loading ✔️
-- generalize settings so that its easy to add new ones ✔️
 - skybox ✔️
 	- load background skyboxes via file selector
 	- code editor for skybox shader glsl. run on the fly
@@ -12,10 +10,8 @@
 	- means you don't need `process_update` or `EngineControllers`, just send `settings` to all the controllers rather than keeping track of duplicate variables ✔️
 	- 2 separate structs: `Settings` that stores all the variables and `SettingsIO` which has gui and json functionality and accesses members of `Settings` ✔️
 	- don't stress if members of `Settings` aren't accessed by `SettingsIO`. allows for hidden internal settings ✔️
-	- ability to choose 3 `SettingsIO` entries to be accessible on the bottom bar, like arcball target currently is 🔨
-- remove commands (all of them) and pass mutable references to gui
-	- remove command palette, if you want to reimliment it later, do it properly
-- json settings stored in ~/.config/goshentite (if linux or mac?)
+	- ability to choose 3 `SettingsIO` entries to be accessible on the bottom bar, like arcball target currently is ✔️
+- json settings stored in ~/.config/goshentite (if linux or mac?) 🔨
 - editor view modes
 	- SceneEditor: render ground grid
 	- ObjectEditor: grey background
@@ -45,6 +41,14 @@
   2. scale based on distance from object ✔️
 - draw circle at selected object center
 - generate BVH and render BVH outlines
+
+# done:
+
+- remove commands (all of them) and pass mutable references to gui ❌️
+	- remove command palette, if you want to reimliment it later, do it properly ❌️
+- archive camera controls json loading ✔️
+- generalize settings so that its easy to add new ones ✔️
+
 
 ?. [panini projection slider](https://www.youtube.com/watch?v=LE9kxUQ-l14)
 	- [math options comparison](https://en.wikipedia.org/wiki/Fisheye_lens#Mapping_function)

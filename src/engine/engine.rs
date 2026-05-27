@@ -1,7 +1,7 @@
 use crate::{
     config,
     engine::{
-        commands::CommandWithSource,
+        commands::Command,
         config_engine,
         object::{
             object::{Object, ObjectId},
@@ -16,7 +16,7 @@ use crate::{
         settings::{Settings, SettingsIO},
         window_thread::WindowThreadChannels,
     },
-    helper::{anyhow_panic::anyhow_unwrap, more_errors::CollectionError},
+    helper::more_errors::CollectionError,
     renderer::{element_id_reader::ElementAtPoint, render_manager::RenderManager},
     user_interface::{
         camera::Camera,
@@ -67,7 +67,7 @@ pub struct Engine {
     scale_factor: f64,
     object_collection: ObjectCollection, // note: some engine code may have been written on the assumtion that there is only one object collection...
     main_thread_frame_number: u64, // TODO what is this used for? wrap around to handle overflow??
-    pending_commands: VecDeque<CommandWithSource>,
+    pending_commands: VecDeque<Command>,
     selected_object_id: Option<ObjectId>,
     selected_primitive_op_index: Option<PrimitiveOpIndex>,
     keyboard_modifier_states: KeyboardModifierStates,
@@ -262,7 +262,7 @@ impl Engine {
         self.process_cursor_event(cursor_event)?;
 
         // process gui inputs and update layout
-        let update_gui_res = self.controllers.gui.update_gui(
+        let commands_from_gui = self.controllers.gui.update_gui(
             &mut self.settings,
             &self.settings_io,
             &self.object_collection,
@@ -270,7 +270,6 @@ impl Engine {
             self.selected_object_id,
             self.selected_primitive_op_index,
         );
-        let commands_from_gui = anyhow_unwrap(update_gui_res, "update gui");
         self.pending_commands.extend(commands_from_gui.into_iter());
 
         // process commands from gui

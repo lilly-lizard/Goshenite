@@ -1,7 +1,7 @@
 use super::Engine;
 use crate::{
     engine::{
-        commands::{Command, CommandWithSource, ValidationCommand},
+        commands::{Command, ValidationCommand},
         object::{
             object::{Object, ObjectId},
             operation::Operation,
@@ -23,11 +23,7 @@ use log::{debug, error, info, trace, warn};
 
 impl Engine {
     pub(super) fn execute_engine_commands(&mut self) {
-        while let Some(CommandWithSource {
-            command,
-            source: _source,
-        }) = self.pending_commands.pop_front()
-        {
+        while let Some(command) = self.pending_commands.pop_front() {
             self.execute_command(command);
         }
     }

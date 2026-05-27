@@ -1,8 +1,3 @@
-use crate::engine::settings::{
-    SETTING_NAME_MOUSE_BACK, SETTING_NAME_MOUSE_FORWARD, SETTING_NAME_MOUSE_LEFT,
-    SETTING_NAME_MOUSE_MIDDLE, SETTING_NAME_MOUSE_RIGHT,
-};
-
 // ~~ Mouse Button ~~
 
 /// Mouse buttons supported by engine
@@ -38,17 +33,6 @@ impl MouseButton {
                     code
                 )),
             },
-        }
-    }
-
-    pub fn from_setting_name(setting_name: &str) -> Option<Self> {
-        match setting_name {
-            SETTING_NAME_MOUSE_LEFT => Some(Self::Left),
-            SETTING_NAME_MOUSE_RIGHT => Some(Self::Right),
-            SETTING_NAME_MOUSE_MIDDLE => Some(Self::Middle),
-            SETTING_NAME_MOUSE_BACK => Some(Self::Back),
-            SETTING_NAME_MOUSE_FORWARD => Some(Self::Forward),
-            _ => None,
         }
     }
 }

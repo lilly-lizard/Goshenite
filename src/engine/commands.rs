@@ -111,42 +111,6 @@ impl From<ValidationCommand> for Command {
 
 // ~~ Helper Types ~~
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CommandSource {
-    Gui,
-    CommandPalette,
-    KeyboardShortcut,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct CommandWithSource {
-    pub command: Command,
-    pub source: CommandSource,
-}
-
-impl CommandWithSource {
-    pub fn new_from_gui(command: Command) -> Self {
-        Self {
-            command,
-            source: CommandSource::Gui,
-        }
-    }
-
-    pub fn new_from_palette(command: Command) -> Self {
-        Self {
-            command,
-            source: CommandSource::CommandPalette,
-        }
-    }
-
-    pub fn new_from_shortcut(command: Command) -> Self {
-        Self {
-            command,
-            source: CommandSource::KeyboardShortcut,
-        }
-    }
-}
-
 // ~~ Errors ~~
 
 #[derive(Debug)]
