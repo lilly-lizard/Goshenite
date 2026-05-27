@@ -7,7 +7,7 @@ mod renderer;
 mod user_interface;
 
 use crate::engine::{
-    engine::{Engine, EngineCommand},
+    engine_controller::{Engine, EngineCommand},
     window_thread::{WindowThread, WindowThreadChannels},
 };
 use anyhow::Context;

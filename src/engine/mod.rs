@@ -2,7 +2,7 @@ pub mod aabb;
 pub mod commands;
 pub mod config_engine;
 /// Engine entry point
-pub mod engine;
+pub mod engine_controller;
 pub mod object;
 pub mod primitives;
 pub mod save_states;

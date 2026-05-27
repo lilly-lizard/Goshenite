@@ -1,9 +1,9 @@
-#![allow(dead_code)]
-
-use crate::engine::object::primitive_op::{PrimitiveOp, PrimitiveOpIndex};
-
 use super::{
-    object::{object::ObjectId, operation::Operation},
+    object::{
+        object::ObjectId,
+        operation::Operation,
+        primitive_op::{PrimitiveOp, PrimitiveOpIndex},
+    },
     primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
 };
 use glam::Vec3;

@@ -1,5 +1,10 @@
 # plan:
 
+- clean up `commands_impl.rs`
+	- remove dead code
+	- remove `ValidationCommand`
+	- combine functions where possible
+	- move pub(super) functions to engine_controller.rs
 - skybox ✔️
 	- load background skyboxes via file selector
 	- code editor for skybox shader glsl. run on the fly
@@ -24,6 +29,8 @@
 	- add GizmoVisibility (including center) and GizmoItem structs, note that multiple gizmo types can be on simultaneously ✔️
 - remove arcball camera (have hidden option for it) ✔️
 	- it doesn't make sense with gizmo dragging ✔️
+- remove commands (all of them) and pass mutable references to gui ❌️
+	- remove command palette, if you want to reimliment it later, do it properly ❌️
 	- make arcball around invisible marker on ground plane? ✔️
 	- make simple controls similar to bambu studio or smthn ✔️
 - make gui a side panel ✔️
