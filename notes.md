@@ -1,10 +1,10 @@
 # plan:
 
-- clean up `commands_impl.rs`
-	- remove dead code
-	- remove `ValidationCommand`
-	- combine functions where possible
-	- move pub(super) functions to engine_controller.rs
+- clean up `commands_impl.rs` ✔️
+	- remove dead code ✔️
+	- remove `ValidationCommand` ✔️
+	- combine functions where possible 🔨
+	- move pub(super) functions to engine_controller.rs ✔️
 - skybox ✔️
 	- load background skyboxes via file selector
 	- code editor for skybox shader glsl. run on the fly

@@ -128,10 +128,8 @@ impl Engine {
                     Some(ElementAtPoint::Object {
                         object_id,
                         primitive_op_index,
-                    }) => self.select_primitive_op(object_id, primitive_op_index, None),
-                    Some(ElementAtPoint::BlendArea { object_id }) => {
-                        self.select_object(object_id, None)
-                    }
+                    }) => self.select_primitive_op(object_id, primitive_op_index),
+                    Some(ElementAtPoint::BlendArea { object_id }) => self.select_object(object_id),
                     _ => (),
                 },
                 _ => (),

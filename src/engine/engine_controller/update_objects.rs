@@ -1,8 +1,8 @@
 use crate::{
     engine::{
         commands::{
-            command_failed_warn, failure_warn_collection_error, failure_warn_invalid_object_id,
-            failure_warn_invalid_primitive_op_index, failure_warn_unique_id_error, Command,
+            failure_warn_collection_error, failure_warn_invalid_object_id,
+            failure_warn_invalid_primitive_op_index, failure_warn_unique_id_error,
         },
         engine_controller::Engine,
         object::{
@@ -37,17 +37,15 @@ impl Engine {
         &mut self,
         object_id_to_select: ObjectId,
         primitive_op_index_to_select: PrimitiveOpIndex,
-        source_command: Option<Command>,
     ) {
         let Ok(object) = self.object_collection.get_object(object_id_to_select) else {
-            failure_warn_invalid_object_id(object_id_to_select, source_command);
+            failure_warn_invalid_object_id(object_id_to_select);
             return;
         };
         let Some(primitive_op) = object.primitive_ops.get(primitive_op_index_to_select) else {
             failure_warn_invalid_primitive_op_index(
                 object_id_to_select,
                 primitive_op_index_to_select,
-                source_command,
             );
             return;
         };
@@ -76,13 +74,9 @@ impl Engine {
     }
 
     /// Also deselects primitive op
-    pub(super) fn select_object(
-        &mut self,
-        object_id_to_select: ObjectId,
-        source_command: Option<Command>,
-    ) {
+    pub(super) fn select_object(&mut self, object_id_to_select: ObjectId) {
         if let Err(_e) = self.object_collection.get_object(object_id_to_select) {
-            failure_warn_invalid_object_id(object_id_to_select, source_command);
+            failure_warn_invalid_object_id(object_id_to_select);
             return;
         };
 
@@ -96,14 +90,10 @@ impl Engine {
 
     // ~~ Objects: Removal ~~
 
-    pub(super) fn remove_object(
-        &mut self,
-        object_id_to_remove: ObjectId,
-        source_command: Option<Command>,
-    ) {
+    pub(super) fn remove_object(&mut self, object_id_to_remove: ObjectId) {
         let res = self.object_collection.remove_object(object_id_to_remove);
         if let Err(e) = res {
-            failure_warn_collection_error(e, object_id_to_remove, source_command);
+            failure_warn_collection_error(e, object_id_to_remove);
         }
 
         if let Some(previously_selected_object_id) = self.selected_object_id {
@@ -117,13 +107,12 @@ impl Engine {
         &mut self,
         object_id: ObjectId,
         primitive_op_index: PrimitiveOpIndex,
-        source_command: Option<Command>,
     ) {
         let remove_res = self
             .object_collection
             .remove_primitive_op_from_object(object_id, primitive_op_index);
         if let Err(e) = remove_res {
-            failure_warn_collection_error(e, object_id, source_command);
+            failure_warn_collection_error(e, object_id);
             return;
         };
 
@@ -141,7 +130,6 @@ impl Engine {
             primitive_op_index,
             &updated_object.clone(), // clone is used here to avoid mixing immutable and mutable references (object and self)
             object_id,
-            source_command,
         );
     }
 
@@ -152,7 +140,6 @@ impl Engine {
         removed_primitive_op_index: PrimitiveOpIndex,
         object: &Object,
         object_id: ObjectId,
-        source_command: Option<Command>,
     ) {
         if let Some(some_selected_primitive_op_index) = self.selected_primitive_op_index {
             if some_selected_primitive_op_index == removed_primitive_op_index {
@@ -160,7 +147,6 @@ impl Engine {
                     removed_primitive_op_index,
                     object,
                     object_id,
-                    source_command,
                 );
             }
         }
@@ -173,12 +159,11 @@ impl Engine {
         target_prim_op_index: PrimitiveOpIndex,
         object: &Object,
         object_id: ObjectId,
-        source_command: Option<Command>,
     ) {
         if let Some(select_index) =
             choose_closest_valid_index(object.primitive_ops.len(), target_prim_op_index)
         {
-            self.select_primitive_op(object_id, select_index, source_command);
+            self.select_primitive_op(object_id, select_index);
         } else {
             self.deselect_primitive_op();
         }
@@ -186,67 +171,49 @@ impl Engine {
 
     // ~~ Objects: Create New ~~
 
-    pub(super) fn create_and_select_new_default_object(&mut self, source_command: Option<Command>) {
+    pub(super) fn create_and_select_new_default_object(&mut self) {
         let new_object_res = self.object_collection.new_object_default();
 
         let (new_object_id, _new_object) = match new_object_res {
             Ok(object_and_id) => object_and_id,
             Err(e) => {
-                failure_warn_unique_id_error(source_command, e);
+                failure_warn_unique_id_error(e);
                 return;
             }
         };
 
-        self.select_object(new_object_id, source_command);
+        self.select_object(new_object_id);
     }
 
-    pub(super) fn set_object_center(
-        &mut self,
-        object_id: ObjectId,
-        new_center: Vec3,
-        source_command: Option<Command>,
-    ) {
+    pub(super) fn set_object_center(&mut self, object_id: ObjectId, new_center: Vec3) {
         let update_res = self
             .object_collection
             .set_object_center(object_id, new_center);
         if let Err(e) = update_res {
-            failure_warn_collection_error(e, object_id, source_command);
+            failure_warn_collection_error(e, object_id);
         }
     }
 
-    pub(super) fn set_object_name(
-        &mut self,
-        object_id: ObjectId,
-        new_name: String,
-        source_command: Option<Command>,
-    ) {
+    pub(super) fn set_object_name(&mut self, object_id: ObjectId, new_name: String) {
         let update_res = self.object_collection.set_object_name(object_id, new_name);
         if let Err(e) = update_res {
-            failure_warn_collection_error(e, object_id, source_command);
+            failure_warn_collection_error(e, object_id);
         }
     }
 
     // ~~ Objects: Push Op ~~
 
-    pub(super) fn push_op_and_select(
-        &mut self,
-        object_id: ObjectId,
-        primitive_op: PrimitiveOp,
-        source_command: Option<Command>,
-    ) {
-        let Some(new_primitive_op_index) =
-            self.push_op(object_id, primitive_op, source_command.clone())
-        else {
+    pub(super) fn push_op_and_select(&mut self, object_id: ObjectId, primitive_op: PrimitiveOp) {
+        let Some(new_primitive_op_index) = self.push_op(object_id, primitive_op) else {
             return;
         };
-        self.select_primitive_op(object_id, new_primitive_op_index, source_command);
+        self.select_primitive_op(object_id, new_primitive_op_index);
     }
 
     pub(super) fn push_op(
         &mut self,
         object_id: ObjectId,
         new_primitive_op: PrimitiveOp,
-        source_command: Option<Command>,
     ) -> Option<PrimitiveOpIndex> {
         let push_op_res = self
             .object_collection
@@ -254,7 +221,7 @@ impl Engine {
         match push_op_res {
             Ok(primitive_op_index) => Some(primitive_op_index),
             Err(e) => {
-                failure_warn_collection_error(e, object_id, source_command);
+                failure_warn_collection_error(e, object_id);
                 None
             }
         }
@@ -267,7 +234,6 @@ impl Engine {
         object_id: ObjectId,
         primitive_op_index: PrimitiveOpIndex,
         new_primitive_op: PrimitiveOp,
-        source_command: Option<Command>,
     ) {
         let res = self.object_collection.update_primitive_op_in_object(
             object_id,
@@ -275,7 +241,7 @@ impl Engine {
             new_primitive_op,
         );
         if let Err(e) = res {
-            failure_warn_collection_error(e, object_id, source_command);
+            failure_warn_collection_error(e, object_id);
         }
     }
 
@@ -285,11 +251,10 @@ impl Engine {
         object_id: ObjectId,
         original_index: PrimitiveOpIndex,
         target_index: PrimitiveOpIndex,
-        command: Command,
     ) {
         // check early to ensure that later failure is because of invalid primitive op indices
         if let Err(_e) = self.object_collection.get_object(object_id) {
-            failure_warn_invalid_object_id(object_id, Some(command));
+            failure_warn_invalid_object_id(object_id);
             return;
         };
 
@@ -300,7 +265,7 @@ impl Engine {
         );
 
         if let Err(shift_error) = shift_res {
-            command_failed_warn(command, &shift_error.to_string());
+            warn!("{}", shift_error.to_string());
         }
     }
 

@@ -4,13 +4,12 @@ use super::{
 };
 use crate::{
     config::{PRECURSOR_BYTES, PRECURSOR_BYTE_COUNT},
-    engine::{
-        commands::{command_failed_warn, Command},
-        config_engine::{HIDDEN_STORAGE_DIR, SAVE_STATE_FILENAME_GUI_POSITIONS},
-    },
+    engine::config_engine::{HIDDEN_STORAGE_DIR, SAVE_STATE_FILENAME_GUI_POSITIONS},
     helper::more_errors::IoError,
     user_interface::camera::Camera,
 };
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 use serde::{de::DeserializeOwned, Serialize};
 use std::{fs, path::PathBuf};
 
@@ -87,48 +86,43 @@ fn validated_file_path(file_name: &str, directory: &str) -> Result<PathBuf, IoEr
 
 // ~~ Type Specific Functions ~~
 
-pub fn save_all_objects(object_collection: &ObjectCollection, command: Command) {
+pub fn save_all_objects(object_collection: &ObjectCollection) {
     let object_list: Vec<Object> = object_collection.objects().values().cloned().collect();
     let save_state_res = save_state(&object_list, SAVE_STATE_FILENAME_SCENE, None);
     if let Err(e) = save_state_res {
-        let failed_because = format!("error while saving objects: {}", e);
-        command_failed_warn(command, &failed_because);
+        warn!("error while saving objects: {}", e);
     }
 }
 
-pub fn load_objects(object_collection: &mut ObjectCollection, command: Command) {
+pub fn load_objects(object_collection: &mut ObjectCollection) {
     let load_state_res = load_state::<Vec<Object>>(SAVE_STATE_FILENAME_SCENE, None);
     let loaded_objects = match load_state_res {
         Ok(o) => o,
         Err(e) => {
-            let failed_because = format!("error while loading saved objects: {}", e);
-            command_failed_warn(command, &failed_because);
+            warn!("error while loading saved objects: {}", e);
             return;
         }
     };
 
     let insert_objects_res = object_collection.push_objects(loaded_objects);
     if let Err(e) = insert_objects_res {
-        let failed_because = format!("error while inserting loaded objects: {}", e);
-        command_failed_warn(command, &failed_because);
+        warn!("error while inserting loaded objects: {}", e);
     }
 }
 
-pub fn save_state_camera(camera: &Camera, command: Command) {
+pub fn save_state_camera(camera: &Camera) {
     let save_state_res = save_state(camera, SAVE_STATE_FILENAME_CAMERA, Some(HIDDEN_STORAGE_DIR));
     if let Err(e) = save_state_res {
-        let failed_because = format!("error while saving camera state: {}", e);
-        command_failed_warn(command, &failed_because);
+        warn!("error while saving camera state: {}", e);
     }
 }
 
-pub fn load_state_camera(camera: &mut Camera, command: Command) {
+pub fn load_state_camera(camera: &mut Camera) {
     let load_state_res = load_state::<Camera>(SAVE_STATE_FILENAME_CAMERA, Some(HIDDEN_STORAGE_DIR));
     let loaded_camera = match load_state_res {
         Ok(c) => c,
         Err(e) => {
-            let failed_because = format!("error while loading saved camera state: {}", e);
-            command_failed_warn(command, &failed_because);
+            warn!("error while loading saved camera state: {}", e);
             return;
         }
     };
