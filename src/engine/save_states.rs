@@ -4,42 +4,17 @@ use super::{
 };
 use crate::{
     config::{PRECURSOR_BYTES, PRECURSOR_BYTE_COUNT},
-    engine::config_engine::{HIDDEN_STORAGE_DIR, SAVE_STATE_FILENAME_GUI_POSITIONS},
+    engine::{
+        commands::{command_failed_warn, Command},
+        config_engine::{HIDDEN_STORAGE_DIR, SAVE_STATE_FILENAME_GUI_POSITIONS},
+    },
     helper::more_errors::IoError,
     user_interface::camera::Camera,
 };
 use serde::{de::DeserializeOwned, Serialize};
 use std::{fs, path::PathBuf};
 
-// ~~ Public ~~
-
-pub fn save_all_objects(object_collection: &ObjectCollection) -> Result<(), IoError> {
-    let object_list: Vec<Object> = object_collection.objects().values().cloned().collect();
-    save_state(&object_list, SAVE_STATE_FILENAME_SCENE, None)
-}
-pub fn load_objects() -> Result<Vec<Object>, IoError> {
-    load_state::<Vec<Object>>(SAVE_STATE_FILENAME_SCENE, None)
-}
-
-pub fn save_state_camera(camera: &Camera) -> Result<(), IoError> {
-    save_state(camera, SAVE_STATE_FILENAME_CAMERA, Some(HIDDEN_STORAGE_DIR))
-}
-pub fn load_state_camera() -> Result<Camera, IoError> {
-    load_state::<Camera>(SAVE_STATE_FILENAME_CAMERA, Some(HIDDEN_STORAGE_DIR))
-}
-
-pub fn save_state_gui_positions(gui_memory: &egui::Memory) -> Result<(), IoError> {
-    save_state(
-        gui_memory,
-        SAVE_STATE_FILENAME_GUI_POSITIONS,
-        Some(HIDDEN_STORAGE_DIR),
-    )
-}
-pub fn load_state_gui_positions() -> Result<egui::Memory, IoError> {
-    load_state::<egui::Memory>(SAVE_STATE_FILENAME_GUI_POSITIONS, Some(HIDDEN_STORAGE_DIR))
-}
-
-// ~~ Private ~~
+// ~~ Generalized Save Functions ~~
 
 fn save_state(
     to_serialize: &impl Serialize,
@@ -108,6 +83,67 @@ fn validated_file_path(file_name: &str, directory: &str) -> Result<PathBuf, IoEr
     let mut file_path = PathBuf::from(directory);
     file_path.push(file_name);
     Ok(file_path)
+}
+
+// ~~ Type Specific Functions ~~
+
+pub fn save_all_objects(object_collection: &ObjectCollection, command: Command) {
+    let object_list: Vec<Object> = object_collection.objects().values().cloned().collect();
+    let save_state_res = save_state(&object_list, SAVE_STATE_FILENAME_SCENE, None);
+    if let Err(e) = save_state_res {
+        let failed_because = format!("error while saving objects: {}", e);
+        command_failed_warn(command, &failed_because);
+    }
+}
+
+pub fn load_objects(object_collection: &mut ObjectCollection, command: Command) {
+    let load_state_res = load_state::<Vec<Object>>(SAVE_STATE_FILENAME_SCENE, None);
+    let loaded_objects = match load_state_res {
+        Ok(o) => o,
+        Err(e) => {
+            let failed_because = format!("error while loading saved objects: {}", e);
+            command_failed_warn(command, &failed_because);
+            return;
+        }
+    };
+
+    let insert_objects_res = object_collection.push_objects(loaded_objects);
+    if let Err(e) = insert_objects_res {
+        let failed_because = format!("error while inserting loaded objects: {}", e);
+        command_failed_warn(command, &failed_because);
+    }
+}
+
+pub fn save_state_camera(camera: &Camera, command: Command) {
+    let save_state_res = save_state(camera, SAVE_STATE_FILENAME_CAMERA, Some(HIDDEN_STORAGE_DIR));
+    if let Err(e) = save_state_res {
+        let failed_because = format!("error while saving camera state: {}", e);
+        command_failed_warn(command, &failed_because);
+    }
+}
+
+pub fn load_state_camera(camera: &mut Camera, command: Command) {
+    let load_state_res = load_state::<Camera>(SAVE_STATE_FILENAME_CAMERA, Some(HIDDEN_STORAGE_DIR));
+    let loaded_camera = match load_state_res {
+        Ok(c) => c,
+        Err(e) => {
+            let failed_because = format!("error while loading saved camera state: {}", e);
+            command_failed_warn(command, &failed_because);
+            return;
+        }
+    };
+    *camera = loaded_camera;
+}
+
+pub fn save_state_gui_positions(gui_memory: &egui::Memory) -> Result<(), IoError> {
+    save_state(
+        gui_memory,
+        SAVE_STATE_FILENAME_GUI_POSITIONS,
+        Some(HIDDEN_STORAGE_DIR),
+    )
+}
+pub fn load_state_gui_positions() -> Result<egui::Memory, IoError> {
+    load_state::<egui::Memory>(SAVE_STATE_FILENAME_GUI_POSITIONS, Some(HIDDEN_STORAGE_DIR))
 }
 
 // ~~ Tests ~~

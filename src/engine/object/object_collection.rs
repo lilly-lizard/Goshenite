@@ -4,10 +4,8 @@ use crate::{
         object::{
             object::{Object, ObjectId},
             objects_delta::{push_object_delta, ObjectDeltaOperation, ObjectsDelta},
-            operation::Operation,
             primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
-        primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
     },
     helper::{
         more_errors::CollectionError,
@@ -117,29 +115,6 @@ impl ObjectCollection {
             },
         )?;
         *primitive_op_ref = new_primitive_op;
-        self.mark_object_for_gpu_update(object_id)
-    }
-
-    pub fn update_primitive_op_fields_in_object(
-        &mut self,
-        object_id: ObjectId,
-        primitive_op_index: PrimitiveOpIndex,
-        new_primitive: Option<Primitive>,
-        new_transform: Option<PrimitiveTransform>,
-        new_operation: Option<Operation>,
-        new_blend: Option<f32>,
-        new_albedo: Option<Vec3>,
-        new_specular: Option<f32>,
-    ) -> Result<(), CollectionError> {
-        self.get_object_mut(object_id)?.update_primitive_op(
-            primitive_op_index,
-            new_primitive,
-            new_transform,
-            new_operation,
-            new_blend,
-            new_albedo,
-            new_specular,
-        )?;
         self.mark_object_for_gpu_update(object_id)
     }
 

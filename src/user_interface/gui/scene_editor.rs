@@ -1,6 +1,6 @@
 use crate::{
     engine::{
-        commands::{Command, ValidationCommand},
+        commands::Command,
         object::{object::ObjectId, object_collection::ObjectCollection},
     },
     helper::unique_id_gen::UniqueIdType,
@@ -35,7 +35,7 @@ pub fn layout_scene_editor(
                 }
             } else {
                 debug!("selected object dropped...");
-                commands.push(ValidationCommand::SelectedObject().into());
+                commands.push(Command::ValidateSelectedObject);
             }
         }
     });

@@ -1,6 +1,6 @@
 use crate::{
     engine::{
-        commands::{Command, ValidationCommand},
+        commands::Command,
         object::{
             object::{Object, ObjectId},
             object_collection::ObjectCollection,
@@ -85,7 +85,7 @@ fn label_and_get_selected_object<'a>(
         Err(_e) => {
             // invalid object id
             debug!("selected object {} dropped", some_selected_object_id);
-            commands.push(ValidationCommand::SelectedObject().into());
+            commands.push(Command::ValidateSelectedObject);
 
             ui.label(no_object_text);
             return None;

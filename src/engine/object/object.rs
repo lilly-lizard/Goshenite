@@ -9,7 +9,6 @@ use crate::{
         },
     },
     helper::{
-        more_errors::CollectionError,
         shift_slice::{shift_slice, ShiftSliceError},
         unique_id_gen::{UniqueId, UniqueIdType},
     },
@@ -89,34 +88,6 @@ impl Object {
 
     // Setters
 
-    pub fn update_primitive_op(
-        &mut self,
-        primitive_op_index: PrimitiveOpIndex,
-        new_primitive: Option<Primitive>,
-        new_transform: Option<PrimitiveTransform>,
-        new_operation: Option<Operation>,
-        new_blend: Option<f32>,
-        new_albedo: Option<Vec3>,
-        new_specular: Option<f32>,
-    ) -> Result<(), CollectionError> {
-        let primitive_op_search_res = self.primitive_ops.get_mut(primitive_op_index);
-        let Some(primitive_op_ref) = primitive_op_search_res else {
-            return Err(CollectionError::OutOfBounds {
-                index: primitive_op_index,
-                size: self.primitive_ops.len(),
-            });
-        };
-        set_primitive_op_internal(
-            primitive_op_ref,
-            new_primitive,
-            new_transform,
-            new_operation,
-            new_blend,
-            new_albedo,
-            new_specular,
-        )
-    }
-
     pub fn encoded_primitive_ops(&self, object_id: ObjectId) -> Vec<PrimitiveOpBufferUnit> {
         // avoiding this case should be the responsibility of the functions adding to `primtive_ops`
         debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);
@@ -150,34 +121,4 @@ impl Object {
         aabb.offset(self.center);
         aabb
     }
-}
-
-fn set_primitive_op_internal(
-    primitive_op_ref: &mut PrimitiveOp,
-    new_primitive: Option<Primitive>,
-    new_transform: Option<PrimitiveTransform>,
-    new_operation: Option<Operation>,
-    new_blend: Option<f32>,
-    new_albedo: Option<Vec3>,
-    new_specular: Option<f32>,
-) -> Result<(), CollectionError> {
-    if let Some(some_new_primitive) = new_primitive {
-        primitive_op_ref.primitive = some_new_primitive;
-    }
-    if let Some(some_new_transform) = new_transform {
-        primitive_op_ref.transform = some_new_transform;
-    }
-    if let Some(some_new_operation) = new_operation {
-        primitive_op_ref.op = some_new_operation;
-    }
-    if let Some(some_new_blend) = new_blend {
-        primitive_op_ref.blend = some_new_blend;
-    }
-    if let Some(some_new_albedo) = new_albedo {
-        primitive_op_ref.albedo = some_new_albedo;
-    }
-    if let Some(some_new_specular) = new_specular {
-        primitive_op_ref.specular = some_new_specular;
-    }
-    return Ok(());
 }

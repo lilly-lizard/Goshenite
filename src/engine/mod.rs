@@ -4,6 +4,7 @@ pub mod config_engine;
 /// Engine entry point
 pub mod engine_controller;
 pub mod object;
+pub mod preset_models;
 pub mod primitives;
 pub mod save_states;
 pub mod settings;

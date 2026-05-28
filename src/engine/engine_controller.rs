@@ -2,46 +2,33 @@ use crate::{
     config,
     engine::{
         commands::Command,
-        config_engine,
         object::{
-            object::{Object, ObjectId},
-            object_collection::ObjectCollection,
-            operation::Operation,
-            primitive_op::PrimitiveOpIndex,
+            object::ObjectId, object_collection::ObjectCollection, primitive_op::PrimitiveOpIndex,
         },
-        primitives::{
-            cube::Cube, primitive::Primitive, primitive_transform::PrimitiveTransform,
-            sphere::Sphere,
-        },
+        preset_models::object_testing,
         settings::{Settings, SettingsIO},
         window_thread::WindowThreadChannels,
     },
-    helper::more_errors::CollectionError,
     renderer::{element_id_reader::ElementAtPoint, render_manager::RenderManager},
     user_interface::{
         camera::Camera,
-        config_ui::KEY_BINDING_COMMAND_PALETTE,
         controls_camera::CameraControlMappings,
-        cursor::{Cursor, MouseButtonEvent},
+        cursor::Cursor,
         gizmo::{GizmoElement, GizmoVisibility},
         gui::Gui,
         keyboard_modifiers::KeyboardModifierStates,
-        mouse_button::MouseButton,
         view_modes::ViewMode,
     },
 };
-use glam::{DVec2, Vec3};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{collections::VecDeque, env, sync::Arc};
-use winit::{
-    event::{ElementState, KeyEvent, WindowEvent},
-    keyboard::{KeyCode, PhysicalKey},
-    window::Window,
-};
+use winit::{event::WindowEvent, window::Window};
 
 // engine_instance sub-modules (files in engine_instance directory)
-mod commands_impl;
+mod process_commands;
+mod update_controllers;
+mod update_objects;
 
 #[derive(Clone, Copy)]
 #[allow(dead_code)]
@@ -186,7 +173,7 @@ impl Engine {
     }
 }
 
-// ~~ Private Functions ~~
+// ~~ Main Loop Functions ~~
 
 impl Engine {
     /// The main loop of the engine thread
@@ -311,174 +298,6 @@ impl Engine {
         Ok(())
     }
 
-    fn update_selection_gizmo(&mut self) -> anyhow::Result<()> {
-        let Some(selected_object_id) = self.selected_object_id else {
-            return Ok(());
-        };
-
-        let Ok(selected_object) = self.object_collection.get_object(selected_object_id) else {
-            self.deselect_object();
-            return Ok(());
-        };
-
-        let center = match self.view_mode {
-            ViewMode::SceneEditor => selected_object.center,
-            ViewMode::ObjectEditor => {
-                let Some(selected_primitive_op_index) = self.selected_primitive_op_index else {
-                    return Ok(());
-                };
-                let Some(selected_primitive_op) = selected_object
-                    .primitive_ops
-                    .get(selected_primitive_op_index)
-                else {
-                    self.deselect_primitive_op();
-                    return Ok(());
-                };
-                selected_object.center + selected_primitive_op.center()
-            }
-        };
-
-        self.controllers.renderer.update_gizmo_center(center)?;
-        Ok(())
-    }
-
-    fn process_keyboard_input(&mut self, key_event: KeyEvent, captured_by_gui: bool) {
-        // update modifiers whenever focus is in window
-        self.keyboard_modifier_states.set(key_event.clone());
-
-        // todo clean up the ordering of this... move keyboard_modifiers up? think it through...
-        if captured_by_gui {
-            return;
-        }
-
-        let PhysicalKey::Code(key_code) = key_event.physical_key else {
-            return;
-        };
-
-        match key_code {
-            KEY_BINDING_COMMAND_PALETTE => {
-                if let ElementState::Released = key_event.state {
-                    self.controllers.gui.toggle_command_palette_visability();
-                }
-            }
-            KeyCode::Escape => {
-                if let ElementState::Released = key_event.state {
-                    self.controllers.gui.hide_command_palette();
-                }
-            }
-            _ => (),
-        }
-    }
-
-    fn update_window_inner_size(&mut self, new_inner_size: winit::dpi::PhysicalSize<u32>) {
-        self.controllers
-            .camera
-            .set_aspect_ratio(new_inner_size.into());
-        self.controllers.renderer.set_window_just_resized_flag();
-    }
-
-    fn set_scale_factor(&mut self, scale_factor: f64) {
-        self.scale_factor = scale_factor;
-        self.controllers.gui.set_scale_factor(scale_factor as f32);
-        self.controllers
-            .renderer
-            .set_scale_factor(scale_factor as f32);
-    }
-
-    fn process_cursor_event(&mut self, cursor_event: MouseButtonEvent) -> anyhow::Result<()> {
-        let Some(cursor_screen_coordinates_dvec2) = self.controllers.cursor.position() else {
-            return Ok(());
-        };
-        let cursor_screen_coordinates = cursor_screen_coordinates_dvec2.as_vec2().to_array();
-
-        let element_at_point = self
-            .controllers
-            .renderer
-            .get_element_at_screen_coordinate(cursor_screen_coordinates)?;
-
-        let scroll_delta = self.controllers.cursor.get_and_clear_scroll_delta();
-        self.controllers
-            .camera
-            .update_scroll(&self.settings.camera, scroll_delta);
-
-        if let MouseButtonEvent::Dragging { .. } = cursor_event {
-            if self.dragging_source_element.is_none() {
-                // just started dragging
-                self.dragging_source_element = element_at_point;
-            }
-        } else {
-            self.dragging_source_element = None; // not dragging
-        }
-
-        match cursor_event {
-            MouseButtonEvent::ReleaseInPlace(button) => match button {
-                MouseButton::Left => match element_at_point {
-                    Some(ElementAtPoint::Background) => self.background_clicked(),
-                    Some(ElementAtPoint::Object {
-                        object_id,
-                        primitive_op_index,
-                    }) => self.select_primitive_op(object_id, primitive_op_index, None),
-                    Some(ElementAtPoint::BlendArea { object_id }) => {
-                        self.select_object(object_id, None)
-                    }
-                    _ => (),
-                },
-                _ => (),
-            },
-            MouseButtonEvent::Dragging { button, delta } => match self.dragging_source_element {
-                Some(ElementAtPoint::Gizmo(gizmo_element)) => {
-                    self.gizmo_dragged(gizmo_element, button, delta)
-                }
-                _ => self.controllers.camera.update_cursor_dragging(
-                    &self.settings.camera,
-                    delta,
-                    button,
-                    self.keyboard_modifier_states,
-                    self.camera_control_mappings,
-                ),
-            },
-            MouseButtonEvent::None => match element_at_point {
-                Some(ElementAtPoint::Gizmo(gizmo_type)) => self.hovered_gizmo = Some(gizmo_type),
-                _ => self.hovered_gizmo = None,
-            },
-        }
-
-        Ok(())
-    }
-
-    fn gizmo_dragged(&mut self, gizmo_element: GizmoElement, button: MouseButton, delta: DVec2) {
-        let Some(selected_object_id) = self.selected_object_id else {
-            warn!("gizmo dragged but no object selected. how???");
-            return;
-        };
-
-        if button == MouseButton::Left {
-            let res = gizmo_element.process_dragged(
-                delta,
-                selected_object_id,
-                &mut self.object_collection,
-                &self.controllers.camera,
-                &self.settings.camera,
-            );
-            if let Err(CollectionError::InvalidId { .. }) = res {
-                self.deselect_object();
-            }
-        }
-    }
-
-    fn background_clicked(&mut self) {
-        self.deselect_object();
-        self.settings.camera.unset_lock_on_target();
-    }
-
-    fn is_object_id_selected(&self, compare_object_id: ObjectId) -> bool {
-        if let Some(some_selected_object_id) = self.selected_object_id {
-            some_selected_object_id == compare_object_id
-        } else {
-            false
-        }
-    }
-
     fn shut_down(&self) {
         info!("shutting down...");
         // save gui state
@@ -492,71 +311,4 @@ impl Drop for Engine {
     fn drop(&mut self) {
         debug!("dropping engine controller");
     }
-}
-
-// ~~ Testing ~~
-
-fn _create_default_cube_object(object_collection: &mut ObjectCollection) {
-    let mut object = Object::new(String::from("Cube"), Vec3::ZERO);
-    let cube = Cube::new(Vec3::splat(1.));
-    _ = object.push_primitive_op(
-        cube.into(),
-        PrimitiveTransform::default(),
-        Operation::Union,
-        0.1,
-        Vec3::new(0.8, 0.3, 0.1),
-        0.5,
-    );
-    _ = object_collection
-        .push_object(object)
-        .expect("no where near maxing out unique ids");
-}
-
-fn object_testing(object_collection: &mut ObjectCollection) {
-    use config_engine::DEFAULT_ALBEDO;
-    use glam::Quat;
-
-    let sphere = Sphere::new(0.5);
-    let cube = Cube::new(Vec3::splat(0.8));
-    let another_sphere = Sphere::new(0.83);
-
-    let mut object = Object::new(String::from("Bruh"), Vec3::new(-0.2, 0.2, 0.));
-    _ = object.push_primitive_op(
-        Primitive::Cube(cube),
-        PrimitiveTransform::new(Vec3::new(-0.2, 0.2, 0.), Quat::IDENTITY),
-        Operation::Union,
-        0.1,
-        Vec3::new(0.1, 0.6, 0.7),
-        0.5,
-    );
-    _ = object.push_primitive_op(
-        Primitive::Sphere(sphere.clone()),
-        PrimitiveTransform::new(Vec3::new(0., 0., 0.), Quat::IDENTITY),
-        Operation::Union,
-        0.1,
-        Vec3::new(0.7, 0.2, 0.6),
-        0.5,
-    );
-    _ = object.push_primitive_op(
-        Primitive::Sphere(another_sphere),
-        PrimitiveTransform::new(Vec3::new(0.2, -0.2, 0.), Quat::IDENTITY),
-        Operation::Intersection,
-        0.1,
-        Vec3::new(0.8, 0.5, 0.1),
-        0.5,
-    );
-    _ = object_collection
-        .push_object(object)
-        .expect("no where near maxing out unique ids");
-
-    let mut another_object = Object::new(String::from("Another Bruh"), Vec3::new(0.2, -0.2, 0.));
-    _ = another_object.push_primitive_op(
-        Primitive::Sphere(sphere),
-        PrimitiveTransform::DEFAULT,
-        Operation::Union,
-        0.1,
-        DEFAULT_ALBEDO,
-        0.5,
-    );
-    _ = object_collection.push_object(another_object);
 }
