@@ -81,7 +81,13 @@ impl Engine {
         window: Arc<Window>,
         window_thread_channels: WindowThreadChannels,
     ) -> anyhow::Result<Self> {
-        let settings = Settings::default();
+        let settings = match Settings::load_from_user_settings() {
+            Ok(settings) => settings,
+            Err(e) => {
+                warn!("failed to load settings because: {}", e);
+                Settings::default()
+            }
+        };
         let settings_io = SettingsIO::default();
 
         let scale_factor_override: Option<f64> = match env::var(config::ENV::SCALE_FACTOR) {

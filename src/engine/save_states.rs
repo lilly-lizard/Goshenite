@@ -53,16 +53,9 @@ fn load_state_bytes(file_name: &str, load_directory: Option<&str>) -> Result<Vec
     } else {
         PathBuf::from(file_name)
     };
-    let read_res = fs::read(file_path.clone());
-
-    let mut read_bytes = match read_res {
-        Ok(read_bytes) => read_bytes,
-        Err(io_error) => {
-            let file_path_string = file_path.to_str().unwrap_or(file_name).to_string();
-            return Err(IoError::read_file_error(io_error, file_path_string));
-        }
-    };
-
+    let mut read_bytes = fs::read(file_path.clone()).map_err(|e| {
+        IoError::read_file_error(e, file_path.to_str().unwrap_or(file_name).to_string())
+    })?;
     // ignore engine info for now
     let _read_precursor_bytes: Vec<u8> = read_bytes.drain(0..PRECURSOR_BYTE_COUNT).collect();
     return Ok(read_bytes);

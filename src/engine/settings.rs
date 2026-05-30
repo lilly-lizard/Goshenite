@@ -39,11 +39,17 @@ impl Default for CameraSettings {
     fn default() -> Self {
         CameraSettings {
             look_mode: LookMode::default(),
-            enabled_look_modes: vec![LookMode::ArcballHovering, LookMode::PoV],
+            enabled_look_modes: Self::default_enabled_look_modes(),
             arcball_target_depth: CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH,
             scroll_zoom_sensitivity: DEFAULT_SCROLL_ZOOM_SENSITIVITY,
             arcball_on_select: false,
         }
+    }
+}
+impl CameraSettings {
+    #[inline]
+    pub fn default_enabled_look_modes() -> Vec<LookMode> {
+        vec![LookMode::ArcballHovering, LookMode::PoV]
     }
 }
 impl Default for RendererSettings {
@@ -150,6 +156,21 @@ impl Default for Settings {
     }
 }
 impl Settings {
+    // Warning: any members with `#[serde(skip)]` need to be populated manually here with correct default values
+    pub fn load_from_user_settings() -> Result<Self, IoError> {
+        let file_path = validated_file_path(SETTINGS_FILE_NAME, &Self::user_save_directory())?;
+        let file_text = fs::read_to_string(file_path.clone()).map_err(|e| {
+            IoError::read_file_error(
+                e,
+                file_path.to_str().unwrap_or(SETTINGS_FILE_NAME).to_string(),
+            )
+        })?;
+        let mut settings = serde_json::from_str::<Settings>(&file_text)?;
+        settings.user_save_directory = Self::user_save_directory();
+        settings.camera.enabled_look_modes = CameraSettings::default_enabled_look_modes();
+        Ok(settings)
+    }
+
     #[cfg(target_os = "linux")]
     pub fn user_save_directory() -> String {
         let home_dir = std::env::var("HOME");
@@ -172,6 +193,7 @@ impl Settings {
     }
 
     pub fn save_user_settings_json_file(&self) -> Result<(), IoError> {
+        debug!("writing to settings.json file");
         let file_path = validated_file_path(SETTINGS_FILE_NAME, &self.user_save_directory)?;
         let json_string = serde_json::to_string_pretty(self)?;
         fs::write(file_path.clone(), json_string).map_err(|e| {
