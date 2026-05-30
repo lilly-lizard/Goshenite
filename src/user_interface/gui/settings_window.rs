@@ -48,6 +48,11 @@ impl Gui {
                 }
                 ui.separator();
             }
+
+            if ui.button("Reset to defaults").clicked() {
+                *settings = Settings::default();
+                modified = true;
+            }
         };
         egui::Window::new("Settings")
             .open(settings_window_visible)
