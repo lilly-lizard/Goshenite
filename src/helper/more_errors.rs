@@ -1,5 +1,8 @@
 use super::unique_id_gen::{UniqueId, UniqueIdError};
-use crate::engine::object::{object::ObjectId, primitive_op::PrimitiveOpIndex};
+use crate::{
+    engine::object::{object::ObjectId, primitive_op::PrimitiveOpIndex},
+    helper::more_errors::IoError::EnvVariable,
+};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{error, fmt, io};
@@ -93,6 +96,8 @@ pub enum IoError {
     FileDoesntExist(String, io::Error),
     ReadExistingFileFailed(String, io::Error),
     ReadBufferFailed(io::Error),
+    SerdeJson(serde_json::Error),
+    EnvVariable(std::env::VarError),
 }
 
 impl std::fmt::Display for IoError {
@@ -124,6 +129,8 @@ impl std::fmt::Display for IoError {
             Self::ReadBufferFailed(e) => {
                 write!(f, "failed to read from a file buffer due to: {}", e)
             }
+            Self::SerdeJson(e) => write!(f, "{}", e),
+            Self::EnvVariable(e) => write!(f, "{}", e),
         }
     }
 }
@@ -138,6 +145,8 @@ impl std::error::Error for IoError {
             Self::FileDoesntExist(_, e) => Some(e),
             Self::ReadExistingFileFailed(_, e) => Some(e),
             Self::ReadBufferFailed(e) => Some(e),
+            Self::SerdeJson(e) => Some(e),
+            Self::EnvVariable(e) => Some(e),
         }
     }
 }
@@ -148,5 +157,16 @@ impl IoError {
             io::ErrorKind::NotFound => IoError::FileDoesntExist(file_path_string, io_error),
             _ => IoError::ReadExistingFileFailed(file_path_string, io_error),
         }
+    }
+}
+
+impl From<serde_json::Error> for IoError {
+    fn from(e: serde_json::Error) -> Self {
+        Self::SerdeJson(e)
+    }
+}
+impl From<std::env::VarError> for IoError {
+    fn from(e: std::env::VarError) -> Self {
+        Self::EnvVariable(e)
     }
 }

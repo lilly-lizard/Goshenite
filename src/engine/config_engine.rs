@@ -16,11 +16,13 @@ pub const AABB_EDGE: f32 = 0.05;
 pub const DEFAULT_ORIGIN: Vec3 = Vec3::ZERO;
 
 #[cfg(target_os = "linux")]
-pub const CONFIG_DIR: &str = "~/.config/goshenite";
+/// Note: `~` or `$HOME` cannot be included in this path. `$HOME` has to be queried and prepended to this
+pub const USER_CONFIG_DIR: &str = ".config/goshenite";
 #[cfg(target_os = "macos")]
-pub const CONFIG_DIR: &str = "~/Library/Application Support/Goshenite";
+pub const USER_CONFIG_DIR: &str = "~/Library/Application Support/Goshenite";
 #[cfg(target_os = "windows")]
-pub const CONFIG_DIR: &str = "%APPDATA%\\Goshenite";
+pub const USER_CONFIG_DIR: &str = "%APPDATA%\\Goshenite";
+pub const SETTINGS_FILE_NAME: &str = "settings.json";
 pub const HIDDEN_STORAGE_DIR: &str = ".goshenite";
 pub const SAVE_STATE_FILENAME_CAMERA: &str = "camera.gsave";
 pub const SAVE_STATE_FILENAME_GUI_POSITIONS: &str = "gui_positions.gsave";

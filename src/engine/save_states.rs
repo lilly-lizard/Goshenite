@@ -30,7 +30,7 @@ fn save_state(
     let file_path = if let Some(directory) = save_directory {
         validated_file_path(file_name, directory)?
     } else {
-        file_path(file_name)
+        PathBuf::from(file_name)
     };
     fs::write(file_path.clone(), write_bytes).map_err(|e| {
         let file_path_string = file_path.to_str().unwrap_or(file_name).to_string();
@@ -51,7 +51,7 @@ fn load_state_bytes(file_name: &str, load_directory: Option<&str>) -> Result<Vec
     let file_path = if let Some(directory) = load_directory {
         validated_file_path(file_name, directory)?
     } else {
-        file_path(file_name)
+        PathBuf::from(file_name)
     };
     let read_res = fs::read(file_path.clone());
 
@@ -66,11 +66,6 @@ fn load_state_bytes(file_name: &str, load_directory: Option<&str>) -> Result<Vec
     // ignore engine info for now
     let _read_precursor_bytes: Vec<u8> = read_bytes.drain(0..PRECURSOR_BYTE_COUNT).collect();
     return Ok(read_bytes);
-}
-
-/// Ensures containing directories exist, but not the actual file
-fn file_path(file_name: &str) -> PathBuf {
-    PathBuf::from(file_name)
 }
 
 /// Ensures containing directories exist, but not the actual file

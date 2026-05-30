@@ -3,6 +3,8 @@ use crate::{
     engine::settings::{Settings, SettingsIO, SettingsIOEntry},
     user_interface::config_ui::MAX_QUICK_ACCESS_SETTINGS,
 };
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 
 impl Gui {
     pub(super) fn draw_settings_window(
@@ -12,6 +14,7 @@ impl Gui {
         settings_io: &SettingsIO,
         quick_access_settings: &mut [Option<SettingsIOEntry>; MAX_QUICK_ACCESS_SETTINGS],
     ) {
+        let mut modified = false;
         let add_contents = |ui: &mut egui::Ui| {
             ui.label("Quick Access Settings");
             for i in 0..MAX_QUICK_ACCESS_SETTINGS {
@@ -20,7 +23,7 @@ impl Gui {
                     Some(setting) => &setting.name,
                     None => "None",
                 };
-                egui::ComboBox::from_label(i.to_string())
+                let res = egui::ComboBox::from_label(i.to_string())
                     .selected_text(selected_text)
                     .show_ui(ui, |ui| {
                         ui.selectable_value(quick_access_setting, None, "None");
@@ -34,13 +37,14 @@ impl Gui {
                             }
                         }
                     });
+                modified = modified || res.response.changed();
             }
             ui.separator();
 
             for category in &settings_io.categories {
                 ui.label(category.name.clone());
                 for setting in &category.settings {
-                    (setting.gui_fn)(ui, settings, &setting.name)
+                    modified = modified || (setting.gui_fn)(ui, settings, &setting.name).changed();
                 }
                 ui.separator();
             }
@@ -51,5 +55,12 @@ impl Gui {
             .vscroll(true)
             .hscroll(true)
             .show(egui_context, add_contents);
+
+        if modified {
+            let res = settings.save_user_settings_json_file();
+            if let Err(e) = res {
+                error!("{}", e);
+            }
+        }
     }
 }

@@ -1,13 +1,25 @@
-use crate::user_interface::{
-    camera::LookMode,
-    config_ui::{CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH, DEFAULT_SCROLL_ZOOM_SENSITIVITY},
-    gui_state::DRAG_INC,
+use std::fs;
+
+use crate::{
+    engine::{
+        config_engine::{SETTINGS_FILE_NAME, USER_CONFIG_DIR},
+        save_states::validated_file_path,
+    },
+    helper::more_errors::IoError,
+    user_interface::{
+        camera::LookMode,
+        config_ui::{CAMERA_DEFAULT_ARCBALL_TARGET_DEPTH, DEFAULT_SCROLL_ZOOM_SENSITIVITY},
+        gui_state::DRAG_INC,
+    },
 };
+use serde::{Deserialize, Serialize};
 
 // ~~ Available Settings~~
 
+#[derive(Serialize, Deserialize)]
 pub struct CameraSettings {
     pub look_mode: LookMode,
+    #[serde(skip)]
     enabled_look_modes: Vec<LookMode>,
     /// Note: only used for `LookMode::ArcballHovering`
     pub arcball_target_depth: f64,
@@ -15,6 +27,7 @@ pub struct CameraSettings {
     /// If true, camera enters arcball mode when an object or primitive op is selected
     pub arcball_on_select: bool,
 }
+#[derive(Serialize, Deserialize)]
 pub struct RendererSettings {
     pub show_aabb_wireframe: bool,
 }
@@ -63,7 +76,7 @@ impl Default for SettingsIO {
                         .into(),
                     gui_fn: |ui, settings, setting_name| {
                         let enabled_modes = settings.camera.enabled_look_modes().clone();
-                        setting_ui_enum_some_disabled(ui, setting_name, &mut settings.camera.look_mode, &LookMode::VARIANTS, &enabled_modes);
+                        setting_ui_enum_some_disabled(ui, setting_name, &mut settings.camera.look_mode, &LookMode::VARIANTS, &enabled_modes)
                     },
                 },
                 SettingsIOEntry {
@@ -73,9 +86,10 @@ impl Default for SettingsIO {
                     gui_fn: |ui, settings, setting_name| {
                         let enabled = settings.camera.look_mode == LookMode::ArcballHovering;
                         ui.horizontal(|ui| {
-                            ui.add_enabled(enabled, egui::DragValue::new(&mut settings.camera.arcball_target_depth).speed(DRAG_INC));
+                            let res = ui.add_enabled(enabled, egui::DragValue::new(&mut settings.camera.arcball_target_depth).speed(DRAG_INC));
                             ui.add_enabled(enabled, egui::Label::new(setting_name));
-                        });
+                            res
+                        }).response
                     },
                 },
                 SettingsIOEntry {
@@ -84,9 +98,10 @@ impl Default for SettingsIO {
                         .into(),
                     gui_fn: |ui, settings, setting_name| {
                         ui.horizontal(|ui| {
-                            ui.add(egui::DragValue::new(&mut settings.camera.scroll_zoom_sensitivity).speed(DRAG_INC));
+                            let res = ui.add(egui::DragValue::new(&mut settings.camera.scroll_zoom_sensitivity).speed(DRAG_INC));
                             ui.label(setting_name);
-                        });
+                            res
+                        }).response
                     },
                 },
                 SettingsIOEntry {
@@ -94,7 +109,7 @@ impl Default for SettingsIO {
                     description: "If enabled, camera enters arcball mode when an object or primitive op is selected."
                         .into(),
                     gui_fn: |ui, settings, setting_name| {
-                        ui.checkbox(&mut settings.camera.arcball_on_select, setting_name);
+                        ui.checkbox(&mut settings.camera.arcball_on_select, setting_name)
                     },
                 }],
             },
@@ -106,7 +121,7 @@ impl Default for SettingsIO {
                         description: "Render lines to show locations of axis aligned bounding boxes for every object."
                             .into(),
                         gui_fn: |ui, settings, setting_name| {
-                            ui.checkbox(&mut settings.render.show_aabb_wireframe, setting_name);
+                            ui.checkbox(&mut settings.render.show_aabb_wireframe, setting_name)
                         },
                     }
                 ]},
@@ -117,6 +132,7 @@ impl Default for SettingsIO {
 
 // ~~ Setting structs ~~
 
+#[derive(Serialize, Deserialize)]
 pub struct Settings {
     pub camera: CameraSettings,
     pub render: RendererSettings,
@@ -127,6 +143,18 @@ impl Default for Settings {
             camera: CameraSettings::default(),
             render: RendererSettings::default(),
         }
+    }
+}
+impl Settings {
+    pub fn save_user_settings_json_file(&self) -> Result<(), IoError> {
+        let save_directory = std::env::var("HOME")? + "/" + USER_CONFIG_DIR;
+        let json_string = serde_json::to_string_pretty(self)?;
+        let file_path = validated_file_path(SETTINGS_FILE_NAME, &save_directory)?;
+        fs::write(file_path.clone(), json_string).map_err(|e| {
+            let file_path_string = file_path.to_str().unwrap_or(SETTINGS_FILE_NAME).to_string();
+            IoError::WriteFileFailed(file_path_string, e)
+        })?;
+        Ok(())
     }
 }
 
@@ -142,7 +170,7 @@ pub struct SettingsCategory {
 pub struct SettingsIOEntry {
     pub name: String,
     pub description: String,
-    pub gui_fn: fn(&mut egui::Ui, &mut Settings, &str),
+    pub gui_fn: fn(&mut egui::Ui, &mut Settings, &str) -> egui::Response,
 }
 
 impl SettingsIO {
@@ -252,7 +280,8 @@ pub fn setting_ui_enum_some_disabled<T>(
     setting_data: &mut T,
     variants: &[T],
     enabled_variants: &[T],
-) where
+) -> egui::Response
+where
     T: SettingEnum + PartialEq + Clone,
 {
     egui::ComboBox::from_label(setting_name)
@@ -271,7 +300,8 @@ pub fn setting_ui_enum_some_disabled<T>(
                     ui.add_enabled(false, egui::Button::new(variant.value_display_name()));
                 }
             }
-        });
+        })
+        .response
 }
 
 // ~~ Json Setting Names ~~

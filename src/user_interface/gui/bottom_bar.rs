@@ -5,6 +5,8 @@ use crate::{
         gui::{command_palette::GuiStateCommandPalette, side_panel::SidePanelMode, Gui},
     },
 };
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 
 impl Gui {
     pub(super) fn draw_bottom_bar(
@@ -40,6 +42,7 @@ fn bottom_bar_layout(
 ) {
     let mut command_pallette_visible = command_pallette.is_some();
     let (mut scene_visible, mut object_editor_visible) = SidePanelMode::bools(*side_panel_mode);
+    let mut settings_modified = false;
 
     if ui.toggle_value(&mut scene_visible, "Scene").changed() {
         *side_panel_mode = match scene_visible {
@@ -62,7 +65,8 @@ fn bottom_bar_layout(
     // quick access settings
     for maybe_setting in quick_access_settings {
         if let Some(setting) = maybe_setting {
-            (setting.gui_fn)(ui, settings, &setting.name);
+            settings_modified =
+                settings_modified || (setting.gui_fn)(ui, settings, &setting.name).changed();
         }
     }
 
@@ -84,4 +88,11 @@ fn bottom_bar_layout(
             };
         }
     });
+
+    if settings_modified {
+        let res = settings.save_user_settings_json_file();
+        if let Err(e) = res {
+            error!("{}", e);
+        }
+    }
 }
