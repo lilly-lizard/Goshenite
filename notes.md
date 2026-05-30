@@ -1,56 +1,64 @@
 # plan:
 
-- clean up `commands_impl.rs` ✔️
-	- remove dead code ✔️
-	- remove `ValidationCommand` ✔️
-	- combine functions where possible 🔨
-	- move pub(super) functions to engine_controller.rs ✔️
 - skybox ✔️
 	- load background skyboxes via file selector
 	- code editor for skybox shader glsl. run on the fly
     - remove `include-spirv-bytes` feature
     - make common `create_shader_stages` fn in `vulkan_init`
+- json settings stored in ~/.config/goshentite (if linux or mac?) 🔨
+- editor view modes
+	- SceneEditor: render ground grid
+	- ObjectEditor: grey background
+	- config option to be top,left,right,bottom
+	- scene mode vs object mode 🔨
+		- geometry shader draws orange line around selected object. can be seen through obscuring objects - scene mode ✔️
+		- only draw selected object in object mode 🔨
+- simple animations 🔨
+  - ball translate back and forwards
+  - time + transform + smooth function
+- offset instancing
+  - instances along axis
+  - along spline
+  - along 2 axis/splines
+- transformations
+  - scale gizmo
+  - translate/rotate/scale relative to camera with g, r, s shortcuts
+- generate BVH and render BVH outlines
+
+# done:
+
 - settings redo: ✔️
 	- make each setting a static member, easily accessible by engine ✔️
 	- means you don't need `process_update` or `EngineControllers`, just send `settings` to all the controllers rather than keeping track of duplicate variables ✔️
 	- 2 separate structs: `Settings` that stores all the variables and `SettingsIO` which has gui and json functionality and accesses members of `Settings` ✔️
 	- don't stress if members of `Settings` aren't accessed by `SettingsIO`. allows for hidden internal settings ✔️
 	- ability to choose 3 `SettingsIO` entries to be accessible on the bottom bar, like arcball target currently is ✔️
-- json settings stored in ~/.config/goshentite (if linux or mac?) 🔨
-- editor view modes
-	- SceneEditor: render ground grid
-	- ObjectEditor: grey background
-
+- make gui a side panel ✔️
+	- goals:
+		- most of time you want to click on object and move it around ✔️
+		- make outline for selected object/primitive op - USE SPEC CONSTANTS and separate pipeline ✔️
+			- TODO lighting shader -> if normal = vec3(0.), skip lighting ✔️
+		- have settings window that pops up in the middle of the window ✔️
 - note that gizmo elements will need to be translucent sometimes (e.g. plane translate) ✔️
 	- add new readable_object_id output to 2nd subpass ✔️
 	- make internal object_id buffer transient and GPU only ✔️
 	- put gizmo pass in 2nd subpass and write object_id to new buffer ✔️
 	- put gizmo id in instance buffer to free up pc for vec4 alpha color ✔️
 	- add GizmoVisibility (including center) and GizmoItem structs, note that multiple gizmo types can be on simultaneously ✔️
+- click and drag gizmo arrows ✔️
+  1. apply absolute values of dragging to directions ✔️
+  2. scale based on distance from object ✔️
 - remove arcball camera (have hidden option for it) ✔️
 	- it doesn't make sense with gizmo dragging ✔️
 - remove commands (all of them) and pass mutable references to gui ❌️
 	- remove command palette, if you want to reimliment it later, do it properly ❌️
 	- make arcball around invisible marker on ground plane? ✔️
 	- make simple controls similar to bambu studio or smthn ✔️
-- make gui a side panel ✔️
-	- goals:
-		- most of time you want to click on object and move it around ✔️
-		- make outline for selected object/primitive op - USE SPEC CONSTANTS and separate pipeline ✔️
-			- TODO lighting shader -> if normal = vec3(0.), skip lighting ✔️
-		- config option to be top,left,right,bottom 🔨
-		- have settings window that pops up in the middle of the window ✔️
-	- scene mode vs object mode 🔨
-		- geometry shader draws orange line around selected object. can be seen through obscuring objects - scene mode ✔️
-		- only draw selected object in - object mode 🔨
-- click and drag gizmo arrows ✔️
-  1. apply absolute values of dragging to directions ✔️
-  2. scale based on distance from object ✔️
-- draw circle at selected object center
-- generate BVH and render BVH outlines
-
-# done:
-
+- clean up `commands_impl.rs` ✔️
+	- remove dead code ✔️
+	- remove `ValidationCommand` ✔️
+	- combine functions where possible ✔️
+	- move pub(super) functions to engine_controller.rs ✔️
 - remove commands (all of them) and pass mutable references to gui ❌️
 	- remove command palette, if you want to reimliment it later, do it properly ❌️
 - archive camera controls json loading ✔️

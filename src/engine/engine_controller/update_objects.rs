@@ -1,16 +1,18 @@
 use crate::{
     engine::{
-        commands::{
-            failure_warn_collection_error, failure_warn_invalid_object_id,
-            failure_warn_invalid_primitive_op_index, failure_warn_unique_id_error,
-        },
         engine_controller::Engine,
         object::{
             object::{Object, ObjectId},
             primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
     },
-    helper::list::choose_closest_valid_index,
+    helper::{
+        list::choose_closest_valid_index,
+        more_errors::{
+            failure_warn_collection_error, failure_warn_invalid_object_id,
+            failure_warn_invalid_primitive_op_index, failure_warn_unique_id_error,
+        },
+    },
 };
 use glam::Vec3;
 #[allow(unused_imports)]

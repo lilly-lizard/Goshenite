@@ -74,7 +74,7 @@ fn file_path(file_name: &str) -> PathBuf {
 }
 
 /// Ensures containing directories exist, but not the actual file
-fn validated_file_path(file_name: &str, directory: &str) -> Result<PathBuf, IoError> {
+pub fn validated_file_path(file_name: &str, directory: &str) -> Result<PathBuf, IoError> {
     // create dir if missing
     fs::create_dir_all(directory)
         .map_err(|e| IoError::CreateDirectoryFailed(directory.to_string(), e))?;

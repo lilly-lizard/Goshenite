@@ -1,4 +1,7 @@
 use super::unique_id_gen::{UniqueId, UniqueIdError};
+use crate::engine::object::{object::ObjectId, primitive_op::PrimitiveOpIndex};
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 use std::{error, fmt, io};
 
 // ~~ Collections ~~
@@ -35,6 +38,48 @@ impl From<UniqueIdError> for CollectionError {
     fn from(value: UniqueIdError) -> Self {
         Self::UniqueIdError(value)
     }
+}
+
+// ~~ Failed Command Handling ~~
+
+pub fn failure_warn_collection_error(e: CollectionError, object_id: ObjectId) {
+    match e {
+        CollectionError::InvalidId { .. } => failure_warn_invalid_object_id(object_id),
+        CollectionError::OutOfBounds { index, .. } => {
+            failure_warn_invalid_primitive_op_index(object_id, index);
+        }
+        CollectionError::UniqueIdError(unique_id_error) => {
+            failure_warn_unique_id_error(unique_id_error)
+        }
+    }
+}
+
+pub fn failure_warn_invalid_object_id(object_id: ObjectId) {
+    warn!(
+        "attempted to modify object id {} that doesn't exist in object collection",
+        object_id
+    );
+}
+
+pub fn failure_warn_invalid_primitive_op_index(
+    object_id: ObjectId,
+    primitive_op_index: PrimitiveOpIndex,
+) {
+    warn!(
+        "attempted to modify primitive op index {} that doesn't exist in object {}",
+        primitive_op_index, object_id
+    );
+}
+
+pub fn failure_warn_unique_id_error(unique_id_error: UniqueIdError) {
+    let failed_because = format!(
+        "The engine has run out of unique ids to assign to new objects.\
+        This case is not yet handled by goshenite!\
+        Please report this as a bug...\n
+        Returned error: {}",
+        unique_id_error
+    );
+    warn!("{}", failed_because);
 }
 
 // ~~ File IO ~~
