@@ -1,4 +1,4 @@
-use crate::renderer::config_renderer::SHADER_ENTRY_POINT;
+use crate::renderer::vulkan_init::create_shader_stage_from_bytes;
 use crate::{
     engine::object::{object::ObjectId, objects_delta::ObjectsDelta},
     renderer::{
@@ -8,17 +8,15 @@ use crate::{
     },
 };
 use anyhow::Context;
-use ash::vk::{self, SpecializationInfo, SpecializationMapEntry};
+use ash::vk::{self, ShaderStageFlags, SpecializationInfo, SpecializationMapEntry};
 use bort_vk::{
     Buffer, ColorBlendState, CommandBuffer, DepthStencilState, DescriptorSet, DescriptorSetLayout,
     DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
     GraphicsPipeline, GraphicsPipelineProperties, MemoryAllocator, PipelineAccess, PipelineLayout,
-    PipelineLayoutProperties, Queue, RasterizationState, RenderPass, ShaderModule, ShaderStage,
-    ViewportState,
+    PipelineLayoutProperties, Queue, RasterizationState, RenderPass, ShaderStage, ViewportState,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
-use std::ffi::CString;
 use std::sync::Arc;
 
 // descriptor set and binding indices
@@ -253,46 +251,35 @@ fn create_pipelines(
     Ok((pipeline, pipeline_selected_object))
 }
 
-#[cfg(feature = "include-spirv-bytes")]
 fn create_shader_stages<'a>(
     device: Arc<Device>,
 ) -> anyhow::Result<(ShaderStage<'a>, ShaderStage<'a>)> {
-    use super::vulkan_init::create_shader_stages_from_bytes;
-    let vertex_spv_file = std::io::Cursor::new(
+    let shader_vert = create_shader_stage_from_bytes(
+        device.clone(),
+        ShaderStageFlags::VERTEX,
         &include_bytes!("../../assets/shader_binaries/bounding_mesh.vert.spv")[..],
-    );
-    let frag_spv_file = std::io::Cursor::new(
+        None,
+    )
+    .context("creating geoemetry pass shaders")?;
+    let shader_frag = create_shader_stage_from_bytes(
+        device.clone(),
+        ShaderStageFlags::FRAGMENT,
         &include_bytes!("../../assets/shader_binaries/scene_geometry.frag.spv")[..],
-    );
-    create_shader_stages_from_bytes(device, vertex_spv_file, frag_spv_file)
-        .context("creating geoemetry pass shaders")
+        None,
+    )
+    .context("creating geoemetry pass shaders")?;
+    Ok((shader_vert, shader_frag))
 }
 
-#[cfg(feature = "include-spirv-bytes")]
 fn create_frag_shader_stage_selected_object<'a>(
     device: Arc<Device>,
     spec_constant: SpecializationInfo<'a>,
 ) -> anyhow::Result<ShaderStage<'a>> {
-    let mut frag_spv_file = std::io::Cursor::new(
+    create_shader_stage_from_bytes(
+        device.clone(),
+        ShaderStageFlags::FRAGMENT,
         &include_bytes!("../../assets/shader_binaries/scene_geometry.frag.spv")[..],
-    );
-    let frag_shader = Arc::new(ShaderModule::new_from_spirv(device, &mut frag_spv_file)?);
-    let shader_stage = ShaderStage::new(
-        vk::ShaderStageFlags::FRAGMENT,
-        frag_shader,
-        CString::new(SHADER_ENTRY_POINT).expect("SHADER_ENTRY_POINT shouldn't contain null byte"),
         Some(spec_constant),
-    );
-    Ok(shader_stage)
-}
-
-#[cfg(not(feature = "include-spirv-bytes"))]
-fn create_shader_stages<'a>(
-    device: Arc<Device>,
-) -> anyhow::Result<(ShaderStage<'a>, ShaderStage<'a>)> {
-    use crate::renderer::vulkan_init::create_shader_stages_from_path;
-    const VERT_SHADER_PATH: &str = "assets/shader_binaries/bounding_mesh.vert.spv";
-    const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_geometry.frag.spv";
-    create_shader_stages_from_path(device, VERT_SHADER_PATH, FRAG_SHADER_PATH)
-        .context("creating geometry pass shaders")
+    )
+    .context("creating geoemetry pass shaders")
 }

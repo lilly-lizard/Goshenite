@@ -1213,11 +1213,11 @@ pub fn create_vertex_buffers_from_stl(
         vertex_buffer_properties,
         buffer_allocation_info.clone(),
     )
-    .context("creating skybox vertex buffer")?;
+    .context("creating vertex buffer")?;
 
     vertex_buffer
         .write_iter(vertices, 0)
-        .context("uploading skybox vertices")?;
+        .context("uploading vertices")?;
 
     let index_count = indices.len();
     let index_buffer_properties = BufferProperties::new_default(
@@ -1229,7 +1229,7 @@ pub fn create_vertex_buffers_from_stl(
         index_buffer_properties,
         buffer_allocation_info,
     )
-    .context("creating vertex buffer")?;
+    .context("creating index buffer")?;
 
     index_buffer
         .write_iter(indices, 0)
@@ -1247,54 +1247,21 @@ fn load_stl(file_path: &str) -> Result<stl_io::IndexedMesh, IoError> {
     stl_io::read_stl(&mut stl_file).map_err(IoError::ReadBufferFailed)
 }
 
-pub fn create_shader_stages_from_bytes<'a>(
+pub fn create_shader_stage_from_bytes<'a>(
     device: Arc<Device>,
-    mut vertex_spv_file: std::io::Cursor<&[u8]>,
-    mut frag_spv_file: std::io::Cursor<&[u8]>,
-) -> Result<(ShaderStage<'a>, ShaderStage<'a>), ShaderError> {
-    let vert_shader = Arc::new(ShaderModule::new_from_spirv(
+    stage: vk::ShaderStageFlags,
+    spv_bytes: &[u8],
+    specialization_info: Option<vk::SpecializationInfo<'a>>,
+) -> Result<ShaderStage<'a>, ShaderError> {
+    let mut spv_cursor = std::io::Cursor::new(spv_bytes);
+    let shader_module = Arc::new(ShaderModule::new_from_spirv(
         device.clone(),
-        &mut vertex_spv_file,
+        &mut spv_cursor,
     )?);
-    let frag_shader = Arc::new(ShaderModule::new_from_spirv(device, &mut frag_spv_file)?);
-
-    Ok(create_shader_stages_from_modules(vert_shader, frag_shader))
-}
-
-#[allow(dead_code)]
-pub fn create_shader_stages_from_path<'a>(
-    device: Arc<Device>,
-    vert_shader_file_path: &str,
-    frag_shader_file_path: &str,
-) -> Result<(ShaderStage<'a>, ShaderStage<'a>), ShaderError> {
-    let vert_shader = Arc::new(ShaderModule::new_from_file(
-        device.clone(),
-        vert_shader_file_path,
-    )?);
-    let frag_shader = Arc::new(ShaderModule::new_from_file(
-        device.clone(),
-        frag_shader_file_path,
-    )?);
-
-    Ok(create_shader_stages_from_modules(vert_shader, frag_shader))
-}
-
-pub fn create_shader_stages_from_modules<'a>(
-    vert_shader: Arc<ShaderModule>,
-    frag_shader: Arc<ShaderModule>,
-) -> (ShaderStage<'a>, ShaderStage<'a>) {
-    let vert_stage = ShaderStage::new(
-        vk::ShaderStageFlags::VERTEX,
-        vert_shader,
+    Ok(ShaderStage::new(
+        stage,
+        shader_module,
         CString::new(SHADER_ENTRY_POINT).expect("SHADER_ENTRY_POINT shouldn't contain null byte"),
-        None,
-    );
-    let frag_stage = ShaderStage::new(
-        vk::ShaderStageFlags::FRAGMENT,
-        frag_shader,
-        CString::new(SHADER_ENTRY_POINT).expect("SHADER_ENTRY_POINT shouldn't contain null byte"),
-        None,
-    );
-
-    (vert_stage, frag_stage)
+        specialization_info,
+    ))
 }

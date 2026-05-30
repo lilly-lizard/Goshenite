@@ -1,13 +1,5 @@
 # plan:
 
-- skybox ✔️
-	- load background skyboxes via file selector
-	- code editor for skybox shader glsl. run on the fly
-    - remove `include-spirv-bytes` feature
-    - make common `create_shader_stages` fn in `vulkan_init`
-- json settings stored in ~/.config/goshentite (if linux or mac?) 🔨
-	- tokio: save in background (noticable flicker on save)
-	- save home dir so don't have to re-check every save
 - editor view modes
 	- SceneEditor: render ground grid
 	- ObjectEditor: grey background
@@ -15,6 +7,11 @@
 	- scene mode vs object mode 🔨
 		- geometry shader draws orange line around selected object. can be seen through obscuring objects - scene mode ✔️
 		- only draw selected object in object mode 🔨
+- skybox ✔️
+	- load background skyboxes via file selector
+	- code editor for skybox shader glsl. run on the fly
+    - remove `include-spirv-bytes` feature
+    - make common `create_shader_stages` fn in `vulkan_init`
 - simple animations 🔨
   - ball translate back and forwards
   - time + transform + smooth function
@@ -35,6 +32,8 @@
 	- 2 separate structs: `Settings` that stores all the variables and `SettingsIO` which has gui and json functionality and accesses members of `Settings` ✔️
 	- don't stress if members of `Settings` aren't accessed by `SettingsIO`. allows for hidden internal settings ✔️
 	- ability to choose 3 `SettingsIO` entries to be accessible on the bottom bar, like arcball target currently is ✔️
+- json settings stored in ~/.config/goshentite (if linux or mac?) ✔️
+	- save home dir so don't have to re-check every save ✔️
 - make gui a side panel ✔️
 	- goals:
 		- most of time you want to click on object and move it around ✔️

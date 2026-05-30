@@ -3,9 +3,11 @@ use super::{
     shader_interfaces::vertex_inputs::{BoundingBoxVertex, VulkanVertex},
     vulkan_init::render_pass_indices,
 };
-use crate::renderer::vulkan_init::{create_desc_sets_camera, write_camera_descriptor_sets};
+use crate::renderer::vulkan_init::{
+    create_desc_sets_camera, create_shader_stage_from_bytes, write_camera_descriptor_sets,
+};
 use anyhow::Context;
-use ash::vk;
+use ash::vk::{self, ShaderStageFlags};
 use bort_vk::{
     Buffer, ColorBlendState, CommandBuffer, DescriptorSet, DescriptorSetLayout, Device,
     DeviceOwned, DynamicState, GraphicsPipeline, GraphicsPipelineProperties, InputAssemblyState,
@@ -133,30 +135,22 @@ fn create_aabb_pipeline(
     Ok(pipeline_aabb)
 }
 
-#[cfg(feature = "include-spirv-bytes")]
 fn create_aabb_shader_stages<'a>(
     device: Arc<Device>,
 ) -> anyhow::Result<(ShaderStage<'a>, ShaderStage<'a>)> {
-    use super::vulkan_init::create_shader_stages_from_bytes;
-
-    let vertex_spv_file =
-        std::io::Cursor::new(&include_bytes!("../../assets/shader_binaries/outlines.vert.spv")[..]);
-    let frag_spv_file =
-        std::io::Cursor::new(&include_bytes!("../../assets/shader_binaries/outlines.frag.spv")[..]);
-
-    create_shader_stages_from_bytes(device, vertex_spv_file, frag_spv_file)
-        .context("creating overlay pass aabb shaders")
-}
-
-#[cfg(not(feature = "include-spirv-bytes"))]
-fn create_aabb_shader_stages<'a>(
-    device: Arc<Device>,
-) -> anyhow::Result<(ShaderStage<'a>, ShaderStage<'a>)> {
-    use crate::renderer::vulkan_init::create_shader_stages_from_path;
-
-    const VERT_SHADER_PATH: &str = "assets/shader_binaries/outlines.vert.spv";
-    const FRAG_SHADER_PATH: &str = "assets/shader_binaries/outlines.frag.spv";
-
-    create_shader_stages_from_path(device, VERT_SHADER_PATH, FRAG_SHADER_PATH)
-        .context("creating overlay pass aabb shaders")
+    let shader_vert = create_shader_stage_from_bytes(
+        device.clone(),
+        ShaderStageFlags::VERTEX,
+        &include_bytes!("../../assets/shader_binaries/outlines.vert.spv")[..],
+        None,
+    )
+    .context("creating AABB overlay shaders")?;
+    let shader_frag = create_shader_stage_from_bytes(
+        device.clone(),
+        ShaderStageFlags::FRAGMENT,
+        &include_bytes!("../../assets/shader_binaries/outlines.frag.spv")[..],
+        None,
+    )
+    .context("creating AABB overlay shaders")?;
+    Ok((shader_vert, shader_frag))
 }

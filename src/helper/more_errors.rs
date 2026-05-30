@@ -1,8 +1,5 @@
 use super::unique_id_gen::{UniqueId, UniqueIdError};
-use crate::{
-    engine::object::{object::ObjectId, primitive_op::PrimitiveOpIndex},
-    helper::more_errors::IoError::EnvVariable,
-};
+use crate::engine::object::{object::ObjectId, primitive_op::PrimitiveOpIndex};
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{error, fmt, io};

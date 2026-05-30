@@ -1,16 +1,20 @@
 //! shout out to https://github.com/hakolao/egui_winit_vulkano for a lot of this code
 
 use super::{
-    config_renderer::{SHADER_ENTRY_POINT, TIMEOUT_NANOSECS},
+    config_renderer::TIMEOUT_NANOSECS,
     shader_interfaces::{
         push_constants::GuiPushConstant,
         vertex_inputs::{EguiVertex, VulkanVertex},
     },
-    vulkan_init::render_pass_indices,
+    vulkan_init::{create_shader_stage_from_bytes, render_pass_indices},
 };
 use ahash::AHashMap;
 use anyhow::Context;
-use ash::{khr::synchronization2, prelude::VkResult, vk};
+use ash::{
+    khr::synchronization2,
+    prelude::VkResult,
+    vk::{self, ShaderStageFlags},
+};
 use bort_vk::{
     allocation_info_cpu_accessible, allocation_info_from_flags, default_subresource_layers,
     AllocationAccess, AllocatorAccess, Buffer, BufferProperties, ColorBlendState, CommandBuffer,
@@ -19,7 +23,7 @@ use bort_vk::{
     Fence, GraphicsPipeline, GraphicsPipelineProperties, Image, ImageAccess, ImageDimensions,
     ImageProperties, ImageView, ImageViewAccess, ImageViewProperties, MemoryAllocator, MemoryPool,
     MemoryPoolPropeties, PipelineAccess, PipelineLayout, PipelineLayoutProperties, Queue,
-    RenderPass, Sampler, SamplerProperties, Semaphore, ShaderModule, ShaderStage, ViewportState,
+    RenderPass, Sampler, SamplerProperties, Semaphore, ShaderStage, ViewportState,
 };
 use egui::{
     epaint::Primitive, ClippedPrimitive, Mesh, Rect, TextureFilter, TextureId, TextureOptions,
@@ -28,7 +32,6 @@ use egui::{
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 use std::{
-    ffi::CString,
     fmt::{self, Display},
     mem,
     sync::Arc,
@@ -1123,50 +1126,24 @@ fn create_pipeline(
     Ok(pipeline)
 }
 
-#[cfg(feature = "include-spirv-bytes")]
 fn create_shader_stages<'a>(
     device: Arc<Device>,
 ) -> anyhow::Result<(ShaderStage<'a>, ShaderStage<'a>)> {
-    let mut vertex_spv_file =
-        std::io::Cursor::new(&include_bytes!("../../assets/shader_binaries/gui.vert.spv")[..]);
-    let vert_shader = Arc::new(
-        ShaderModule::new_from_spirv(device.clone(), &mut vertex_spv_file)
-            .context("creating lighting pass vertex shader")?,
-    );
-    let vert_stage = ShaderStage::new(
-        vk::ShaderStageFlags::VERTEX,
-        vert_shader,
-        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+    let shader_vert = create_shader_stage_from_bytes(
+        device.clone(),
+        ShaderStageFlags::VERTEX,
+        &include_bytes!("../../assets/shader_binaries/gui.vert.spv")[..],
         None,
-    );
-
-    let mut frag_spv_file =
-        std::io::Cursor::new(&include_bytes!("../../assets/shader_binaries/gui.frag.spv")[..]);
-    let frag_shader = Arc::new(
-        ShaderModule::new_from_spirv(device, &mut frag_spv_file)
-            .context("creating lighting pass fragment shader")?,
-    );
-    let frag_stage = ShaderStage::new(
-        vk::ShaderStageFlags::FRAGMENT,
-        frag_shader,
-        CString::new(SHADER_ENTRY_POINT).context("converting shader entry point to c-string")?,
+    )
+    .context("creating gui shaders")?;
+    let shader_frag = create_shader_stage_from_bytes(
+        device.clone(),
+        ShaderStageFlags::FRAGMENT,
+        &include_bytes!("../../assets/shader_binaries/gui.frag.spv")[..],
         None,
-    );
-
-    Ok((vert_stage, frag_stage))
-}
-
-#[cfg(not(feature = "include-spirv-bytes"))]
-fn create_shader_stages<'a>(
-    device: Arc<Device>,
-) -> anyhow::Result<(ShaderStage<'a>, ShaderStage<'a>)> {
-    use crate::renderer::vulkan_init::create_shader_stages_from_path;
-
-    const VERT_SHADER_PATH: &str = "assets/shader_binaries/gui.vert.spv";
-    const FRAG_SHADER_PATH: &str = "assets/shader_binaries/gui.frag.spv";
-
-    create_shader_stages_from_path(device, VERT_SHADER_PATH, FRAG_SHADER_PATH)
-        .context("creating geometry pass shaders")
+    )
+    .context("creating gui shaders")?;
+    Ok((shader_vert, shader_frag))
 }
 
 /// Caclulates the region of the framebuffer to render a gui element

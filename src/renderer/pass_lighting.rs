@@ -1,7 +1,9 @@
-use super::vulkan_init::{render_pass_indices, write_camera_descriptor_sets};
-use crate::renderer::vulkan_init::create_desc_sets_camera;
+use crate::renderer::vulkan_init::{
+    create_desc_sets_camera, create_shader_stage_from_bytes, render_pass_indices,
+    write_camera_descriptor_sets,
+};
 use anyhow::Context;
-use ash::vk;
+use ash::vk::{self, ShaderStageFlags};
 use bort_vk::{
     Buffer, ColorBlendState, CommandBuffer, DescriptorSet, DescriptorSetLayout,
     DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device, DeviceOwned, DynamicState,
@@ -243,34 +245,24 @@ fn create_pipeline(
     Ok(pipeline)
 }
 
-#[cfg(feature = "include-spirv-bytes")]
 fn create_shader_stages<'a>(
     device: Arc<Device>,
 ) -> anyhow::Result<(ShaderStage<'a>, ShaderStage<'a>)> {
-    use super::vulkan_init::create_shader_stages_from_bytes;
-
-    let vertex_spv_file = std::io::Cursor::new(
+    let shader_vert = create_shader_stage_from_bytes(
+        device.clone(),
+        ShaderStageFlags::VERTEX,
         &include_bytes!("../../assets/shader_binaries/full_screen.vert.spv")[..],
-    );
-    let frag_spv_file = std::io::Cursor::new(
+        None,
+    )
+    .context("creating lighting pass shaders")?;
+    let shader_frag = create_shader_stage_from_bytes(
+        device.clone(),
+        ShaderStageFlags::FRAGMENT,
         &include_bytes!("../../assets/shader_binaries/scene_lighting.frag.spv")[..],
-    );
-
-    create_shader_stages_from_bytes(device, vertex_spv_file, frag_spv_file)
-        .context("creating lighting pass shaders")
-}
-
-#[cfg(not(feature = "include-spirv-bytes"))]
-fn create_shader_stages<'a>(
-    device: Arc<Device>,
-) -> anyhow::Result<(ShaderStage<'a>, ShaderStage<'a>)> {
-    use crate::renderer::vulkan_init::create_shader_stages_from_path;
-
-    const VERT_SHADER_PATH: &str = "assets/shader_binaries/full_screen.vert.spv";
-    const FRAG_SHADER_PATH: &str = "assets/shader_binaries/scene_lighting.frag.spv";
-
-    create_shader_stages_from_path(device, VERT_SHADER_PATH, FRAG_SHADER_PATH)
-        .context("creating lighting pass shaders")
+        None,
+    )
+    .context("creating lighting pass shaders")?;
+    Ok((shader_vert, shader_frag))
 }
 
 impl Drop for LightingPass {

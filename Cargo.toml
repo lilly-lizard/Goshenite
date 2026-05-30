@@ -5,15 +5,12 @@ edition = "2021"
 license-file = "LICENSE-MIT"
 
 [features]
-default = ["colored-term", "include-spirv-bytes"]
+default = ["colored-term"]
 # enables colored terminal log messages
 colored-term = ["dep:colored"]
 # enables a build script to compile spirv binaries when shader source is changed
 # NOTE: will add a notable increase to build times if you don't have shaderc libraries installed on your system
 shader-compile = ["dep:shaderc"]
-# load spirv bytecode at compile-time. if disabled, the engine will attempt to read spirv files from 'assets'
-# directory at runtime (relative to the executable location).
-include-spirv-bytes = []
 
 [dependencies]
 log = "0.4"

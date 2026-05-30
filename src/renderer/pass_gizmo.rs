@@ -10,14 +10,14 @@ use crate::{
             vertex_inputs::{GizmoVertex, VulkanVertex},
         },
         vulkan_init::{
-            create_desc_sets_camera, create_vertex_buffers_from_stl, render_pass_indices,
-            write_camera_descriptor_sets,
+            create_desc_sets_camera, create_shader_stage_from_bytes,
+            create_vertex_buffers_from_stl, render_pass_indices, write_camera_descriptor_sets,
         },
     },
     user_interface::gizmo::{GizmoElement, GizmoVisibility},
 };
 use anyhow::Context;
-use ash::vk::{self, BufferUsageFlags};
+use ash::vk::{self, BufferUsageFlags, ShaderStageFlags};
 use bort_vk::{
     AllocationAccess, Buffer, BufferProperties, ColorBlendState, CommandBuffer, DescriptorSet,
     DescriptorSetLayout, DescriptorSetLayoutBinding, DescriptorSetLayoutProperties, Device,
@@ -338,26 +338,22 @@ fn create_pipeline(
     Ok(pipeline)
 }
 
-#[cfg(feature = "include-spirv-bytes")]
 fn create_shader_stages<'a>(
     device: Arc<Device>,
 ) -> anyhow::Result<(ShaderStage<'a>, ShaderStage<'a>)> {
-    use super::vulkan_init::create_shader_stages_from_bytes;
-    let vertex_spv_file =
-        std::io::Cursor::new(&include_bytes!("../../assets/shader_binaries/gizmos.vert.spv")[..]);
-    let frag_spv_file =
-        std::io::Cursor::new(&include_bytes!("../../assets/shader_binaries/gizmos.frag.spv")[..]);
-    create_shader_stages_from_bytes(device, vertex_spv_file, frag_spv_file)
-        .context("creating overlay pass gizmos shaders")
-}
-
-#[cfg(not(feature = "include-spirv-bytes"))]
-fn create_shader_stages<'a>(
-    device: Arc<Device>,
-) -> anyhow::Result<(ShaderStage<'a>, ShaderStage<'a>)> {
-    use crate::renderer::vulkan_init::create_shader_stages_from_path;
-    const VERT_SHADER_PATH: &str = "assets/shader_binaries/gizmos.vert.spv";
-    const FRAG_SHADER_PATH: &str = "assets/shader_binaries/gizmos.frag.spv";
-    create_shader_stages_from_path(device, VERT_SHADER_PATH, FRAG_SHADER_PATH)
-        .context("creating overlay pass gizmos shaders")
+    let shader_vert = create_shader_stage_from_bytes(
+        device.clone(),
+        ShaderStageFlags::VERTEX,
+        &include_bytes!("../../assets/shader_binaries/gizmos.vert.spv")[..],
+        None,
+    )
+    .context("creating gizmo shaders")?;
+    let shader_frag = create_shader_stage_from_bytes(
+        device.clone(),
+        ShaderStageFlags::FRAGMENT,
+        &include_bytes!("../../assets/shader_binaries/gizmos.frag.spv")[..],
+        None,
+    )
+    .context("creating gizmo shaders")?;
+    Ok((shader_vert, shader_frag))
 }
