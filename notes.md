@@ -7,6 +7,7 @@
     - make common `create_shader_stages` fn in `vulkan_init`
 - json settings stored in ~/.config/goshentite (if linux or mac?) 🔨
 	- tokio: save in background (noticable flicker on save)
+	- save home dir so don't have to re-check every save
 - editor view modes
 	- SceneEditor: render ground grid
 	- ObjectEditor: grey background

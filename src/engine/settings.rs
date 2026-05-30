@@ -1,5 +1,3 @@
-use std::fs;
-
 use crate::{
     engine::{
         config_engine::{SETTINGS_FILE_NAME, USER_CONFIG_DIR},
@@ -12,11 +10,14 @@ use crate::{
         gui_state::DRAG_INC,
     },
 };
+#[allow(unused_imports)]
+use log::{debug, error, info, trace, warn};
 use serde::{Deserialize, Serialize};
+use std::{env::VarError, fs, thread};
 
 // ~~ Available Settings~~
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct CameraSettings {
     pub look_mode: LookMode,
     #[serde(skip)]
@@ -27,7 +28,7 @@ pub struct CameraSettings {
     /// If true, camera enters arcball mode when an object or primitive op is selected
     pub arcball_on_select: bool,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct RendererSettings {
     pub show_aabb_wireframe: bool,
 }
@@ -114,7 +115,7 @@ impl Default for SettingsIO {
                 }],
             },
             SettingsCategory {
-                name: "Camera".into(),
+                name: "Renderer".into(),
                 settings: vec![
                     SettingsIOEntry {
                         name: "Show AABB Wireframe".into(),
@@ -132,24 +133,47 @@ impl Default for SettingsIO {
 
 // ~~ Setting structs ~~
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Settings {
     pub camera: CameraSettings,
     pub render: RendererSettings,
+    #[serde(skip)]
+    user_save_directory: String,
 }
 impl Default for Settings {
     fn default() -> Self {
         Self {
             camera: CameraSettings::default(),
             render: RendererSettings::default(),
+            user_save_directory: Self::user_save_directory(),
         }
     }
 }
 impl Settings {
+    #[cfg(target_os = "linux")]
+    pub fn user_save_directory() -> String {
+        let home_dir = std::env::var("HOME");
+        if let Err(VarError::NotPresent) = home_dir {
+            error!(
+                "$HOME environment variable not set. Defaulting to saving settings file in /tmp"
+            );
+        }
+        home_dir.unwrap_or("/tmp".to_string()) + "/" + USER_CONFIG_DIR
+    }
+
+    pub fn save_user_settings_json_file_async(&self) {
+        let settings = self.clone();
+        thread::spawn(move || {
+            let res = settings.save_user_settings_json_file();
+            if let Err(e) = res {
+                error!("{}", e);
+            }
+        });
+    }
+
     pub fn save_user_settings_json_file(&self) -> Result<(), IoError> {
-        let save_directory = std::env::var("HOME")? + "/" + USER_CONFIG_DIR;
+        let file_path = validated_file_path(SETTINGS_FILE_NAME, &self.user_save_directory)?;
         let json_string = serde_json::to_string_pretty(self)?;
-        let file_path = validated_file_path(SETTINGS_FILE_NAME, &save_directory)?;
         fs::write(file_path.clone(), json_string).map_err(|e| {
             let file_path_string = file_path.to_str().unwrap_or(SETTINGS_FILE_NAME).to_string();
             IoError::WriteFileFailed(file_path_string, e)

@@ -57,10 +57,7 @@ impl Gui {
             .show(egui_context, add_contents);
 
         if modified {
-            let res = settings.save_user_settings_json_file();
-            if let Err(e) = res {
-                error!("{}", e);
-            }
+            settings.save_user_settings_json_file_async();
         }
     }
 }

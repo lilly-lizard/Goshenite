@@ -90,9 +90,6 @@ fn bottom_bar_layout(
     });
 
     if settings_modified {
-        let res = settings.save_user_settings_json_file();
-        if let Err(e) = res {
-            error!("{}", e);
-        }
+        settings.save_user_settings_json_file_async();
     }
 }
