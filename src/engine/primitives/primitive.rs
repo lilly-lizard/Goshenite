@@ -1,7 +1,4 @@
-use super::{
-    cube::Cube, primitive_transform::PrimitiveTransform, sphere::Sphere,
-    uber_primitive::UberPrimitive,
-};
+use super::{cube::Cube, sphere::Sphere, transform::Transform, uber_primitive::UberPrimitive};
 use crate::{
     engine::aabb::Aabb, helper::from_enum_macro::impl_from_for_enum_variant,
     renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
@@ -58,7 +55,7 @@ impl EncodablePrimitive for Primitive {
         primitive_fn_match!(self, encoded_props)
     }
 
-    fn aabb(&self, primitive_transform: PrimitiveTransform) -> Aabb {
+    fn aabb(&self, primitive_transform: Transform) -> Aabb {
         match self {
             Self::Sphere(p) => p.aabb(primitive_transform),
             Self::Cube(p) => p.aabb(primitive_transform),
@@ -86,5 +83,5 @@ pub trait EncodablePrimitive: Send + Sync + Serialize {
     fn encoded_props(&self) -> PrimitivePropsSlice;
 
     /// Axis aligned bounding box
-    fn aabb(&self, primitive_transform: PrimitiveTransform) -> Aabb;
+    fn aabb(&self, primitive_transform: Transform) -> Aabb;
 }

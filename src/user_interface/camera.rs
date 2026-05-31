@@ -43,7 +43,7 @@ impl Default for LookMode {
     }
 }
 impl SettingEnum for LookMode {
-    fn value_display_name(&self) -> &str {
+    fn value_display_name(&self) -> &'static str {
         match self {
             Self::ArcballHovering => "Arcball Hovering",
             Self::PoV => "POV",

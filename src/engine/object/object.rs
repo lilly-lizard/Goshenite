@@ -5,7 +5,7 @@ use crate::{
         object::primitive_op::PrimitiveOpIndex,
         primitives::{
             primitive::{EncodablePrimitive, Primitive},
-            primitive_transform::PrimitiveTransform,
+            transform::{ObjectInstances, Transform},
         },
     },
     helper::{
@@ -52,6 +52,7 @@ pub struct Object {
     pub name: String,
     pub center: Vec3,
     pub primitive_ops: Vec<PrimitiveOp>,
+    pub instances: ObjectInstances,
 }
 
 impl Object {
@@ -60,6 +61,7 @@ impl Object {
             name,
             center,
             primitive_ops: Vec::new(),
+            instances: ObjectInstances::Single,
         }
     }
 
@@ -67,7 +69,7 @@ impl Object {
     pub fn push_primitive_op(
         &mut self,
         primitive: Primitive,
-        transform: PrimitiveTransform,
+        transform: Transform,
         op: Operation,
         blend: f32,
         albedo: Vec3,

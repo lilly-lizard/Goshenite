@@ -1,3 +1,5 @@
+use crate::engine::primitives::transform::ObjectInstances;
+
 use super::object::{
     object::ObjectId,
     primitive_op::{PrimitiveOp, PrimitiveOpIndex},
@@ -27,6 +29,10 @@ pub enum Command {
     SetObjectName {
         object_id: ObjectId,
         new_name: String,
+    },
+    SetObjectInstances {
+        object_id: ObjectId,
+        new_instances: ObjectInstances,
     },
 
     // ~~ Primtive Op: Selection ~~

@@ -4,8 +4,7 @@ use crate::{
     engine::{
         object::{object::ObjectId, operation::Operation},
         primitives::{
-            cube::Cube, primitive_transform::PrimitiveTransform, sphere::Sphere,
-            uber_primitive::UberPrimitive,
+            cube::Cube, sphere::Sphere, transform::Transform, uber_primitive::UberPrimitive,
         },
     },
     helper::{
@@ -111,13 +110,13 @@ pub fn color_specular_editor_ui(
 
 pub fn primitive_transform_editor_ui(
     ui: &mut egui::Ui,
-    primitive_transform: &mut PrimitiveTransform,
+    primitive_transform: &mut Transform,
 ) -> DataUpdateState {
     let mut edit_state = DataUpdateState::NoChange;
 
-    let edited_center = editable_center_ui(ui, primitive_transform.center);
+    let edited_center = editable_center_ui(ui, primitive_transform.translation);
     if let Some(some_new_center) = edited_center {
-        primitive_transform.center = some_new_center;
+        primitive_transform.translation = some_new_center;
         edit_state = DataUpdateState::Modified;
     }
 

@@ -6,7 +6,10 @@ use crate::{
             object_collection::ObjectCollection,
             primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
-        primitives::primitive::{EncodablePrimitive, Primitive},
+        primitives::{
+            primitive::{EncodablePrimitive, Primitive},
+            transform::ObjectInstances,
+        },
     },
     user_interface::{
         config_ui,
@@ -115,9 +118,8 @@ fn object_properties_editor(
 ) {
     ui.separator();
 
-    let original_center = object.center;
-    let mut new_center = original_center;
-
+    // object center
+    let mut new_center = object.center;
     ui.horizontal(|ui| {
         ui.label("Center:");
         ui.add(DragValue::new(&mut new_center.x).speed(DRAG_INC))
@@ -125,11 +127,27 @@ fn object_properties_editor(
         ui.add(DragValue::new(&mut new_center.y).speed(DRAG_INC));
         ui.add(DragValue::new(&mut new_center.z).speed(DRAG_INC));
     });
-
-    if original_center != new_center {
+    if object.center != new_center {
         commands.push(Command::SetObjectCenter {
             object_id: object_id,
             center: new_center,
+        });
+    }
+
+    // object instances
+    let mut new_instances = object.instances.clone();
+    egui::ComboBox::from_label("Instances")
+        .selected_text(new_instances.display_name())
+        .show_ui(ui, |ui| {
+            for variant in ObjectInstances::VARIANTS {
+                let name = variant.display_name();
+                ui.selectable_value(&mut new_instances, variant, name);
+            }
+        });
+    if object.instances != new_instances {
+        commands.push(Command::SetObjectInstances {
+            object_id,
+            new_instances,
         });
     }
 }

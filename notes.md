@@ -8,6 +8,8 @@
 	- geometry shader draws orange line around selected object. can be seen through obscuring objects - scene mode ✔️
 	- only draw selected object in object mode
   - center origin to render rect
+  - center object in ObjectEditor (impliment instancing first)
+- implement instancing feature
 - skybox ✔️
 	- load background skyboxes via file selector
 	- code editor for skybox shader glsl. run on the fly

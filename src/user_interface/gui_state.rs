@@ -1,7 +1,7 @@
 use crate::engine::{
     config_engine::{DEFAULT_ALBEDO, DEFAULT_SPECULAR},
     object::{operation::Operation, primitive_op::PrimitiveOp},
-    primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform},
+    primitives::{primitive::Primitive, transform::Transform},
 };
 use glam::Vec3;
 
@@ -23,7 +23,7 @@ impl DataUpdateState {
 /// State of editable fields persisting between frames
 pub struct ValueState {
     pub primitive: Primitive,
-    pub transform: PrimitiveTransform,
+    pub transform: Transform,
     pub op: Operation,
     pub blend: f32,
     pub albedo: Vec3,

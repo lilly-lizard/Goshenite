@@ -298,7 +298,7 @@ impl CameraSettings {
 // ~~ UI Template Functions ~~
 
 pub trait SettingEnum {
-    fn value_display_name(&self) -> &str;
+    fn value_display_name(&self) -> &'static str;
 }
 
 #[allow(unused)]
