@@ -255,7 +255,7 @@ impl Engine {
         self.process_cursor_event(cursor_event)?;
 
         // process gui inputs and update layout
-        let commands_from_gui = self.controllers.gui.update_gui(
+        let (commands_from_gui, render_area) = self.controllers.gui.update_gui(
             &mut self.settings,
             &self.settings_io,
             &self.object_collection,
@@ -293,6 +293,7 @@ impl Engine {
         // renderer
         self.controllers.renderer.render_frame(
             &self.settings.render,
+            render_area,
             self.view_mode,
             &self.controllers.camera,
             &self.settings.camera,

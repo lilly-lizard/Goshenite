@@ -2,11 +2,12 @@
 
 - editor view modes
 	- SceneEditor: render ground grid
-	- ObjectEditor: grey background
-	- config option to be top,left,right,bottom
-	- scene mode vs object mode 🔨
-		- geometry shader draws orange line around selected object. can be seen through obscuring objects - scene mode ✔️
-		- only draw selected object in object mode 🔨
+	- ObjectEditor: grey background ✔️
+	- horizontal scroll panel ✔️
+	- render only where there are no gui panels 🔨
+	- geometry shader draws orange line around selected object. can be seen through obscuring objects - scene mode ✔️
+	- only draw selected object in object mode
+  - center origin to render rect
 - skybox ✔️
 	- load background skyboxes via file selector
 	- code editor for skybox shader glsl. run on the fly

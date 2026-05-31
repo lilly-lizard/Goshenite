@@ -1,3 +1,5 @@
+use egui::scroll_area::ScrollBarVisibility;
+
 use crate::{
     engine::{
         commands::Command,
@@ -13,35 +15,42 @@ use crate::{
 };
 
 impl Gui {
+    /// Returns `(commands, panel width)`
     pub(super) fn draw_side_panel(
         ui: &mut egui::Ui,
         value_state: &mut ValueState,
         object_collection: &ObjectCollection,
         selected_object_id: Option<ObjectId>,
         selected_primitive_op_index: Option<PrimitiveOpIndex>,
-    ) -> Vec<Command> {
+    ) -> (Vec<Command>, f32) {
         let mut commands = Vec::<Command>::new();
-        egui::Panel::left("side panel")
+        let rect = egui::Panel::left("side panel")
             .resizable(true)
             .default_size(DEFAULT_SIDE_PANEL_WIDTH)
             .min_size(MIN_SIDE_PANEL_WIDTH)
             .show_inside(ui, |ui| {
-                ui.vertical(|ui| {
-                    ui.add_space(6.0);
-                    let mut commands_scene =
-                        layout_scene_editor(ui, selected_object_id, object_collection);
-                    ui.separator();
-                    let mut commands_object = layout_object_editor(
-                        ui,
-                        value_state,
-                        object_collection,
-                        selected_object_id,
-                        selected_primitive_op_index,
-                    );
-                    commands.append(&mut commands_scene);
-                    commands.append(&mut commands_object);
-                });
-            });
-        commands
+                egui::ScrollArea::both()
+                    .scroll_bar_visibility(ScrollBarVisibility::VisibleWhenNeeded)
+                    .show(ui, |ui| {
+                        ui.vertical(|ui| {
+                            ui.add_space(6.0);
+                            let mut commands_scene =
+                                layout_scene_editor(ui, selected_object_id, object_collection);
+                            ui.separator();
+                            let mut commands_object = layout_object_editor(
+                                ui,
+                                value_state,
+                                object_collection,
+                                selected_object_id,
+                                selected_primitive_op_index,
+                            );
+                            commands.append(&mut commands_scene);
+                            commands.append(&mut commands_object);
+                        });
+                    })
+            })
+            .response
+            .rect;
+        (commands, rect.width())
     }
 }

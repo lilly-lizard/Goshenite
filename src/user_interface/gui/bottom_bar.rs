@@ -1,5 +1,5 @@
 use crate::{
-    engine::settings::{setting_ui_enum_some_disabled, Settings, SettingsIOEntry},
+    engine::settings::{Settings, SettingsIOEntry},
     user_interface::{
         config_ui::MAX_QUICK_ACCESS_SETTINGS,
         gui::{command_palette::GuiStateCommandPalette, Gui},
@@ -8,12 +8,12 @@ use crate::{
 };
 use egui_material_icons::icons::{
     ICON_KEYBOARD_COMMAND_KEY, ICON_LEFT_PANEL_CLOSE, ICON_LEFT_PANEL_OPEN, ICON_SETTINGS,
-    ICON_VIEW_IN_AR,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
 
 impl Gui {
+    /// Returns bar height
     pub(super) fn draw_bottom_bar(
         ui: &mut egui::Ui,
         side_panel_visible: &mut bool,
@@ -22,20 +22,24 @@ impl Gui {
         command_pallette: &mut Option<GuiStateCommandPalette>,
         settings: &mut Settings,
         quick_access_settings: &mut [Option<SettingsIOEntry>; MAX_QUICK_ACCESS_SETTINGS],
-    ) {
-        egui::Panel::bottom("bottom bar").show_inside(ui, |ui| {
-            ui.horizontal_wrapped(|ui| {
-                bottom_bar_layout(
-                    ui,
-                    side_panel_visible,
-                    settings_window_visible,
-                    view_mode,
-                    command_pallette,
-                    settings,
-                    quick_access_settings,
-                );
-            });
-        });
+    ) -> f32 {
+        egui::Panel::bottom("bottom bar")
+            .show_inside(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    bottom_bar_layout(
+                        ui,
+                        side_panel_visible,
+                        settings_window_visible,
+                        view_mode,
+                        command_pallette,
+                        settings,
+                        quick_access_settings,
+                    );
+                });
+            })
+            .response
+            .rect
+            .height()
     }
 }
 

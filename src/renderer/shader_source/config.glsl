@@ -6,13 +6,14 @@ const vec3 WORLD_SPACE_UP = vec3(0., 0., 1.);
 /// Note: this is half of typical amd/nvidia cache line (128 bytes)
 const uint OP_UNIT_LENGTH = 24;
 
-const uint ID_BACKGROUND = 0xFFFFFFFFu;
-const uint GIZMO_MASK = 0xFFFFFFF0;
-const uint OUTLINE_MASK = 0x0000FFFF;
+// Must match definitions in `id_buffers.rs`
+const uint ID_BACKGROUND    = 0xFFFFFFFE;
+const uint GIZMO_MASK       = 0xFFFFFFF0;
+const uint OUTLINE_MASK     = 0x0000FFFF;
 /// Blend area between 2 primitive ops
-const uint ID_BLEND = 0xFFFEu;
+const uint ID_BLEND         = 0xFFFEu;
 /// Invalid primitive op id
-const uint ID_INVALID = 0xFFFFu;
+const uint ID_INVALID       = 0xFFFFu;
 
 /// The codes for different ops to execute
 const uint OP_NULL 			= 0x00000000u;
