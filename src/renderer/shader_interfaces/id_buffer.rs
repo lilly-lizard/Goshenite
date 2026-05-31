@@ -4,7 +4,7 @@ pub type EncodedId = u32;
 /// Set in areas where primitives are being blended together
 pub const ID_BLEND: EncodedId = 0x0000FFFE;
 
-/// Must match definitions in `config.glsl`
+// Must match definitions in `config.glsl`
 #[allow(unused)]
 pub const ID_NULL: EncodedId = 0xFFFFFFFF;
 pub const ID_BACKGROUND: EncodedId = 0xFFFFFFFE;
