@@ -102,11 +102,52 @@
 	- also allow user to program custom sdf functions
 	- default primitives are just pre-made shader functions
 	- rename primitive ops to sdf edits
+	- scene traversal goals:
+		- want to have objects using custom shaders, requires switching pipelines between objects
+		- want certain objects to interact with other objects, called "blender objects" e.g.
+			- water has blend union with anything it touches
+			- void object has blend subtraction with anything it touches
+			- note that blend only occurs where objects touch
+		- raster depth test is equivilent to blend=0 union (min)
+		- could have initial subpass for solid objects, then subsequent subpass for blender objects using big shader for fixed set of blendable objects? however blending is pretty core to the experience, want to keep the option open for anything to be blendable ❌️
 - physics?
 	- mike using [jolt](https://github.com/jrouwe/JoltPhysics)
 	- uses marching cubes to generate low res collision mesh which is then fed into jolt
 	- simple and easily parallelised, done on multiple cpu threads
 	- [rapier 3d for rust](https://crates.io/crates/rapier3d)
+
+compute vs raster:
+1. raster pipeliine
+	- make depth, albedo etc storage images instead of pipeline attachments (which the compute shader approach would require anyway)
+	- use `VK_EXT_fragment_shader_interlock` to make fragment invocations sequential at the same pixel position (avoid needing to use mutexes)
+	- pro: allows you to load in polygon models and blend objects can interact with them!
+2. compute indirect dispatch...
+	- ray cast shader determines intersecting AABBs by traversing BVH, then dispatches
+	- buffers:
+		- AABB buffer contains
+			- object id
+			- object shader index (used to index dispatch struct buffer)
+		- dispatch buffer
+			- dispatch struct `VkDispatchIndirectCommand` only contains workgroup count x,y,z (one for each object type/object shader)
+			- every time an ray cast invocation/thread hits an AABB, dispatch buffer is atomically incrimented via `atomicAdd` (at object index)
+		- ray cast shader writes to invocation buffer which contains:
+			- x,y screen coordinates
+	- dispatch x number of shader invocations
+		- vkCmdBindPipeline
+		- vkCmdDispatchIndirect + dispatch buffer offset (gets invoked x times)
+	- object shader:
+		- DOWNSIDE: dispatches are sequential (within same queue)
+			- some object shaders may only have a handfull of invocations which leads to low utilization...
+		- has access to gl_GlobalInvocationID.x
+		- spec or puch constant object shader index
+		- reads invocation buffer using index
+			- x,y screen coordinates
+		- read/write to shared depth buffer + albedo, specular buffers for blending
+			- solid object use `atomicMin`
+			- blendable objects perform operations in between read/write and handle race conditions by:
+				- spinlock: use `atomicCompSwap` to write a `LOCK` value to the depth buffer meaning other threads have to poll until it is released
+				- low risk of deadlock because adjacent threads in workgroup are for same object but at different screen coordinates
+			- on hit, write albedo, normal, depth, object id etc
 
 # renderer architecture
 
