@@ -359,6 +359,7 @@ impl RenderManager {
     pub fn render_frame(
         &mut self,
         render_settings: &RendererSettings,
+        render_area: vk::Rect2D,
         view_mode: ViewMode,
         camera: &Camera,
         camera_settings: &CameraSettings,
@@ -408,6 +409,7 @@ impl RenderManager {
             new_frame_index,
             swapchain_index,
             render_settings,
+            render_area,
             view_mode,
             gizmo_visibility,
             hovered_gizmo,
@@ -471,7 +473,9 @@ impl RenderManager {
     ) -> anyhow::Result<Option<ElementAtPoint>> {
         let framebuffer_dimensions = self.swapchain.properties().dimensions();
         if screen_coordinate[0] > framebuffer_dimensions.width() as f32
+            || screen_coordinate[0] < 0.
             || screen_coordinate[1] > framebuffer_dimensions.height() as f32
+            || screen_coordinate[1] < 0.
         {
             return Ok(None);
         }
@@ -653,14 +657,15 @@ impl RenderManager {
         frame_index: usize,
         swapchain_index: usize,
         render_settings: &RendererSettings,
+        render_area: vk::Rect2D,
         view_mode: ViewMode,
         gizmo_visibility: GizmoVisibility,
         hovered_gizmo: Option<GizmoElement>,
         selected_object_id: Option<ObjectId>,
     ) -> anyhow::Result<()> {
-        let viewport = self.framebuffers[swapchain_index][frame_index].whole_viewport();
-        let render_area = self.framebuffers[swapchain_index][frame_index].whole_rect();
         let command_buffer = &self.render_command_buffers[frame_index];
+        let full_viewport = self.framebuffers[swapchain_index][frame_index].whole_viewport();
+        let full_render_area = self.framebuffers[swapchain_index][frame_index].whole_rect();
 
         let begin_info = vk::CommandBufferBeginInfo {
             flags: vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT,
@@ -673,14 +678,14 @@ impl RenderManager {
         let render_pass_begin = vk::RenderPassBeginInfo::default()
             .render_pass(self.render_pass.handle())
             .framebuffer(self.framebuffers[swapchain_index][frame_index].handle())
-            .render_area(render_area)
+            .render_area(full_render_area)
             .clear_values(self.clear_values.as_slice());
         command_buffer.begin_render_pass(&render_pass_begin, vk::SubpassContents::INLINE);
 
         self.skybox_pass.record_commands(
             command_buffer,
             frame_index,
-            viewport,
+            full_viewport,
             render_area,
             view_mode,
         );
@@ -689,21 +694,21 @@ impl RenderManager {
             command_buffer,
             selected_object_id,
             frame_index,
-            viewport,
+            full_viewport,
             render_area,
         );
 
         command_buffer.next_subpass(vk::SubpassContents::INLINE);
 
         self.lighting_pass
-            .record_commands(command_buffer, frame_index, viewport, render_area);
+            .record_commands(command_buffer, frame_index, full_viewport, render_area);
 
         if render_settings.show_aabb_wireframe {
             self.overlay_pass.record_aabb_overlay_commands(
                 command_buffer,
                 frame_index,
                 self.geometry_pass.object_buffer_manager(),
-                viewport,
+                full_viewport,
                 render_area,
             );
         }
@@ -712,7 +717,7 @@ impl RenderManager {
             self.gizmo_pass.record_commands(
                 command_buffer,
                 frame_index,
-                viewport,
+                full_viewport,
                 render_area,
                 gizmo_visibility,
                 hovered_gizmo,
@@ -723,7 +728,7 @@ impl RenderManager {
             command_buffer,
             frame_index,
             self.shaders_write_linear_color,
-            [viewport.width, viewport.height],
+            [full_viewport.width, full_viewport.height],
         )?;
 
         command_buffer.end_render_pass();

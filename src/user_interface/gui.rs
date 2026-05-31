@@ -15,6 +15,7 @@ use crate::{
     user_interface::{config_ui::MAX_QUICK_ACCESS_SETTINGS, view_modes::ViewMode},
 };
 use anyhow::Context;
+use ash::vk;
 use egui::{TextWrapMode, TexturesDelta};
 use egui_winit::EventResponse;
 #[allow(unused_imports)]
@@ -136,6 +137,7 @@ impl Gui {
             .set_selected_primitive_op_fields(selected_primitive_op);
     }
 
+    /// Returns `(commands, render_area)`
     pub fn update_gui(
         &mut self,
         settings: &mut Settings,
@@ -145,8 +147,15 @@ impl Gui {
         view_mode: &mut ViewMode,
         selected_object_id: Option<ObjectId>,
         selected_primitive_op_index: Option<PrimitiveOpIndex>,
-    ) -> Vec<Command> {
+    ) -> (Vec<Command>, vk::Rect2D) {
         let mut commands = Vec::<Command>::new();
+        let mut render_area = vk::Rect2D {
+            offset: vk::Offset2D { x: 0, y: 0 },
+            extent: vk::Extent2D {
+                width: window.inner_size().width as u32,
+                height: window.inner_size().height as u32,
+            },
+        };
 
         let raw_input = self.winit_state.take_egui_input(window);
 
@@ -157,7 +166,7 @@ impl Gui {
             pixels_per_point,
             viewport_output: _,
         } = self.egui_context.run_ui(raw_input, |ui| {
-            Self::draw_bottom_bar(
+            let bar_height = Self::draw_bottom_bar(
                 ui,
                 &mut self.side_panel_visible,
                 &mut self.settings_window_visible,
@@ -166,9 +175,10 @@ impl Gui {
                 settings,
                 &mut self.quick_access_settings,
             );
+            render_area.extent.height -= bar_height.floor() as u32;
 
             if self.side_panel_visible {
-                let mut new_commands = Self::draw_side_panel(
+                let (mut new_commands, panel_width) = Self::draw_side_panel(
                     ui,
                     &mut self.value_state,
                     object_collection,
@@ -176,6 +186,8 @@ impl Gui {
                     selected_primitive_op_index,
                 );
                 commands.append(&mut new_commands);
+                render_area.offset.x = panel_width.floor() as i32;
+                render_area.extent.width -= panel_width.floor() as u32;
             }
 
             if self.settings_window_visible {
@@ -210,7 +222,7 @@ impl Gui {
             self.textures_delta_accumulation.push(textures_delta);
         }
 
-        commands
+        (commands, render_area)
     }
 
     pub fn set_cursor_icon(&self, cursor_icon: egui::CursorIcon) {

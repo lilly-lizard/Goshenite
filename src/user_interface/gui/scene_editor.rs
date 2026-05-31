@@ -1,9 +1,6 @@
-use crate::{
-    engine::{
-        commands::Command,
-        object::{object::ObjectId, object_collection::ObjectCollection},
-    },
-    helper::unique_id_gen::UniqueIdType,
+use crate::engine::{
+    commands::Command,
+    object::{object::ObjectId, object_collection::ObjectCollection},
 };
 use egui::{RichText, TextStyle};
 #[allow(unused_imports)]
@@ -43,8 +40,7 @@ pub fn layout_scene_editor(
     // object list
     for (&current_id, current_object) in object_collection.objects().iter() {
         let label_text =
-            RichText::new(format!("{} - {}", current_id.raw_id(), current_object.name))
-                .text_style(TextStyle::Monospace);
+            RichText::new(format!("{}", current_object.name)).text_style(TextStyle::Monospace);
 
         let is_selected = if let Some(some_selected_object_id) = selected_object_id {
             some_selected_object_id == current_id
