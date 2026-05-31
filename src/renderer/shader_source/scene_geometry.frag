@@ -4,6 +4,7 @@
 #include "config.glsl"
 
 layout(constant_id = 0) const bool SELECTED_OBJECT = false;
+//layout(constant_id = 1) const bool SELECTED_PRIMITIVE = false;
 
 // Maximum number of ray marching steps before confirming a miss
 const uint MAX_STEPS = 100;
@@ -40,6 +41,10 @@ layout (set = 1, binding = 0, std430) readonly buffer Object {
 	uint op_count;
 	uint primitive_ops[];
 } object;
+
+// layout (push_constant) uniform GeometryPushConstant {
+// 	uint selected_primitive;
+// } pc;
 
 // ~~~ Signed Distance Fields ~~~
 // https://www.shadertoy.com/view/MsVGWG
@@ -243,6 +248,8 @@ RayMarchHit ray_march(const vec3 ray_o, const vec3 ray_d)
 		dist += closest_primitive.d;
 	}
 
+	// ray miss
+
 	if (SELECTED_OBJECT) {
     	if (min_d < .01) {
             return RayMarchHit (
@@ -254,8 +261,6 @@ RayMarchHit ray_march(const vec3 ray_o, const vec3 ray_d)
            	);
     	}
 	}
-
-	// ray miss
 	// see create_clear_values() in vulkan_init.rs for the default framebuffer values
 	discard;
 }

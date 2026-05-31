@@ -12,6 +12,7 @@
 	- code editor for skybox shader glsl. run on the fly
     - remove `include-spirv-bytes` feature
     - make common `create_shader_stages` fn in `vulkan_init`
+    - see [berrycode](https://github.com/KyosukeIshizu1008/berryscode/blob/main/berrycode/Cargo.toml)
 - simple animations 🔨
   - ball translate back and forwards
   - time + transform + smooth function
