@@ -29,6 +29,7 @@ use crate::{
     user_interface::{
         camera::Camera,
         gizmo::{GizmoElement, GizmoVisibility},
+        view_modes::ViewMode,
     },
 };
 use anyhow::Context;
@@ -358,6 +359,7 @@ impl RenderManager {
     pub fn render_frame(
         &mut self,
         render_settings: &RendererSettings,
+        view_mode: ViewMode,
         camera: &Camera,
         camera_settings: &CameraSettings,
         gizmo_visibility: GizmoVisibility,
@@ -406,6 +408,7 @@ impl RenderManager {
             new_frame_index,
             swapchain_index,
             render_settings,
+            view_mode,
             gizmo_visibility,
             hovered_gizmo,
             selected_object_id,
@@ -650,6 +653,7 @@ impl RenderManager {
         frame_index: usize,
         swapchain_index: usize,
         render_settings: &RendererSettings,
+        view_mode: ViewMode,
         gizmo_visibility: GizmoVisibility,
         hovered_gizmo: Option<GizmoElement>,
         selected_object_id: Option<ObjectId>,
@@ -673,8 +677,13 @@ impl RenderManager {
             .clear_values(self.clear_values.as_slice());
         command_buffer.begin_render_pass(&render_pass_begin, vk::SubpassContents::INLINE);
 
-        self.skybox_pass
-            .record_commands(command_buffer, frame_index, viewport, render_area);
+        self.skybox_pass.record_commands(
+            command_buffer,
+            frame_index,
+            viewport,
+            render_area,
+            view_mode,
+        );
 
         self.geometry_pass.record_commands(
             command_buffer,

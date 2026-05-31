@@ -75,8 +75,7 @@ impl Default for SettingsIO {
                 settings: vec![SettingsIOEntry {
                     name: "Look Mode".into(),
                     description: "Available Modes:\n
-- Arcball Hovering: an arcball that rotates around an invisible point in front of camera.\n
-  Use setting `Arcball Target Depth` to control how far in front this point is.\n
+- Arcball Hovering: an arcball that rotates around an invisible point in front of camera. Use setting `Arcball Target Depth` to control how far in front this point is.\n
 - POV: turn around while camera remains in fixed position.\n
 - Selected Object: arcball around the selected object.\n
 - Selected Primitive Op: arcball around the selected primitive op.\n"

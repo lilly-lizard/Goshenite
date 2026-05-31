@@ -292,6 +292,7 @@ impl Engine {
         // renderer
         self.controllers.renderer.render_frame(
             &self.settings.render,
+            self.view_mode,
             &self.controllers.camera,
             &self.settings.camera,
             self.gizmo_visibility,

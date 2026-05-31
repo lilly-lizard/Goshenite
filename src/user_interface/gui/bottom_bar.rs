@@ -2,8 +2,11 @@ use crate::{
     engine::settings::{Settings, SettingsIOEntry},
     user_interface::{
         config_ui::MAX_QUICK_ACCESS_SETTINGS,
-        gui::{command_palette::GuiStateCommandPalette, side_panel::SidePanelMode, Gui},
+        gui::{command_palette::GuiStateCommandPalette, Gui},
     },
+};
+use egui_material_icons::icons::{
+    ICON_KEYBOARD_COMMAND_KEY, ICON_LEFT_PANEL_CLOSE, ICON_LEFT_PANEL_OPEN, ICON_SETTINGS,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -11,7 +14,7 @@ use log::{debug, error, info, trace, warn};
 impl Gui {
     pub(super) fn draw_bottom_bar(
         ui: &mut egui::Ui,
-        side_panel_mode: &mut Option<SidePanelMode>,
+        side_panel_visible: &mut bool,
         settings_window_visible: &mut bool,
         command_pallette: &mut Option<GuiStateCommandPalette>,
         settings: &mut Settings,
@@ -21,7 +24,7 @@ impl Gui {
             ui.horizontal_wrapped(|ui| {
                 bottom_bar_layout(
                     ui,
-                    side_panel_mode,
+                    side_panel_visible,
                     settings_window_visible,
                     command_pallette,
                     settings,
@@ -34,31 +37,21 @@ impl Gui {
 
 fn bottom_bar_layout(
     ui: &mut egui::Ui,
-    side_panel_mode: &mut Option<SidePanelMode>,
+    side_panel_visible: &mut bool,
     settings_window_visible: &mut bool,
     command_pallette: &mut Option<GuiStateCommandPalette>,
     settings: &mut Settings,
     quick_access_settings: &mut [Option<SettingsIOEntry>; MAX_QUICK_ACCESS_SETTINGS],
 ) {
     let mut command_pallette_visible = command_pallette.is_some();
-    let (mut scene_visible, mut object_editor_visible) = SidePanelMode::bools(*side_panel_mode);
     let mut settings_modified = false;
 
-    if ui.toggle_value(&mut scene_visible, "Scene").changed() {
-        *side_panel_mode = match scene_visible {
-            true => Some(SidePanelMode::Scene),
-            false => None,
-        };
+    let panel_icon = match side_panel_visible {
+        true => ICON_LEFT_PANEL_CLOSE,
+        false => ICON_LEFT_PANEL_OPEN,
     };
-    if ui
-        .toggle_value(&mut object_editor_visible, "Object Editor")
-        .changed()
-    {
-        *side_panel_mode = match object_editor_visible {
-            true => Some(SidePanelMode::ObjectEditor),
-            false => None,
-        };
-    };
+    ui.toggle_value(side_panel_visible, panel_icon)
+        .on_hover_text("Toggle panel");
 
     ui.separator();
 
@@ -77,9 +70,11 @@ fn bottom_bar_layout(
 
         ui.separator();
 
-        ui.toggle_value(settings_window_visible, "Settings");
+        ui.toggle_value(settings_window_visible, ICON_SETTINGS)
+            .on_hover_text("Settings");
         if ui
-            .toggle_value(&mut command_pallette_visible, "Command Pallete")
+            .toggle_value(&mut command_pallette_visible, ICON_KEYBOARD_COMMAND_KEY)
+            .on_hover_text("Command Pallete")
             .changed()
         {
             *command_pallette = match command_pallette_visible {

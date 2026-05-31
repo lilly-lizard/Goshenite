@@ -1,6 +1,7 @@
 //! Also contains the list of commands available via the command palette.
 use super::Gui;
 use crate::{engine::commands::Command, helper::index_in_list::IndexInList};
+use egui_material_icons::icons::ICON_KEYBOARD_COMMAND_KEY;
 use winit::window::Window;
 
 // ~~ Available Commands ~~
@@ -56,7 +57,7 @@ impl Gui {
         let add_contents = |ui: &mut egui::Ui| {
             new_command = layout_command_palette(ui, command_palette_state);
         };
-        egui::Window::new("Command Palette")
+        egui::Window::new(ICON_KEYBOARD_COMMAND_KEY.codepoint.to_string() + " Command Palette")
             .collapsible(false)
             .resizable(true)
             .vscroll(true)
@@ -69,7 +70,7 @@ impl Gui {
 }
 
 #[allow(unused_parens)]
-pub fn layout_command_palette(
+fn layout_command_palette(
     ui: &mut egui::Ui,
     gui_state: &mut GuiStateCommandPalette,
 ) -> Option<Command> {

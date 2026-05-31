@@ -1,13 +1,16 @@
-use crate::renderer::{
-    config_renderer::{BOX_INSIDE_STL_PATH, SKYBOX_SIZE},
-    shader_interfaces::{
-        push_constants::SkyboxPushConstant,
-        vertex_inputs::{SkyboxVertex, VulkanVertex},
+use crate::{
+    renderer::{
+        config_renderer::{BOX_INSIDE_STL_PATH, SKYBOX_SIZE},
+        shader_interfaces::{
+            push_constants::SkyboxPushConstant,
+            vertex_inputs::{SkyboxVertex, VulkanVertex},
+        },
+        vulkan_init::{
+            create_desc_sets_camera, create_shader_stage_from_bytes,
+            create_vertex_buffers_from_stl, render_pass_indices, write_camera_descriptor_sets,
+        },
     },
-    vulkan_init::{
-        create_desc_sets_camera, create_shader_stage_from_bytes, create_vertex_buffers_from_stl,
-        render_pass_indices, write_camera_descriptor_sets,
-    },
+    user_interface::view_modes::ViewMode,
 };
 use anyhow::Context;
 use ash::vk::{self, ShaderStageFlags};
@@ -27,7 +30,8 @@ mod descriptor {
 
 pub struct SkyboxPass {
     desc_sets_camera: Vec<DescriptorSet>,
-    pipeline: GraphicsPipeline,
+    pipeline_scene_mode: GraphicsPipeline,
+    pipeline_object_mode: GraphicsPipeline,
 
     skybox_vertex_buffer: Buffer,
     skybox_index_buffer: Buffer,
@@ -45,18 +49,26 @@ impl SkyboxPass {
         write_camera_descriptor_sets(&desc_sets_camera, camera_buffer, descriptor::BINDING_CAMERA);
         let pipeline_layout =
             create_pipeline_layout(device.clone(), desc_sets_camera[0].layout().clone())?;
-        let (shader_vert, shader_frag_default, shader_frag_object) = create_shader_stages(device)?;
-        let pipeline = create_pipeline(
+        let (shader_vert, shader_frag_default, shader_frag_object_mode) =
+            create_shader_stages(device)?;
+        let pipeline_scene_mode = create_pipeline(
+            pipeline_layout.clone(),
+            render_pass,
+            shader_vert.clone(),
+            shader_frag_default,
+        )?;
+        let pipeline_object_mode = create_pipeline(
             pipeline_layout,
             render_pass,
             shader_vert,
-            shader_frag_default,
+            shader_frag_object_mode,
         )?;
         let (skybox_vertex_buffer, skybox_index_buffer, skybox_index_count) =
             create_vertex_buffers_from_stl(memory_allocator.clone(), BOX_INSIDE_STL_PATH)?;
         Ok(Self {
             desc_sets_camera,
-            pipeline,
+            pipeline_scene_mode,
+            pipeline_object_mode,
             skybox_vertex_buffer,
             skybox_index_buffer,
             skybox_index_count,
@@ -69,16 +81,20 @@ impl SkyboxPass {
         frame_index: usize,
         viewport: vk::Viewport,
         scissor: vk::Rect2D,
+        view_mode: ViewMode,
     ) {
         let pc_data = SkyboxPushConstant { size: SKYBOX_SIZE };
         let pc_bytes = bytemuck::bytes_of(&pc_data);
-
-        command_buffer.bind_pipeline(&self.pipeline);
+        let pipeline = match view_mode {
+            ViewMode::SceneEditor => &self.pipeline_scene_mode,
+            ViewMode::ObjectEditor => &self.pipeline_object_mode,
+        };
+        command_buffer.bind_pipeline(pipeline);
         command_buffer.set_viewport(0, &[viewport]);
         command_buffer.set_scissor(0, &[scissor]);
         command_buffer.bind_descriptor_sets(
             vk::PipelineBindPoint::GRAPHICS,
-            &self.pipeline.pipeline_layout(),
+            &pipeline.pipeline_layout(),
             0,
             [&self.desc_sets_camera[frame_index]],
             &[],
@@ -86,7 +102,7 @@ impl SkyboxPass {
         command_buffer.bind_vertex_buffers(0, [&self.skybox_vertex_buffer], &[0]);
         command_buffer.bind_index_buffer(&self.skybox_index_buffer, 0, vk::IndexType::UINT32);
         command_buffer.push_constants(
-            &self.pipeline.pipeline_layout(),
+            &pipeline.pipeline_layout(),
             vk::ShaderStageFlags::VERTEX,
             0,
             pc_bytes,

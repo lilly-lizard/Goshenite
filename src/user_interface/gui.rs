@@ -12,7 +12,7 @@ use crate::{
         settings::{Settings, SettingsIO, SettingsIOEntry},
     },
     helper::more_errors::IoError,
-    user_interface::{config_ui::MAX_QUICK_ACCESS_SETTINGS, gui::side_panel::SidePanelMode},
+    user_interface::config_ui::MAX_QUICK_ACCESS_SETTINGS,
 };
 use anyhow::Context;
 use egui::{TextWrapMode, TexturesDelta};
@@ -40,7 +40,7 @@ pub struct Gui {
     textures_delta_accumulation: Vec<TexturesDelta>,
 
     value_state: ValueState,
-    side_panel_mode: Option<SidePanelMode>,
+    side_panel_visible: bool,
     settings_window_visible: bool,
     command_pallette: Option<GuiStateCommandPalette>,
     quick_access_settings: [Option<SettingsIOEntry>; MAX_QUICK_ACCESS_SETTINGS],
@@ -85,6 +85,8 @@ impl Gui {
             }
         };
 
+        egui_material_icons::initialize(&egui_context);
+
         let arcball_depth_setting = settings_io.get_setting_entry_from_name("Arcball Target Depth");
         let quick_access_settings = [arcball_depth_setting, None, None];
 
@@ -95,7 +97,7 @@ impl Gui {
             mesh_primitives: Default::default(),
             value_state: Default::default(),
             textures_delta_accumulation: Default::default(),
-            side_panel_mode: Default::default(),
+            side_panel_visible: true,
             settings_window_visible: false,
             command_pallette: None,
             quick_access_settings,
@@ -156,17 +158,16 @@ impl Gui {
         } = self.egui_context.run_ui(raw_input, |ui| {
             Self::draw_bottom_bar(
                 ui,
-                &mut self.side_panel_mode,
+                &mut self.side_panel_visible,
                 &mut self.settings_window_visible,
                 &mut self.command_pallette,
                 settings,
                 &mut self.quick_access_settings,
             );
 
-            if let Some(side_panel_mode) = self.side_panel_mode {
+            if self.side_panel_visible {
                 let mut new_commands = Self::draw_side_panel(
                     ui,
-                    side_panel_mode,
                     &mut self.value_state,
                     object_collection,
                     selected_object_id,
