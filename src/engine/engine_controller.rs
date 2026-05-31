@@ -260,6 +260,7 @@ impl Engine {
             &self.settings_io,
             &self.object_collection,
             &self.window,
+            &mut self.view_mode,
             self.selected_object_id,
             self.selected_primitive_op_index,
         );

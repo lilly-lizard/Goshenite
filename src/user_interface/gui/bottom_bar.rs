@@ -1,12 +1,14 @@
 use crate::{
-    engine::settings::{Settings, SettingsIOEntry},
+    engine::settings::{setting_ui_enum_some_disabled, Settings, SettingsIOEntry},
     user_interface::{
         config_ui::MAX_QUICK_ACCESS_SETTINGS,
         gui::{command_palette::GuiStateCommandPalette, Gui},
+        view_modes::ViewMode,
     },
 };
 use egui_material_icons::icons::{
     ICON_KEYBOARD_COMMAND_KEY, ICON_LEFT_PANEL_CLOSE, ICON_LEFT_PANEL_OPEN, ICON_SETTINGS,
+    ICON_VIEW_IN_AR,
 };
 #[allow(unused_imports)]
 use log::{debug, error, info, trace, warn};
@@ -16,6 +18,7 @@ impl Gui {
         ui: &mut egui::Ui,
         side_panel_visible: &mut bool,
         settings_window_visible: &mut bool,
+        view_mode: &mut ViewMode,
         command_pallette: &mut Option<GuiStateCommandPalette>,
         settings: &mut Settings,
         quick_access_settings: &mut [Option<SettingsIOEntry>; MAX_QUICK_ACCESS_SETTINGS],
@@ -26,6 +29,7 @@ impl Gui {
                     ui,
                     side_panel_visible,
                     settings_window_visible,
+                    view_mode,
                     command_pallette,
                     settings,
                     quick_access_settings,
@@ -39,6 +43,7 @@ fn bottom_bar_layout(
     ui: &mut egui::Ui,
     side_panel_visible: &mut bool,
     settings_window_visible: &mut bool,
+    view_mode: &mut ViewMode,
     command_pallette: &mut Option<GuiStateCommandPalette>,
     settings: &mut Settings,
     quick_access_settings: &mut [Option<SettingsIOEntry>; MAX_QUICK_ACCESS_SETTINGS],
@@ -52,6 +57,14 @@ fn bottom_bar_layout(
     };
     ui.toggle_value(side_panel_visible, panel_icon)
         .on_hover_text("Toggle panel");
+
+    egui::ComboBox::from_id_salt("")
+        .selected_text(view_mode.name())
+        .show_ui(ui, |ui| {
+            for variant in ViewMode::VARIANTS {
+                ui.selectable_value(view_mode, variant.clone(), variant.name());
+            }
+        });
 
     ui.separator();
 

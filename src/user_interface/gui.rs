@@ -12,7 +12,7 @@ use crate::{
         settings::{Settings, SettingsIO, SettingsIOEntry},
     },
     helper::more_errors::IoError,
-    user_interface::config_ui::MAX_QUICK_ACCESS_SETTINGS,
+    user_interface::{config_ui::MAX_QUICK_ACCESS_SETTINGS, view_modes::ViewMode},
 };
 use anyhow::Context;
 use egui::{TextWrapMode, TexturesDelta};
@@ -142,6 +142,7 @@ impl Gui {
         settings_io: &SettingsIO,
         object_collection: &ObjectCollection,
         window: &Window,
+        view_mode: &mut ViewMode,
         selected_object_id: Option<ObjectId>,
         selected_primitive_op_index: Option<PrimitiveOpIndex>,
     ) -> Vec<Command> {
@@ -160,6 +161,7 @@ impl Gui {
                 ui,
                 &mut self.side_panel_visible,
                 &mut self.settings_window_visible,
+                view_mode,
                 &mut self.command_pallette,
                 settings,
                 &mut self.quick_access_settings,
