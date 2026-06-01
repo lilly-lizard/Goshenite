@@ -19,5 +19,5 @@ layout (set = 0, binding = 0) uniform Camera {
 
 void main()
 {
-	gl_Position = inverse(cam.proj_inverse) * inverse(cam.view_inverse) * (in_position + in_translation);
+	gl_Position = inverse(cam.proj_inverse) * inverse(cam.view_inverse) * (in_rotation * in_position + in_translation);
 }

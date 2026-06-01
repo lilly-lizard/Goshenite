@@ -20,6 +20,7 @@ layout (location = 0) in flat uint in_object_id;
 layout (location = 1) in noperspective vec2 in_clip_space_uv; // clip space position [-1, 1]
 layout (location = 2) in float in_camera_distance;
 layout (location = 3) in vec4 in_translation;
+layout (location = 4) in mat3 in_rotation; // consumes 4 locations
 
 layout (location = 0) out vec4 out_normal;
 layout (location = 1) out vec4 out_albedo_specular;
@@ -112,7 +113,7 @@ SdfResult process_primitive(uint op_index, vec3 pos)
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
-	) + in_translation.xyz;
+	);
 
 	mat3 rotation;
 	rotation[0] = vec3(
@@ -150,6 +151,7 @@ SdfResult process_primitive(uint op_index, vec3 pos)
 	);
 	float specular = uintBitsToFloat(object.primitive_ops[buffer_index++]);
 
+	pos = pos * in_rotation;
 	pos = pos - center;
 	pos = pos * rotation;
 
@@ -290,7 +292,8 @@ float distance_to_depth(float distance, vec3 ray_d) {
 void main()
 {
 	vec3 ray_d_norm = ray_direction();
-	RayMarchHit hit = ray_march(cam.position, ray_d_norm);
+	vec3 ray_o = cam.position - in_translation.xyz;
+	RayMarchHit hit = ray_march(ray_o, ray_d_norm.xyz);
 
 	gl_FragDepth = distance_to_depth(hit.dist, ray_d_norm);
 	out_normal = vec4(hit.normal / 2. + 0.5, 0.); // fit [-1, 1] in unorm range
