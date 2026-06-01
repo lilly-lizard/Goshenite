@@ -31,6 +31,7 @@ impl Gui {
             .show_inside(ui, |ui| {
                 egui::ScrollArea::both()
                     .scroll_bar_visibility(ScrollBarVisibility::VisibleWhenNeeded)
+                    .auto_shrink(false)
                     .show(ui, |ui| {
                         ui.vertical(|ui| {
                             ui.add_space(6.0);

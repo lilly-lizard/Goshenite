@@ -13,9 +13,9 @@ use crate::{
     },
     user_interface::{
         config_ui,
-        editable_fields::{
+        gui::editable_fields::{
             blend_editor_ui, color_specular_editor_ui, cube_editor_ui, op_drop_down,
-            primitive_transform_editor_ui, sphere_editor_ui, uber_primitive_editor_ui,
+            sphere_editor_ui, transform_editor_ui, uber_primitive_editor_ui,
         },
         gui_state::{DataUpdateState, ValueState, DRAG_INC},
     },
@@ -156,17 +156,17 @@ fn object_properties_editor(
             mut instance_count,
             mut transform,
         } => {
-            let mut changed = false;
-            ui.horizontal(|ui| {
-                changed = changed
-                    || ui
-                        .add(
-                            egui::DragValue::new(&mut instance_count)
-                                .speed(1)
-                                .range(1..=1000),
-                        )
-                        .changed();
-            });
+            let mut changed = ui
+                .add(
+                    egui::DragValue::new(&mut instance_count)
+                        .speed(1)
+                        .range(1..=1000),
+                )
+                .changed();
+
+            let res = transform_editor_ui(ui, &mut transform, "instance 1d".to_string());
+            changed = changed || (res == DataUpdateState::Modified);
+
             if changed {
                 commands.push(Command::SetObjectInstances {
                     object_id,
@@ -179,8 +179,8 @@ fn object_properties_editor(
         }
         ObjectInstances::TwoDimension {
             mut instance_count,
-            transform_a,
-            transform_b,
+            mut transform_a,
+            mut transform_b,
         } => {
             let mut changed = false;
             ui.horizontal(|ui| {
@@ -201,6 +201,15 @@ fn object_properties_editor(
                         )
                         .changed();
             });
+
+            ui.label("Transform A:");
+            let res = transform_editor_ui(ui, &mut transform_a, "instance 2d a".to_string());
+            changed = changed || (res == DataUpdateState::Modified);
+
+            ui.label("Transform B:");
+            let res = transform_editor_ui(ui, &mut transform_b, "instance 2d b".to_string());
+            changed = changed || (res == DataUpdateState::Modified);
+
             if changed {
                 commands.push(Command::SetObjectInstances {
                     object_id,
@@ -521,7 +530,8 @@ fn primitive_editor_ui(ui: &mut egui::Ui, value_state: &mut ValueState) -> DataU
         Primitive::Cube(p) => cube_editor_ui(ui, p),
         Primitive::UberPrimitive(p) => uber_primitive_editor_ui(ui, p),
     };
-    let transform_edit_state = primitive_transform_editor_ui(ui, &mut value_state.transform);
+    let transform_edit_state =
+        transform_editor_ui(ui, &mut value_state.transform, "primitive".to_string());
     let blend_edit_state = blend_editor_ui(ui, &mut value_state.blend);
     let color_specular_edit_state =
         color_specular_editor_ui(ui, &mut value_state.albedo, &mut value_state.specular);

@@ -9,6 +9,7 @@
 	- only draw selected object in object mode
   - center origin to render rect (viewport)
   - center object in ObjectEditor (impliment instancing first)
+- arcball depth scales with zoom
 - implement instancing feature
 - skybox ✔️
 	- load background skyboxes via file selector
