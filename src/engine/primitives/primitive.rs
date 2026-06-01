@@ -1,6 +1,7 @@
-use super::{cube::Cube, sphere::Sphere, transform::Transform, uber_primitive::UberPrimitive};
+use super::{cube::Cube, sphere::Sphere, uber_primitive::UberPrimitive};
 use crate::{
-    engine::aabb::Aabb, helper::from_enum_macro::impl_from_for_enum_variant,
+    engine::{aabb::Aabb, primitives::transform::Transform},
+    helper::from_enum_macro::impl_from_for_enum_variant,
     renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
 use serde::{Deserialize, Serialize};

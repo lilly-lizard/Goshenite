@@ -42,10 +42,10 @@ impl Transform {
         Mat3::from_quat(self.total_rotation())
     }
 
-    pub fn gpu_encoded(&self, parent_origin: Vec3) -> PrimitiveTransformSlice {
+    pub fn gpu_encoded(&self) -> PrimitiveTransformSlice {
         let rotation_cols_array = self.rotation_matrix().to_cols_array();
 
-        let center = self.translation + parent_origin;
+        let center = self.translation;
         [
             center.x.to_bits(),
             center.y.to_bits(),
@@ -147,9 +147,9 @@ impl ObjectInstances {
         }
     }
 
-    pub fn instance_matrices(&self) -> Vec<ObjectInstanceVertex> {
+    pub fn instance_vertices(&self, object_origin: Vec3) -> Vec<ObjectInstanceVertex> {
         match self {
-            Self::Single => vec![ObjectInstanceVertex::default()],
+            Self::Single => vec![ObjectInstanceVertex::new(object_origin, Mat4::IDENTITY)],
             Self::OneDimension {
                 instance_count,
                 transform,
@@ -159,7 +159,7 @@ impl ObjectInstances {
                 let mut current_rotation = Mat4::IDENTITY;
                 for _i in 0..*instance_count {
                     matrices.push(ObjectInstanceVertex::new(
-                        current_translation,
+                        current_translation + object_origin,
                         current_rotation,
                     ));
                     current_translation += transform.translation;
@@ -180,7 +180,7 @@ impl ObjectInstances {
                     let mut current_rotation_b = current_rotation_a;
                     for _b in 0..instance_count[1] {
                         matrices.push(ObjectInstanceVertex::new(
-                            current_translation_b,
+                            current_translation_b + object_origin,
                             current_rotation_b,
                         ));
                         current_translation_b += transform_b.translation;

@@ -84,6 +84,6 @@ impl EncodablePrimitive for Cube {
             aabb_dimensions.z = aabb_dimensions.z.max(rotated_corner.z);
         }
 
-        Aabb::new(primitive_transform.translation, aabb_dimensions * 2_f32)
+        Aabb::new(aabb_dimensions * 2_f32)
     }
 }

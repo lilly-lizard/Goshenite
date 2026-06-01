@@ -1,8 +1,9 @@
-use super::{primitive::EncodablePrimitive, transform::Transform};
+use super::primitive::EncodablePrimitive;
 use crate::{
     engine::{
         aabb::Aabb,
         config_engine::{primitive_names, DEFAULT_RADIUS},
+        primitives::transform::Transform,
     },
     renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
@@ -51,11 +52,8 @@ impl EncodablePrimitive for Sphere {
         ]
     }
 
-    fn aabb(&self, primitive_transform: Transform) -> Aabb {
+    fn aabb(&self, _primitive_transform: Transform) -> Aabb {
         // todo calculate only when props/transform changed? will need to make members private...
-        Aabb::new(
-            primitive_transform.translation,
-            Vec3::splat(2. * self.radius),
-        )
+        Aabb::new(Vec3::splat(2. * self.radius))
     }
 }

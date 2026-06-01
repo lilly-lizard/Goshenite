@@ -15,11 +15,11 @@ pub struct Aabb {
 
 impl Aabb {
     /// `dimensions` are the x/y/z lengths of the box.
-    pub fn new(center: Vec3, dimensions: Vec3) -> Self {
+    pub fn new(dimensions: Vec3) -> Self {
         let dimensions_expanded = dimensions + AABB_EDGE;
         let dimensions_halved = dimensions_expanded / 2.;
-        let max = center + dimensions_halved;
-        let min = center - dimensions_halved;
+        let max = dimensions_halved;
+        let min = -dimensions_halved;
 
         Self { max, min }
     }
@@ -36,29 +36,21 @@ impl Aabb {
         self.min = self.min.min(aabb.min);
     }
 
-    pub fn offset(&mut self, offset: Vec3) {
-        self.max += offset;
-        self.min += offset;
-    }
-
     /// Counter-clockwise front face
     pub fn vertices(&self, object_id: ObjectId) -> [BoundingMeshVertex; AABB_VERTEX_COUNT] {
         // note that vertex generation happens far less often than other operations (e.g. union)
         // so its more efficient to only store min/max and then generate other corners here.
 
-        let center = (self.max + self.min) / 2.;
-        let dimensions_halved = (self.max - self.min) / 2.;
-
         let xp_yp_zp = self.max;
         let xn_yn_zn = self.min;
 
-        let xn_yp_zp = center + dimensions_halved * Vec3::new(-1., 1., 1.);
-        let xp_yn_zp = center + dimensions_halved * Vec3::new(1., -1., 1.);
-        let xp_yp_zn = center + dimensions_halved * Vec3::new(1., 1., -1.);
+        let xn_yp_zp = Vec3::new(self.min.x, self.max.y, self.max.z);
+        let xp_yn_zp = Vec3::new(self.max.x, self.min.y, self.max.z);
+        let xp_yp_zn = Vec3::new(self.max.x, self.max.y, self.min.z);
 
-        let xn_yn_zp = center + dimensions_halved * Vec3::new(-1., -1., 1.);
-        let xp_yn_zn = center + dimensions_halved * Vec3::new(1., -1., -1.);
-        let xn_yp_zn = center + dimensions_halved * Vec3::new(-1., 1., -1.);
+        let xn_yn_zp = Vec3::new(self.min.x, self.min.y, self.max.z);
+        let xp_yn_zn = Vec3::new(self.max.x, self.min.y, self.min.z);
+        let xn_yp_zn = Vec3::new(self.min.x, self.max.y, self.min.z);
 
         [
             // positive x face 1

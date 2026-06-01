@@ -352,7 +352,7 @@ impl ObjectResourceManager {
         object: &Object,
         transfer_resources: &mut BufferUploadResources,
     ) -> anyhow::Result<Buffer> {
-        let data = object.instances.instance_matrices();
+        let data = object.instances.instance_vertices(object.center);
         self.upload_via_staging_buffer(
             transfer_resources,
             &data,

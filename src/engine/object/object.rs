@@ -96,7 +96,7 @@ impl Object {
 
         let mut encoded_primitives = Vec::<PrimitiveOpPacket>::new();
         for primitive_op in &self.primitive_ops {
-            let packet = create_primitive_op_packet(primitive_op, self.center);
+            let packet = create_primitive_op_packet(primitive_op);
             encoded_primitives.push(packet);
         }
         if self.primitive_ops.len() == 0 {
@@ -120,7 +120,6 @@ impl Object {
         for primitive_op in &self.primitive_ops {
             aabb.union(primitive_op.primitive.aabb(primitive_op.transform));
         }
-        aabb.offset(self.center);
         aabb
     }
 }
