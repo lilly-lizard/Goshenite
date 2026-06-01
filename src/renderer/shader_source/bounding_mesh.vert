@@ -11,7 +11,7 @@ layout (location = 0) out uint out_object_id;
 layout (location = 1) out vec2 out_clip_space_uv; // clip space xy position (between -1 and 1)
 layout (location = 2) out float out_camera_distance; // distance from camera to fragment
 layout (location = 3) out vec4 out_translation;
-layout (location = 4) out mat3 out_rotation; // consumes 4 locations
+layout (location = 4) out mat3 out_rotation; // consumes 3 locations
 
 layout (set = 0, binding = 0) uniform Camera {
 	mat4 view_inverse;

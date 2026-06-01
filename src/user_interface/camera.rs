@@ -12,7 +12,11 @@ use crate::{
         settings::{CameraSettings, SettingEnum},
     },
     helper::{angle::Angle, more_errors::CollectionError},
-    user_interface::{controls_camera::CameraAction, mouse_button::MouseButton},
+    user_interface::{
+        config_ui::{CAMERA_MAX_TARGET_DISTANCE, CAMERA_MIN_TARGET_DISTANCE},
+        controls_camera::CameraAction,
+        mouse_button::MouseButton,
+    },
 };
 use glam::{DMat3, DVec2, DVec3, Mat4, Vec3, Vec4};
 #[allow(unused_imports)]
@@ -152,7 +156,7 @@ impl Camera {
 
     pub fn update_cursor_dragging(
         &mut self,
-        settings: &CameraSettings,
+        settings: &mut CameraSettings,
         drag_delta: DVec2,
         drag_button: MouseButton,
         keyboard_modifier_states: KeyboardModifierStates,
@@ -181,7 +185,7 @@ impl Camera {
         }
     }
 
-    pub fn update_scroll(&mut self, settings: &CameraSettings, scroll_delta: DVec2) {
+    pub fn update_scroll(&mut self, settings: &mut CameraSettings, scroll_delta: DVec2) {
         self.zoom_from_scroll(settings, scroll_delta.y, settings.scroll_zoom_sensitivity);
     }
 
@@ -299,32 +303,31 @@ impl Camera {
 
     fn zoom_from_scroll(
         &mut self,
-        settings: &CameraSettings,
+        settings: &mut CameraSettings,
         scroll_delta: f64,
         scroll_zoom_sensitivity: f64,
     ) {
         self.zoom(settings, scroll_delta * scroll_zoom_sensitivity)
     }
 
-    fn zoom_from_cursor_delta(&mut self, settings: &CameraSettings, delta_cursor_position: DVec2) {
+    fn zoom_from_cursor_delta(
+        &mut self,
+        settings: &mut CameraSettings,
+        delta_cursor_position: DVec2,
+    ) {
         self.zoom(settings, -delta_cursor_position.y * MOUSE_ZOOM_FACTOR)
     }
 
-    fn zoom(&mut self, settings: &CameraSettings, zoom_delta: f64) {
+    fn zoom(&mut self, settings: &mut CameraSettings, zoom_delta: f64) {
         match settings.look_mode {
-            LookMode::ArcballHovering => {
-                let new_position = self.position + zoom_delta * self.direction;
-                self.set_position(new_position);
+            LookMode::ArcballHovering
+            | LookMode::SelectedObject
+            | LookMode::SelectedPrimitiveOp => {
+                self.scroll_zoom_target(zoom_delta, settings);
             }
             LookMode::PoV => {
                 let new_position = self.position + zoom_delta * self.direction;
                 self.set_position(new_position);
-            }
-            LookMode::SelectedObject => {
-                self.scroll_zoom_target(zoom_delta, self.last_known_origin.as_dvec3());
-            }
-            LookMode::SelectedPrimitiveOp => {
-                self.scroll_zoom_target(zoom_delta, self.last_known_origin.as_dvec3());
             }
         }
     }
@@ -458,13 +461,13 @@ impl Camera {
     }
 
     // `scroll_delta` is number of scroll clicks
-    fn scroll_zoom_target(&mut self, scroll_delta: f64, target_pos: DVec3) {
+    fn scroll_zoom_target(&mut self, scroll_delta: f64, settings: &mut CameraSettings) {
         if scroll_delta == 0. {
             return;
         }
 
         // vector from camera position to target
-        let target_vector = target_pos - self.position;
+        let target_vector = self.target_pos(settings) - self.position;
         // how far along that vector we want to travel
         let mut travel_factor = dual_asymptote(scroll_delta);
 
@@ -472,15 +475,16 @@ impl Camera {
         let target_vector_length = target_vector.length();
         let max_travel_factor = 1. - config_ui::CAMERA_MIN_TARGET_DISTANCE / target_vector_length;
         let min_travel_factor = 1. - config_ui::CAMERA_MAX_TARGET_DISTANCE / target_vector_length;
-        if travel_factor > max_travel_factor {
-            travel_factor = max_travel_factor;
-        } else if travel_factor < min_travel_factor {
-            travel_factor = min_travel_factor;
-        }
+        travel_factor = travel_factor.clamp(min_travel_factor, max_travel_factor);
 
         let new_position = self.position + target_vector * travel_factor;
-
         self.set_position(new_position);
+
+        if settings.look_mode == LookMode::ArcballHovering {
+            settings.arcball_target_depth = (settings.arcball_target_depth
+                - travel_factor * target_vector_length)
+                .clamp(CAMERA_MIN_TARGET_DISTANCE, CAMERA_MAX_TARGET_DISTANCE);
+        }
     }
 }
 

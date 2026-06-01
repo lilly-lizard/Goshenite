@@ -9,7 +9,6 @@
 	- only draw selected object in object mode
   - center origin to render rect (viewport)
   - center object in ObjectEditor (impliment instancing first)
-- arcball depth scales with zoom
 - implement instancing feature
 - skybox ✔️
 	- load background skyboxes via file selector
@@ -31,6 +30,7 @@
 
 # done:
 
+- arcball depth scales with zoom ✔️
 - settings redo: ✔️
 	- make each setting a static member, easily accessible by engine ✔️
 	- means you don't need `process_update` or `EngineControllers`, just send `settings` to all the controllers rather than keeping track of duplicate variables ✔️
