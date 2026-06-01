@@ -2,9 +2,11 @@ use crate::{
     engine::object::{object::ObjectId, objects_delta::ObjectsDelta},
     renderer::{
         object_resource_manager::ObjectResourceManager,
-        shader_interfaces::vertex_inputs::{BoundingBoxVertex, VulkanVertex},
-        vulkan_init::create_shader_stage_from_bytes,
-        vulkan_init::{create_desc_sets_camera, render_pass_indices, write_camera_descriptor_sets},
+        shader_interfaces::vertex_inputs::{ObjectMeshVertexInputs, VulkanVertex},
+        vulkan_init::{
+            create_desc_sets_camera, create_shader_stage_from_bytes, render_pass_indices,
+            write_camera_descriptor_sets,
+        },
     },
     user_interface::view_modes::ViewMode,
 };
@@ -220,7 +222,7 @@ fn create_pipelines(
         ..Default::default()
     };
 
-    let vertex_input_state = BoundingBoxVertex::vertex_input_state();
+    let vertex_input_state = ObjectMeshVertexInputs::vertex_input_state();
 
     let pipeline_properties = GraphicsPipelineProperties {
         color_blend_state,

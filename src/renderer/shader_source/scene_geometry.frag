@@ -19,6 +19,7 @@ const vec2 NORMAL_OFFSET = vec2(NORMAL_EPSILON, -NORMAL_EPSILON);
 layout (location = 0) in flat uint in_object_id;
 layout (location = 1) in noperspective vec2 in_clip_space_uv; // clip space position [-1, 1]
 layout (location = 2) in float in_camera_distance;
+layout (location = 3) in vec4 in_translation;
 
 layout (location = 0) out vec4 out_normal;
 layout (location = 1) out vec4 out_albedo_specular;
@@ -111,7 +112,7 @@ SdfResult process_primitive(uint op_index, vec3 pos)
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
-	);
+	) + in_translation.xyz;
 
 	mat3 rotation;
 	rotation[0] = vec3(

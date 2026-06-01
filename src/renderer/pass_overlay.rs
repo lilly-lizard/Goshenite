@@ -1,10 +1,12 @@
 use super::{
-    object_resource_manager::ObjectResourceManager,
-    shader_interfaces::vertex_inputs::{BoundingBoxVertex, VulkanVertex},
+    object_resource_manager::ObjectResourceManager, shader_interfaces::vertex_inputs::VulkanVertex,
     vulkan_init::render_pass_indices,
 };
-use crate::renderer::vulkan_init::{
-    create_desc_sets_camera, create_shader_stage_from_bytes, write_camera_descriptor_sets,
+use crate::renderer::{
+    shader_interfaces::vertex_inputs::ObjectMeshVertexInputs,
+    vulkan_init::{
+        create_desc_sets_camera, create_shader_stage_from_bytes, write_camera_descriptor_sets,
+    },
 };
 use anyhow::Context;
 use ash::vk::{self, ShaderStageFlags};
@@ -90,7 +92,7 @@ fn create_aabb_pipeline(
     pipeline_layout: Arc<PipelineLayout>,
     render_pass: &RenderPass,
 ) -> anyhow::Result<GraphicsPipeline> {
-    let (vert_stage, frag_stage) = create_aabb_shader_stages(device)?;
+    let (vert_stage, frag_stage) = create_outline_shader_stages(device)?;
 
     let dynamic_state =
         DynamicState::new_default(vec![vk::DynamicState::VIEWPORT, vk::DynamicState::SCISSOR]);
@@ -110,7 +112,7 @@ fn create_aabb_pipeline(
         ..Default::default()
     };
 
-    let vertex_input_state = BoundingBoxVertex::vertex_input_state();
+    let vertex_input_state = ObjectMeshVertexInputs::vertex_input_state();
 
     let pipeline_properties = GraphicsPipelineProperties {
         color_blend_state,
@@ -135,20 +137,20 @@ fn create_aabb_pipeline(
     Ok(pipeline_aabb)
 }
 
-fn create_aabb_shader_stages<'a>(
+fn create_outline_shader_stages<'a>(
     device: Arc<Device>,
 ) -> anyhow::Result<(ShaderStage<'a>, ShaderStage<'a>)> {
     let shader_vert = create_shader_stage_from_bytes(
         device.clone(),
         ShaderStageFlags::VERTEX,
-        &include_bytes!("../../assets/shader_binaries/outlines.vert.spv")[..],
+        &include_bytes!("../../assets/shader_binaries/bounding_mesh_outlines.vert.spv")[..],
         None,
     )
     .context("creating AABB overlay shaders")?;
     let shader_frag = create_shader_stage_from_bytes(
         device.clone(),
         ShaderStageFlags::FRAGMENT,
-        &include_bytes!("../../assets/shader_binaries/outlines.frag.spv")[..],
+        &include_bytes!("../../assets/shader_binaries/bounding_mesh_outlines.frag.spv")[..],
         None,
     )
     .context("creating AABB overlay shaders")?;

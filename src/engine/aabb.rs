@@ -1,5 +1,5 @@
 use super::{config_engine::AABB_EDGE, object::object::ObjectId};
-use crate::renderer::shader_interfaces::vertex_inputs::BoundingBoxVertex;
+use crate::renderer::shader_interfaces::vertex_inputs::BoundingMeshVertex;
 use glam::Vec3;
 
 pub const AABB_VERTEX_COUNT: usize = 36;
@@ -42,7 +42,7 @@ impl Aabb {
     }
 
     /// Counter-clockwise front face
-    pub fn vertices(&self, object_id: ObjectId) -> [BoundingBoxVertex; AABB_VERTEX_COUNT] {
+    pub fn vertices(&self, object_id: ObjectId) -> [BoundingMeshVertex; AABB_VERTEX_COUNT] {
         // note that vertex generation happens far less often than other operations (e.g. union)
         // so its more efficient to only store min/max and then generate other corners here.
 
@@ -62,53 +62,53 @@ impl Aabb {
 
         [
             // positive x face 1
-            BoundingBoxVertex::new(xp_yn_zp, object_id),
-            BoundingBoxVertex::new(xp_yp_zn, object_id),
-            BoundingBoxVertex::new(xp_yp_zp, object_id),
+            BoundingMeshVertex::new(xp_yn_zp, object_id),
+            BoundingMeshVertex::new(xp_yp_zn, object_id),
+            BoundingMeshVertex::new(xp_yp_zp, object_id),
             // positive x face 2
-            BoundingBoxVertex::new(xp_yp_zn, object_id),
-            BoundingBoxVertex::new(xp_yn_zp, object_id),
-            BoundingBoxVertex::new(xp_yn_zn, object_id),
+            BoundingMeshVertex::new(xp_yp_zn, object_id),
+            BoundingMeshVertex::new(xp_yn_zp, object_id),
+            BoundingMeshVertex::new(xp_yn_zn, object_id),
             // positive y face 1
-            BoundingBoxVertex::new(xp_yp_zn, object_id),
-            BoundingBoxVertex::new(xn_yp_zp, object_id),
-            BoundingBoxVertex::new(xp_yp_zp, object_id),
+            BoundingMeshVertex::new(xp_yp_zn, object_id),
+            BoundingMeshVertex::new(xn_yp_zp, object_id),
+            BoundingMeshVertex::new(xp_yp_zp, object_id),
             // positive y face 2
-            BoundingBoxVertex::new(xn_yp_zp, object_id),
-            BoundingBoxVertex::new(xp_yp_zn, object_id),
-            BoundingBoxVertex::new(xn_yp_zn, object_id),
+            BoundingMeshVertex::new(xn_yp_zp, object_id),
+            BoundingMeshVertex::new(xp_yp_zn, object_id),
+            BoundingMeshVertex::new(xn_yp_zn, object_id),
             // positive z face 1
-            BoundingBoxVertex::new(xn_yn_zp, object_id),
-            BoundingBoxVertex::new(xp_yp_zp, object_id),
-            BoundingBoxVertex::new(xn_yp_zp, object_id),
+            BoundingMeshVertex::new(xn_yn_zp, object_id),
+            BoundingMeshVertex::new(xp_yp_zp, object_id),
+            BoundingMeshVertex::new(xn_yp_zp, object_id),
             // positive z face 2
-            BoundingBoxVertex::new(xp_yp_zp, object_id),
-            BoundingBoxVertex::new(xn_yn_zp, object_id),
-            BoundingBoxVertex::new(xp_yn_zp, object_id),
+            BoundingMeshVertex::new(xp_yp_zp, object_id),
+            BoundingMeshVertex::new(xn_yn_zp, object_id),
+            BoundingMeshVertex::new(xp_yn_zp, object_id),
             // negative x face 1
-            BoundingBoxVertex::new(xn_yp_zn, object_id),
-            BoundingBoxVertex::new(xn_yn_zp, object_id),
-            BoundingBoxVertex::new(xn_yp_zp, object_id),
+            BoundingMeshVertex::new(xn_yp_zn, object_id),
+            BoundingMeshVertex::new(xn_yn_zp, object_id),
+            BoundingMeshVertex::new(xn_yp_zp, object_id),
             // negative x face 2
-            BoundingBoxVertex::new(xn_yn_zp, object_id),
-            BoundingBoxVertex::new(xn_yp_zn, object_id),
-            BoundingBoxVertex::new(xn_yn_zn, object_id),
+            BoundingMeshVertex::new(xn_yn_zp, object_id),
+            BoundingMeshVertex::new(xn_yp_zn, object_id),
+            BoundingMeshVertex::new(xn_yn_zn, object_id),
             // negative y face 1
-            BoundingBoxVertex::new(xn_yn_zp, object_id),
-            BoundingBoxVertex::new(xp_yn_zn, object_id),
-            BoundingBoxVertex::new(xp_yn_zp, object_id),
+            BoundingMeshVertex::new(xn_yn_zp, object_id),
+            BoundingMeshVertex::new(xp_yn_zn, object_id),
+            BoundingMeshVertex::new(xp_yn_zp, object_id),
             // negative y face 2
-            BoundingBoxVertex::new(xp_yn_zn, object_id),
-            BoundingBoxVertex::new(xn_yn_zp, object_id),
-            BoundingBoxVertex::new(xn_yn_zn, object_id),
+            BoundingMeshVertex::new(xp_yn_zn, object_id),
+            BoundingMeshVertex::new(xn_yn_zp, object_id),
+            BoundingMeshVertex::new(xn_yn_zn, object_id),
             // negative z face 1
-            BoundingBoxVertex::new(xp_yp_zn, object_id),
-            BoundingBoxVertex::new(xn_yn_zn, object_id),
-            BoundingBoxVertex::new(xn_yp_zn, object_id),
+            BoundingMeshVertex::new(xp_yp_zn, object_id),
+            BoundingMeshVertex::new(xn_yn_zn, object_id),
+            BoundingMeshVertex::new(xn_yp_zn, object_id),
             // negative z face 2
-            BoundingBoxVertex::new(xn_yn_zn, object_id),
-            BoundingBoxVertex::new(xp_yp_zn, object_id),
-            BoundingBoxVertex::new(xp_yn_zn, object_id),
+            BoundingMeshVertex::new(xn_yn_zn, object_id),
+            BoundingMeshVertex::new(xp_yp_zn, object_id),
+            BoundingMeshVertex::new(xp_yn_zn, object_id),
         ]
     }
 }

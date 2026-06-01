@@ -3,9 +3,11 @@ use crate::{
         angle::Angle,
         axis::{Axis, AxisRotation},
     },
-    renderer::shader_interfaces::primitive_op_buffer::PrimitiveTransformSlice,
+    renderer::shader_interfaces::{
+        primitive_op_buffer::PrimitiveTransformSlice, vertex_inputs::ObjectInstanceVertex,
+    },
 };
-use glam::{Mat3, Quat, Vec3};
+use glam::{Mat3, Mat4, Quat, Vec3};
 use serde::{Deserialize, Serialize};
 
 // ~~ Transform ~~
@@ -122,6 +124,14 @@ impl ObjectInstances {
         }
     }
 
+    pub fn instance_count(&self) -> usize {
+        match self {
+            Self::Single => 1,
+            &Self::OneDimension { instance_count, .. } => instance_count,
+            &Self::TwoDimension { instance_count, .. } => instance_count[0] * instance_count[1],
+        }
+    }
+
     pub const fn default_1d() -> Self {
         Self::OneDimension {
             instance_count: 2,
@@ -134,6 +144,53 @@ impl ObjectInstances {
             instance_count: [2, 2],
             transform_a: Transform::new(Vec3::new(1., 0., 0.), Quat::IDENTITY),
             transform_b: Transform::new(Vec3::new(0., 1., 0.), Quat::IDENTITY),
+        }
+    }
+
+    pub fn instance_matrices(&self) -> Vec<ObjectInstanceVertex> {
+        match self {
+            Self::Single => vec![ObjectInstanceVertex::default()],
+            Self::OneDimension {
+                instance_count,
+                transform,
+            } => {
+                let mut matrices: Vec<ObjectInstanceVertex> = Vec::new();
+                let mut current_translation = Vec3::ZERO;
+                let mut current_rotation = Mat4::IDENTITY;
+                for _i in 0..*instance_count {
+                    matrices.push(ObjectInstanceVertex::new(
+                        current_translation,
+                        current_rotation,
+                    ));
+                    current_translation += transform.translation;
+                    current_rotation *= Mat4::from_quat(transform.total_rotation());
+                }
+                matrices
+            }
+            Self::TwoDimension {
+                instance_count,
+                transform_a,
+                transform_b,
+            } => {
+                let mut matrices: Vec<ObjectInstanceVertex> = Vec::new();
+                let mut current_translation_a = Vec3::ZERO;
+                let mut current_rotation_a = Mat4::IDENTITY;
+                for _a in 0..instance_count[0] {
+                    let mut current_translation_b = current_translation_a;
+                    let mut current_rotation_b = current_rotation_a;
+                    for _b in 0..instance_count[1] {
+                        matrices.push(ObjectInstanceVertex::new(
+                            current_translation_b,
+                            current_rotation_b,
+                        ));
+                        current_translation_b += transform_b.translation;
+                        current_rotation_b *= Mat4::from_quat(transform_b.total_rotation());
+                    }
+                    current_translation_a += transform_a.translation;
+                    current_rotation_a *= Mat4::from_quat(transform_a.total_rotation());
+                }
+                matrices
+            }
         }
     }
 
