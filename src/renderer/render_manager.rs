@@ -692,6 +692,7 @@ impl RenderManager {
 
         self.geometry_pass.record_commands(
             command_buffer,
+            render_settings,
             view_mode,
             selected_object_id,
             frame_index,

@@ -31,6 +31,7 @@ pub struct CameraSettings {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct RendererSettings {
     pub show_aabb_wireframe: bool,
+    pub selected_object_outline: bool,
 }
 
 // ~~ Defaults ~~
@@ -56,6 +57,7 @@ impl Default for RendererSettings {
     fn default() -> Self {
         RendererSettings {
             show_aabb_wireframe: false,
+            selected_object_outline: true,
         }
     }
 }
@@ -129,6 +131,14 @@ impl Default for SettingsIO {
                         gui_fn: |ui, settings, setting_name| {
                             ui.checkbox(&mut settings.render.show_aabb_wireframe, setting_name)
                         },
+                    },
+                    SettingsIOEntry {
+                        name: "Selected Object Outline".into(),
+                        description: "Render outlines around selected objects."
+                            .into(),
+                        gui_fn: |ui, settings, setting_name| {
+                            ui.checkbox(&mut settings.render.selected_object_outline, setting_name)
+                        },
                     }
                 ]},
             ],
@@ -192,7 +202,7 @@ impl Settings {
     }
 
     pub fn save_user_settings_json_file(&self) -> Result<(), IoError> {
-        debug!("writing to settings.json file");
+        trace!("writing to settings.json file");
         let file_path = validated_file_path(SETTINGS_FILE_NAME, &self.user_save_directory)?;
         let json_string = serde_json::to_string_pretty(self)?;
         fs::write(file_path.clone(), json_string).map_err(|e| {

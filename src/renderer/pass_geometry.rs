@@ -1,5 +1,8 @@
 use crate::{
-    engine::object::{object::ObjectId, objects_delta::ObjectsDelta},
+    engine::{
+        object::{object::ObjectId, objects_delta::ObjectsDelta},
+        settings::RendererSettings,
+    },
     renderer::{
         object_resource_manager::ObjectResourceManager,
         shader_interfaces::vertex_inputs::{ObjectMeshVertexInputs, VulkanVertex},
@@ -92,6 +95,7 @@ impl GeometryPass {
     pub fn record_commands(
         &self,
         command_buffer: &CommandBuffer,
+        render_settings: &RendererSettings,
         view_mode: ViewMode,
         selected_object_id: Option<ObjectId>,
         frame_index: usize,
@@ -132,7 +136,9 @@ impl GeometryPass {
                         selected_object_id,
                     );
 
-                    command_buffer.bind_pipeline(&self.pipeline_selected_object);
+                    if render_settings.selected_object_outline {
+                        command_buffer.bind_pipeline(&self.pipeline_selected_object);
+                    }
                     self.object_buffer_manager.draw_commands_object_id(
                         command_buffer,
                         &self.pipeline_selected_object.pipeline_layout(),
