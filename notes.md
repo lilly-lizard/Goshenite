@@ -4,10 +4,10 @@
 	- SceneEditor: render ground grid
 	- ObjectEditor: grey background ✔️
 	- horizontal scroll panel ✔️
-	- render only where there are no gui panels 🔨
+	- render only where there are no gui panels ✔️
 	- geometry shader draws orange line around selected object. can be seen through obscuring objects - scene mode ✔️
 	- only draw selected object in object mode
-  - center origin to render rect
+  - center origin to render rect (viewport)
   - center object in ObjectEditor (impliment instancing first)
 - implement instancing feature
 - skybox ✔️
@@ -16,7 +16,7 @@
     - remove `include-spirv-bytes` feature
     - make common `create_shader_stages` fn in `vulkan_init`
     - see [berrycode](https://github.com/KyosukeIshizu1008/berryscode/blob/main/berrycode/Cargo.toml)
-- simple animations 🔨
+- simple animations
   - ball translate back and forwards
   - time + transform + smooth function
 - offset instancing ✔️

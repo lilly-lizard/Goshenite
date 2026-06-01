@@ -150,6 +150,69 @@ fn object_properties_editor(
             new_instances,
         });
     }
+    match object.instances.clone() {
+        ObjectInstances::Single => (),
+        ObjectInstances::OneDimension {
+            mut instance_count,
+            mut transform,
+        } => {
+            let mut changed = false;
+            ui.horizontal(|ui| {
+                changed = changed
+                    || ui
+                        .add(
+                            egui::DragValue::new(&mut instance_count)
+                                .speed(1)
+                                .range(1..=1000),
+                        )
+                        .changed();
+            });
+            if changed {
+                commands.push(Command::SetObjectInstances {
+                    object_id,
+                    new_instances: ObjectInstances::OneDimension {
+                        instance_count,
+                        transform,
+                    },
+                });
+            }
+        }
+        ObjectInstances::TwoDimension {
+            mut instance_count,
+            transform_a,
+            transform_b,
+        } => {
+            let mut changed = false;
+            ui.horizontal(|ui| {
+                changed = changed
+                    || ui
+                        .add(
+                            egui::DragValue::new(&mut instance_count[0])
+                                .speed(1)
+                                .range(1..=1000),
+                        )
+                        .changed();
+                changed = changed
+                    || ui
+                        .add(
+                            egui::DragValue::new(&mut instance_count[1])
+                                .speed(1)
+                                .range(1..=1000),
+                        )
+                        .changed();
+            });
+            if changed {
+                commands.push(Command::SetObjectInstances {
+                    object_id,
+                    new_instances: ObjectInstances::TwoDimension {
+                        instance_count,
+                        transform_a,
+                        transform_b,
+                    },
+                });
+            }
+        }
+    }
 }
 
 fn primitive_op_editor(
