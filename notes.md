@@ -19,8 +19,8 @@
 - simple animations 🔨
   - ball translate back and forwards
   - time + transform + smooth function
-- offset instancing
-  - instances along axis
+- offset instancing ✔️
+  - instances along axis ✔️
   - along spline
   - along 2 axis/splines
 - transformations

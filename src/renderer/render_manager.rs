@@ -324,12 +324,6 @@ impl RenderManager {
         Ok(())
     }
 
-    #[inline]
-    pub fn update_objects(&mut self, objects_delta: ObjectsDelta) -> anyhow::Result<()> {
-        self.geometry_pass
-            .update_objects(objects_delta, &self.transfer_queue, &self.render_queue)
-    }
-
     pub fn update_gui_textures(
         &mut self,
         textures_delta: Vec<TexturesDelta>,
@@ -363,15 +357,21 @@ impl RenderManager {
         view_mode: ViewMode,
         camera: &Camera,
         camera_settings: &CameraSettings,
+        objects_delta: ObjectsDelta,
+        selected_object_id: Option<ObjectId>,
         gizmo_visibility: GizmoVisibility,
         hovered_gizmo: Option<GizmoElement>,
-        selected_object_id: Option<ObjectId>,
     ) -> anyhow::Result<()> {
         let new_frame_index = (self.frame_index_currently_rendering + 1) % FRAMES_IN_FLIGHT;
 
         // wait for previous frame render/resource upload to finish
         self.wait_for_previous_frame_fence(new_frame_index)?;
 
+        self.geometry_pass.update_objects(
+            objects_delta,
+            &self.transfer_queue,
+            &self.render_queue,
+        )?;
         self.gui_pass
             .free_previous_vertex_and_index_buffers(new_frame_index);
 
@@ -472,9 +472,9 @@ impl RenderManager {
         screen_coordinate: [f32; 2],
     ) -> anyhow::Result<Option<ElementAtPoint>> {
         let framebuffer_dimensions = self.swapchain.properties().dimensions();
-        if screen_coordinate[0] > framebuffer_dimensions.width() as f32
+        if screen_coordinate[0] >= framebuffer_dimensions.width() as f32
             || screen_coordinate[0] < 0.
-            || screen_coordinate[1] > framebuffer_dimensions.height() as f32
+            || screen_coordinate[1] >= framebuffer_dimensions.height() as f32
             || screen_coordinate[1] < 0.
         {
             return Ok(None);
