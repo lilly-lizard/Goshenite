@@ -1,5 +1,11 @@
 # plan:
 
+- optimize object buffer updates
+	- object updates means cache invalidation -> critical path for bottleneck
+	- only update buffers that need to be
+	- batch updates
+	- update contiguous regions of buffer space. merge buffer types and use offsets/stride?
+	- commit to AABBs now that we've committed to sparse buffer caching? or should we still use raster pipeline to generate sparse cache map?
 - editor view modes
 	- SceneEditor: render ground grid
 	- ObjectEditor: grey background ✔️
