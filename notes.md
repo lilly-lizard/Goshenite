@@ -1,5 +1,8 @@
 # plan:
 
+- minimize sections of gui
+	- object editor gui becoming very cluttered
+	- figure out better arrangement of labels
 - optimize object buffer updates
 	- object updates means cache invalidation -> critical path for bottleneck
 	- only update buffers that need to be
