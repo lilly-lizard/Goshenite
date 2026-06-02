@@ -3,7 +3,7 @@
 // per vertex
 layout (location = 0) in vec4 in_position;
 // per instance
-layout (location = 1) in mat4 in_orientation;
+layout (location = 1) in mat4 in_orientation; // consumes locations 1-4 inclusive
 
 layout (set = 0, binding = 0) uniform Camera {
 	mat4 view_inverse;
@@ -38,7 +38,7 @@ void main()
 	pos.x += param.object_center.x;
 	pos.y += param.object_center.y;
 	pos.z += param.object_center.z;
-	
+
 	vec4 view = inverse(cam.view_inverse) * pos;
 	vec4 proj = inverse(cam.proj_inverse) * view;
 

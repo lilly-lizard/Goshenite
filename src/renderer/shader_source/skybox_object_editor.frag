@@ -2,7 +2,7 @@
 #extension GL_GOOGLE_include_directive : require
 #include "config.glsl"
 
-layout(location = 0) out vec4 out_normal;
+//layout(location = 0) out vec4 out_normal;
 layout(location = 1) out vec4 out_albedo_specular;
 layout(location = 2) out uint out_object_op_id;
 

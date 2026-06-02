@@ -5,6 +5,7 @@ use crate::{
             object::{Object, ObjectId},
             primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
+        primitives::transform::ObjectInstances,
     },
     helper::{
         list::choose_closest_valid_index,
@@ -191,6 +192,19 @@ impl Engine {
         let update_res = self
             .object_collection
             .set_object_center(object_id, new_center);
+        if let Err(e) = update_res {
+            failure_warn_collection_error(e, object_id);
+        }
+    }
+
+    pub(super) fn set_object_instances(
+        &mut self,
+        object_id: ObjectId,
+        new_instances: ObjectInstances,
+    ) {
+        let update_res = self
+            .object_collection
+            .set_object_instances(object_id, new_instances);
         if let Err(e) = update_res {
             failure_warn_collection_error(e, object_id);
         }

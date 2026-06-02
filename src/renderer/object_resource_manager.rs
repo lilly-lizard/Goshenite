@@ -160,8 +160,20 @@ impl ObjectResourceManager {
 
     pub fn draw_bounding_box_commands(&self, command_buffer: &CommandBuffer) {
         for per_object_buffers in self.objects_buffers.iter() {
-            command_buffer.bind_vertex_buffers(0, [&per_object_buffers.bounding_mesh_buffer], &[0]);
-            command_buffer.draw(per_object_buffers.bounding_mesh_vertex_count, 1, 0, 0);
+            command_buffer.bind_vertex_buffers(
+                0,
+                [
+                    &per_object_buffers.bounding_mesh_buffer,
+                    &per_object_buffers.instance_buffer,
+                ],
+                &[0, 0],
+            );
+            command_buffer.draw(
+                per_object_buffers.bounding_mesh_vertex_count,
+                per_object_buffers.instance_count,
+                0,
+                0,
+            );
         }
     }
 
@@ -275,8 +287,10 @@ impl ObjectResourceManager {
             .context("initial upload object to buffer")?;
 
         if let Some(index) = self.get_index(object_id) {
+            // todo be more precise about wherever to update bounding mesh or instances
             let bounding_mesh_buffer =
                 self.upload_bounding_mesh(object_id, &object, transfer_resources)?;
+            let instance_buffer = self.upload_instances(object, transfer_resources)?;
 
             write_desc_set_primitive_ops(
                 &self.objects_buffers[index].primitive_ops_descriptor_set,
@@ -285,10 +299,13 @@ impl ObjectResourceManager {
 
             self.objects_buffers[index].bounding_mesh_buffer = bounding_mesh_buffer;
             self.objects_buffers[index].bounding_mesh_vertex_count = AABB_VERTEX_COUNT as u32;
+            self.objects_buffers[index].instance_buffer = instance_buffer;
+            self.objects_buffers[index].instance_count = object.instances.instance_count() as u32;
             self.objects_buffers[index].primitive_ops_buffer = primitive_ops_buffer;
         } else {
             let bounding_mesh_buffer =
                 self.upload_bounding_mesh(object_id, &object, transfer_resources)?;
+            let instance_buffer = self.upload_instances(object, transfer_resources)?;
 
             let primitive_ops_descriptor_set = self.allocate_primitive_ops_descriptor_set()?;
             write_desc_set_primitive_ops(&primitive_ops_descriptor_set, &primitive_ops_buffer)?;
@@ -297,6 +314,8 @@ impl ObjectResourceManager {
                 object_id,
                 bounding_mesh_buffer,
                 bounding_mesh_vertex_count: AABB_VERTEX_COUNT as u32,
+                instance_buffer,
+                instance_count: object.instances.instance_count() as u32,
                 primitive_ops_buffer,
                 primitive_ops_descriptor_set,
             };
@@ -319,6 +338,21 @@ impl ObjectResourceManager {
 
         let data = object.aabb().vertices(object_id);
 
+        self.upload_via_staging_buffer(
+            transfer_resources,
+            &data,
+            vk::BufferUsageFlags::VERTEX_BUFFER,
+            vk::PipelineStageFlags2::VERTEX_INPUT,
+            vk::AccessFlags2::VERTEX_ATTRIBUTE_READ,
+        )
+    }
+
+    fn upload_instances(
+        &mut self,
+        object: &Object,
+        transfer_resources: &mut BufferUploadResources,
+    ) -> anyhow::Result<Buffer> {
+        let data = object.instances.instance_vertices(object.center);
         self.upload_via_staging_buffer(
             transfer_resources,
             &data,
@@ -558,6 +592,8 @@ struct PerObjectResources {
     pub object_id: ObjectId,
     pub bounding_mesh_buffer: Buffer,
     pub bounding_mesh_vertex_count: u32,
+    pub instance_buffer: Buffer,
+    pub instance_count: u32,
     pub primitive_ops_buffer: Buffer,
     pub primitive_ops_descriptor_set: Arc<DescriptorSet>,
 }
@@ -575,8 +611,12 @@ impl PerObjectResources {
             [self.primitive_ops_descriptor_set.as_ref()],
             &[],
         );
-        command_buffer.bind_vertex_buffers(0, [&self.bounding_mesh_buffer], &[0]);
-        command_buffer.draw(self.bounding_mesh_vertex_count, 1, 0, 0);
+        command_buffer.bind_vertex_buffers(
+            0,
+            [&self.bounding_mesh_buffer, &self.instance_buffer],
+            &[0, 0],
+        );
+        command_buffer.draw(self.bounding_mesh_vertex_count, self.instance_count, 0, 0);
     }
 }
 

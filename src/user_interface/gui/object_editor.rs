@@ -6,13 +6,16 @@ use crate::{
             object_collection::ObjectCollection,
             primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
-        primitives::primitive::{EncodablePrimitive, Primitive},
+        primitives::{
+            primitive::{EncodablePrimitive, Primitive},
+            transform::ObjectInstances,
+        },
     },
     user_interface::{
         config_ui,
-        editable_fields::{
+        gui::editable_fields::{
             blend_editor_ui, color_specular_editor_ui, cube_editor_ui, op_drop_down,
-            primitive_transform_editor_ui, sphere_editor_ui, uber_primitive_editor_ui,
+            sphere_editor_ui, transform_editor_ui, uber_primitive_editor_ui,
         },
         gui_state::{DataUpdateState, ValueState, DRAG_INC},
     },
@@ -115,9 +118,8 @@ fn object_properties_editor(
 ) {
     ui.separator();
 
-    let original_center = object.center;
-    let mut new_center = original_center;
-
+    // object center
+    let mut new_center = object.center;
     ui.horizontal(|ui| {
         ui.label("Center:");
         ui.add(DragValue::new(&mut new_center.x).speed(DRAG_INC))
@@ -125,12 +127,100 @@ fn object_properties_editor(
         ui.add(DragValue::new(&mut new_center.y).speed(DRAG_INC));
         ui.add(DragValue::new(&mut new_center.z).speed(DRAG_INC));
     });
-
-    if original_center != new_center {
+    if object.center != new_center {
         commands.push(Command::SetObjectCenter {
             object_id: object_id,
             center: new_center,
         });
+    }
+
+    // object instances
+    let mut new_instances = object.instances.clone();
+    egui::ComboBox::from_label("Instances")
+        .selected_text(new_instances.display_name())
+        .show_ui(ui, |ui| {
+            for variant in ObjectInstances::VARIANTS {
+                let name = variant.display_name();
+                ui.selectable_value(&mut new_instances, variant, name);
+            }
+        });
+    if object.instances != new_instances {
+        commands.push(Command::SetObjectInstances {
+            object_id,
+            new_instances,
+        });
+    }
+    match object.instances.clone() {
+        ObjectInstances::Single => (),
+        ObjectInstances::OneDimension {
+            mut instance_count,
+            mut transform,
+        } => {
+            let mut changed = ui
+                .add(
+                    egui::DragValue::new(&mut instance_count)
+                        .speed(1)
+                        .range(1..=1000),
+                )
+                .changed();
+
+            let res = transform_editor_ui(ui, &mut transform, "instance 1d".to_string());
+            changed = changed || (res == DataUpdateState::Modified);
+
+            if changed {
+                commands.push(Command::SetObjectInstances {
+                    object_id,
+                    new_instances: ObjectInstances::OneDimension {
+                        instance_count,
+                        transform,
+                    },
+                });
+            }
+        }
+        ObjectInstances::TwoDimension {
+            mut instance_count,
+            mut transform_a,
+            mut transform_b,
+        } => {
+            let mut changed = false;
+            ui.horizontal(|ui| {
+                changed = changed
+                    || ui
+                        .add(
+                            egui::DragValue::new(&mut instance_count[0])
+                                .speed(1)
+                                .range(1..=1000),
+                        )
+                        .changed();
+                changed = changed
+                    || ui
+                        .add(
+                            egui::DragValue::new(&mut instance_count[1])
+                                .speed(1)
+                                .range(1..=1000),
+                        )
+                        .changed();
+            });
+
+            ui.label("Transform A:");
+            let res = transform_editor_ui(ui, &mut transform_a, "instance 2d a".to_string());
+            changed = changed || (res == DataUpdateState::Modified);
+
+            ui.label("Transform B:");
+            let res = transform_editor_ui(ui, &mut transform_b, "instance 2d b".to_string());
+            changed = changed || (res == DataUpdateState::Modified);
+
+            if changed {
+                commands.push(Command::SetObjectInstances {
+                    object_id,
+                    new_instances: ObjectInstances::TwoDimension {
+                        instance_count,
+                        transform_a,
+                        transform_b,
+                    },
+                });
+            }
+        }
     }
 }
 
@@ -440,7 +530,8 @@ fn primitive_editor_ui(ui: &mut egui::Ui, value_state: &mut ValueState) -> DataU
         Primitive::Cube(p) => cube_editor_ui(ui, p),
         Primitive::UberPrimitive(p) => uber_primitive_editor_ui(ui, p),
     };
-    let transform_edit_state = primitive_transform_editor_ui(ui, &mut value_state.transform);
+    let transform_edit_state =
+        transform_editor_ui(ui, &mut value_state.transform, "primitive".to_string());
     let blend_edit_state = blend_editor_ui(ui, &mut value_state.blend);
     let color_specular_edit_state =
         color_specular_editor_ui(ui, &mut value_state.albedo, &mut value_state.specular);

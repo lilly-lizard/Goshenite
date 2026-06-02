@@ -1,11 +1,17 @@
-use crate::renderer::vulkan_init::create_shader_stage_from_bytes;
 use crate::{
-    engine::object::{object::ObjectId, objects_delta::ObjectsDelta},
+    engine::{
+        object::{object::ObjectId, objects_delta::ObjectsDelta},
+        settings::RendererSettings,
+    },
     renderer::{
         object_resource_manager::ObjectResourceManager,
-        shader_interfaces::vertex_inputs::{BoundingBoxVertex, VulkanVertex},
-        vulkan_init::{create_desc_sets_camera, render_pass_indices, write_camera_descriptor_sets},
+        shader_interfaces::vertex_inputs::{ObjectMeshVertexInputs, VulkanVertex},
+        vulkan_init::{
+            create_desc_sets_camera, create_shader_stage_from_bytes, render_pass_indices,
+            write_camera_descriptor_sets,
+        },
     },
+    user_interface::view_modes::ViewMode,
 };
 use anyhow::Context;
 use ash::vk::{self, ShaderStageFlags, SpecializationInfo, SpecializationMapEntry};
@@ -89,6 +95,8 @@ impl GeometryPass {
     pub fn record_commands(
         &self,
         command_buffer: &CommandBuffer,
+        render_settings: &RendererSettings,
+        view_mode: ViewMode,
         selected_object_id: Option<ObjectId>,
         frame_index: usize,
         viewport: vk::Viewport,
@@ -110,22 +118,37 @@ impl GeometryPass {
             &[],
         );
 
-        if let Some(selected_object_id) = selected_object_id {
-            self.object_buffer_manager.draw_commands_skip_id(
-                command_buffer,
-                &self.pipeline.pipeline_layout(),
-                selected_object_id,
-            );
+        match view_mode {
+            ViewMode::ObjectEditor => {
+                if let Some(selected_object_id) = selected_object_id {
+                    self.object_buffer_manager.draw_commands_object_id(
+                        command_buffer,
+                        &self.pipeline.pipeline_layout(),
+                        selected_object_id,
+                    );
+                }
+            }
+            ViewMode::SceneEditor => {
+                if let Some(selected_object_id) = selected_object_id {
+                    self.object_buffer_manager.draw_commands_skip_id(
+                        command_buffer,
+                        &self.pipeline.pipeline_layout(),
+                        selected_object_id,
+                    );
 
-            command_buffer.bind_pipeline(&self.pipeline_selected_object);
-            self.object_buffer_manager.draw_commands_object_id(
-                command_buffer,
-                &self.pipeline_selected_object.pipeline_layout(),
-                selected_object_id,
-            );
-        } else {
-            self.object_buffer_manager
-                .draw_commands_all(command_buffer, &self.pipeline.pipeline_layout());
+                    if render_settings.selected_object_outline {
+                        command_buffer.bind_pipeline(&self.pipeline_selected_object);
+                    }
+                    self.object_buffer_manager.draw_commands_object_id(
+                        command_buffer,
+                        &self.pipeline_selected_object.pipeline_layout(),
+                        selected_object_id,
+                    );
+                } else {
+                    self.object_buffer_manager
+                        .draw_commands_all(command_buffer, &self.pipeline.pipeline_layout());
+                }
+            }
         }
     }
 
@@ -205,7 +228,7 @@ fn create_pipelines(
         ..Default::default()
     };
 
-    let vertex_input_state = BoundingBoxVertex::vertex_input_state();
+    let vertex_input_state = ObjectMeshVertexInputs::vertex_input_state();
 
     let pipeline_properties = GraphicsPipelineProperties {
         color_blend_state,

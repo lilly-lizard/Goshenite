@@ -277,7 +277,6 @@ impl Engine {
             self.selected_object_id,
             self.selected_primitive_op_index,
         );
-        self.controllers.renderer.update_objects(objects_delta)?;
         self.update_selection_gizmo()?;
 
         // submit gui texture updates
@@ -297,9 +296,10 @@ impl Engine {
             self.view_mode,
             &self.controllers.camera,
             &self.settings.camera,
+            objects_delta,
+            self.selected_object_id,
             self.gizmo_visibility,
             self.hovered_gizmo,
-            self.selected_object_id,
         )?;
 
         self.main_thread_frame_number += 1;

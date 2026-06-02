@@ -3,7 +3,6 @@ pub mod camera;
 pub mod config_ui;
 pub mod controls_camera;
 pub mod cursor;
-pub mod editable_fields;
 pub mod gizmo;
 pub mod gui;
 pub mod gui_state;

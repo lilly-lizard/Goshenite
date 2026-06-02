@@ -110,7 +110,7 @@ impl Engine {
         let scroll_delta = self.controllers.cursor.get_and_clear_scroll_delta();
         self.controllers
             .camera
-            .update_scroll(&self.settings.camera, scroll_delta);
+            .update_scroll(&mut self.settings.camera, scroll_delta);
 
         if let MouseButtonEvent::Dragging { .. } = cursor_event {
             if self.dragging_source_element.is_none() {
@@ -139,7 +139,7 @@ impl Engine {
                     self.gizmo_dragged(gizmo_element, button, delta)
                 }
                 _ => self.controllers.camera.update_cursor_dragging(
-                    &self.settings.camera,
+                    &mut self.settings.camera,
                     delta,
                     button,
                     self.keyboard_modifier_states,

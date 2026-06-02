@@ -1,18 +1,16 @@
-use super::gui_state::DRAG_INC;
 use crate::{
     config,
     engine::{
         object::{object::ObjectId, operation::Operation},
         primitives::{
-            cube::Cube, primitive_transform::PrimitiveTransform, sphere::Sphere,
-            uber_primitive::UberPrimitive,
+            cube::Cube, sphere::Sphere, transform::Transform, uber_primitive::UberPrimitive,
         },
     },
     helper::{
         angle::Angle,
         axis::{Axis, CartesianAxis},
     },
-    user_interface::gui_state::DataUpdateState,
+    user_interface::gui_state::{DataUpdateState, DRAG_INC},
 };
 use egui::{
     color_picker::{color_edit_button_hsva, Alpha},
@@ -109,19 +107,24 @@ pub fn color_specular_editor_ui(
     }
 }
 
-pub fn primitive_transform_editor_ui(
+pub fn transform_editor_ui(
     ui: &mut egui::Ui,
-    primitive_transform: &mut PrimitiveTransform,
+    primitive_transform: &mut Transform,
+    salt: String,
 ) -> DataUpdateState {
     let mut edit_state = DataUpdateState::NoChange;
 
-    let edited_center = editable_center_ui(ui, primitive_transform.center);
+    let edited_center = editable_offset_ui(ui, primitive_transform.translation);
     if let Some(some_new_center) = edited_center {
-        primitive_transform.center = some_new_center;
+        primitive_transform.translation = some_new_center;
         edit_state = DataUpdateState::Modified;
     }
 
-    let edited_axis = editable_axis_ui(ui, primitive_transform.rotation_tentative_append().axis);
+    let edited_axis = editable_axis_ui(
+        ui,
+        primitive_transform.rotation_tentative_append().axis,
+        salt,
+    );
     if let Some(changed_axis) = edited_axis {
         // axis changed -> old tentative rotation invalid -> need to commit it before changing it
         primitive_transform.commit_tentative_rotation();
@@ -139,11 +142,11 @@ pub fn primitive_transform_editor_ui(
 }
 
 /// Returns `Some` new center if the value was modified by the gui
-pub fn editable_center_ui(ui: &mut egui::Ui, original_center: Vec3) -> Option<Vec3> {
+pub fn editable_offset_ui(ui: &mut egui::Ui, original_center: Vec3) -> Option<Vec3> {
     let mut new_center = original_center.clone();
 
     ui.horizontal(|ui_h| {
-        ui_h.label("Center:");
+        ui_h.label("Offset:");
         ui_h.add(DragValue::new(&mut new_center.x).speed(DRAG_INC));
         ui_h.add(DragValue::new(&mut new_center.y).speed(DRAG_INC));
         ui_h.add(DragValue::new(&mut new_center.z).speed(DRAG_INC));
@@ -157,13 +160,13 @@ pub fn editable_center_ui(ui: &mut egui::Ui, original_center: Vec3) -> Option<Ve
 }
 
 /// Returns `Some` new axis if the value was modified by the gui
-pub fn editable_axis_ui(ui: &mut egui::Ui, original_axis: Axis) -> Option<Axis> {
+pub fn editable_axis_ui(ui: &mut egui::Ui, original_axis: Axis, salt: String) -> Option<Axis> {
     let mut new_axis = original_axis.clone();
 
     ui.horizontal(|ui_h| {
         ui_h.label("Rotation axis:");
 
-        ComboBox::new("Axis type", "")
+        ComboBox::from_id_salt(salt.clone() + " axis type")
             .width(0_f32)
             .selected_text(new_axis.type_name())
             .show_ui(ui_h, |ui_op| {
@@ -181,7 +184,7 @@ pub fn editable_axis_ui(ui: &mut egui::Ui, original_axis: Axis) -> Option<Axis> 
 
         match &mut new_axis {
             Axis::Cartesian(c_axis_mut) => {
-                ComboBox::new("Cartesian axis", "")
+                ComboBox::from_id_salt(salt + " cartesian axis")
                     .width(0_f32)
                     .selected_text(c_axis_mut.as_str())
                     .show_ui(ui_h, |ui_op| {

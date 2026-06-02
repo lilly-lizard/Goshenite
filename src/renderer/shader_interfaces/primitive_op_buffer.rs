@@ -1,5 +1,4 @@
 use crate::engine::{object::primitive_op::PrimitiveOp, primitives::primitive::EncodablePrimitive};
-use glam::Vec3;
 
 /// Data is encoded in the primitive op buffer as a long series of `u32`s
 pub type PrimitiveOpBufferUnit = u32;
@@ -38,12 +37,9 @@ pub type PrimitiveTransformSlice = [PrimitiveOpBufferUnit; PRIMITIVE_TRANSFORM_L
 /// Corresponds to decoding logic in `scene_geometry.frag`.
 pub type PrimitivePropsSlice = [PrimitiveOpBufferUnit; PRIMITIVE_PROPS_LEN];
 
-pub fn create_primitive_op_packet(
-    primitive_op: &PrimitiveOp,
-    object_origin: Vec3,
-) -> PrimitiveOpPacket {
+pub fn create_primitive_op_packet(primitive_op: &PrimitiveOp) -> PrimitiveOpPacket {
     let encoded_op_code = primitive_op.op.op_code();
-    let encoded_transform = primitive_op.transform.gpu_encoded(object_origin);
+    let encoded_transform = primitive_op.transform.gpu_encoded();
     let encoded_props = primitive_op.primitive.encoded_props();
     let encoded_blend = primitive_op.blend.to_bits();
     let encoded_albedo = [

@@ -1,4 +1,4 @@
-use super::{primitive::EncodablePrimitive, primitive_transform::PrimitiveTransform};
+use super::{primitive::EncodablePrimitive, transform::Transform};
 use crate::{
     engine::{
         aabb::Aabb,
@@ -51,7 +51,7 @@ impl EncodablePrimitive for Cube {
         ]
     }
 
-    fn aabb(&self, primitive_transform: PrimitiveTransform) -> Aabb {
+    fn aabb(&self, primitive_transform: Transform) -> Aabb {
         // todo calculate only when props/transform changed? cache result?
 
         let half_dimensions = self.dimensions / 2_f32;
@@ -84,6 +84,6 @@ impl EncodablePrimitive for Cube {
             aabb_dimensions.z = aabb_dimensions.z.max(rotated_corner.z);
         }
 
-        Aabb::new(primitive_transform.center, aabb_dimensions * 2_f32)
+        Aabb::new(aabb_dimensions * 2_f32)
     }
 }

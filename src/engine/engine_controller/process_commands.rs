@@ -39,6 +39,10 @@ impl Engine {
                 object_id,
                 ref new_name,
             } => self.set_object_name(object_id, new_name.clone()),
+            Command::SetObjectInstances {
+                object_id,
+                new_instances,
+            } => self.set_object_instances(object_id, new_instances),
 
             // ~~ Primtive Op: Selection ~~
             Command::SelectPrimitiveOp(object_id, primitive_op_index) => {

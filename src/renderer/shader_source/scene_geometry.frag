@@ -19,6 +19,8 @@ const vec2 NORMAL_OFFSET = vec2(NORMAL_EPSILON, -NORMAL_EPSILON);
 layout (location = 0) in flat uint in_object_id;
 layout (location = 1) in noperspective vec2 in_clip_space_uv; // clip space position [-1, 1]
 layout (location = 2) in float in_camera_distance;
+layout (location = 3) in vec4 in_translation;
+layout (location = 4) in mat3 in_object_rotation; // consumes 3 locations
 
 layout (location = 0) out vec4 out_normal;
 layout (location = 1) out vec4 out_albedo_specular;
@@ -107,24 +109,24 @@ SdfResult process_primitive(uint op_index, vec3 pos)
 	// todo perf comparison: load OP_UNIT_LENGTH values at once then decode below
 	uint buffer_index = op_index * OP_UNIT_LENGTH;
 
-	vec3 center = vec3(
+	vec3 primitive_center = vec3(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	);
 
-	mat3 rotation;
-	rotation[0] = vec3(
+	mat3 primitive_rotation;
+	primitive_rotation[0] = vec3(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	); // column 1
-	rotation[1] = vec3(
+	primitive_rotation[1] = vec3(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
 	); // column 2
-	rotation[2] = vec3(
+	primitive_rotation[2] = vec3(
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++]),
 		uintBitsToFloat(object.primitive_ops[buffer_index++])
@@ -149,8 +151,9 @@ SdfResult process_primitive(uint op_index, vec3 pos)
 	);
 	float specular = uintBitsToFloat(object.primitive_ops[buffer_index++]);
 
-	pos = pos - center;
-	pos = pos * rotation;
+	pos = pos * in_object_rotation;
+	pos = pos - primitive_center;
+	pos = pos * primitive_rotation;
 
 	float dist = sdf_uber_primitive(pos, s, r);
 
@@ -289,7 +292,8 @@ float distance_to_depth(float distance, vec3 ray_d) {
 void main()
 {
 	vec3 ray_d_norm = ray_direction();
-	RayMarchHit hit = ray_march(cam.position, ray_d_norm);
+	vec3 ray_o = cam.position - in_translation.xyz;
+	RayMarchHit hit = ray_march(ray_o, ray_d_norm.xyz);
 
 	gl_FragDepth = distance_to_depth(hit.dist, ray_d_norm);
 	out_normal = vec4(hit.normal / 2. + 0.5, 0.); // fit [-1, 1] in unorm range

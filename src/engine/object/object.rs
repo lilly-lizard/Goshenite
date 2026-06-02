@@ -5,7 +5,7 @@ use crate::{
         object::primitive_op::PrimitiveOpIndex,
         primitives::{
             primitive::{EncodablePrimitive, Primitive},
-            primitive_transform::PrimitiveTransform,
+            transform::{ObjectInstances, Transform},
         },
     },
     helper::{
@@ -52,6 +52,7 @@ pub struct Object {
     pub name: String,
     pub center: Vec3,
     pub primitive_ops: Vec<PrimitiveOp>,
+    pub instances: ObjectInstances,
 }
 
 impl Object {
@@ -60,6 +61,7 @@ impl Object {
             name,
             center,
             primitive_ops: Vec::new(),
+            instances: ObjectInstances::Single,
         }
     }
 
@@ -67,7 +69,7 @@ impl Object {
     pub fn push_primitive_op(
         &mut self,
         primitive: Primitive,
-        transform: PrimitiveTransform,
+        transform: Transform,
         op: Operation,
         blend: f32,
         albedo: Vec3,
@@ -94,7 +96,7 @@ impl Object {
 
         let mut encoded_primitives = Vec::<PrimitiveOpPacket>::new();
         for primitive_op in &self.primitive_ops {
-            let packet = create_primitive_op_packet(primitive_op, self.center);
+            let packet = create_primitive_op_packet(primitive_op);
             encoded_primitives.push(packet);
         }
         if self.primitive_ops.len() == 0 {
@@ -118,7 +120,6 @@ impl Object {
         for primitive_op in &self.primitive_ops {
             aabb.union(primitive_op.primitive.aabb(primitive_op.transform));
         }
-        aabb.offset(self.center);
         aabb
     }
 }

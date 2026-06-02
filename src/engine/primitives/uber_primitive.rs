@@ -1,4 +1,4 @@
-use super::{primitive::EncodablePrimitive, primitive_transform::PrimitiveTransform};
+use super::{primitive::EncodablePrimitive, transform::Transform};
 use crate::{
     engine::{aabb::Aabb, config_engine::primitive_names},
     renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
@@ -42,10 +42,10 @@ impl EncodablePrimitive for UberPrimitive {
         ]
     }
 
-    fn aabb(&self, primitive_transform: PrimitiveTransform) -> Aabb {
+    fn aabb(&self, _primitive_transform: Transform) -> Aabb {
         // todo calculate only when props/transform changed?
-        //todo "dimensions need to be adjusted for rotation!
+        // todo "dimensions need to be adjusted for rotation!
         let max_dimensions = Vec3::new(5., 5., 5.);
-        Aabb::new(primitive_transform.center, max_dimensions)
+        Aabb::new(max_dimensions)
     }
 }

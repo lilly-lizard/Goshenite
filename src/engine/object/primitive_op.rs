@@ -1,5 +1,5 @@
 use super::operation::Operation;
-use crate::engine::primitives::{primitive::Primitive, primitive_transform::PrimitiveTransform};
+use crate::engine::primitives::{primitive::Primitive, transform::Transform};
 use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +10,7 @@ pub type PrimitiveOpIndex = usize;
 #[derive(Copy, Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct PrimitiveOp {
     pub primitive: Primitive,
-    pub transform: PrimitiveTransform,
+    pub transform: Transform,
     pub op: Operation,
     /// Amount of blending between this primitive op and the previous ops in world-space units.
     pub blend: f32,
@@ -21,7 +21,7 @@ pub struct PrimitiveOp {
 impl PrimitiveOp {
     pub fn new(
         primitive: Primitive,
-        transform: PrimitiveTransform,
+        transform: Transform,
         op: Operation,
         blend: f32,
         albedo: Vec3,
@@ -39,6 +39,6 @@ impl PrimitiveOp {
 
     #[inline]
     pub fn center(&self) -> Vec3 {
-        self.transform.center
+        self.transform.translation
     }
 }

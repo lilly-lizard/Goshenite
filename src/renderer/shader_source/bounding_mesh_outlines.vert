@@ -2,6 +2,9 @@
 
 layout (location = 0) in vec4 in_position;
 layout (location = 1) in uint _in_object_id;
+// per instance
+layout (location = 2) in vec4 in_translation;
+layout (location = 3) in mat4 in_rotation; // consumes 4 locations
 
 layout (set = 0, binding = 0) uniform Camera {
 	mat4 view_inverse;
@@ -16,5 +19,5 @@ layout (set = 0, binding = 0) uniform Camera {
 
 void main()
 {
-	gl_Position = inverse(cam.proj_inverse) * inverse(cam.view_inverse) * in_position;
+	gl_Position = inverse(cam.proj_inverse) * inverse(cam.view_inverse) * (in_rotation * in_position + in_translation);
 }

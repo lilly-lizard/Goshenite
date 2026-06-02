@@ -26,6 +26,7 @@ use winit::window::Window;
 // various gui sections
 mod bottom_bar;
 mod command_palette;
+pub mod editable_fields;
 mod object_editor;
 mod scene_editor;
 mod settings_window;

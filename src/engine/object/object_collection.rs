@@ -6,6 +6,7 @@ use crate::{
             objects_delta::{push_object_delta, ObjectDeltaOperation, ObjectsDelta},
             primitive_op::{PrimitiveOp, PrimitiveOpIndex},
         },
+        primitives::transform::ObjectInstances,
     },
     helper::{
         more_errors::CollectionError,
@@ -60,6 +61,7 @@ impl ObjectCollection {
         Ok(new_object_ids)
     }
 
+    #[inline]
     pub fn set_object_name(
         &mut self,
         object_id: ObjectId,
@@ -70,6 +72,7 @@ impl ObjectCollection {
         Ok(())
     }
 
+    #[inline]
     pub fn set_object_center(
         &mut self,
         object_id: ObjectId,
@@ -79,6 +82,17 @@ impl ObjectCollection {
         self.mark_object_for_gpu_update(object_id)
     }
 
+    #[inline]
+    pub fn set_object_instances(
+        &mut self,
+        object_id: ObjectId,
+        new_instances: ObjectInstances,
+    ) -> Result<(), CollectionError> {
+        self.get_object_mut(object_id)?.instances = new_instances;
+        self.mark_object_for_gpu_update(object_id)
+    }
+
+    #[inline]
     pub fn translate_object(
         &mut self,
         object_id: ObjectId,
