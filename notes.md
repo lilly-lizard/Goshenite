@@ -4,6 +4,7 @@
 	- object editor gui becoming very cluttered
 	- figure out better arrangement of labels
 - optimize object buffer updates
+	- stored identity matrix buffer that gets used by all single instances 🔨
 	- object updates means cache invalidation -> critical path for bottleneck
 	- only update buffers that need to be
 	- batch updates
