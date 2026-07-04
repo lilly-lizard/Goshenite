@@ -338,7 +338,9 @@ impl ObjectResourceManager {
 
         let data = object.aabb().vertices(object_id);
 
-        self.upload_via_staging_buffer(
+        upload_via_staging_buffer(
+            self.memory_allocator.clone(),
+            self.synchronization_2_functions.clone(),
             transfer_resources,
             &data,
             vk::BufferUsageFlags::VERTEX_BUFFER,
@@ -353,7 +355,9 @@ impl ObjectResourceManager {
         transfer_resources: &mut BufferUploadResources,
     ) -> anyhow::Result<Buffer> {
         let data = object.instances.instance_vertices(object.center);
-        self.upload_via_staging_buffer(
+        upload_via_staging_buffer(
+            self.memory_allocator.clone(),
+            self.synchronization_2_functions.clone(),
             transfer_resources,
             &data,
             vk::BufferUsageFlags::VERTEX_BUFFER,
@@ -375,7 +379,9 @@ impl ObjectResourceManager {
 
         let data = object.encoded_primitive_ops(object_id);
 
-        self.upload_via_staging_buffer(
+        upload_via_staging_buffer(
+            self.memory_allocator.clone(),
+            self.synchronization_2_functions.clone(),
             transfer_resources,
             &data,
             vk::BufferUsageFlags::STORAGE_BUFFER,
@@ -383,150 +389,152 @@ impl ObjectResourceManager {
             vk::AccessFlags2::SHADER_READ,
         )
     }
+}
 
-    fn upload_via_staging_buffer<I>(
-        &mut self,
-        transfer_resources: &mut BufferUploadResources,
-        upload_data: &[I],
-        buffer_usage_during_render: vk::BufferUsageFlags,
-        render_dst_stage: vk::PipelineStageFlags2,
-        render_dst_access_flags: vk::AccessFlags2,
-    ) -> anyhow::Result<Buffer>
-    where
-        I: NoUninit,
-    {
-        let upload_data_size = std::mem::size_of_val(upload_data) as vk::DeviceSize;
+fn upload_via_staging_buffer<I>(
+    memory_allocator: Arc<MemoryAllocator>,
+    synchronization_2_functions: synchronization2::Device,
+    transfer_resources: &mut BufferUploadResources,
+    upload_data: &[I],
+    buffer_usage_during_render: vk::BufferUsageFlags,
+    render_dst_stage: vk::PipelineStageFlags2,
+    render_dst_access_flags: vk::AccessFlags2,
+) -> anyhow::Result<Buffer>
+where
+    I: NoUninit,
+{
+    let upload_data_size = std::mem::size_of_val(upload_data) as vk::DeviceSize;
 
-        let new_buffer = {
-            let buffer_props = BufferProperties::new_default(
-                upload_data_size,
-                buffer_usage_during_render | vk::BufferUsageFlags::TRANSFER_DST,
-            );
-
-            let alloc_info = allocation_info_from_flags(
-                vk::MemoryPropertyFlags::DEVICE_LOCAL,
-                vk::MemoryPropertyFlags::empty(),
-            );
-
-            Buffer::new(self.memory_allocator.clone(), buffer_props, alloc_info)
-                .context("creating geometry pass object data buffer")?
-        };
-
-        let mut staging_buffer = {
-            let buffer_props =
-                BufferProperties::new_default(upload_data_size, vk::BufferUsageFlags::TRANSFER_SRC);
-
-            let alloc_info = allocation_info_from_flags(
-                vk::MemoryPropertyFlags::HOST_VISIBLE,
-                vk::MemoryPropertyFlags::HOST_COHERENT,
-            );
-
-            Buffer::new(self.memory_allocator.clone(), buffer_props, alloc_info)
-                .context("creating geometry pass object staging buffer")?
-        };
-
-        staging_buffer
-            .write_slice(upload_data, 0)
-            .context("uploading geometry pass object data to staging buffer")?;
-
-        self.record_buffer_copy_commands(
-            transfer_resources,
-            &new_buffer,
-            &staging_buffer,
+    let new_buffer = {
+        let buffer_props = BufferProperties::new_default(
             upload_data_size,
-            render_dst_stage,
-            render_dst_access_flags,
+            buffer_usage_during_render | vk::BufferUsageFlags::TRANSFER_DST,
         );
 
-        transfer_resources.staging_buffers.push(staging_buffer);
-
-        Ok(new_buffer)
-    }
-
-    fn record_buffer_copy_commands(
-        &mut self,
-        transfer_resources: &mut BufferUploadResources,
-        new_buffer: &Buffer,
-        staging_buffer: &Buffer,
-        upload_data_size: vk::DeviceSize,
-        render_dst_stage: vk::PipelineStageFlags2,
-        render_dst_access_flags: vk::AccessFlags2,
-    ) {
-        let after_transfer_barrier = {
-            let mut dst_stage_mask = render_dst_stage;
-            let mut dst_access_mask = render_dst_access_flags;
-
-            if transfer_resources.queue_ownership_transfer_required() {
-                // this is a queue release operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
-                // these values will be ignored by the driver, but we set them to null to stop the validation layers from freaking out
-                dst_stage_mask = vk::PipelineStageFlags2::empty();
-                dst_access_mask = vk::AccessFlags2::empty();
-            }
-
-            vk::BufferMemoryBarrier2 {
-                src_stage_mask: vk::PipelineStageFlags2::TRANSFER,
-                dst_stage_mask: dst_stage_mask,
-                src_access_mask: vk::AccessFlags2::TRANSFER_WRITE,
-                dst_access_mask: dst_access_mask,
-                buffer: new_buffer.handle(),
-                size: upload_data_size,
-                offset: 0,
-                src_queue_family_index: transfer_resources.transfer_queue_family_index,
-                dst_queue_family_index: transfer_resources.render_queue_family_index,
-                ..Default::default()
-            }
-        };
-
-        let after_transfer_barriers = [after_transfer_barrier];
-        let after_transfer_dependency =
-            vk::DependencyInfo::default().buffer_memory_barriers(&after_transfer_barriers);
-
-        let copy_region = vk::BufferCopy {
-            src_offset: 0,
-            dst_offset: 0,
-            size: upload_data_size,
-        };
-
-        transfer_resources.command_buffer_transfer.copy_buffer(
-            &staging_buffer,
-            &new_buffer,
-            &[copy_region],
+        let alloc_info = allocation_info_from_flags(
+            vk::MemoryPropertyFlags::DEVICE_LOCAL,
+            vk::MemoryPropertyFlags::empty(),
         );
 
-        unsafe {
-            self.synchronization_2_functions.cmd_pipeline_barrier2(
-                transfer_resources.command_buffer_transfer.handle(),
-                &after_transfer_dependency,
-            );
-        }
+        Buffer::new(memory_allocator.clone(), buffer_props, alloc_info)
+            .context("creating geometry pass object data buffer")?
+    };
 
-        // sync with render queue (if necessary)
+    let mut staging_buffer = {
+        let buffer_props =
+            BufferProperties::new_default(upload_data_size, vk::BufferUsageFlags::TRANSFER_SRC);
+
+        let alloc_info = allocation_info_from_flags(
+            vk::MemoryPropertyFlags::HOST_VISIBLE,
+            vk::MemoryPropertyFlags::HOST_COHERENT,
+        );
+
+        Buffer::new(memory_allocator, buffer_props, alloc_info)
+            .context("creating geometry pass object staging buffer")?
+    };
+
+    staging_buffer
+        .write_slice(upload_data, 0)
+        .context("uploading geometry pass object data to staging buffer")?;
+
+    record_buffer_copy_commands(
+        synchronization_2_functions,
+        transfer_resources,
+        &new_buffer,
+        &staging_buffer,
+        upload_data_size,
+        render_dst_stage,
+        render_dst_access_flags,
+    );
+
+    transfer_resources.staging_buffers.push(staging_buffer);
+
+    Ok(new_buffer)
+}
+
+fn record_buffer_copy_commands(
+    synchronization_2_functions: synchronization2::Device,
+    transfer_resources: &mut BufferUploadResources,
+    new_buffer: &Buffer,
+    staging_buffer: &Buffer,
+    upload_data_size: vk::DeviceSize,
+    render_dst_stage: vk::PipelineStageFlags2,
+    render_dst_access_flags: vk::AccessFlags2,
+) {
+    let after_transfer_barrier = {
+        let mut dst_stage_mask = render_dst_stage;
+        let mut dst_access_mask = render_dst_access_flags;
 
         if transfer_resources.queue_ownership_transfer_required() {
-            // an identical queue aquire operation is required to complete the layout transition https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#synchronization-queue-transfers-acquire
-            let before_render_barrier = vk::BufferMemoryBarrier2 {
-                src_stage_mask: vk::PipelineStageFlags2::empty(),
-                dst_stage_mask: render_dst_stage,
-                src_access_mask: vk::AccessFlags2::empty(),
-                dst_access_mask: render_dst_access_flags,
-                buffer: new_buffer.handle(),
-                size: upload_data_size,
-                offset: 0,
-                src_queue_family_index: transfer_resources.transfer_queue_family_index,
-                dst_queue_family_index: transfer_resources.render_queue_family_index,
-                ..Default::default()
-            };
+            // this is a queue release operation https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#VkImageMemoryBarrier
+            // these values will be ignored by the driver, but we set them to null to stop the validation layers from freaking out
+            dst_stage_mask = vk::PipelineStageFlags2::empty();
+            dst_access_mask = vk::AccessFlags2::empty();
+        }
 
-            let before_render_barriers = [before_render_barrier];
-            let before_render_dependency =
-                vk::DependencyInfo::default().buffer_memory_barriers(&before_render_barriers);
+        vk::BufferMemoryBarrier2 {
+            src_stage_mask: vk::PipelineStageFlags2::TRANSFER,
+            dst_stage_mask: dst_stage_mask,
+            src_access_mask: vk::AccessFlags2::TRANSFER_WRITE,
+            dst_access_mask: dst_access_mask,
+            buffer: new_buffer.handle(),
+            size: upload_data_size,
+            offset: 0,
+            src_queue_family_index: transfer_resources.transfer_queue_family_index,
+            dst_queue_family_index: transfer_resources.render_queue_family_index,
+            ..Default::default()
+        }
+    };
 
-            unsafe {
-                self.synchronization_2_functions.cmd_pipeline_barrier2(
-                    transfer_resources.command_buffer_render_sync.handle(),
-                    &before_render_dependency,
-                );
-            }
+    let after_transfer_barriers = [after_transfer_barrier];
+    let after_transfer_dependency =
+        vk::DependencyInfo::default().buffer_memory_barriers(&after_transfer_barriers);
+
+    let copy_region = vk::BufferCopy {
+        src_offset: 0,
+        dst_offset: 0,
+        size: upload_data_size,
+    };
+
+    transfer_resources.command_buffer_transfer.copy_buffer(
+        &staging_buffer,
+        &new_buffer,
+        &[copy_region],
+    );
+
+    unsafe {
+        synchronization_2_functions.cmd_pipeline_barrier2(
+            transfer_resources.command_buffer_transfer.handle(),
+            &after_transfer_dependency,
+        );
+    }
+
+    // sync with render queue (if necessary)
+
+    if transfer_resources.queue_ownership_transfer_required() {
+        // an identical queue aquire operation is required to complete the layout transition https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#synchronization-queue-transfers-acquire
+        let before_render_barrier = vk::BufferMemoryBarrier2 {
+            src_stage_mask: vk::PipelineStageFlags2::empty(),
+            dst_stage_mask: render_dst_stage,
+            src_access_mask: vk::AccessFlags2::empty(),
+            dst_access_mask: render_dst_access_flags,
+            buffer: new_buffer.handle(),
+            size: upload_data_size,
+            offset: 0,
+            src_queue_family_index: transfer_resources.transfer_queue_family_index,
+            dst_queue_family_index: transfer_resources.render_queue_family_index,
+            ..Default::default()
+        };
+
+        let before_render_barriers = [before_render_barrier];
+        let before_render_dependency =
+            vk::DependencyInfo::default().buffer_memory_barriers(&before_render_barriers);
+
+        unsafe {
+            synchronization_2_functions.cmd_pipeline_barrier2(
+                transfer_resources.command_buffer_render_sync.handle(),
+                &before_render_dependency,
+            );
         }
     }
 }
