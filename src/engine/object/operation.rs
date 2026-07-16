@@ -1,6 +1,5 @@
+use crate::renderer::shader_interfaces::primitive_op_buffer::op_codes;
 use serde::{Deserialize, Serialize};
-
-use crate::renderer::shader_interfaces::primitive_op_buffer::{op_codes, PrimitiveOpBufferUnit};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize, Deserialize)]
 pub enum Operation {
@@ -22,7 +21,7 @@ const VARIANTS: &[Operation] = &[
 ];
 
 impl Operation {
-    pub fn op_code(&self) -> PrimitiveOpBufferUnit {
+    pub fn op_code(&self) -> u32 {
         match *self {
             Self::Union => op_codes::UNION,
             Self::Intersection => op_codes::INTERSECTION,

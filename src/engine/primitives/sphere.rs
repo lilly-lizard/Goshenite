@@ -1,13 +1,10 @@
 use super::primitive::EncodablePrimitive;
-use crate::{
-    engine::{
-        aabb::Aabb,
-        config_engine::{primitive_names, DEFAULT_RADIUS},
-        primitives::transform::Transform,
-    },
-    renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
+use crate::engine::{
+    aabb::Aabb,
+    config_engine::{primitive_names, DEFAULT_RADIUS},
+    primitives::transform::Transform,
 };
-use glam::{Vec2, Vec3};
+use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -36,20 +33,16 @@ impl EncodablePrimitive for Sphere {
         primitive_names::SPHERE
     }
 
-    fn encoded_props(&self) -> PrimitivePropsSlice {
+    fn uber_s(&self) -> [f32; 4] {
         let width = 0_f32;
         let depth = 0_f32;
         let height = self.radius;
         let thickness = self.radius;
-        let corner_radius = Vec2::new(0_f32, self.radius);
-        [
-            width.to_bits(),
-            depth.to_bits(),
-            height.to_bits(),
-            thickness.to_bits(),
-            corner_radius.x.to_bits(),
-            corner_radius.y.to_bits(),
-        ]
+        [width, depth, height, thickness]
+    }
+
+    fn uber_r(&self) -> [f32; 2] {
+        [0., self.radius]
     }
 
     fn aabb(&self, _primitive_transform: Transform) -> Aabb {

@@ -1,4 +1,7 @@
-use ash::vk::{self, KHR_MAINTENANCE4_NAME, KHR_SWAPCHAIN_NAME, KHR_SYNCHRONIZATION2_NAME};
+use ash::vk::{
+    self, EXT_SCALAR_BLOCK_LAYOUT_NAME, KHR_MAINTENANCE4_NAME, KHR_SWAPCHAIN_NAME,
+    KHR_SYNCHRONIZATION2_NAME,
+};
 use bort_vk::ApiVersion;
 use std::ffi::CString;
 
@@ -31,12 +34,12 @@ pub const BOX_INSIDE_STL_PATH: &str = "./assets/models/box-inside.stl";
 
 pub const DISPLAY_UNAVAILABLE_TIMEOUT_NANOSECONDS: i32 = 10000;
 
-pub fn required_device_extensions() -> [CString; 3] {
-    // VK_KHR_swapchain, VK_KHR_synchronization2
+pub fn required_device_extensions() -> [CString; 4] {
     [
-        KHR_SWAPCHAIN_NAME.to_owned(),
-        KHR_SYNCHRONIZATION2_NAME.to_owned(),
-        KHR_MAINTENANCE4_NAME.to_owned(), // core in 1.3
+        KHR_SWAPCHAIN_NAME.to_owned(),           // VK_KHR_swapchain
+        KHR_SYNCHRONIZATION2_NAME.to_owned(),    // VK_KHR_synchronization2
+        KHR_MAINTENANCE4_NAME.to_owned(),        // core in 1.3
+        EXT_SCALAR_BLOCK_LAYOUT_NAME.to_owned(), // VK_EXT_scalar_block_layout
     ]
 }
 

@@ -19,6 +19,7 @@ use crate::{
 use anyhow::{anyhow, Context};
 use ash::vk::{
     self, BufferUsageFlags, DescriptorBufferInfo, WriteDescriptorSet, EXT_DEBUG_UTILS_NAME,
+    EXT_SCALAR_BLOCK_LAYOUT_NAME,
 };
 use bort_vk::{
     allocation_info_cpu_accessible, choose_composite_alpha, is_format_srgb, AllocationAccess,

@@ -1,6 +1,7 @@
 #version 450
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_GOOGLE_include_directive : require
+#extension GL_EXT_scalar_block_layout : enable
 #include "config.glsl"
 
 layout(constant_id = 0) const bool SELECTED_OBJECT = false;
@@ -38,10 +39,21 @@ layout (set = 0, binding = 0) uniform Camera {
     uint _write_linear_color;
 } cam;
 
-layout (set = 1, binding = 0, std430) readonly buffer Object {
+struct PrimitiveOp {
+	uint op;
+	float blend;
+	vec3 primitive_center;
+	mat3 primitive_rotation;
+	vec4 s;
+	vec2 r;
+	vec3 albedo;
+	float specular;
+};
+
+layout (set = 1, binding = 0, scalar) readonly buffer Object {
 	uint _id;
 	uint op_count;
-	uint primitive_ops[];
+	PrimitiveOp primitive_ops[];
 } object;
 
 // layout (push_constant) uniform GeometryPushConstant {
@@ -104,60 +116,15 @@ SdfResult op_subtraction(SdfResult p1, SdfResult p2)
 
 // ~~~ Primitive-Op Processing ~~~
 
-SdfResult process_primitive(uint op_index, vec3 pos)
+SdfResult process_primitive(uint op_index, PrimitiveOp p_op, vec3 pos)
 {
-	// todo perf comparison: load OP_UNIT_LENGTH values at once then decode below
-	uint buffer_index = op_index * OP_UNIT_LENGTH;
-
-	vec3 primitive_center = vec3(
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++])
-	);
-
-	mat3 primitive_rotation;
-	primitive_rotation[0] = vec3(
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++])
-	); // column 1
-	primitive_rotation[1] = vec3(
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++])
-	); // column 2
-	primitive_rotation[2] = vec3(
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++])
-	); // column 3
-
-	vec4 s = vec4(
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++])
-	);
-
-	vec2 r = vec2(
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++])
-	);
-
-	vec3 albedo = vec3(
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++]),
-		uintBitsToFloat(object.primitive_ops[buffer_index++])
-	);
-	float specular = uintBitsToFloat(object.primitive_ops[buffer_index++]);
-
 	pos = pos * in_object_rotation;
-	pos = pos - primitive_center;
-	pos = pos * primitive_rotation;
+	pos = pos - p_op.primitive_center;
+	pos = pos * p_op.primitive_rotation;
 
-	float dist = sdf_uber_primitive(pos, s, r);
+	float dist = sdf_uber_primitive(pos, p_op.s, p_op.r);
 
-	return SdfResult(dist, op_index, albedo, specular);
+	return SdfResult(dist, op_index, p_op.albedo, p_op.specular);
 }
 
 SdfResult process_op(uint op, float blend, SdfResult lhs, SdfResult rhs)
@@ -186,13 +153,10 @@ SdfResult map(vec3 pos)
 	// loop through the primitive operations
 	for (uint op_index = 0; op_index < object.op_count; op_index++) {
 
-		SdfResult primitive_res = process_primitive(op_index, pos);
+		PrimitiveOp p_op = object.primitive_ops[op_index];
+		SdfResult primitive_res = process_primitive(op_index, p_op, pos);
 
-		uint buffer_index = op_index * OP_UNIT_LENGTH + 22;
-		uint op = object.primitive_ops[buffer_index++];
-		float blend = uintBitsToFloat(object.primitive_ops[buffer_index++]);
-
-		closest_res = process_op(op, blend, closest_res, primitive_res);
+		closest_res = process_op(p_op.op, p_op.blend, closest_res, primitive_res);
 	}
 
 	return closest_res;

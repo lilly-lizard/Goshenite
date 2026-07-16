@@ -3,9 +3,7 @@ use crate::{
         angle::Angle,
         axis::{Axis, AxisRotation},
     },
-    renderer::shader_interfaces::{
-        primitive_op_buffer::PrimitiveTransformSlice, vertex_inputs::ObjectInstanceVertex,
-    },
+    renderer::shader_interfaces::vertex_inputs::ObjectInstanceVertex,
 };
 use glam::{Mat3, Mat4, Quat, Vec3};
 use serde::{Deserialize, Serialize};
@@ -40,26 +38,6 @@ impl Transform {
 
     pub fn rotation_matrix(&self) -> Mat3 {
         Mat3::from_quat(self.total_rotation())
-    }
-
-    pub fn gpu_encoded(&self) -> PrimitiveTransformSlice {
-        let rotation_cols_array = self.rotation_matrix().to_cols_array();
-
-        let center = self.translation;
-        [
-            center.x.to_bits(),
-            center.y.to_bits(),
-            center.z.to_bits(),
-            rotation_cols_array[0].to_bits(),
-            rotation_cols_array[1].to_bits(),
-            rotation_cols_array[2].to_bits(),
-            rotation_cols_array[3].to_bits(),
-            rotation_cols_array[4].to_bits(),
-            rotation_cols_array[5].to_bits(),
-            rotation_cols_array[6].to_bits(),
-            rotation_cols_array[7].to_bits(),
-            rotation_cols_array[8].to_bits(),
-        ]
     }
 
     #[inline]

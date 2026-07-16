@@ -1,10 +1,13 @@
 use super::pass_geometry::descriptor;
-use crate::engine::{
-    aabb::AABB_VERTEX_COUNT,
-    object::{
-        object::{Object, ObjectId},
-        objects_delta::{ObjectDeltaOperation, ObjectsDelta},
+use crate::{
+    engine::{
+        aabb::AABB_VERTEX_COUNT,
+        object::{
+            object::{Object, ObjectId},
+            objects_delta::{ObjectDeltaOperation, ObjectsDelta},
+        },
     },
+    helper::unique_id_gen::UniqueIdType,
 };
 use anyhow::Context;
 use ash::{khr::synchronization2, prelude::VkResult, vk};
@@ -377,7 +380,11 @@ impl ObjectResourceManager {
             object_id
         );
 
-        let data = object.encoded_primitive_ops(object_id);
+        let primitive_op_packets = object.primitive_op_packets();
+        let primitive_op_packet_bytes: &[u32] = bytemuck::try_cast_slice(&primitive_op_packets)
+            .context("casting primitive op packets to bytes")?;
+        let mut data = vec![object_id.raw_id() as u32, primitive_op_packets.len() as u32];
+        data.extend_from_slice(primitive_op_packet_bytes);
 
         upload_via_staging_buffer(
             self.memory_allocator.clone(),

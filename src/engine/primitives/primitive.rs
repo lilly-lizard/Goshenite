@@ -2,7 +2,6 @@ use super::{cube::Cube, sphere::Sphere, uber_primitive::UberPrimitive};
 use crate::{
     engine::{aabb::Aabb, primitives::transform::Transform},
     helper::from_enum_macro::impl_from_for_enum_variant,
-    renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
 };
 use serde::{Deserialize, Serialize};
 
@@ -52,8 +51,12 @@ impl EncodablePrimitive for Primitive {
         primitive_fn_match!(self, type_name)
     }
 
-    fn encoded_props(&self) -> PrimitivePropsSlice {
-        primitive_fn_match!(self, encoded_props)
+    fn uber_s(&self) -> [f32; 4] {
+        primitive_fn_match!(self, uber_s)
+    }
+
+    fn uber_r(&self) -> [f32; 2] {
+        primitive_fn_match!(self, uber_r)
     }
 
     fn aabb(&self, primitive_transform: Transform) -> Aabb {
@@ -76,12 +79,11 @@ pub trait EncodablePrimitive: Send + Sync + Serialize {
     /// Returns the primitive type as a str
     fn type_name(&self) -> &'static str;
 
-    /// Returns buffer compatible primitive data as a [`PrimitivePropsSlice`].
-    /// `parent_origin` is the world space origin of the parent object, which should be added to
-    /// the primitive center before encoding.
-    ///
-    /// _Note: must match the decode process in `scene_geometry.frag`_
-    fn encoded_props(&self) -> PrimitivePropsSlice;
+    /// Defines the shape in the uber primitive sdf
+    fn uber_s(&self) -> [f32; 4];
+
+    /// Defines the shape in the uber primitive sdf
+    fn uber_r(&self) -> [f32; 2];
 
     /// Axis aligned bounding box
     fn aabb(&self, primitive_transform: Transform) -> Aabb;

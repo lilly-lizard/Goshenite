@@ -13,8 +13,8 @@ use crate::{
         unique_id_gen::{UniqueId, UniqueIdType},
     },
     renderer::shader_interfaces::primitive_op_buffer::{
-        create_primitive_op_packet, nop_primitive_op_packet, PrimitiveOpBufferUnit,
-        PrimitiveOpPacket, MAX_PRIMITIVE_OP_COUNT,
+        create_primitive_op_packet, nop_primitive_op_packet, PrimitiveOpPacket,
+        MAX_PRIMITIVE_OP_COUNT,
     },
 };
 use glam::Vec3;
@@ -90,7 +90,7 @@ impl Object {
 
     // Setters
 
-    pub fn encoded_primitive_ops(&self, object_id: ObjectId) -> Vec<PrimitiveOpBufferUnit> {
+    pub fn primitive_op_packets(&self) -> Vec<PrimitiveOpPacket> {
         // avoiding this case should be the responsibility of the functions adding to `primtive_ops`
         debug_assert!(self.primitive_ops.len() <= MAX_PRIMITIVE_OP_COUNT);
 
@@ -104,15 +104,7 @@ impl Object {
             let packet = nop_primitive_op_packet();
             encoded_primitives.push(packet);
         }
-
-        let mut encoded_object = vec![
-            object_id.raw_id() as PrimitiveOpBufferUnit,
-            self.primitive_ops.len() as PrimitiveOpBufferUnit,
-        ];
-        let encoded_primitives_flattened: Vec<u32> =
-            encoded_primitives.into_iter().flatten().collect();
-        encoded_object.extend_from_slice(&encoded_primitives_flattened);
-        encoded_object
+        encoded_primitives
     }
 
     pub fn aabb(&self) -> Aabb {

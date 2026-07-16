@@ -1,12 +1,9 @@
 use super::{primitive::EncodablePrimitive, transform::Transform};
-use crate::{
-    engine::{
-        aabb::Aabb,
-        config_engine::{primitive_names, DEFAULT_DIMENSIONS},
-    },
-    renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
+use crate::engine::{
+    aabb::Aabb,
+    config_engine::{primitive_names, DEFAULT_DIMENSIONS},
 };
-use glam::{Vec2, Vec3};
+use glam::Vec3;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -35,20 +32,16 @@ impl EncodablePrimitive for Cube {
         primitive_names::CUBE
     }
 
-    fn encoded_props(&self) -> PrimitivePropsSlice {
+    fn uber_s(&self) -> [f32; 4] {
         let width = self.dimensions.x / 2.0;
         let depth = self.dimensions.y / 2.0;
         let height = self.dimensions.z / 2.0;
         let thickness = 0.5_f32;
-        let corner_radius = Vec2::new(-1.0, 0.0);
-        [
-            width.to_bits(),
-            depth.to_bits(),
-            height.to_bits(),
-            thickness.to_bits(),
-            corner_radius.x.to_bits(),
-            corner_radius.y.to_bits(),
-        ]
+        [width, depth, height, thickness]
+    }
+
+    fn uber_r(&self) -> [f32; 2] {
+        [-1.0, 0.0]
     }
 
     fn aabb(&self, primitive_transform: Transform) -> Aabb {

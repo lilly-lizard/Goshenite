@@ -1,8 +1,5 @@
 use super::{primitive::EncodablePrimitive, transform::Transform};
-use crate::{
-    engine::{aabb::Aabb, config_engine::primitive_names},
-    renderer::shader_interfaces::primitive_op_buffer::PrimitivePropsSlice,
-};
+use crate::engine::{aabb::Aabb, config_engine::primitive_names};
 use glam::{Vec2, Vec3, Vec4};
 use serde::{Deserialize, Serialize};
 
@@ -31,15 +28,17 @@ impl EncodablePrimitive for UberPrimitive {
         primitive_names::UBER_PRIMITIVE
     }
 
-    fn encoded_props(&self) -> PrimitivePropsSlice {
+    fn uber_s(&self) -> [f32; 4] {
         [
-            self.dimensions.x.to_bits(),
-            self.dimensions.y.to_bits(),
-            self.dimensions.z.to_bits(),
-            self.dimensions.w.to_bits(),
-            self.corner_radius.x.to_bits(),
-            self.corner_radius.y.to_bits(),
+            self.dimensions.x,
+            self.dimensions.y,
+            self.dimensions.z,
+            self.dimensions.w,
         ]
+    }
+
+    fn uber_r(&self) -> [f32; 2] {
+        [self.corner_radius.x, self.corner_radius.y]
     }
 
     fn aabb(&self, _primitive_transform: Transform) -> Aabb {
